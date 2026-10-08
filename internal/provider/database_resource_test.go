@@ -1,0 +1,277 @@
+package provider
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// TestSharedDatabaseMetadataUsesCompleteJSON verifies permission decoding beyond the truncated legacy view width.
+func TestSharedDatabaseMetadataUsesCompleteJSON(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
+			options := fmt.Sprintf(`{"datashare_name":"source","datashare_producer_account":"123456789012","datashare_producer_namespace":"11111111-2222-3333-4444-555555555555","datashare_producer_region":"eu-central-1","permissions":%t}`, enabled)
+			require.Greater(t, strings.Index(options, `"permissions"`), 128)
+			r := testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+				assert.Equal(t, `SHOW DATABASES LIKE 'analytics'`, sql)
+				assert.Nil(t, parameters)
+				return []dataapi.Row{{"database_name": "analytics", "database_type": "shared", "parameters": options}}, nil
+			}))
+			data, found, err := r.databaseMetadata(context.Background(), "analytics")
+			require.NoError(t, err)
+			require.True(t, found)
+			assert.Equal(t, enabled, data.WithPermissions.ValueBool())
+			assert.Equal(t, "123456789012", data.ProducerAccount.ValueString())
+			assert.Equal(t, "11111111-2222-3333-4444-555555555555", data.ProducerNamespace.ValueString())
+		})
+	}
+}
+
+// TestDatabaseMetadataRejectsAmbiguousAndIncompleteRows prevents unknown permission modes from becoming false.
+func TestDatabaseMetadataRejectsAmbiguousAndIncompleteRows(t *testing.T) {
+	for _, rows := range [][]dataapi.Row{
+		{{"database_name": "analytics", "database_type": "shared", "parameters": "broken"}},
+		{{"database_name": "analytics", "database_type": "shared", "parameters": `{}`}},
+		{{"database_name": "analytics", "database_type": "shared", "parameters": `{"permissions":true}`}},
+		{{"database_name": "analytics", "database_type": "local"}, {"database_name": "analytics", "database_type": "local"}},
+	} {
+		r := testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+			return rows, nil
+		}))
+		_, _, err := r.databaseMetadata(context.Background(), "analytics")
+		require.Error(t, err)
+	}
+	r := testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		return []dataapi.Row{{"database_name": "analyticsXtest", "database_type": "local"}, {"database_name": "analytics_test", "database_type": "local"}}, nil
+	}))
+	data, found, err := r.databaseMetadata(context.Background(), "analytics_test")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "analytics_test", data.Name.ValueString())
+}
+
+// TestDatabaseCreationErrorsRetainKnownMetadata ensures a successful DDL never leaves unknown ownership fields in state.
+func TestDatabaseCreationErrorsRetainKnownMetadata(t *testing.T) {
+	for _, mode := range []string{"permission mismatch", "not visible", "read error"} {
+		t.Run(mode, func(t *testing.T) {
+			r := &databaseResource{testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+				switch {
+				case strings.HasPrefix(sql, "SELECT consumer_database"):
+					return []dataapi.Row{{"consumer_database": ""}}, nil
+				case strings.HasPrefix(sql, "CREATE DATABASE"):
+					return nil, nil
+				default:
+					if mode == "read error" {
+						return nil, fmt.Errorf("catalog unavailable")
+					}
+					if mode == "not visible" {
+						return nil, nil
+					}
+					return []dataapi.Row{{"database_name": "analytics", "database_type": "shared", "parameters": `{"datashare_name":"source","datashare_producer_account":"123456789012","datashare_producer_namespace":"11111111-2222-3333-4444-555555555555","permissions":false}`}}, nil
+				}
+			}))}
+			data := databaseModel{Name: types.StringValue("analytics"), DatashareARN: types.StringValue(shareARN), WithPermissions: types.BoolValue(true), DatabaseType: types.StringUnknown(), ShareName: types.StringUnknown(), ProducerAccount: types.StringUnknown(), ProducerNamespace: types.StringUnknown()}
+			state := testState(t, r, data)
+			response := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
+			r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state)}, &response)
+			require.True(t, response.Diagnostics.HasError())
+			assert.True(t, response.State.Raw.IsFullyKnown(), "%v", response.State.Raw)
+			var observed databaseModel
+			require.False(t, response.State.Get(context.Background(), &observed).HasError())
+			assert.Equal(t, "shared", observed.DatabaseType.ValueString())
+			assert.Equal(t, "123456789012", observed.ProducerAccount.ValueString())
+			assert.Equal(t, mode != "permission mismatch", observed.WithPermissions.ValueBool())
+		})
+	}
+}
+
+// TestDatabaseObservesPermissionMode checks shared database permission-mode refresh.
+func TestDatabaseObservesPermissionMode(t *testing.T) {
+	c := &catalog{database: true}
+	r := &databaseResource{testResourceClient(c)}
+	data := databaseModel{Name: types.StringValue("analytics"), DatashareARN: types.StringValue(shareARN)}
+	found, err := r.read(context.Background(), &data)
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.False(t, data.WithPermissions.ValueBool())
+	c.permissions = true
+	found, err = r.read(context.Background(), &data)
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.True(t, data.WithPermissions.ValueBool())
+}
+
+// TestDatabaseRejectsIncompatibleBinding checks producer identity and database-kind mismatches.
+func TestDatabaseRejectsIncompatibleBinding(t *testing.T) {
+	for _, change := range []string{"type", "account", "namespace", "share"} {
+		t.Run(change, func(t *testing.T) {
+			row := dataapi.Row{"database_name": "analytics", "database_type": "shared"}
+			options := map[string]any{"datashare_name": "source", "datashare_producer_account": "123456789012", "datashare_producer_namespace": "11111111-2222-3333-4444-555555555555", "permissions": true}
+			if change == "type" {
+				row["database_type"] = "different"
+			} else {
+				field := map[string]string{"account": "datashare_producer_account", "namespace": "datashare_producer_namespace", "share": "datashare_name"}[change]
+				options[field] = "different"
+			}
+			encoded, err := json.Marshal(options)
+			require.NoError(t, err)
+			row["parameters"] = string(encoded)
+			writes := 0
+			r := &databaseResource{testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+				if !strings.HasPrefix(sql, "SHOW") {
+					writes++
+				}
+				return []dataapi.Row{row}, nil
+			}))}
+			data := databaseModel{Name: types.StringValue("analytics"), DatashareARN: types.StringValue(shareARN), WithPermissions: types.BoolValue(true)}
+			resp := resource.DeleteResponse{}
+			r.Delete(context.Background(), resource.DeleteRequest{State: testState(t, r, data)}, &resp)
+			assert.True(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+			assert.Zero(t, writes, "incompatible database must not be dropped")
+		})
+	}
+	for _, value := range []string{"invalid", "arn:aws:s3:eu-central-1:123456789012:bucket", "arn:aws:redshift:eu-central-1:123456789012:datashare:namespace"} {
+		_, err := parseShare(value)
+		assert.Error(t, err, "invalid share %q", value)
+	}
+}
+
+// TestDatabaseCreationConditions exercises association discovery and connection failures.
+func TestDatabaseCreationConditions(t *testing.T) {
+	for _, name := range []string{"invalid ARN", "admin conflict", "unknown target", "already bound", "canceled", "propagation", "without permissions"} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			c := &catalog{}
+			data := databaseModel{Name: types.StringValue("analytics"), DatashareARN: types.StringValue(shareARN), WithPermissions: types.BoolValue(true)}
+			switch name {
+			case "invalid ARN":
+				data.DatashareARN = types.StringValue("invalid")
+			case "admin conflict":
+				data.Name = types.StringValue("admin")
+			case "unknown target":
+			case "already bound":
+				c.database = true
+			case "canceled":
+				cancel()
+			case "without permissions":
+				data.WithPermissions = types.BoolValue(false)
+			}
+			polls := 0
+			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+				if strings.HasPrefix(sql, "SELECT consumer_database") {
+					polls++
+					if name == "canceled" || (name == "propagation" && polls == 1) {
+						return nil, nil
+					}
+				}
+				return c.Query(ctx, target, sql, parameters)
+			})
+			r := &databaseResource{testResourceClient(client)}
+			if name == "unknown target" {
+				r.warehouse.value = types.StringUnknown()
+			}
+			state := testState(t, r, data)
+			resp := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
+			r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan(state)}, &resp)
+			assert.Equal(t, name != "propagation" && name != "without permissions", resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+			if name == "propagation" {
+				assert.Equal(t, 2, polls)
+			}
+			if name == "without permissions" {
+				assert.False(t, c.permissions)
+			}
+		})
+	}
+	c := &catalog{database: true, permissions: true}
+	r := &databaseResource{testResourceClient(c)}
+	data := databaseModel{Name: types.StringValue("analytics"), DatashareARN: types.StringValue("invalid")}
+	_, err := r.read(context.Background(), &data)
+	require.Error(t, err)
+}
+
+// TestLocalDatabaseLifecycle checks local creation, verification, and unsupported catalog kinds.
+func TestLocalDatabaseLifecycle(t *testing.T) {
+	for _, caseName := range []string{"create", "create error", "already shared", "missing after create", "read error"} {
+		t.Run(caseName, func(t *testing.T) {
+			present := caseName == "already shared"
+			client := queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+				if strings.HasPrefix(sql, "SHOW DATABASES") {
+					if caseName == "read error" && present {
+						return nil, fmt.Errorf("catalog unavailable")
+					}
+					if !present {
+						return nil, nil
+					}
+					typ := "local"
+					if caseName == "already shared" {
+						typ = "shared"
+					}
+					return []dataapi.Row{{"database_name": "warehouse", "database_type": typ, "parameters": `{"datashare_name":"source","datashare_producer_account":"123456789012","datashare_producer_namespace":"11111111-2222-3333-4444-555555555555","permissions":true}`}}, nil
+				}
+				if sql == `CREATE DATABASE "warehouse"` {
+					if caseName == "create error" {
+						return nil, fmt.Errorf("creation failed")
+					}
+					present = caseName != "missing after create"
+					return nil, nil
+				}
+				return nil, fmt.Errorf("unexpected SQL %q", sql)
+			})
+			r := &databaseResource{testResourceClient(client)}
+			data := databaseModel{Name: types.StringValue("warehouse"), DatashareARN: types.StringNull(), WithPermissions: types.BoolValue(true)}
+			if caseName == "already shared" {
+				_, err := r.read(context.Background(), &data)
+				require.ErrorContains(t, err, "not a local database")
+				return
+			}
+			state := testState(t, r, data)
+			resp := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
+			r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state)}, &resp)
+			assert.Equal(t, caseName != "create", resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+			if caseName == "create" {
+				assert.True(t, present)
+			}
+		})
+	}
+}
+
+// TestDatabaseImportAllowsLocalDatabase checks imports without a datashare binding.
+func TestDatabaseImportAllowsLocalDatabase(t *testing.T) {
+	r := &databaseResource{}
+	empty := databaseModel{ID: types.StringNull(), Name: types.StringNull(), DatashareARN: types.StringNull(), WithPermissions: types.BoolNull()}
+	resp := resource.ImportStateResponse{State: testState(t, r, empty)}
+	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","name":"warehouse"}`}, &resp)
+	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+	var data databaseModel
+	require.False(t, resp.State.Get(context.Background(), &data).HasError())
+	assert.True(t, data.DatashareARN.IsNull())
+	resp = resource.ImportStateResponse{State: testState(t, r, empty)}
+	r.ImportState(context.Background(), resource.ImportStateRequest{ID: "invalid JSON"}, &resp)
+	assert.True(t, resp.Diagnostics.HasError())
+}
+
+// TestLocalDatabaseIgnoresPermissionMode checks that shared-only options do not affect local reads.
+func TestLocalDatabaseIgnoresPermissionMode(t *testing.T) {
+	r := &databaseResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		return []dataapi.Row{{"database_name": "warehouse", "database_type": "local"}}, nil
+	}))}
+	data := databaseModel{Name: types.StringValue("warehouse"), DatashareARN: types.StringNull(), WithPermissions: types.BoolValue(false)}
+	found, err := r.read(context.Background(), &data)
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.False(t, data.WithPermissions.ValueBool())
+	data.WithPermissions = types.BoolUnknown()
+	_, err = r.read(context.Background(), &data)
+	require.NoError(t, err)
+	assert.True(t, data.WithPermissions.ValueBool())
+}

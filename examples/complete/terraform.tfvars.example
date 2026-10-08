@@ -1,0 +1,20 @@
+# The defaults create both warehouses, private networks, and all non-SSO SQL/data fixtures in one account.
+region = "eu-central-1"
+# profile = "sandbox-admin"
+
+# Supply an existing instance ARN to enable the managed SSO application, groups, and SQL integration.
+# identity_center_instance_arn = "arn:aws:sso:::instance/ssoins-example"
+# identity_center_test_user_id = "existing-user-id"
+
+# Optional cross-account mode: distinct profiles create separate networks and warehouses in those accounts.
+# producer_profile = "producer-admin"
+# consumer_profile = "consumer-admin"
+
+# IAM Data API probes do not require TCP connectivity to the warehouse endpoints.
+# connection_checks = ["producer_data_api_iam", "consumer_data_api_iam"]
+
+# Direct probes require private connectivity or an explicit public SQL opt-in.
+# allow_public_sql = true
+# public_sql_cidrs = ["203.0.113.10/32"]
+# connection_checks = ["producer_direct_iam", "consumer_direct_iam"]
+# Direct password probes additionally use ephemeral TF_VAR_producer_password / TF_VAR_consumer_password.

@@ -1,0 +1,127 @@
+---
+version: '3'
+
+vars:
+  VERSION: '0.2.0'
+  PACKAGE_DIR: '{{.ROOT_DIR}}/.cache/mirror/registry.terraform.io/netcheck-de/redshift/{{.VERSION}}/{{OS}}_{{ARCH}}'
+  TF_DIR: '{{.ROOT_DIR}}/examples/complete'
+
+tasks:
+
+  # Checks
+
+  check:
+    desc: Check formatting, lint, offline tests, and documentation
+    cmds:
+      - task: lint
+      - task: markdown-fmt-check
+      - task: test
+      - task: docs-check
+
+  # Go
+
+  fmt:
+    desc: Format Go code
+    cmds:
+      - gofmt -w .
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  test:
+    desc: Run offline race tests and print statement coverage
+    cmds:
+      - go test -race -cover ./...
+
+  # Documentation
+
+  markdown-fmt:
+    desc: Format Markdown files
+    shopt: [globstar]
+    cmds:
+      - >-
+        go run github.com/bwplotka/mdox@latest fmt
+        --soft-wraps
+        *.md docs/**/*.md examples/**/*.md
+
+  markdown-fmt-check:
+    desc: Check Markdown formatting
+    shopt: [globstar]
+    cmds:
+      - >-
+        go run github.com/bwplotka/mdox@latest fmt --check
+        --soft-wraps
+        *.md docs/**/*.md examples/**/*.md
+
+  docs-check:
+    desc: Validate Terraform Registry documentation against the provider schema
+    cmds:
+      - go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.25.0 validate --provider-name redshift --provider-dir .
+
+  # Local build
+
+  build:
+    desc: Build a local provider mirror and isolated Terraform CLI configuration
+    cmds:
+      - mkdir -p "{{.PACKAGE_DIR}}"
+      - go build -ldflags="-X main.version={{.VERSION}}" -o "{{.PACKAGE_DIR}}/terraform-provider-redshift"
+      - |
+        cat > "{{.ROOT_DIR}}/.cache/dev.tfrc" <<EOF
+        provider_installation {
+          dev_overrides {
+            "netcheck-de/redshift" = "{{.PACKAGE_DIR}}"
+          }
+          filesystem_mirror {
+            path    = "{{.ROOT_DIR}}/.cache/mirror"
+            include = ["netcheck-de/redshift"]
+          }
+          direct {
+            exclude = ["netcheck-de/redshift"]
+          }
+        }
+        EOF
+
+  # Terraform examples
+
+  terraform:
+    desc: Run Terraform against TF_DIR with the local provider (default examples/complete)
+    deps: [build]
+    dir: '{{.TF_DIR}}'
+    env:
+      TF_CLI_CONFIG_FILE: '{{.ROOT_DIR}}/.cache/dev.tfrc'
+    cmds:
+      - terraform {{.CLI_ARGS}}
+
+  terraform-check:
+    desc: Check formatting and validate all Terraform examples with the local provider
+    deps: [build]
+    env:
+      TF_CLI_CONFIG_FILE: '{{.ROOT_DIR}}/.cache/dev.tfrc'
+    cmds:
+      - terraform fmt -check -recursive examples
+      - |
+        set -e
+        for example in examples/*/; do
+          [ -f "$example/main.tf" ] || continue
+          terraform -chdir="$example" init -backend=false
+          terraform -chdir="$example" validate
+        done
+
+  terraform-test:
+    desc: Run mocked Terraform example tests in TF_DIR (default examples/complete)
+    deps: [build]
+    dir: '{{.TF_DIR}}'
+    env:
+      TF_CLI_CONFIG_FILE: '{{.ROOT_DIR}}/.cache/dev.tfrc'
+    cmds:
+      - terraform init -backend=false -input=false
+      - terraform test {{.CLI_ARGS}}
+
+  # Release
+
+  snapshot:
+    desc: Build unsigned release archives locally
+    cmds:
+      - goreleaser release --snapshot --clean --skip=publish,sign

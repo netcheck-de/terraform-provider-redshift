@@ -1,0 +1,12 @@
+---
+extends: default
+
+rules:
+  brackets: false
+  line-length: false
+  truthy: false
+
+ignore: |
+  .cache/
+  dist/
+  .terraform/

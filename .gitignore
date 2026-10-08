@@ -1,0 +1,41 @@
+# Go build and test output
+/terraform-provider-redshift
+/terraform-provider-redshift.exe
+*.test
+*.prof
+coverage.out
+/bin/
+/dist/
+/.cache/
+
+# Terraform working directories, state, local inputs, and saved plans
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+terraform.rc
+.terraformrc
+# Example dependency locks are local; go.sum remains versioned.
+examples/**/.terraform.lock.hcl
+
+# Local configuration and tools
+.env
+.env.*
+.idea/
+.vscode/
+.cursor/
+.opencode/
+.claude/
+logs/
+
+# Operating-system files
+.DS_Store
+Thumbs.db

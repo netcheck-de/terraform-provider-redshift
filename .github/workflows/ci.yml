@@ -1,0 +1,136 @@
+---
+name: CI
+
+on: [ push ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-go:
+    name: Go lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version-file: .golangci-lint-version
+
+  lint-project:
+    name: Project lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Task
+        uses: go-task/setup-task@v2
+
+      - name: Setup actionlint
+        id: setup-actionlint
+        run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+
+      - name: YAML lint
+        uses: ibiqlik/action-yamllint@v3
+
+      - name: Markdown lint
+        uses: nosborn/github-action-markdown-cli@v3
+        with:
+          files: .
+
+      - name: Check Markdown formatting
+        run: task markdown-fmt-check
+
+      - name: Actionlint
+        run: '"${{ steps.setup-actionlint.outputs.executable }}" -color'
+
+  test-go:
+    name: Go tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Set up Task
+        uses: go-task/setup-task@v2
+
+      - name: Test
+        run: task test
+
+  test-terraform:
+    name: Terraform validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Set up Task
+        uses: go-task/setup-task@v2
+
+      - name: Validate examples
+        run: task terraform-check
+
+      - name: Test example composition
+        run: task terraform-test
+
+      - name: Validate Registry documentation
+        run: task docs-check
+
+  build:
+    name: Build release archives
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Build unsigned snapshot
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          args: release --snapshot --clean --skip=publish,sign
+
+      - name: Upload archives
+        uses: actions/upload-artifact@v7
+        with:
+          name: provider-snapshot
+          path: |
+            dist/*.zip
+            dist/*_SHA256SUMS
+            terraform-registry-manifest.json
