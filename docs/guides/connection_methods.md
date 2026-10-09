@@ -69,7 +69,7 @@ with both warehouse types and needs no AWS credentials or region. Passwords are 
 never included in resource state or import IDs. Ephemeral Terraform input is supported.
 
 Shared `data.redshift_database` lookups additionally resolve `datashare_arn` through the AWS Redshift control plane.
-Those lookups need AWS credentials, a consumer-region configuration, and `redshift:DescribeDataSharesForConsumer`,
+Those lookups need AWS credentials, a consumer-region configuration, and `redshift:DescribeDataShares`,
 including in direct password mode. Ordinary SQL operations and local database lookups do not need this discovery call.
 
 ## Direct IAM authentication
@@ -116,12 +116,22 @@ Unknown warehouse/endpoint values are allowed during planning; SQL waits until t
 
 ## TLS and routing
 
-Direct connections always use TLS 1.2 or later with certificate-chain and hostname verification. There is no insecure
-fallback. Discovery prefers an AWS-configured custom domain because its certificate can differ from the default AWS
+Direct connections use TLS 1.2 or later. `direct_connection.sslmode` selects verification and defaults to `verify-full`
+(certificate chain and hostname). `verify-ca` checks only the chain, `require` encrypts without verifying the server, and
+`disable` sends credentials and data in plaintext; use the weaker modes only on trusted networks. Fallback modes such as
+`prefer` are not supported, so a connection never silently downgrades.
+
+On macOS, Go uses the platform verifier, which rejects Redshift Serverless certificates that lack Certificate
+Transparency timestamps, in both `verify-full` and `verify-ca`. Adding the
+[Amazon Trust Services root](https://www.amazontrust.com/repository/) through `ca_cert_file` keeps full verification;
+`require` also connects, without verification. Linux is not affected.
+
+Discovery prefers an AWS-configured custom domain because its certificate can differ from the default AWS
 endpoint certificate. An optional `direct_connection.host` overrides discovery routing and the TLS server name; `port`
 optionally overrides the discovered port. These overrides do not change an IAM warehouse's import identity.
 
-`direct_connection.ca_cert_file` adds a PEM CA bundle to system trust for custom certificate authorities. The runner
+`direct_connection.ca_cert_file` adds a PEM CA bundle to system trust for custom certificate authorities in the
+verifying modes. The runner
 needs network access to the endpoint; private warehouses usually require VPC connectivity or VPN access.
 
 Each statement opens and deterministically closes its own database-specific connection in autocommit mode. IAM

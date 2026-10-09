@@ -27,7 +27,7 @@ data "redshift_database" "analytics" {
 ### Read-Only
 
 - `database_type` (String) `local` or `shared`.
-- `datashare_arn` (String) Backing producer datashare ARN; null for local databases. Shared lookups require redshift:DescribeDataSharesForConsumer.
+- `datashare_arn` (String) Backing producer datashare ARN; null for local databases. Shared lookups require redshift:DescribeDataShares.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `producer_account` (String) Producer account ID; null for local databases.
 - `producer_namespace` (String) Producer namespace ID; null for local databases.
@@ -38,7 +38,7 @@ data "redshift_database" "analytics" {
 Missing or ambiguous databases and shared databases without a complete producer binding are errors.
 
 Shared-database lookups discover the complete producer ARN through
-`redshift:DescribeDataSharesForConsumer` in the consumer account. The caller needs that permission and AWS credentials
+`redshift:DescribeDataShares` in the consumer account. The caller needs that permission and AWS credentials
 and a region, including when the SQL connection uses a password. The returned ARN retains the producer's region and
 partition; it is not constructed from the consumer's region. Missing or ambiguous AWS metadata is an error.
 Local database lookups require no AWS metadata calls and return `with_permissions = false`.

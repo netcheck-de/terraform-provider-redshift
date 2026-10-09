@@ -93,7 +93,7 @@ required or optional inputs; observed settings are computed. Write-only password
 replacement triggers are resource-only controls. Data sources never execute mutation SQL and do not take ownership;
 missing relationships return `exists = false` with `id = null`.
 
-Shared database lookups additionally require `redshift:DescribeDataSharesForConsumer` in the consumer account to resolve
+Shared database lookups additionally require `redshift:DescribeDataShares` in the consumer account to resolve
 the backing `datashare_arn`. AWS credentials and a region are needed for that metadata read even with a direct password
 SQL connection. Local database lookups and shared database resource refreshes do not make this AWS metadata call.
 

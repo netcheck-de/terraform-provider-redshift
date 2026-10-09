@@ -72,6 +72,9 @@ standard acceptance environment plus `REDSHIFT_ACC_DIRECT=1`:
 - `TestAccDirectPasswordPrivileges`: a disposable non-superuser password identity can read its granted fixture but
   cannot insert; the fixture database and user are removed afterwards.
 
+Set `REDSHIFT_ACC_SSLMODE` (for example `require`) to override the default `verify-full` for direct tests; on macOS
+this is needed for Serverless endpoints, whose certificates lack Certificate Transparency timestamps.
+
 `TestAccClusterTransportLifecycle` additionally requires `REDSHIFT_ACC_CLUSTER` and `REDSHIFT_ACC_DB_USER`, with a
 provisioned test warehouse and an existing privileged SQL identity. `REDSHIFT_ACC_SECRET_ARN` optionally adds a
 secret-mode Data API switch; `REDSHIFT_ACC_DIRECT=1` additionally switches to direct cluster IAM. These fixtures are not

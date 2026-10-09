@@ -41,7 +41,7 @@ arguments, lifecycle behavior, and imports, see the [resource index](docs/index.
 Resource arguments are readable attributes, and paired data sources expose the same readable object attributes and JSON
 import-compatible `id`. Write-only passwords and Terraform-only rotation/replacement controls are excluded from lookups.
 Missing relationship lookups return `exists = false` and a null ID. Shared database lookups expose `datashare_arn` by
-calling `redshift:DescribeDataSharesForConsumer`; this requires AWS credentials and a region in the consumer account,
+calling `redshift:DescribeDataShares`; this requires AWS credentials and a region in the consumer account,
 including for direct password SQL connections. Local database lookups do not require AWS metadata discovery.
 
 The [complete example](examples/complete/README.md) provisions a RA3 producer, Serverless consumer, private networks,

@@ -22,11 +22,76 @@ terraform {
   }
 }
 
+# Serverless through the Data API with the caller's IAM identity.
 provider "redshift" {
   region         = "eu-central-1"
   profile        = "warehouse-admin"
   workgroup_name = "analytics"
-  database       = "master"
+  database       = "dev"
+}
+
+# Serverless through the Data API with Secrets Manager credentials.
+provider "redshift" {
+  alias          = "serverless_secret"
+  region         = "eu-central-1"
+  workgroup_name = "analytics"
+  database       = "dev"
+  secret_arn     = "arn:aws:secretsmanager:eu-central-1:123456789012:secret:redshift-admin-AbCdEf"
+}
+
+# Provisioned cluster through the Data API with temporary credentials for an existing SQL user.
+provider "redshift" {
+  alias              = "cluster_data_api"
+  region             = "eu-central-1"
+  cluster_identifier = "analytics-cluster"
+  db_user            = "terraform_admin"
+  database           = "dev"
+}
+
+# Direct TLS connection with IAM credentials; the endpoint is discovered from the workgroup.
+provider "redshift" {
+  alias    = "serverless_direct_iam"
+  region   = "eu-central-1"
+  database = "dev"
+  direct_connection {
+    iam {
+      workgroup_name = "analytics"
+    }
+  }
+}
+
+# Direct TLS connection to a cluster through a private endpoint, trusting an additional CA bundle.
+provider "redshift" {
+  alias    = "cluster_direct_iam"
+  region   = "eu-central-1"
+  database = "dev"
+  direct_connection {
+    host         = "redshift.internal.example.com"
+    ca_cert_file = "/etc/ssl/certs/internal-ca.pem"
+    iam {
+      cluster_identifier = "analytics-cluster"
+      db_user            = "terraform_admin"
+    }
+  }
+}
+
+# Direct password connection; no AWS credentials are needed.
+variable "redshift_password" {
+  type      = string
+  sensitive = true
+  ephemeral = true
+}
+
+provider "redshift" {
+  alias    = "direct_password"
+  database = "dev"
+  direct_connection {
+    host     = "analytics.123456789012.eu-central-1.redshift-serverless.amazonaws.com"
+    username = "terraform_admin"
+    password = var.redshift_password
+    # verify-full is the default; weaker modes are an explicit opt-in.
+    sslmode = "verify-full"
+  }
 }
 ```
 
@@ -53,11 +118,12 @@ provider "redshift" {
 
 Optional:
 
-- `ca_cert_file` (String) PEM CA bundle added to system trust. TLS certificate and hostname verification remain mandatory.
+- `ca_cert_file` (String) PEM CA bundle added to system trust for `verify-full` and `verify-ca`.
 - `host` (String) Endpoint hostname; required for password authentication, optional override for IAM.
 - `iam` (Block, Optional) Obtain temporary SQL credentials for one Serverless workgroup or provisioned cluster. (see [below for nested schema](#nestedblock--direct_connection--iam))
 - `password` (String, Sensitive) SQL password; supports ephemeral input and is never part of resource state.
 - `port` (Number) Port 1–65535; defaults to 5439 or the IAM-discovered endpoint port.
+- `sslmode` (String) TLS mode: `verify-full` (default) verifies the certificate chain and hostname, `verify-ca` only the chain, `require` encrypts without verifying the server, and `disable` connects without TLS. Anything weaker than `verify-full` exposes credentials to impersonation or eavesdropping.
 - `username` (String) Existing SQL user for password authentication.
 
 <a id="nestedblock--direct_connection--iam"></a>
@@ -145,7 +211,7 @@ required or optional inputs; observed settings are computed. Write-only password
 replacement triggers are resource-only controls. Data sources never execute mutation SQL and do not take ownership;
 missing relationships return `exists = false` with `id = null`.
 
-Shared database lookups additionally require `redshift:DescribeDataSharesForConsumer` in the consumer account to resolve
+Shared database lookups additionally require `redshift:DescribeDataShares` in the consumer account to resolve
 the backing `datashare_arn`. AWS credentials and a region are needed for that metadata read even with a direct password
 SQL connection. Local database lookups and shared database resource refreshes do not make this AWS metadata call.
 
