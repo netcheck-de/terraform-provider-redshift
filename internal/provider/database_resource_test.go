@@ -17,6 +17,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleCase(lifecycleCase{
+	name: "database", new: newDatabaseResource,
+	model:  databaseModel{Name: types.StringValue("analytics"), DatashareARN: types.StringValue(shareARN), WithPermissions: types.BoolValue(true)},
+	absent: func(c *catalog) { c.database = false },
+	// Only creation of a shared database needs a visible incoming share.
+	missingRows: func(operation, sql string) []dataapi.Row {
+		if operation == "create" && strings.HasPrefix(sql, "SELECT consumer_database") {
+			return []dataapi.Row{{"consumer_database": ""}}
+		}
+		return nil
+	},
+})
+
+var _ = registerReplacementPolicy("redshift_database", map[string]replaceRule{
+	"name":             replaceAlways,
+	"datashare_arn":    replaceAlways,
+	"with_permissions": replaceAlways,
+})
+
 // TestSharedDatabaseMetadataUsesCompleteJSON verifies permission decoding beyond the truncated legacy view width.
 func TestSharedDatabaseMetadataUsesCompleteJSON(t *testing.T) {
 	for _, enabled := range []bool{true, false} {

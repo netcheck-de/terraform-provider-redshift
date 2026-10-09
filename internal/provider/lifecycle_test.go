@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -50,39 +49,118 @@ func invoke(t *testing.T, r resource.Resource, operation string, model any, inva
 	}
 }
 
+// lifecycleKind separates managed objects from permissions, whose deletion revokes only their own tuple.
+type lifecycleKind int
+
+const (
+	// lifecycleObject is dropped only after memberships and grants on it are gone.
+	lifecycleObject lifecycleKind = iota
+	// lifecyclePermission revokes itself, so deletion leaves the rest of the catalog in place.
+	lifecyclePermission
+)
+
 // lifecycleCase describes one resource for the shared error-path tests.
 type lifecycleCase struct {
-	name  string
-	new   func() resource.Resource
+	// name identifies the case; transcript variants refer to it.
+	name string
+	// kind selects how deletion prepares the catalog.
+	kind lifecycleKind
+	// new constructs the resource under test.
+	new func() resource.Resource
+	// model is a representative configuration and state.
 	model any
+	// setup adjusts every fake catalog first, for example to populate state that fullCatalog lacks.
+	setup func(*catalog)
 	// absent removes the managed object from a full catalog before creation.
 	absent func(*catalog)
 	// dependents removes other objects that would otherwise block deletion.
 	dependents func(*catalog)
+	// prepare adjusts the catalog for one operation, for example drift that update must correct.
+	prepare func(c *catalog, operation string)
+	// missingRows answers queries against an otherwise empty catalog where the type needs a row to proceed.
+	missingRows func(operation, sql string) []dataapi.Row
+	// isDeletion recognizes the statements that remove the object; nil uses defaultDeletion.
+	isDeletion func(sql string) bool
 }
 
-// lifecycleCases supplies representative resource models for shared error-path tests.
+// lifecycleRegistry holds the cases each type's test file registers.
+var lifecycleRegistry testRegistry[lifecycleCase]
+
+// registerLifecycleCase declares a resource's shared error-path case from its own test file.
+func registerLifecycleCase(test lifecycleCase) bool {
+	return lifecycleRegistry.add(test.name, test)
+}
+
+// lifecycleCases supplies representative resource models for shared error-path tests in name order.
 func lifecycleCases() []lifecycleCase {
-	return []lifecycleCase{
-		{name: "group", new: newGroupResource, model: groupModel{Name: types.StringValue("readers")}, absent: func(c *catalog) { c.group = false }},
-		{name: "group membership", new: newGroupMembershipResource, model: groupMembershipModel{Group: types.StringValue("readers"), User: types.StringValue("grafana")}, absent: func(c *catalog) { c.groupMember = false }},
-		{name: "role", new: newRoleResource, model: roleModel{Name: types.StringValue("example:readers")}, absent: func(c *catalog) { c.role = false }},
-		{name: "membership", new: newRoleGrantResource, model: roleGrantModel{Role: types.StringValue("sys:dba"), ToRole: types.StringValue("example:readers"), ToUser: types.StringNull()}},
-		{name: "database", new: newDatabaseResource, model: databaseModel{Name: types.StringValue("analytics"), DatashareARN: types.StringValue(shareARN), WithPermissions: types.BoolValue(true)}, absent: func(c *catalog) { c.database = false }},
-		{name: "datashare", new: newDatashareResource, model: datashareModel{Database: types.StringValue("admin"), Name: types.StringValue("producer"), PublicAccessible: types.BoolValue(false)}, absent: func(c *catalog) { c.share = false }, dependents: func(c *catalog) { c.shareSchema, c.shareGrant = false, false }},
-		{name: "schema", new: newSchemaResource, model: schemaModel{Database: types.StringValue("admin"), Name: types.StringValue("serving"), Owner: types.StringValue("admin")}, absent: func(c *catalog) { c.schema = false }},
-		{name: "external schema", new: newExternalSchemaResource, model: externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("example_external"), GlueDatabase: types.StringValue("example_glue"), IAMRoleARN: types.StringValue("arn:aws:iam::123456789012:role/spectrum"), RefreshRevision: types.StringNull()}, absent: func(c *catalog) { c.external = false }},
-		{name: "share schema", new: newDatashareSchemaResource, model: datashareSchemaModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), Schema: types.StringValue("serving"), IncludeNew: types.BoolValue(false)}, absent: func(c *catalog) { c.shareSchema = false }, dependents: func(c *catalog) { c.shareTable = false }},
-		{name: "share table", new: newDatashareTableResource, model: datashareTableModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), Schema: types.StringValue("serving"), Table: types.StringValue("table")}, absent: func(c *catalog) { c.shareTable = false }},
-		{name: "share grant", new: newDatashareGrantResource, model: datashareGrantModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), AccountID: types.StringValue("123456789012")}, absent: func(c *catalog) { c.shareGrant = false }},
-		{name: "identity", new: newIdentityProviderResource, model: identityProviderModel{Name: types.StringValue("identity"), Namespace: types.StringValue("example"), ApplicationARN: types.StringValue("application"), IAMRoleARN: types.StringValue("role-one"), Enabled: types.BoolValue(true)}, absent: func(c *catalog) { c.identity = false }, dependents: func(c *catalog) { c.role = false }},
-		{name: "grant", new: newGrantResource, model: grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("example:readers"), Scope: types.StringValue("TABLES"), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SELECT")})}, absent: func(c *catalog) { clear(c.privileges) }},
+	var cases []lifecycleCase
+	for _, name := range lifecycleRegistry.keys() {
+		cases = append(cases, lifecycleRegistry.entries[name])
 	}
+	return cases
+}
+
+// catalog returns a full fake catalog after the case's setup.
+func (test lifecycleCase) catalog() *catalog {
+	c := fullCatalog()
+	test.applySetup(c)
+	return c
+}
+
+// applySetup runs the case's catalog setup, if any.
+func (test lifecycleCase) applySetup(c *catalog) {
+	if test.setup != nil {
+		test.setup(c)
+	}
+}
+
+// applyPrepare runs the case's per-operation adjustment, if any.
+func (test lifecycleCase) applyPrepare(c *catalog, operation string) {
+	if test.prepare != nil {
+		test.prepare(c, operation)
+	}
+}
+
+// removable clears what blocks deleting the case's object; permissions revoke their own tuple instead.
+func (test lifecycleCase) removable(c *catalog) {
+	if test.kind == lifecycleObject {
+		c.membership = false
+		clear(c.privileges)
+	}
+	if test.dependents != nil {
+		test.dependents(c)
+	}
+}
+
+// deletion reports whether sql removes the case's object.
+func (test lifecycleCase) deletion(sql string) bool {
+	if test.isDeletion != nil {
+		return test.isDeletion(sql)
+	}
+	return defaultDeletion(sql)
+}
+
+// defaultDeletion recognizes removal statements by verb or clause. " DROP USER " covers ALTER GROUP, whose
+// removal clause is not a statement verb.
+func defaultDeletion(sql string) bool {
+	verb, _, _ := strings.Cut(sql, " ")
+	switch verb {
+	case "DROP", "REVOKE", "DETACH", "RESET":
+		return true
+	}
+	for _, clause := range []string{" REMOVE ", " DETACH ", " RESET ", " DROP USER "} {
+		if strings.Contains(sql, clause) {
+			return true
+		}
+	}
+	return false
 }
 
 // fullCatalog returns a fake catalog in which every lifecycle case's object and parents exist.
 func fullCatalog() *catalog {
-	return &catalog{group: true, groupMember: true, role: true, membership: true, identity: true, enabled: true, iamRole: "role-one", database: true, share: true, schema: true, external: true, shareSchema: true, shareTable: true, shareGrant: true, permissions: true, privileges: map[string]bool{"SELECT": true}}
+	c := &catalog{group: true, groupMember: true, role: true, membership: true, identity: true, enabled: true, iamRole: "role-one", database: true, share: true, schema: true, external: true, shareSchema: true, shareTable: true, shareGrant: true, permissions: true, privileges: map[string]bool{"SELECT": true}}
+	c.populate()
+	return c
 }
 
 // configureTestResource binds a resource to the test warehouse and the supplied SQL client.
@@ -101,6 +179,41 @@ func withID(model any, id types.String) any {
 	return value.Interface()
 }
 
+// TestLifecycleCasesAreRegistered checks that registered cases are complete and name registered resources.
+func TestLifecycleCasesAreRegistered(t *testing.T) {
+	require.Empty(t, lifecycleRegistry.duplicates, "duplicate lifecycle cases")
+	require.NotEmpty(t, lifecycleCases())
+	resources, _ := registeredTypeNames()
+	for _, test := range lifecycleCases() {
+		require.NotNil(t, test.new, test.name)
+		require.NotNil(t, test.model, test.name)
+		assert.Contains(t, resources, "redshift_"+resourceTypeName(test.new), test.name)
+	}
+}
+
+// TestDefaultDeletion pins the statements the deletion verification treats as removals.
+func TestDefaultDeletion(t *testing.T) {
+	for sql, expected := range map[string]bool{
+		`DROP ROLE "r"`:                          true,
+		`REVOKE SELECT ON TABLE "t" FROM "u"`:    true,
+		`ALTER DATASHARE "s" REMOVE SCHEMA "x"`:  true,
+		`ALTER GROUP "g" DROP USER "u"`:          true,
+		`DETACH RLS POLICY "p" ON "t" FROM "r"`:  true,
+		`ALTER USER "u" RESET search_path`:       true,
+		`CREATE ROLE "r"`:                        false,
+		`ALTER DATASHARE "s" ADD SCHEMA "x"`:     false,
+		`GRANT SELECT ON TABLE "t" TO "u"`:       false,
+		`SELECT role_name FROM svv_roles`:        false,
+		`ALTER IDENTITY PROVIDER "i" DISABLE`:    false,
+		`ALTER SCHEMA "s" OWNER TO "removal"`:    false,
+		`COMMENT ON SCHEMA "s" IS 'DROP stuff'`:  false,
+		`ALTER USER "u" SET search_path TO "x"`:  false,
+		`ALTER DATASHARE "s" SET INCLUDENEW = t`: false,
+	} {
+		assert.Equal(t, expected, defaultDeletion(sql), sql)
+	}
+}
+
 // TestLifecycleDiagnosticsAndRetries injects failures at every SQL boundary of each lifecycle method.
 func TestLifecycleDiagnosticsAndRetries(t *testing.T) {
 	for _, test := range lifecycleCases() {
@@ -113,20 +226,14 @@ func TestLifecycleDiagnosticsAndRetries(t *testing.T) {
 				// Retry each query failure point with a fresh catalog, including failures
 				// after DDL has succeeded but before verification completes.
 				for failAt := 0; failAt <= queries; failAt++ {
-					c := fullCatalog()
+					c := test.catalog()
 					switch {
 					case operation == "create" && test.absent != nil:
 						test.absent(c)
-					case operation == "delete" && test.name != "grant":
-						// Grants revoke their own privileges; other objects need their dependents gone first.
-						c.membership = false
-						clear(c.privileges)
-						if test.dependents != nil {
-							test.dependents(c)
-						}
-					case operation == "update" && test.name == "grant":
-						c.privileges = map[string]bool{"INSERT": true}
+					case operation == "delete":
+						test.removable(c)
 					}
+					test.applyPrepare(c, operation)
 					calls := 0
 					client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
 						calls++
@@ -155,10 +262,9 @@ func TestLifecycleMissingObjects(t *testing.T) {
 	for _, test := range lifecycleCases() {
 		for _, operation := range []string{"create", "read", "update", "delete"} {
 			t.Run(test.name+"/"+operation, func(t *testing.T) {
-				// Only creation of a shared database needs a visible incoming share.
 				client := queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
-					if test.name == "database" && operation == "create" && strings.HasPrefix(sql, "SELECT consumer_database") {
-						return []dataapi.Row{{"consumer_database": ""}}, nil
+					if test.missingRows != nil {
+						return test.missingRows(operation, sql), nil
 					}
 					return nil, nil
 				})
@@ -175,9 +281,9 @@ func TestLifecycleMissingObjects(t *testing.T) {
 func TestDeletionVerifiesRemoval(t *testing.T) {
 	for _, test := range lifecycleCases() {
 		t.Run(test.name, func(t *testing.T) {
-			c := fullCatalog()
+			c := test.catalog()
 			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
-				if strings.HasPrefix(sql, "DROP ") || strings.HasPrefix(sql, "REVOKE ") || strings.Contains(sql, " REMOVE ") || strings.Contains(sql, " DROP USER ") {
+				if test.deletion(sql) {
 					return nil, nil // Simulate an acknowledged write that did not converge.
 				}
 				return c.Query(ctx, target, sql, parameters)
@@ -195,6 +301,7 @@ func TestProviderBindingCannotAdoptAnotherWarehouse(t *testing.T) {
 	for _, test := range lifecycleCases() {
 		t.Run(test.name, func(t *testing.T) {
 			c := &catalog{role: true, membership: true, identity: true, enabled: true, iamRole: "role-one", database: true, share: true, permissions: true, privileges: map[string]bool{"SELECT": true}}
+			test.applySetup(c)
 			r := test.new()
 			configureTestResource(t, r, c)
 			model := withID(test.model, types.StringValue(`{"workgroup_name":"other","database":"admin"}`))

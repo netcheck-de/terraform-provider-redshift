@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var _ = registerParity(parityCase{source: newGrantDataSource, resource: newGrantResource, selectors: []string{"database_name", "schema_name", "role", "datashare", "scope"}})
+
 // TestScopedGrantLookup observes explicit scope permissions and errors on missing parents.
 func TestScopedGrantLookup(t *testing.T) {
 	exerciseCatalogLookup(t, newGrantDataSource, map[string]string{"database_name": "analytics", "role": "example:readers", "scope": "TABLES"}, map[string]attr.Value{"privileges": types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SELECT")})}, &catalog{database: true, role: true, privileges: map[string]bool{"SELECT": true}})

@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var _ = registerParity(parityCase{source: newCommentDataSource, resource: newCommentResource, selectors: []string{"database_name", "schema_name", "object_type", "object_name", "column_name"}})
+
 // TestCommentLookup reads annotations and empty text without claiming or clearing them.
 func TestCommentLookup(t *testing.T) {
 	for _, text := range []string{"reporting objects", ""} {

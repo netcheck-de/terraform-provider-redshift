@@ -4,6 +4,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 )
 
+var _ = registerResource(newSystemGrantResource)
+
 // newSystemGrantResource defines role system capabilities and their catalog reconciliation.
 func newSystemGrantResource() resource.Resource {
 	attributes := privilegeAttributes()

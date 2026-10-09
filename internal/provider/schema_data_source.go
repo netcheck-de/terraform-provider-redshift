@@ -26,6 +26,8 @@ type schemaData struct {
 	Owner types.String `tfsdk:"owner"`
 }
 
+var _ = registerDataSource(newSchemaDataSource)
+
 // newSchemaDataSource constructs a read-only local schema lookup.
 func newSchemaDataSource() datasource.DataSource { return &schemaDataSource{} }
 

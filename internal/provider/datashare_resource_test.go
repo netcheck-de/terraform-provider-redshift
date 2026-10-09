@@ -10,6 +10,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleCase(lifecycleCase{name: "datashare", new: newDatashareResource, model: datashareModel{Database: types.StringValue("admin"), Name: types.StringValue("producer"), PublicAccessible: types.BoolValue(false)}, absent: func(c *catalog) { c.share = false }, dependents: func(c *catalog) { c.shareSchema, c.shareGrant = false, false }})
+
+var _ = registerReplacementPolicy("redshift_datashare", map[string]replaceRule{
+	"database":            replaceAlways,
+	"name":                replaceAlways,
+	"publicly_accessible": replaceNever,
+})
+
 // TestDatashareObservesAccessibility checks refresh of the public-access setting.
 func TestDatashareObservesAccessibility(t *testing.T) {
 	c := &catalog{share: true}

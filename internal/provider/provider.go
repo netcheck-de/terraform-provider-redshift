@@ -148,52 +148,12 @@ func (p *redshiftProvider) ValidateConfig(ctx context.Context, req provider.Vali
 	}
 }
 
-// Resources returns the supported SQL object and permission lifecycle factories.
+// Resources returns the registered SQL object and permission lifecycle factories in type-name order.
 func (p *redshiftProvider) Resources(context.Context) []func() resource.Resource {
-	return []func() resource.Resource{
-		newDatabaseResource,
-		newDatashareResource,
-		newIdentityProviderResource,
-		newRoleResource,
-		newRoleGrantResource,
-		newGrantResource,
-		newUserResource,
-		newSchemaResource,
-		newDatashareGrantResource,
-		newDatashareSchemaResource,
-		newDatashareTableResource,
-		newExternalSchemaResource,
-		newGroupResource,
-		newGroupMembershipResource,
-		newObjectGrantResource,
-		newSystemGrantResource,
-		newAssumeroleGrantResource,
-		newDefaultPrivilegesResource,
-		newCommentResource,
-	}
+	return registeredResources()
 }
 
-// DataSources returns the supported read-only catalog lookup factories.
+// DataSources returns the registered read-only catalog lookup factories in type-name order.
 func (p *redshiftProvider) DataSources(context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{
-		newDatabaseDataSource,
-		newDatashareDataSource,
-		newIdentityProviderDataSource,
-		newRoleDataSource,
-		newUserDataSource,
-		newSchemaDataSource,
-		newExternalSchemaDataSource,
-		newGroupDataSource,
-		newGroupMembershipDataSource,
-		newRoleGrantDataSource,
-		newDatashareSchemaDataSource,
-		newDatashareTableDataSource,
-		newDatashareGrantDataSource,
-		newGrantDataSource,
-		newObjectGrantDataSource,
-		newSystemGrantDataSource,
-		newAssumeroleGrantDataSource,
-		newDefaultPrivilegesDataSource,
-		newCommentDataSource,
-	}
+	return registeredDataSources()
 }

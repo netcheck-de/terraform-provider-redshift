@@ -9,6 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleCase(lifecycleCase{name: "group membership", kind: lifecyclePermission, new: newGroupMembershipResource, model: groupMembershipModel{Group: types.StringValue("readers"), User: types.StringValue("grafana")}, absent: func(c *catalog) { c.groupMember = false }})
+
+var _ = registerReplacementPolicy("redshift_group_membership", map[string]replaceRule{
+	"group": replaceAlways,
+	"user":  replaceAlways,
+})
+
 // TestGroupMembershipImport checks restoration of a group/user relationship.
 func TestGroupMembershipImport(t *testing.T) {
 	r := &groupMembershipResource{testResourceClient(&catalog{group: true, groupMember: true})}

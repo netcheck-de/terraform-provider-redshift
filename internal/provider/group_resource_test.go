@@ -9,6 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleCase(lifecycleCase{name: "group", new: newGroupResource, model: groupModel{Name: types.StringValue("readers")}, absent: func(c *catalog) { c.group = false }})
+
+var _ = registerReplacementPolicy("redshift_group", map[string]replaceRule{
+	"name": replaceAlways,
+})
+
 // TestGroupImport checks restoration of group ownership from JSON.
 func TestGroupImport(t *testing.T) {
 	r := &groupResource{testResourceClient(&catalog{group: true})}

@@ -7,6 +7,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
+var _ = registerParity(parityCase{source: newAssumeroleGrantDataSource, resource: newAssumeroleGrantResource, selectors: []string{"iam_role_arn", "grantee", "grantee_type"}})
+
 // TestAssumeroleGrantLookup reads explicit IAM command grants without enabling access control.
 func TestAssumeroleGrantLookup(t *testing.T) {
 	exerciseCatalogLookup(t, newAssumeroleGrantDataSource, map[string]string{"iam_role_arn": "default", "grantee": "readers", "grantee_type": "ROLE"}, map[string]attr.Value{"privileges": types.SetValueMust(types.StringType, []attr.Value{types.StringValue("COPY")})}, &privilegeCatalog{values: map[string]bool{"COPY": true}})

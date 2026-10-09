@@ -42,6 +42,8 @@ type grantModel struct {
 	Privileges types.Set `tfsdk:"privileges"`
 }
 
+var _ = registerResource(newGrantResource)
+
 // newGrantResource constructs an authoritative scoped grant handler.
 func newGrantResource() resource.Resource { return &grantResource{} }
 

@@ -7,8 +7,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	resourceschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -116,4 +120,85 @@ func TestPrivilegeLookupsReturnEmptySetsAndGrantOptions(t *testing.T) {
 		assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", fields)
 		assert.Empty(t, client.writes)
 	}
+}
+
+// TestLookupAttributesConvertEveryKind checks the resource-to-lookup conversion for every attribute kind.
+func TestLookupAttributesConvertEveryKind(t *testing.T) {
+	nested := resourceschema.NestedAttributeObject{Attributes: map[string]resourceschema.Attribute{
+		"name":  resourceschema.StringAttribute{Required: true, Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
+		"size":  resourceschema.Int64Attribute{Optional: true, Computed: true},
+		"inner": resourceschema.ListNestedAttribute{Optional: true, NestedObject: resourceschema.NestedAttributeObject{Attributes: map[string]resourceschema.Attribute{"flag": resourceschema.BoolAttribute{Optional: true}}}},
+	}}
+	source := map[string]resourceschema.Attribute{
+		"selector":         resourceschema.StringAttribute{Required: true, MarkdownDescription: "Selected name. Changing it replaces the object.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
+		"filter":           resourceschema.BoolAttribute{Optional: true},
+		"text":             resourceschema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "Text; changing it replaces the object."},
+		"owner":            resourceschema.StringAttribute{Optional: true, Computed: true},
+		"count":            resourceschema.Int64Attribute{Optional: true},
+		"count32":          resourceschema.Int32Attribute{Optional: true},
+		"ratio":            resourceschema.Float64Attribute{Optional: true},
+		"ratio32":          resourceschema.Float32Attribute{Optional: true},
+		"number":           resourceschema.NumberAttribute{Optional: true},
+		"dynamic":          resourceschema.DynamicAttribute{Optional: true},
+		"list":             resourceschema.ListAttribute{Optional: true, ElementType: types.StringType},
+		"privileges":       resourceschema.SetAttribute{Required: true, ElementType: types.StringType, MarkdownDescription: "Exact privileges."},
+		"map":              resourceschema.MapAttribute{Optional: true, ElementType: types.Int64Type},
+		"object":           resourceschema.ObjectAttribute{Optional: true, AttributeTypes: map[string]attr.Type{"a": types.StringType}},
+		"list_nested":      resourceschema.ListNestedAttribute{Optional: true, NestedObject: nested},
+		"set_nested":       resourceschema.SetNestedAttribute{Optional: true, NestedObject: nested},
+		"map_nested":       resourceschema.MapNestedAttribute{Optional: true, NestedObject: nested},
+		"single":           resourceschema.SingleNestedAttribute{Optional: true, Attributes: nested.Attributes},
+		"secret_wo":        resourceschema.StringAttribute{Optional: true, WriteOnly: true},
+		"refresh_revision": resourceschema.StringAttribute{Optional: true},
+	}
+	converted := lookupAttributes(source, false, []string{"text", "count", "count32", "ratio", "ratio32", "number", "dynamic", "list", "privileges", "map", "object", "list_nested", "set_nested", "map_nested", "single"})
+	assert.NotContains(t, converted, "secret_wo", "write-only inputs cannot be observed")
+	assert.NotContains(t, converted, "refresh_revision", "apply-time triggers cannot be observed")
+	require.Len(t, converted, len(source)-2)
+	for name, attribute := range converted {
+		assert.Equal(t, source[name].GetType(), attribute.GetType(), name)
+	}
+	selector := converted["selector"].(schema.StringAttribute)
+	assert.True(t, selector.Required)
+	assert.False(t, selector.Computed)
+	assert.Len(t, selector.Validators, 1, "inputs keep their validators")
+	assert.Equal(t, "Selected name.", selector.MarkdownDescription)
+	filter := converted["filter"].(schema.BoolAttribute)
+	assert.True(t, filter.Optional)
+	assert.False(t, filter.Computed)
+	text := converted["text"].(schema.StringAttribute)
+	assert.True(t, text.Computed)
+	assert.True(t, text.Sensitive)
+	assert.Equal(t, "Text.", text.MarkdownDescription)
+	assert.True(t, converted["owner"].IsComputed(), "computed resource attributes are observed")
+	assert.Equal(t, privilegesLookupDescription, converted["privileges"].GetMarkdownDescription())
+	for name, attribute := range converted {
+		if name == "selector" || name == "filter" {
+			continue
+		}
+		assert.True(t, attribute.IsComputed(), name)
+		assert.False(t, attribute.IsRequired(), name)
+		assert.False(t, attribute.IsOptional(), name)
+	}
+	var computedThroughout func(name string, attributes map[string]schema.Attribute)
+	computedThroughout = func(name string, attributes map[string]schema.Attribute) {
+		for child, attribute := range attributes {
+			assert.True(t, attribute.IsComputed(), "%s.%s", name, child)
+			assert.False(t, attribute.IsRequired() || attribute.IsOptional(), "%s.%s", name, child)
+			if inner, ok := attribute.(schema.ListNestedAttribute); ok {
+				computedThroughout(name+"."+child, inner.NestedObject.Attributes)
+			}
+		}
+	}
+	computedThroughout("list_nested", converted["list_nested"].(schema.ListNestedAttribute).NestedObject.Attributes)
+	computedThroughout("set_nested", converted["set_nested"].(schema.SetNestedAttribute).NestedObject.Attributes)
+	computedThroughout("map_nested", converted["map_nested"].(schema.MapNestedAttribute).NestedObject.Attributes)
+	computedThroughout("single", converted["single"].(schema.SingleNestedAttribute).Attributes)
+	// A nested selector keeps its children's flags and validators.
+	input := lookupAttributes(map[string]resourceschema.Attribute{"list_nested": source["list_nested"]}, false, nil)["list_nested"].(schema.ListNestedAttribute)
+	assert.True(t, input.Optional)
+	name := input.NestedObject.Attributes["name"].(schema.StringAttribute)
+	assert.True(t, name.Required)
+	assert.Len(t, name.Validators, 1)
+	assert.True(t, input.NestedObject.Attributes["size"].IsComputed())
 }

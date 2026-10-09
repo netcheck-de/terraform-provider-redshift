@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerParity(parityCase{source: newGroupDataSource, resource: newGroupResource, selectors: []string{"name"}})
+
 // TestGroupDataSourceLooksUpExistingGroup verifies group lookup without membership ownership.
 func TestGroupDataSourceLooksUpExistingGroup(t *testing.T) {
 	state, diagnostics := readSource(t, newGroupDataSource(), groupData{Name: types.StringValue("readers")}, &catalog{group: true})

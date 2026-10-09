@@ -30,6 +30,8 @@ type datashareTableModel struct {
 	Table types.String `tfsdk:"table"`
 }
 
+var _ = registerResource(newDatashareTableResource)
+
 // newDatashareTableResource constructs an explicit table/view share membership handler.
 func newDatashareTableResource() resource.Resource { return &datashareTableResource{} }
 

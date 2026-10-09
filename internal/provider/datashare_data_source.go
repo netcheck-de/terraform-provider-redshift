@@ -26,6 +26,8 @@ type datashareData struct {
 	PublicAccessible types.Bool `tfsdk:"publicly_accessible"`
 }
 
+var _ = registerDataSource(newDatashareDataSource)
+
 // newDatashareDataSource constructs a read-only producer share lookup.
 func newDatashareDataSource() datasource.DataSource { return &datashareDataSource{} }
 

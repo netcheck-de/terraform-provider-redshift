@@ -35,6 +35,8 @@ type commentModel struct {
 	Text types.String `tfsdk:"text"`
 }
 
+var _ = registerResource(newCommentResource)
+
 // newCommentResource constructs an annotation handler that never owns its target object.
 func newCommentResource() resource.Resource { return &commentResource{} }
 

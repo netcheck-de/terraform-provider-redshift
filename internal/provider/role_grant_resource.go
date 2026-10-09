@@ -32,6 +32,8 @@ type roleGrantModel struct {
 	ToUser types.String `tfsdk:"to_user"`
 }
 
+var _ = registerResource(newRoleGrantResource)
+
 // newRoleGrantResource constructs a role-to-role or role-to-user grant handler.
 func newRoleGrantResource() resource.Resource { return &roleGrantResource{} }
 

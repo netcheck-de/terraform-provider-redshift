@@ -7,6 +7,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerReplacementPolicy("redshift_default_privileges", map[string]replaceRule{
+	"database_name": replaceAlways,
+	"schema_name":   replaceAlways,
+	"owner":         replaceAlways,
+	"object_type":   replaceAlways,
+	"grantee":       replaceAlways,
+	"grantee_type":  replaceAlways,
+	"privileges":    replaceNever,
+})
+
 // TestDefaultPrivilegesLifecycle exercises schema-specific creator default permissions.
 func TestDefaultPrivilegesLifecycle(t *testing.T) {
 	exercisePrivilege(t, newDefaultPrivilegesResource, map[string]string{"database_name": "warehouse", "owner": "loader", "schema_name": "serving", "object_type": "TABLES", "grantee_type": "ROLE", "grantee": "readers"}, []string{"SELECT", "INSERT"})

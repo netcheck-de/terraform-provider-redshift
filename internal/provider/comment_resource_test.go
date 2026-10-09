@@ -16,6 +16,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerValidateConfigCase("comment", validateConfigCase{
+	new:     newCommentResource,
+	valid:   commentModel{DatabaseName: types.StringValue("analytics"), ObjectType: types.StringValue("SCHEMA"), ObjectName: types.StringValue("serving"), Text: types.StringValue("note")},
+	invalid: commentModel{DatabaseName: types.StringValue("analytics"), ObjectType: types.StringValue("TABLE"), ObjectName: types.StringValue("t"), Text: types.StringValue("note")},
+	unknown: commentModel{DatabaseName: types.StringValue("analytics"), ObjectType: types.StringValue("TABLE"), ObjectName: types.StringValue("t"), SchemaName: types.StringUnknown(), Text: types.StringValue("note")},
+})
+
+var _ = registerReplacementPolicy("redshift_comment", map[string]replaceRule{
+	"database_name": replaceAlways,
+	"schema_name":   replaceAlways,
+	"object_type":   replaceAlways,
+	"object_name":   replaceAlways,
+	"column_name":   replaceAlways,
+	"text":          replaceNever,
+})
+
 // schemaComment supplies an annotation on a local schema for lifecycle tests.
 func schemaComment() commentModel {
 	return commentModel{DatabaseName: types.StringValue("analytics"), ObjectType: types.StringValue("SCHEMA"), ObjectName: types.StringValue("serving"), SchemaName: types.StringNull(), ColumnName: types.StringNull(), Text: types.StringValue("after")}

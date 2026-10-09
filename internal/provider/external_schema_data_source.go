@@ -30,6 +30,8 @@ type externalSchemaData struct {
 	Region types.String `tfsdk:"region"`
 }
 
+var _ = registerDataSource(newExternalSchemaDataSource)
+
 // newExternalSchemaDataSource constructs a read-only Glue schema lookup.
 func newExternalSchemaDataSource() datasource.DataSource { return &externalSchemaDataSource{} }
 

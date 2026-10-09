@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerParity(parityCase{source: newUserDataSource, resource: newUserResource, selectors: []string{"name"}})
+
 // TestUserLookup checks non-secret user capability lookup.
 func TestUserLookup(t *testing.T) {
 	state, diagnostics := readSource(t, newUserDataSource(), userData{Name: types.StringValue("grafana")}, &catalog{user: true, createDB: true})

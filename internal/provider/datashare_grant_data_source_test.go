@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var _ = registerParity(parityCase{source: newDatashareGrantDataSource, resource: newDatashareGrantResource, selectors: []string{"database", "datashare", "account_id", "namespace_id"}})
+
 // TestDatashareGrantLookup observes account usage without modifying sharing authorization.
 func TestDatashareGrantLookup(t *testing.T) {
 	exerciseCatalogLookup(t, newDatashareGrantDataSource, map[string]string{"database": "admin", "datashare": "producer", "account_id": "123456789012"}, map[string]attr.Value{"exists": types.BoolValue(true)}, &catalog{shareGrant: true})

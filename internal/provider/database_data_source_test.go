@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerParity(parityCase{source: newDatabaseDataSource, resource: newDatabaseResource, selectors: []string{"name"}})
+
 // TestDatabaseLookup checks local and shared database lookup attributes.
 func TestDatabaseLookup(t *testing.T) {
 	for _, name := range []string{"warehouse", "analytics"} {

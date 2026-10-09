@@ -32,6 +32,8 @@ type datashareModel struct {
 	PublicAccessible types.Bool `tfsdk:"publicly_accessible"`
 }
 
+var _ = registerResource(newDatashareResource)
+
 // newDatashareResource constructs a producer datashare handler.
 func newDatashareResource() resource.Resource { return &datashareResource{} }
 

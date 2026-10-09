@@ -9,6 +9,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleCase(lifecycleCase{name: "role", new: newRoleResource, model: roleModel{Name: types.StringValue("example:readers")}, absent: func(c *catalog) { c.role = false }})
+
+var _ = registerReplacementPolicy("redshift_role", map[string]replaceRule{
+	"name": replaceAlways,
+})
+
 // TestRoleReadsCatalogName checks role-name refresh from the SQL catalog.
 func TestRoleReadsCatalogName(t *testing.T) {
 	c := &catalog{role: true}

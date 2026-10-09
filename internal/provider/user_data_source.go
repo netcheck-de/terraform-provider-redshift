@@ -26,6 +26,8 @@ type userData struct {
 	CreateDB types.Bool `tfsdk:"create_database"`
 }
 
+var _ = registerDataSource(newUserDataSource)
+
 // newUserDataSource constructs a read-only SQL user lookup.
 func newUserDataSource() datasource.DataSource { return &userDataSource{} }
 

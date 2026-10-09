@@ -29,6 +29,8 @@ type schemaModel struct {
 	Owner types.String `tfsdk:"owner"`
 }
 
+var _ = registerResource(newSchemaResource)
+
 // newSchemaResource constructs a local schema lifecycle handler.
 func newSchemaResource() resource.Resource { return &schemaResource{} }
 

@@ -22,6 +22,8 @@ type groupData struct {
 	Name types.String `tfsdk:"name"`
 }
 
+var _ = registerDataSource(newGroupDataSource)
+
 // newGroupDataSource constructs a read-only SQL user group lookup.
 func newGroupDataSource() datasource.DataSource { return &groupDataSource{} }
 

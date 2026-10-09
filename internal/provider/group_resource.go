@@ -24,6 +24,8 @@ type groupModel struct {
 	Name types.String `tfsdk:"name"`
 }
 
+var _ = registerResource(newGroupResource)
+
 // newGroupResource constructs a SQL group lifecycle handler.
 func newGroupResource() resource.Resource { return &groupResource{} }
 

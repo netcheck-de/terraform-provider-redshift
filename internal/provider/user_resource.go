@@ -37,6 +37,8 @@ type userModel struct {
 	CreateDB types.Bool `tfsdk:"create_database"`
 }
 
+var _ = registerResource(newUserResource)
+
 // newUserResource constructs a user lifecycle handler with write-only password support.
 func newUserResource() resource.Resource { return &userResource{} }
 

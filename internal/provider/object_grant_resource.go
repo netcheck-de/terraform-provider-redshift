@@ -4,6 +4,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 )
 
+var _ = registerResource(newObjectGrantResource)
+
 // newObjectGrantResource defines explicit local object privileges for a SQL grantee.
 func newObjectGrantResource() resource.Resource {
 	attributes := privilegeAttributes()

@@ -16,6 +16,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerValidateConfigCase("grant", validateConfigCase{
+	new:     newGrantResource,
+	valid:   grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("readers"), Scope: types.StringValue("DATABASE"), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("USAGE")})},
+	invalid: grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("readers"), Scope: types.StringValue("SCHEMA"), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("USAGE")})},
+	unknown: grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("readers"), Scope: types.StringValue("SCHEMA"), SchemaName: types.StringUnknown(), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("USAGE")})},
+})
+
+var _ = registerLifecycleCase(lifecycleCase{
+	name: "grant", kind: lifecyclePermission, new: newGrantResource,
+	model:  grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("example:readers"), Scope: types.StringValue("TABLES"), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SELECT")})},
+	absent: func(c *catalog) { clear(c.privileges) },
+	prepare: func(c *catalog, operation string) {
+		if operation == "update" {
+			// Revoking a different privilege first shows the REVOKE-before-GRANT ordering.
+			c.privileges = map[string]bool{"INSERT": true}
+		}
+	},
+})
+
+var _ = registerReplacementPolicy("redshift_grant", map[string]replaceRule{
+	"database_name": replaceAlways,
+	"schema_name":   replaceAlways,
+	"role":          replaceAlways,
+	"datashare":     replaceAlways,
+	"scope":         replaceAlways,
+	"privileges":    replaceNever,
+})
+
 // TestGrantObservesExactPrivileges checks scoped privilege refresh and reconciliation.
 func TestGrantObservesExactPrivileges(t *testing.T) {
 	c := &catalog{role: true, database: true, privileges: map[string]bool{"SELECT": true, "INSERT": true}}

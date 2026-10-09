@@ -14,6 +14,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleCase(lifecycleCase{name: "schema", new: newSchemaResource, model: schemaModel{Database: types.StringValue("admin"), Name: types.StringValue("serving"), Owner: types.StringValue("admin")}, absent: func(c *catalog) { c.schema = false }})
+
+var _ = registerReplacementPolicy("redshift_schema", map[string]replaceRule{
+	"database": replaceAlways,
+	"name":     replaceAlways,
+})
+
 // TestSchemaCatalogOwnership checks observed schema ownership.
 func TestSchemaCatalogOwnership(t *testing.T) {
 	r := &schemaResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {

@@ -14,6 +14,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleCase(lifecycleCase{name: "external schema", new: newExternalSchemaResource, model: externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("example_external"), GlueDatabase: types.StringValue("example_glue"), IAMRoleARN: types.StringValue("arn:aws:iam::123456789012:role/spectrum"), RefreshRevision: types.StringNull()}, absent: func(c *catalog) { c.external = false }})
+
+var _ = registerReplacementPolicy("redshift_external_schema", map[string]replaceRule{
+	"database":         replaceAlways,
+	"name":             replaceAlways,
+	"glue_database":    replaceAlways,
+	"iam_role_arn":     replaceAlways,
+	"region":           replaceAlways,
+	"refresh_revision": replaceAlways,
+})
+
 // TestExternalSchemaRegionRoundTrips verifies explicit cross-region SQL and both catalog key spellings.
 func TestExternalSchemaRegionRoundTrips(t *testing.T) {
 	for _, key := range []string{"REGION", "region"} {

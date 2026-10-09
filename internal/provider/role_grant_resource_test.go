@@ -11,6 +11,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleCase(lifecycleCase{name: "membership", kind: lifecyclePermission, new: newRoleGrantResource, model: roleGrantModel{Role: types.StringValue("sys:dba"), ToRole: types.StringValue("example:readers"), ToUser: types.StringNull()}, absent: func(c *catalog) { c.membership = false }})
+
+var _ = registerReplacementPolicy("redshift_role_grant", map[string]replaceRule{
+	"role":    replaceAlways,
+	"to_role": replaceAlways,
+	"to_user": replaceAlways,
+})
+
 // TestRoleGrantObservesSystemRole checks a built-in role granted to another role.
 func TestRoleGrantObservesSystemRole(t *testing.T) {
 	c := &catalog{role: true, membership: true}

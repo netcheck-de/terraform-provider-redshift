@@ -22,6 +22,8 @@ type roleData struct {
 	Name types.String `tfsdk:"name"`
 }
 
+var _ = registerDataSource(newRoleDataSource)
+
 // newRoleDataSource constructs a read-only SQL role lookup.
 func newRoleDataSource() datasource.DataSource { return &roleDataSource{} }
 

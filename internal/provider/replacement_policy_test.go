@@ -3,16 +3,24 @@ package provider
 import (
 	"context"
 	"fmt"
+	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -21,29 +29,104 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// replaceKind classifies how changing one input attribute plans.
+type replaceKind int
+
+const (
+	// replaceKindNever updates the attribute in place.
+	replaceKindNever replaceKind = iota
+	// replaceKindAlways replaces the resource whenever the attribute changes.
+	replaceKindAlways
+	// replaceKindConditional replaces only for some changes, such as narrowing a column type.
+	replaceKindConditional
+)
+
+// replaceRule is one input attribute's expected replacement behavior.
+type replaceRule struct {
+	// kind selects in-place, replacing, or value-dependent planning.
+	kind replaceKind
+	// test names the per-resource test that covers both branches of a conditional rule, which a single
+	// generic before/after sample cannot.
+	test string
+}
+
+var (
+	// replaceNever expects an in-place update.
+	replaceNever = replaceRule{kind: replaceKindNever}
+	// replaceAlways expects a replacement.
+	replaceAlways = replaceRule{kind: replaceKindAlways}
+)
+
+// replaceConditional expects value-dependent replacement covered by the named Test function.
+func replaceConditional(test string) replaceRule {
+	return replaceRule{kind: replaceKindConditional, test: test}
+}
+
+// replacementPolicies maps each resource type name to the rule of every input attribute.
+var replacementPolicies testRegistry[map[string]replaceRule]
+
+// registerReplacementPolicy declares a resource's replacement rules from its own test file.
+func registerReplacementPolicy(typeName string, policy map[string]replaceRule) bool {
+	return replacementPolicies.add(typeName, policy)
+}
+
+// sampleValues returns two distinct known values of a framework type, recursing into collections and objects.
+func sampleValues(t *testing.T, attributeType attr.Type) (before, after attr.Value) {
+	t.Helper()
+	switch typed := attributeType.(type) {
+	case basetypes.StringType:
+		return types.StringValue("before"), types.StringValue("after")
+	case basetypes.BoolType:
+		return types.BoolValue(false), types.BoolValue(true)
+	case basetypes.Int64Type:
+		return types.Int64Value(0), types.Int64Value(1)
+	case basetypes.Float64Type:
+		return types.Float64Value(0), types.Float64Value(1)
+	case basetypes.NumberType:
+		return types.NumberValue(big.NewFloat(0)), types.NumberValue(big.NewFloat(1))
+	case basetypes.ListType:
+		_, element := sampleValues(t, typed.ElemType)
+		return types.ListValueMust(typed.ElemType, []attr.Value{}), types.ListValueMust(typed.ElemType, []attr.Value{element})
+	case basetypes.SetType:
+		_, element := sampleValues(t, typed.ElemType)
+		return types.SetValueMust(typed.ElemType, []attr.Value{}), types.SetValueMust(typed.ElemType, []attr.Value{element})
+	case basetypes.MapType:
+		_, element := sampleValues(t, typed.ElemType)
+		return types.MapValueMust(typed.ElemType, map[string]attr.Value{}), types.MapValueMust(typed.ElemType, map[string]attr.Value{"key": element})
+	case basetypes.ObjectType:
+		befores, afters := map[string]attr.Value{}, map[string]attr.Value{}
+		for name, field := range typed.AttrTypes {
+			befores[name], afters[name] = sampleValues(t, field)
+		}
+		return types.ObjectValueMust(typed.AttrTypes, befores), types.ObjectValueMust(typed.AttrTypes, afters)
+	default:
+		t.Fatalf("add replacement coverage for attribute type %T", attributeType)
+		return nil, nil
+	}
+}
+
+// modifierReplacement runs every plan modifier of one attribute and reports whether any requests replacement.
+func modifierReplacement[M any](t *testing.T, modifiers []M, run func(M) (bool, diag.Diagnostics)) bool {
+	t.Helper()
+	replace := false
+	for _, modifier := range modifiers {
+		requires, diagnostics := run(modifier)
+		require.False(t, diagnostics.HasError(), "%v", diagnostics)
+		replace = replace || requires
+	}
+	return replace
+}
+
 // attributeReplacement invokes the actual schema modifiers with a changed or unchanged input.
 func attributeReplacement(t *testing.T, attribute schema.Attribute, changed, existing bool) bool {
 	t.Helper()
 	ctx := context.Background()
-	var before, after attr.Value
-	switch attribute.(type) {
-	case schema.StringAttribute:
-		before, after = types.StringValue("before"), types.StringValue("after")
-	case schema.BoolAttribute:
-		before, after = types.BoolValue(false), types.BoolValue(true)
-	case schema.Int64Attribute:
-		before, after = types.Int64Value(0), types.Int64Value(1)
-	case schema.SetAttribute:
-		before = types.SetValueMust(types.StringType, nil)
-		after = types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SELECT")})
-	default:
-		t.Fatalf("add replacement coverage for attribute type %T", attribute)
-	}
+	attributeType := attribute.GetType()
+	before, after := sampleValues(t, attributeType)
 	if !changed {
 		after = before
 	}
-	attributeType := attribute.GetType().TerraformType(ctx)
-	objectType := tftypes.Object{AttributeTypes: map[string]tftypes.Type{"value": attributeType}}
+	objectType := tftypes.Object{AttributeTypes: map[string]tftypes.Type{"value": attributeType.TerraformType(ctx)}}
 	beforeValue, err := before.ToTerraformValue(ctx)
 	require.NoError(t, err)
 	afterValue, err := after.ToTerraformValue(ctx)
@@ -52,97 +135,218 @@ func attributeReplacement(t *testing.T, attribute schema.Attribute, changed, exi
 	state := tfsdk.State{Schema: single, Raw: tftypes.NewValue(objectType, map[string]tftypes.Value{"value": beforeValue})}
 	if !existing {
 		state.Raw = tftypes.NewValue(objectType, nil)
+		before, err = attributeType.ValueFromTerraform(ctx, tftypes.NewValue(attributeType.TerraformType(ctx), nil))
+		require.NoError(t, err)
 	}
 	plan := tfsdk.Plan{Schema: single, Raw: tftypes.NewValue(objectType, map[string]tftypes.Value{"value": afterValue})}
 	config := tfsdk.Config{Schema: single, Raw: plan.Raw}
-	replace := false
-	switch attribute := attribute.(type) {
-	case schema.StringAttribute:
-		request := planmodifier.StringRequest{Path: path.Root("value"), Config: config, Plan: plan, State: state, ConfigValue: after.(types.String), PlanValue: after.(types.String), StateValue: before.(types.String)}
-		for _, modifier := range attribute.PlanModifiers {
-			response := planmodifier.StringResponse{PlanValue: request.PlanValue}
-			modifier.PlanModifyString(ctx, request, &response)
-			require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
-			replace = replace || response.RequiresReplace
-		}
-	case schema.BoolAttribute:
-		request := planmodifier.BoolRequest{Path: path.Root("value"), Config: config, Plan: plan, State: state, ConfigValue: after.(types.Bool), PlanValue: after.(types.Bool), StateValue: before.(types.Bool)}
-		for _, modifier := range attribute.PlanModifiers {
-			response := planmodifier.BoolResponse{PlanValue: request.PlanValue}
-			modifier.PlanModifyBool(ctx, request, &response)
-			require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
-			replace = replace || response.RequiresReplace
-		}
-	case schema.Int64Attribute:
-		request := planmodifier.Int64Request{Path: path.Root("value"), Config: config, Plan: plan, State: state, ConfigValue: after.(types.Int64), PlanValue: after.(types.Int64), StateValue: before.(types.Int64)}
-		for _, modifier := range attribute.PlanModifiers {
-			response := planmodifier.Int64Response{PlanValue: request.PlanValue}
-			modifier.PlanModifyInt64(ctx, request, &response)
-			require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
-			replace = replace || response.RequiresReplace
-		}
-	case schema.SetAttribute:
-		request := planmodifier.SetRequest{Path: path.Root("value"), Config: config, Plan: plan, State: state, ConfigValue: after.(types.Set), PlanValue: after.(types.Set), StateValue: before.(types.Set)}
-		for _, modifier := range attribute.PlanModifiers {
+	root := path.Root("value")
+	list := func(modifiers []planmodifier.List) bool {
+		return modifierReplacement(t, modifiers, func(modifier planmodifier.List) (bool, diag.Diagnostics) {
+			request := planmodifier.ListRequest{Path: root, Config: config, Plan: plan, State: state, ConfigValue: after.(types.List), PlanValue: after.(types.List), StateValue: before.(types.List)}
+			response := planmodifier.ListResponse{PlanValue: request.PlanValue}
+			modifier.PlanModifyList(ctx, request, &response)
+			return response.RequiresReplace, response.Diagnostics
+		})
+	}
+	set := func(modifiers []planmodifier.Set) bool {
+		return modifierReplacement(t, modifiers, func(modifier planmodifier.Set) (bool, diag.Diagnostics) {
+			request := planmodifier.SetRequest{Path: root, Config: config, Plan: plan, State: state, ConfigValue: after.(types.Set), PlanValue: after.(types.Set), StateValue: before.(types.Set)}
 			response := planmodifier.SetResponse{PlanValue: request.PlanValue}
 			modifier.PlanModifySet(ctx, request, &response)
-			require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
-			replace = replace || response.RequiresReplace
-		}
+			return response.RequiresReplace, response.Diagnostics
+		})
 	}
-	return replace
+	mapping := func(modifiers []planmodifier.Map) bool {
+		return modifierReplacement(t, modifiers, func(modifier planmodifier.Map) (bool, diag.Diagnostics) {
+			request := planmodifier.MapRequest{Path: root, Config: config, Plan: plan, State: state, ConfigValue: after.(types.Map), PlanValue: after.(types.Map), StateValue: before.(types.Map)}
+			response := planmodifier.MapResponse{PlanValue: request.PlanValue}
+			modifier.PlanModifyMap(ctx, request, &response)
+			return response.RequiresReplace, response.Diagnostics
+		})
+	}
+	object := func(modifiers []planmodifier.Object) bool {
+		return modifierReplacement(t, modifiers, func(modifier planmodifier.Object) (bool, diag.Diagnostics) {
+			request := planmodifier.ObjectRequest{Path: root, Config: config, Plan: plan, State: state, ConfigValue: after.(types.Object), PlanValue: after.(types.Object), StateValue: before.(types.Object)}
+			response := planmodifier.ObjectResponse{PlanValue: request.PlanValue}
+			modifier.PlanModifyObject(ctx, request, &response)
+			return response.RequiresReplace, response.Diagnostics
+		})
+	}
+	switch attribute := attribute.(type) {
+	case schema.StringAttribute:
+		return modifierReplacement(t, attribute.PlanModifiers, func(modifier planmodifier.String) (bool, diag.Diagnostics) {
+			request := planmodifier.StringRequest{Path: root, Config: config, Plan: plan, State: state, ConfigValue: after.(types.String), PlanValue: after.(types.String), StateValue: before.(types.String)}
+			response := planmodifier.StringResponse{PlanValue: request.PlanValue}
+			modifier.PlanModifyString(ctx, request, &response)
+			return response.RequiresReplace, response.Diagnostics
+		})
+	case schema.BoolAttribute:
+		return modifierReplacement(t, attribute.PlanModifiers, func(modifier planmodifier.Bool) (bool, diag.Diagnostics) {
+			request := planmodifier.BoolRequest{Path: root, Config: config, Plan: plan, State: state, ConfigValue: after.(types.Bool), PlanValue: after.(types.Bool), StateValue: before.(types.Bool)}
+			response := planmodifier.BoolResponse{PlanValue: request.PlanValue}
+			modifier.PlanModifyBool(ctx, request, &response)
+			return response.RequiresReplace, response.Diagnostics
+		})
+	case schema.Int64Attribute:
+		return modifierReplacement(t, attribute.PlanModifiers, func(modifier planmodifier.Int64) (bool, diag.Diagnostics) {
+			request := planmodifier.Int64Request{Path: root, Config: config, Plan: plan, State: state, ConfigValue: after.(types.Int64), PlanValue: after.(types.Int64), StateValue: before.(types.Int64)}
+			response := planmodifier.Int64Response{PlanValue: request.PlanValue}
+			modifier.PlanModifyInt64(ctx, request, &response)
+			return response.RequiresReplace, response.Diagnostics
+		})
+	case schema.Float64Attribute:
+		return modifierReplacement(t, attribute.PlanModifiers, func(modifier planmodifier.Float64) (bool, diag.Diagnostics) {
+			request := planmodifier.Float64Request{Path: root, Config: config, Plan: plan, State: state, ConfigValue: after.(types.Float64), PlanValue: after.(types.Float64), StateValue: before.(types.Float64)}
+			response := planmodifier.Float64Response{PlanValue: request.PlanValue}
+			modifier.PlanModifyFloat64(ctx, request, &response)
+			return response.RequiresReplace, response.Diagnostics
+		})
+	case schema.NumberAttribute:
+		return modifierReplacement(t, attribute.PlanModifiers, func(modifier planmodifier.Number) (bool, diag.Diagnostics) {
+			request := planmodifier.NumberRequest{Path: root, Config: config, Plan: plan, State: state, ConfigValue: after.(types.Number), PlanValue: after.(types.Number), StateValue: before.(types.Number)}
+			response := planmodifier.NumberResponse{PlanValue: request.PlanValue}
+			modifier.PlanModifyNumber(ctx, request, &response)
+			return response.RequiresReplace, response.Diagnostics
+		})
+	case schema.ListAttribute:
+		return list(attribute.PlanModifiers)
+	case schema.ListNestedAttribute:
+		return list(attribute.PlanModifiers)
+	case schema.SetAttribute:
+		return set(attribute.PlanModifiers)
+	case schema.SetNestedAttribute:
+		return set(attribute.PlanModifiers)
+	case schema.MapAttribute:
+		return mapping(attribute.PlanModifiers)
+	case schema.MapNestedAttribute:
+		return mapping(attribute.PlanModifiers)
+	case schema.ObjectAttribute:
+		return object(attribute.PlanModifiers)
+	case schema.SingleNestedAttribute:
+		return object(attribute.PlanModifiers)
+	default:
+		t.Fatalf("add replacement coverage for attribute type %T", attribute)
+		return false
+	}
+}
+
+// assertCollectionElementsDoNotReplace checks that elements of nested collections never request replacement
+// themselves: a collection replaces only through its top-level RequiresReplaceIf, which sees the whole value.
+func assertCollectionElementsDoNotReplace(t *testing.T, attribute schema.Attribute) {
+	t.Helper()
+	var nested map[string]schema.Attribute
+	switch attribute := attribute.(type) {
+	case schema.ListNestedAttribute:
+		nested = attribute.NestedObject.Attributes
+	case schema.SetNestedAttribute:
+		nested = attribute.NestedObject.Attributes
+	case schema.MapNestedAttribute:
+		nested = attribute.NestedObject.Attributes
+	case schema.SingleNestedAttribute:
+		for name, child := range attribute.Attributes {
+			t.Run(name, func(t *testing.T) { assertCollectionElementsDoNotReplace(t, child) })
+		}
+		return
+	default:
+		return
+	}
+	for name, child := range nested {
+		t.Run(name, func(t *testing.T) {
+			assert.False(t, attributeReplacement(t, child, true, true), "collection elements replace only through the top-level attribute")
+			assertCollectionElementsDoNotReplace(t, child)
+		})
+	}
+}
+
+// checkReplacementRule checks one attribute against its rule; a conditional rule delegates the changed-value
+// check to its named test.
+func checkReplacementRule(t *testing.T, attribute schema.Attribute, rule replaceRule) {
+	t.Helper()
+	if rule.kind == replaceKindConditional {
+		require.NotEmpty(t, rule.test, "conditional replacement needs a named per-resource test")
+		requireTestFunction(t, rule.test)
+	} else {
+		assert.Equal(t, rule.kind == replaceKindAlways, attributeReplacement(t, attribute, true, true), "changed input")
+	}
+	assert.False(t, attributeReplacement(t, attribute, false, true), "unchanged input")
+	assert.False(t, attributeReplacement(t, attribute, true, false), "initial creation")
+	assertCollectionElementsDoNotReplace(t, attribute)
 }
 
 // TestEveryResourceAttributeReplacementPolicy covers every input and computed attribute across all resources.
 func TestEveryResourceAttributeReplacementPolicy(t *testing.T) {
-	policies := map[string]map[string]bool{
-		"redshift_database":           {"name": true, "datashare_arn": true, "with_permissions": true},
-		"redshift_datashare":          {"database": true, "name": true, "publicly_accessible": false},
-		"redshift_schema":             {"database": true, "name": true},
-		"redshift_external_schema":    {"database": true, "name": true, "glue_database": true, "iam_role_arn": true, "region": true, "refresh_revision": true},
-		"redshift_identity_provider":  {"name": true, "namespace": true, "application_arn": true, "iam_role_arn": false, "enabled": false},
-		"redshift_role":               {"name": true},
-		"redshift_user":               {"name": true, "superuser": false, "create_database": false, "password_wo": false, "password_wo_version": false},
-		"redshift_group":              {"name": true},
-		"redshift_role_grant":         {"role": true, "to_role": true, "to_user": true},
-		"redshift_group_membership":   {"group": true, "user": true},
-		"redshift_datashare_grant":    {"database": true, "datashare": true, "account_id": true, "namespace_id": true},
-		"redshift_datashare_schema":   {"database": true, "datashare": true, "schema": true, "include_new": false},
-		"redshift_datashare_table":    {"database": true, "datashare": true, "schema": true, "table": true},
-		"redshift_grant":              {"database_name": true, "schema_name": true, "role": true, "datashare": true, "scope": true, "privileges": false},
-		"redshift_object_grant":       {"database_name": true, "schema_name": true, "object_name": true, "object_type": true, "grantee": true, "grantee_type": true, "privileges": false},
-		"redshift_system_grant":       {"role": true, "privileges": false},
-		"redshift_assumerole_grant":   {"iam_role_arn": true, "grantee": true, "grantee_type": true, "privileges": false},
-		"redshift_default_privileges": {"database_name": true, "schema_name": true, "owner": true, "object_type": true, "grantee": true, "grantee_type": true, "privileges": false},
-		"redshift_comment":            {"database_name": true, "schema_name": true, "object_type": true, "object_name": true, "column_name": true, "text": false},
-	}
-	factories := New("test")().Resources(context.Background())
-	require.Len(t, policies, len(factories))
-	for _, factory := range factories {
+	require.Empty(t, replacementPolicies.duplicates, "duplicate replacement policies")
+	resources, _ := registeredTypeNames()
+	registered := map[string]bool{}
+	for _, factory := range New("test")().Resources(context.Background()) {
 		instance := factory()
 		var metadata resource.MetadataResponse
 		instance.Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
+		registered[metadata.TypeName] = true
 		t.Run(metadata.TypeName, func(t *testing.T) {
-			policy, found := policies[metadata.TypeName]
+			policy, found := replacementPolicies.entries[metadata.TypeName]
 			require.True(t, found, "resource needs an explicit replacement policy")
 			var response resource.SchemaResponse
 			instance.Schema(context.Background(), resource.SchemaRequest{}, &response)
-			inputs := 0
+			inputs := map[string]bool{}
 			for name, attribute := range response.Schema.Attributes {
 				t.Run(name, func(t *testing.T) {
-					expected := false
+					rule := replaceNever
 					if attribute.IsRequired() || attribute.IsOptional() {
-						inputs++
+						inputs[name] = true
 						var found bool
-						expected, found = policy[name]
+						rule, found = policy[name]
 						require.True(t, found, "input needs an explicit replacement policy")
 					}
-					assert.Equal(t, expected, attributeReplacement(t, attribute, true, true), "changed input")
-					assert.False(t, attributeReplacement(t, attribute, false, true), "unchanged input")
-					assert.False(t, attributeReplacement(t, attribute, true, false), "initial creation")
+					checkReplacementRule(t, attribute, rule)
 				})
 			}
-			assert.Len(t, policy, inputs, "policy must not contain stale attribute names")
+			for name := range policy {
+				assert.True(t, inputs[name], "policy must not contain stale attribute name %s", name)
+			}
+		})
+	}
+	require.Len(t, registered, len(resources))
+	for _, name := range replacementPolicies.keys() {
+		assert.True(t, registered[name], "replacement policy for unregistered resource %s", name)
+	}
+}
+
+// TestReplacementSamplesCoverEveryAttributeKind checks the sampler and modifier dispatch for kinds that no
+// current resource uses, so new resources do not first discover a gap in the shared test.
+func TestReplacementSamplesCoverEveryAttributeKind(t *testing.T) {
+	nested := schema.NestedAttributeObject{Attributes: map[string]schema.Attribute{"name": schema.StringAttribute{Required: true}, "size": schema.Int64Attribute{Optional: true}}}
+	element := map[string]attr.Type{"name": types.StringType, "weight": types.Float64Type}
+	for name, attribute := range map[string]schema.Attribute{
+		"float64":             schema.Float64Attribute{Optional: true},
+		"number":              schema.NumberAttribute{Optional: true},
+		"list":                schema.ListAttribute{Optional: true, ElementType: types.StringType},
+		"set_of_lists":        schema.SetAttribute{Optional: true, ElementType: types.ListType{ElemType: types.Int64Type}},
+		"map":                 schema.MapAttribute{Optional: true, ElementType: types.BoolType},
+		"object":              schema.ObjectAttribute{Optional: true, AttributeTypes: element},
+		"list_nested":         schema.ListNestedAttribute{Optional: true, NestedObject: nested},
+		"set_nested":          schema.SetNestedAttribute{Optional: true, NestedObject: nested},
+		"map_nested":          schema.MapNestedAttribute{Optional: true, NestedObject: nested},
+		"single_nested":       schema.SingleNestedAttribute{Optional: true, Attributes: nested.Attributes},
+		"list_replaces":       schema.ListAttribute{Optional: true, ElementType: types.StringType, PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplace()}},
+		"map_nested_replaces": schema.MapNestedAttribute{Optional: true, NestedObject: nested, PlanModifiers: []planmodifier.Map{mapplanmodifier.RequiresReplace()}},
+		"float64_replaces":    schema.Float64Attribute{Optional: true, PlanModifiers: []planmodifier.Float64{float64planmodifier.RequiresReplace()}},
+		"string_conditional": schema.StringAttribute{Optional: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(func(_ context.Context, request planmodifier.StringRequest, response *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+			response.RequiresReplace = strings.HasPrefix(request.PlanValue.ValueString(), "narrow")
+		}, "Narrowing replaces.", "Narrowing replaces.")}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			before, after := sampleValues(t, attribute.GetType())
+			assert.False(t, before.Equal(after), "samples must differ")
+			rule := replaceNever
+			switch {
+			case strings.HasSuffix(name, "_replaces"):
+				rule = replaceAlways
+			case strings.HasSuffix(name, "_conditional"):
+				rule = replaceConditional("TestReplacementSamplesCoverEveryAttributeKind")
+			}
+			checkReplacementRule(t, attribute, rule)
 		})
 	}
 }

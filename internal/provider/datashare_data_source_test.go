@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerParity(parityCase{source: newDatashareDataSource, resource: newDatashareResource, selectors: []string{"database", "name"}})
+
 // TestDatashareLookup verifies outbound share lookup attributes.
 func TestDatashareLookup(t *testing.T) {
 	state, diagnostics := readSource(t, newDatashareDataSource(), datashareData{Name: types.StringValue("producer"), Database: types.StringValue("admin")}, &catalog{share: true, public: true})

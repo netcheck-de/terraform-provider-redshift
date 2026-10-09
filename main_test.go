@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -12,6 +13,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// documentedTypes counts the generated documentation pages of one kind, so registering a type without
+// regenerating docs fails here instead of shipping an undocumented type.
+func documentedTypes(t *testing.T, kind string) int {
+	t.Helper()
+	pages, err := filepath.Glob(filepath.Join("docs", kind, "*.md"))
+	require.NoError(t, err)
+	require.NotEmpty(t, pages)
+	return len(pages)
+}
 
 // TestMainEntrypoint checks protocol serving, debug flags, and startup error reporting.
 func TestMainEntrypoint(t *testing.T) {
@@ -30,8 +41,8 @@ func TestMainEntrypoint(t *testing.T) {
 				served = true
 				assert.Equal(t, "registry.terraform.io/netcheck-de/redshift", options.Address)
 				assert.Equal(t, name == "debug", options.Debug)
-				require.Len(t, factory().Resources(ctx), 19)
-				require.Len(t, factory().DataSources(ctx), 19)
+				require.Len(t, factory().Resources(ctx), documentedTypes(t, "resources"))
+				require.Len(t, factory().DataSources(ctx), documentedTypes(t, "data-sources"))
 				if name == "error" {
 					return wantError
 				}

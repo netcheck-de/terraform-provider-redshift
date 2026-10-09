@@ -70,6 +70,8 @@ func (data datashareGrantModel) consumer() (sqlclient.Keyword, string, string, e
 	return datashareGrantNamespace, "namespace_id", namespace, nil
 }
 
+var _ = registerResource(newDatashareGrantResource)
+
 // newDatashareGrantResource constructs a SQL consumer share grant handler.
 func newDatashareGrantResource() resource.Resource { return &datashareGrantResource{} }
 

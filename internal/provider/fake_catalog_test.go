@@ -2,12 +2,18 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
+	"testing"
 
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // literals extracts SQL string literals, preserving doubled quote escapes for fake catalog parsing.
@@ -71,6 +77,8 @@ type catalog struct {
 	roleName string
 	// databaseName records the active consumer identity for name-change replacement tests.
 	databaseName string
+	// families holds the state of registered fake families, created on first use.
+	families map[string]fakeFamily
 }
 
 // Query emulates SQL catalog reads and mutations while enforcing lifecycle dependencies.
@@ -79,6 +87,16 @@ func (c *catalog) Query(_ context.Context, connection dataapi.Connection, sql st
 	defer c.mu.Unlock()
 	if connection.Database == "" {
 		return nil, fmt.Errorf("unknown connection reached SQL execution")
+	}
+	for _, name := range slices.Sorted(maps.Keys(fakeFamilies)) {
+		rows, handled, err := c.family(name).query(c, connection, sql, parameters)
+		if !handled {
+			continue
+		}
+		if err == nil && !fakeRead(sql) {
+			c.writes = append(c.writes, sql)
+		}
+		return rows, err
 	}
 	roleName := c.roleName
 	if roleName == "" {
@@ -330,7 +348,7 @@ func (c *catalog) Query(_ context.Context, connection dataapi.Connection, sql st
 	default:
 		return nil, fmt.Errorf("unexpected SQL: %s (%v)", sql, parameters)
 	}
-	if !strings.HasPrefix(sql, "SELECT") && !strings.HasPrefix(sql, "SHOW") {
+	if !fakeRead(sql) {
 		c.writes = append(c.writes, sql)
 	}
 	return nil, nil
@@ -343,4 +361,127 @@ func literal(sql string, index int) (string, error) {
 		return "", fmt.Errorf("fake catalog expected at least %d string literals in %q", index+1, sql)
 	}
 	return values[index][1], nil
+}
+
+// fakeFamily emulates the catalog of one object family in its own file, so new types extend the fake
+// without editing the legacy switch.
+type fakeFamily interface {
+	// query answers or applies sql while the catalog lock is held; handled=false passes it to the next
+	// family and then to the legacy switch. Use c.family to reach another family's state.
+	query(c *catalog, connection dataapi.Connection, sql string, parameters map[string]string) (rows []dataapi.Row, handled bool, err error)
+	// populate makes the family's representative objects exist, as fullCatalog does for legacy state.
+	populate()
+}
+
+// fakeFamilies maps each registered family name to the factory of its per-catalog state.
+var fakeFamilies = map[string]func() fakeFamily{}
+
+// registerFakeFamily adds a family to every fake catalog; it returns true for `var _ = ...` declarations.
+func registerFakeFamily(name string, factory func() fakeFamily) bool {
+	if _, ok := fakeFamilies[name]; ok {
+		panic("fake family " + name + " is registered twice")
+	}
+	fakeFamilies[name] = factory
+	return true
+}
+
+// family returns the named family's state, creating it on first use. Callers hold c.mu or have exclusive
+// access to c, as query handlers and catalog constructors do.
+func (c *catalog) family(name string) fakeFamily {
+	if c.families == nil {
+		c.families = map[string]fakeFamily{}
+	}
+	state, ok := c.families[name]
+	if !ok {
+		factory, registered := fakeFamilies[name]
+		if !registered {
+			panic("fake family " + name + " is not registered")
+		}
+		state = factory()
+		c.families[name] = state
+	}
+	return state
+}
+
+// populate fills every registered family, in name order so populate side effects are deterministic.
+func (c *catalog) populate() {
+	for _, name := range slices.Sorted(maps.Keys(fakeFamilies)) {
+		c.family(name).populate()
+	}
+}
+
+// fakeState returns a family's typed state for test setup and assertions outside query handlers.
+func fakeState[F fakeFamily](c *catalog, name string) F {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.family(name).(F)
+}
+
+// fakeRead reports catalog reads, which the fake does not record as writes.
+func fakeRead(sql string) bool {
+	return strings.HasPrefix(sql, "SELECT") || strings.HasPrefix(sql, "SHOW") || strings.HasPrefix(sql, "DESC")
+}
+
+// probeFamily is a minimal family for testing the dispatcher; it also overrides one legacy statement.
+type probeFamily struct {
+	// exists records whether the probe object exists.
+	exists bool
+	// roleSeen records whether the family saw the legacy role read before the switch did.
+	roleSeen bool
+}
+
+// query handles probe statements and observes, without handling, the legacy role read.
+func (f *probeFamily) query(c *catalog, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, bool, error) {
+	switch {
+	case strings.HasPrefix(sql, "SELECT probe"):
+		if f.exists && c.role {
+			return []dataapi.Row{{"probe": "exists"}}, true, nil
+		}
+		return nil, true, nil
+	case strings.HasPrefix(sql, "CREATE PROBE"):
+		if f.exists {
+			return nil, true, errors.New("probe already exists")
+		}
+		f.exists = true
+		return nil, true, nil
+	case strings.HasPrefix(sql, "DESC PROBE"):
+		return []dataapi.Row{{"probe": "described"}}, true, nil
+	case strings.HasPrefix(sql, "SELECT role_name FROM svv_roles"):
+		f.roleSeen = true
+	}
+	return nil, false, nil
+}
+
+// populate makes the probe exist in a full catalog.
+func (f *probeFamily) populate() { f.exists = true }
+
+// TestFakeCatalogFamilies checks dispatch order, write recording, population, and typed access.
+func TestFakeCatalogFamilies(t *testing.T) {
+	require.True(t, registerFakeFamily("probe", func() fakeFamily { return &probeFamily{} }))
+	t.Cleanup(func() { delete(fakeFamilies, "probe") })
+	assert.Panics(t, func() { registerFakeFamily("probe", func() fakeFamily { return &probeFamily{} }) })
+	ctx, connection := context.Background(), dataapi.Connection{Database: "admin"}
+
+	full := fullCatalog()
+	assert.True(t, fakeState[*probeFamily](full, "probe").exists, "fullCatalog populates registered families")
+	rows, err := full.Query(ctx, connection, "SELECT probe", nil)
+	require.NoError(t, err)
+	assert.Equal(t, []dataapi.Row{{"probe": "exists"}}, rows)
+	_, err = full.Query(ctx, connection, "CREATE PROBE x", nil)
+	require.Error(t, err)
+	assert.Empty(t, full.writes, "failed writes are not recorded")
+
+	empty := &catalog{role: true}
+	assert.False(t, fakeState[*probeFamily](empty, "probe").exists, "families start empty outside fullCatalog")
+	_, err = empty.Query(ctx, connection, "CREATE PROBE x", nil)
+	require.NoError(t, err)
+	rows, err = empty.Query(ctx, connection, "DESC PROBE x", nil)
+	require.NoError(t, err)
+	assert.Equal(t, []dataapi.Row{{"probe": "described"}}, rows)
+	rows, err = empty.Query(ctx, connection, "SELECT role_name FROM svv_roles WHERE role_name = :name", nil)
+	require.NoError(t, err)
+	assert.Equal(t, []dataapi.Row{{"role_name": "example:readers"}}, rows, "unhandled statements reach the legacy switch")
+	assert.True(t, fakeState[*probeFamily](empty, "probe").roleSeen, "families are consulted before the legacy switch")
+	assert.Equal(t, []string{"CREATE PROBE x"}, empty.writes)
+	assert.Panics(t, func() { empty.family("unregistered") })
 }

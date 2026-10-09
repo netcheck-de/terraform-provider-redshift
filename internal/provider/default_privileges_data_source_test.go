@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var _ = registerParity(parityCase{source: newDefaultPrivilegesDataSource, resource: newDefaultPrivilegesResource, selectors: []string{"database_name", "owner", "schema_name", "object_type", "grantee", "grantee_type"}})
+
 // TestDefaultPrivilegesLookup reads creator-specific defaults without affecting future object grants.
 func TestDefaultPrivilegesLookup(t *testing.T) {
 	exerciseCatalogLookup(t, newDefaultPrivilegesDataSource, map[string]string{"database_name": "warehouse", "owner": "loader", "schema_name": "serving", "object_type": "TABLES", "grantee": "readers", "grantee_type": "ROLE"}, map[string]attr.Value{"privileges": types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SELECT")})}, &privilegeCatalog{values: map[string]bool{"SELECT": true}})

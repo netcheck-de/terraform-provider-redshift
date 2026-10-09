@@ -7,6 +7,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
+var _ = registerParity(parityCase{source: newRoleGrantDataSource, resource: newRoleGrantResource, selectors: []string{"role", "to_user", "to_role"}})
+
 // TestRoleGrantLookup checks both recipient kinds and absence without granting roles.
 func TestRoleGrantLookup(t *testing.T) {
 	for _, recipient := range []string{"to_role", "to_user"} {

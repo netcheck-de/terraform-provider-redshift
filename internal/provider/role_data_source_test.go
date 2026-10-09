@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerParity(parityCase{source: newRoleDataSource, resource: newRoleResource, selectors: []string{"name"}})
+
 // TestRoleLookup checks read-only role existence lookup.
 func TestRoleLookup(t *testing.T) {
 	state, diagnostics := readSource(t, newRoleDataSource(), roleData{Name: types.StringValue("example:readers")}, &catalog{role: true})

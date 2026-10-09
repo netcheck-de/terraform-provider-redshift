@@ -37,6 +37,8 @@ type externalSchemaModel struct {
 	RefreshRevision types.String `tfsdk:"refresh_revision"`
 }
 
+var _ = registerResource(newExternalSchemaResource)
+
 // newExternalSchemaResource constructs a Glue-backed external schema handler.
 func newExternalSchemaResource() resource.Resource { return &externalSchemaResource{} }
 

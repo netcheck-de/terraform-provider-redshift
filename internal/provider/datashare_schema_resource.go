@@ -33,6 +33,8 @@ type datashareSchemaModel struct {
 	IncludeNew types.Bool `tfsdk:"include_new"`
 }
 
+var _ = registerResource(newDatashareSchemaResource)
+
 // newDatashareSchemaResource constructs a share schema membership handler.
 func newDatashareSchemaResource() resource.Resource { return &datashareSchemaResource{} }
 

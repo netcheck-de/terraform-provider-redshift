@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var _ = registerParity(parityCase{source: newDatashareTableDataSource, resource: newDatashareTableResource, selectors: []string{"database", "datashare", "schema", "table"}})
+
 // TestDatashareTableLookup checks explicit relation membership without adding or removing tables.
 func TestDatashareTableLookup(t *testing.T) {
 	exerciseCatalogLookup(t, newDatashareTableDataSource, map[string]string{"database": "admin", "datashare": "producer", "schema": "serving", "table": "table"}, map[string]attr.Value{"exists": types.BoolValue(true)}, &catalog{shareTable: true})

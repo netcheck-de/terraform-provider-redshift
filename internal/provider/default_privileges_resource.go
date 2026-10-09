@@ -4,6 +4,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 )
 
+var _ = registerResource(newDefaultPrivilegesResource)
+
 // newDefaultPrivilegesResource defines creator-specific future object permission tuples.
 func newDefaultPrivilegesResource() resource.Resource {
 	attributes := privilegeAttributes()

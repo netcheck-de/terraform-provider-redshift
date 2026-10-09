@@ -16,6 +16,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerReplacementPolicy("redshift_user", map[string]replaceRule{
+	"name":                replaceAlways,
+	"superuser":           replaceNever,
+	"create_database":     replaceNever,
+	"password_wo":         replaceNever,
+	"password_wo_version": replaceNever,
+})
+
 // grafanaUser supplies a non-administrative user model for lifecycle tests.
 func grafanaUser() userModel {
 	return userModel{Name: types.StringValue("grafana"), Password: types.StringNull(), PasswordVersion: types.Int64Value(0), Superuser: types.BoolValue(false), CreateDB: types.BoolValue(false)}

@@ -24,6 +24,8 @@ type roleModel struct {
 	Name types.String `tfsdk:"name"`
 }
 
+var _ = registerResource(newRoleResource)
+
 // newRoleResource constructs a role lifecycle handler.
 func newRoleResource() resource.Resource { return &roleResource{} }
 

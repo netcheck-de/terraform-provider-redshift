@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerParity(parityCase{source: newSchemaDataSource, resource: newSchemaResource, selectors: []string{"database", "name"}})
+
 // TestSchemaLookup checks local schema lookup and owner refresh.
 func TestSchemaLookup(t *testing.T) {
 	state, diagnostics := readSource(t, newSchemaDataSource(), schemaData{Database: types.StringValue("admin"), Name: types.StringValue("serving")}, &catalog{schema: true})

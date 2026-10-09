@@ -17,6 +17,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleCase(lifecycleCase{name: "share grant", new: newDatashareGrantResource, model: datashareGrantModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), AccountID: types.StringValue("123456789012")}, absent: func(c *catalog) { c.shareGrant = false }})
+
+var _ = registerReplacementPolicy("redshift_datashare_grant", map[string]replaceRule{
+	"database":     replaceAlways,
+	"datashare":    replaceAlways,
+	"account_id":   replaceAlways,
+	"namespace_id": replaceAlways,
+})
+
 // TestDatashareAccountGrant checks explicit SQL usage for a consumer account.
 func TestDatashareAccountGrant(t *testing.T) {
 	c := &catalog{shareGrant: true}

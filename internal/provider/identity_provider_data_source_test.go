@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerParity(parityCase{source: newIdentityProviderDataSource, resource: newIdentityProviderResource, selectors: []string{"name"}})
+
 // TestIdentityProviderLookup checks read-only AWSIDC integration attributes.
 func TestIdentityProviderLookup(t *testing.T) {
 	state, diagnostics := readSource(t, newIdentityProviderDataSource(), identityProviderData{Name: types.StringValue("identity")}, &catalog{identity: true, iamRole: "role-one", enabled: true})

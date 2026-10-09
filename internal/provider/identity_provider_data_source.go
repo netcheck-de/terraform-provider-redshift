@@ -30,6 +30,8 @@ type identityProviderData struct {
 	Enabled types.Bool `tfsdk:"enabled"`
 }
 
+var _ = registerDataSource(newIdentityProviderDataSource)
+
 // newIdentityProviderDataSource constructs a read-only AWSIDC integration lookup.
 func newIdentityProviderDataSource() datasource.DataSource { return &identityProviderDataSource{} }
 

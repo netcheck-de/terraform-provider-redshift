@@ -80,6 +80,8 @@ func parseShare(value string) (shareSource, error) {
 	return shareSource{Account: parsed.AccountID, Namespace: namespace, Name: name}, nil
 }
 
+var _ = registerResource(newDatabaseResource)
+
 // newDatabaseResource constructs a local or datashare-backed database handler.
 func newDatabaseResource() resource.Resource { return &databaseResource{} }
 

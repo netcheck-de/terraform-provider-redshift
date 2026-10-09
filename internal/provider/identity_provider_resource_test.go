@@ -13,6 +13,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleCase(lifecycleCase{name: "identity", new: newIdentityProviderResource, model: identityProviderModel{Name: types.StringValue("identity"), Namespace: types.StringValue("example"), ApplicationARN: types.StringValue("application"), IAMRoleARN: types.StringValue("role-one"), Enabled: types.BoolValue(true)}, absent: func(c *catalog) { c.identity = false }, dependents: func(c *catalog) { c.role = false }})
+
+var _ = registerReplacementPolicy("redshift_identity_provider", map[string]replaceRule{
+	"name":            replaceAlways,
+	"namespace":       replaceAlways,
+	"application_arn": replaceAlways,
+	"iam_role_arn":    replaceNever,
+	"enabled":         replaceNever,
+})
+
 // TestIdentityProviderObservesMutableAttributes checks integration role and enabled-state refresh.
 func TestIdentityProviderObservesMutableAttributes(t *testing.T) {
 	c := &catalog{identity: true, iamRole: "role-one", enabled: true}

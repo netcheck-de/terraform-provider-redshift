@@ -27,6 +27,8 @@ type groupMembershipModel struct {
 	User types.String `tfsdk:"user"`
 }
 
+var _ = registerResource(newGroupMembershipResource)
+
 // newGroupMembershipResource constructs a single-user membership handler.
 func newGroupMembershipResource() resource.Resource { return &groupMembershipResource{} }
 

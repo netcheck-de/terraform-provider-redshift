@@ -17,6 +17,8 @@ type databaseDataSource struct {
 // databaseData shares the resource's readable attributes without lifecycle ownership.
 type databaseData = databaseModel
 
+var _ = registerDataSource(newDatabaseDataSource)
+
 // newDatabaseDataSource constructs a read-only local/shared database lookup.
 func newDatabaseDataSource() datasource.DataSource { return &databaseDataSource{} }
 

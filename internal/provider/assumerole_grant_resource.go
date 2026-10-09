@@ -4,6 +4,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 )
 
+var _ = registerResource(newAssumeroleGrantResource)
+
 // newAssumeroleGrantResource defines per-identity IAM-role command permissions.
 func newAssumeroleGrantResource() resource.Resource {
 	attributes := privilegeAttributes()

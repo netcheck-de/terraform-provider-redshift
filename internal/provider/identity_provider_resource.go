@@ -36,6 +36,8 @@ type identityProviderModel struct {
 	Enabled types.Bool `tfsdk:"enabled"`
 }
 
+var _ = registerResource(newIdentityProviderResource)
+
 // newIdentityProviderResource constructs an AWS Identity Center SQL integration handler.
 func newIdentityProviderResource() resource.Resource { return &identityProviderResource{} }
 
