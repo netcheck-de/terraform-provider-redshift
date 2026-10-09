@@ -9,7 +9,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // commentResource owns annotation text independently of its target object's definition.
@@ -57,69 +56,20 @@ func (r *commentResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 	}}
 }
 
-// target builds quoted COMMENT syntax and an object-specific catalog query.
-func (data commentModel) target() (string, catalogCheck, error) {
-	kind, name, schemaName, column := data.ObjectType.ValueString(), data.ObjectName.ValueString(), data.SchemaName.ValueString(), data.ColumnName.ValueString()
-	parameters := map[string]string{"name": name}
-	object := sqlclient.Identifier(name)
-	var query string
-	switch kind {
-	case "DATABASE", "SCHEMA":
-		if schemaName != "" || column != "" {
-			return "", catalogCheck{}, fmt.Errorf("%s does not accept schema_name or column_name", kind)
-		}
-		catalog, key := "pg_namespace", "nspname"
-		if kind == "DATABASE" {
-			if name != data.DatabaseName.ValueString() {
-				return "", catalogCheck{}, fmt.Errorf("DATABASE object_name must equal database_name")
-			}
-			catalog, key = "pg_database", "datname"
-		}
-		query = "SELECT COALESCE(d.description, '') AS text FROM " + catalog + " o LEFT JOIN pg_description d ON d.objoid = o.oid AND d.classoid = '" + catalog + "'::regclass AND d.objsubid = 0 WHERE o." + key + " = :name"
-	case "TABLE", "VIEW", "COLUMN":
-		if schemaName == "" {
-			return "", catalogCheck{}, fmt.Errorf("schema_name is required for %s", kind)
-		}
-		if (kind == "COLUMN") != (column != "") {
-			return "", catalogCheck{}, fmt.Errorf("column_name is required only for COLUMN")
-		}
-		object = sqlclient.Identifier(schemaName) + "." + object
-		parameters["schema"] = schemaName
-		query = "SELECT COALESCE(d.description, '') AS text FROM pg_class o JOIN pg_namespace n ON n.oid = o.relnamespace "
-		if kind == "COLUMN" {
-			object += "." + sqlclient.Identifier(column)
-			parameters["column"] = column
-			query += "JOIN pg_attribute a ON a.attrelid = o.oid AND a.attname = :column AND a.attnum > 0 AND NOT a.attisdropped LEFT JOIN pg_description d ON d.objoid = o.oid AND d.classoid = 'pg_class'::regclass AND d.objsubid = a.attnum "
-		} else {
-			query += "LEFT JOIN pg_description d ON d.objoid = o.oid AND d.classoid = 'pg_class'::regclass AND d.objsubid = 0 "
-		}
-		query += "WHERE o.relname = :name AND n.nspname = :schema"
-		switch kind {
-		case "VIEW":
-			query += " AND o.relkind = 'v'"
-		case "TABLE":
-			query += " AND o.relkind IN ('r', 'm')"
-		}
-	default:
-		return "", catalogCheck{}, fmt.Errorf("unsupported comment object_type %q", kind)
-	}
-	return "COMMENT ON " + kind + " " + object, catalogCheck{query, parameters}, nil
-}
-
 // read checks local target existence and retrieves its annotation from the target database.
 func (r *commentResource) read(ctx context.Context, data *commentModel) (bool, error) {
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
-	_, query, err := data.target()
+	query, err := readCommentQuery(*data)
 	if err != nil {
 		return false, err
 	}
-	rows, err := r.query(ctx, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :database AND database_type = 'local'", map[string]string{"database": data.DatabaseName.ValueString()})
+	rows, err := r.selectRows(ctx, r.database.ValueString(), commentDatabaseQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
-	rows, err = r.queryDatabase(ctx, data.DatabaseName.ValueString(), query.sql, query.parameters)
+	rows, err = r.selectRows(ctx, data.DatabaseName.ValueString(), query)
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
@@ -143,15 +93,18 @@ func (r *commentResource) reconcile(ctx context.Context, data commentModel, dele
 		}
 		return fmt.Errorf("comment target does not exist")
 	}
-	desired, sqlValue := data.Text.ValueString(), sqlclient.Literal(data.Text.ValueString())
-	if deleting || desired == "" {
-		desired, sqlValue = "", "NULL"
+	desired := data.Text.ValueString()
+	if deleting {
+		desired = ""
 	}
 	if actual.Text.ValueString() == desired {
 		return nil
 	}
-	statement, _, _ := data.target() // read already validated this unchanged target.
-	if _, err := r.queryDatabase(ctx, data.DatabaseName.ValueString(), statement+" IS "+sqlValue, nil); err != nil {
+	statement, err := commentStatement(data, desired)
+	if err != nil {
+		return err
+	}
+	if err := r.exec(ctx, data.DatabaseName.ValueString(), statement); err != nil {
 		return err
 	}
 	found, err = r.read(ctx, &actual)
@@ -169,7 +122,7 @@ func (r *commentResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 	// Invalid targets must fail before ownership is recorded, or Read and Delete could never succeed.
-	if _, _, err := data.target(); err != nil {
+	if _, _, err := commentTarget(data); err != nil {
 		resp.Diagnostics.AddError("Create comment", err.Error())
 		return
 	}
@@ -194,7 +147,7 @@ func (r *commentResource) ValidateConfig(ctx context.Context, req resource.Valid
 	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
 		return
 	}
-	if _, _, err := data.target(); err != nil {
+	if _, _, err := commentTarget(data); err != nil {
 		resp.Diagnostics.AddError("Invalid comment target", err.Error())
 	}
 }

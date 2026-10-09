@@ -11,7 +11,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // datashareSchemaResource manages schema membership and future-object inclusion in a share.
@@ -64,9 +63,7 @@ func (r *datashareSchemaResource) read(ctx context.Context, data *datashareSchem
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
-	rows, err := r.queryDatabase(ctx, data.Database.ValueString(),
-		"SELECT object_name, include_new FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND share_name = :share AND object_name = :schema AND object_type IN ('schema', 'schemas')",
-		map[string]string{"share": data.Datashare.ValueString(), "schema": data.Schema.ValueString()})
+	rows, err := r.selectRows(ctx, data.Database.ValueString(), readDatashareSchemaQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
@@ -88,17 +85,17 @@ func (r *datashareSchemaResource) Create(ctx context.Context, req resource.Creat
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if _, err := r.queryDatabase(ctx, data.Database.ValueString(), "ALTER DATASHARE "+sqlclient.Identifier(data.Datashare.ValueString())+" ADD SCHEMA "+sqlclient.Identifier(data.Schema.ValueString()), nil); err != nil {
+	statements := createDatashareSchemaStatements(data)
+	if err := r.exec(ctx, data.Database.ValueString(), statements[0]); err != nil {
 		resp.Diagnostics.AddError("Add schema to datashare", err.Error())
 		return
 	}
 	data.ID = r.identity(data.Database.ValueString(), map[string]string{"datashare": data.Datashare.ValueString(), "schema": data.Schema.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-	if data.IncludeNew.ValueBool() {
-		if _, err := r.queryDatabase(ctx, data.Database.ValueString(), "ALTER DATASHARE "+sqlclient.Identifier(data.Datashare.ValueString())+" SET INCLUDENEW TRUE FOR SCHEMA "+sqlclient.Identifier(data.Schema.ValueString()), nil); err != nil {
-			resp.Diagnostics.AddError("Enable future datashare objects", err.Error())
-			return
-		}
+	// The membership is recorded before include_new is set, so a failure here still leaves it removable.
+	if err := r.exec(ctx, data.Database.ValueString(), statements[1:]...); err != nil {
+		resp.Diagnostics.AddError("Enable future datashare objects", err.Error())
+		return
 	}
 	expected := data.IncludeNew
 	found, err := r.read(ctx, &data)
@@ -141,8 +138,7 @@ func (r *datashareSchemaResource) Update(ctx context.Context, req resource.Updat
 		resp.Diagnostics.AddError("Update datashare schema", err.Error())
 		return
 	}
-	sql := "ALTER DATASHARE " + sqlclient.Identifier(data.Datashare.ValueString()) + " SET INCLUDENEW " + strconv.FormatBool(data.IncludeNew.ValueBool()) + " FOR SCHEMA " + sqlclient.Identifier(data.Schema.ValueString())
-	if _, err := r.queryDatabase(ctx, data.Database.ValueString(), sql, nil); err != nil {
+	if err := r.exec(ctx, data.Database.ValueString(), alterDatashareSchemaStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Update datashare schema", err.Error())
 		return
 	}
@@ -167,7 +163,7 @@ func (r *datashareSchemaResource) Delete(ctx context.Context, req resource.Delet
 	}
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
-		_, err = r.queryDatabase(ctx, data.Database.ValueString(), "ALTER DATASHARE "+sqlclient.Identifier(data.Datashare.ValueString())+" REMOVE SCHEMA "+sqlclient.Identifier(data.Schema.ValueString()), nil)
+		err = r.exec(ctx, data.Database.ValueString(), dropDatashareSchemaStatement(data))
 		if err == nil {
 			found, err = r.read(ctx, &data)
 			if err == nil && found {

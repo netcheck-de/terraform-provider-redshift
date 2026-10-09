@@ -8,7 +8,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // datashareTableResource manages explicit table or view membership in a share.
@@ -61,9 +60,7 @@ func (r *datashareTableResource) read(ctx context.Context, data datashareTableMo
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
-	rows, err := r.queryDatabase(ctx, data.Database.ValueString(),
-		"SELECT object_name FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND share_name = :share AND object_name = :object AND object_type IN ('table', 'view', 'late binding view', 'materialized view')",
-		map[string]string{"share": data.Datashare.ValueString(), "object": data.Schema.ValueString() + "." + data.Table.ValueString()})
+	rows, err := r.selectRows(ctx, data.Database.ValueString(), readDatashareTableQuery(data))
 	return len(rows) > 0, err
 }
 
@@ -74,8 +71,11 @@ func (r *datashareTableResource) Create(ctx context.Context, req resource.Create
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	object := sqlclient.Identifier(data.Schema.ValueString()) + "." + sqlclient.Identifier(data.Table.ValueString())
-	if _, err := r.queryDatabase(ctx, data.Database.ValueString(), "ALTER DATASHARE "+sqlclient.Identifier(data.Datashare.ValueString())+" ADD TABLE "+object, nil); err != nil {
+	statement, err := createDatashareTableStatement(data)
+	if err == nil {
+		err = r.exec(ctx, data.Database.ValueString(), statement)
+	}
+	if err != nil {
 		resp.Diagnostics.AddError("Add table to datashare", err.Error())
 		return
 	}
@@ -86,6 +86,18 @@ func (r *datashareTableResource) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddError("Verify datashare table", err.Error())
 	} else if !found {
 		resp.Diagnostics.AddError("Verify datashare table", "The table is absent from the datashare after adding it.")
+	}
+}
+
+// ValidateConfig reports a relation Create would reject, during planning once the configuration is known.
+func (r *datashareTableResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data datashareTableModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+		return
+	}
+	if _, err := createDatashareTableStatement(data); err != nil {
+		resp.Diagnostics.AddError("Invalid datashare table", err.Error())
 	}
 }
 
@@ -134,8 +146,10 @@ func (r *datashareTableResource) Delete(ctx context.Context, req resource.Delete
 	}
 	found, err := r.read(ctx, data)
 	if err == nil && found {
-		object := sqlclient.Identifier(data.Schema.ValueString()) + "." + sqlclient.Identifier(data.Table.ValueString())
-		_, err = r.queryDatabase(ctx, data.Database.ValueString(), "ALTER DATASHARE "+sqlclient.Identifier(data.Datashare.ValueString())+" REMOVE TABLE "+object, nil)
+		var statement string
+		if statement, err = dropDatashareTableStatement(data); err == nil {
+			err = r.exec(ctx, data.Database.ValueString(), statement)
+		}
 		if err == nil {
 			found, err = r.read(ctx, data)
 			if err == nil && found {

@@ -8,7 +8,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // roleResource manages SQL role identity independently of memberships and privileges.
@@ -52,7 +51,7 @@ func (r *roleResource) read(ctx context.Context, data *roleModel) (bool, error) 
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
-	rows, err := r.query(ctx, "SELECT role_name FROM svv_roles WHERE role_name = :name", map[string]string{"name": data.Name.ValueString()})
+	rows, err := r.selectRows(ctx, r.database.ValueString(), readRoleQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
@@ -67,7 +66,7 @@ func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if _, err := r.query(ctx, "CREATE ROLE "+sqlclient.Identifier(data.Name.ValueString()), nil); err != nil {
+	if err := r.exec(ctx, r.database.ValueString(), createRoleStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Create Redshift role", err.Error())
 		return
 	}
@@ -133,7 +132,7 @@ func (r *roleResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	}
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
-		_, err = r.query(ctx, "DROP ROLE "+sqlclient.Identifier(data.Name.ValueString()), nil)
+		err = r.exec(ctx, r.database.ValueString(), dropRoleStatement(data))
 		if err == nil {
 			found, err = r.read(ctx, &data)
 			if err == nil && found {

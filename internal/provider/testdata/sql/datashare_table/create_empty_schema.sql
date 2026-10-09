@@ -1,0 +1,1 @@
+-- error: datashare table requires a nonempty schema and table

@@ -8,7 +8,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // groupResource manages a SQL user group independently of its members and privileges.
@@ -46,7 +45,7 @@ func (r *groupResource) read(ctx context.Context, data *groupModel) (bool, error
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
-	rows, err := r.query(ctx, "SELECT groname FROM pg_group WHERE groname = :name", map[string]string{"name": data.Name.ValueString()})
+	rows, err := r.selectRows(ctx, r.database.ValueString(), readGroupQuery(*data))
 	return len(rows) != 0, err
 }
 
@@ -57,7 +56,7 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if _, err := r.query(ctx, "CREATE GROUP "+sqlclient.Identifier(data.Name.ValueString()), nil); err != nil {
+	if err := r.exec(ctx, r.database.ValueString(), createGroupStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Create Redshift group", err.Error())
 		return
 	}
@@ -120,7 +119,7 @@ func (r *groupResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 	}
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
-		_, err = r.query(ctx, "DROP GROUP "+sqlclient.Identifier(data.Name.ValueString()), nil)
+		err = r.exec(ctx, r.database.ValueString(), dropGroupStatement(data))
 		if err == nil {
 			found, err = r.read(ctx, &data)
 			if err == nil && found {

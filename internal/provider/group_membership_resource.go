@@ -9,7 +9,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // groupMembershipResource owns one user-to-group relationship.
@@ -50,7 +49,7 @@ func (r *groupMembershipResource) read(ctx context.Context, data groupMembership
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
-	rows, err := r.query(ctx, "SELECT g.groname FROM pg_group g JOIN pg_user u ON u.usesysid = ANY(g.grolist) WHERE g.groname = :group AND u.usename = :user", map[string]string{"group": data.Group.ValueString(), "user": data.User.ValueString()})
+	rows, err := r.selectRows(ctx, r.database.ValueString(), readGroupMembershipQuery(data))
 	return len(rows) != 0, err
 }
 
@@ -60,11 +59,11 @@ func (r *groupMembershipResource) reconcile(ctx context.Context, data groupMembe
 	if err != nil || found == desired {
 		return err
 	}
-	operation := "DROP"
+	statement := dropGroupMembershipStatement(data)
 	if desired {
-		operation = "ADD"
+		statement = createGroupMembershipStatement(data)
 	}
-	if _, err := r.query(ctx, "ALTER GROUP "+sqlclient.Identifier(data.Group.ValueString())+" "+operation+" USER "+sqlclient.Identifier(data.User.ValueString()), nil); err != nil {
+	if err := r.exec(ctx, r.database.ValueString(), statement); err != nil {
 		return err
 	}
 	found, err = r.read(ctx, data)

@@ -9,7 +9,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // schemaResource manages the existence of a local SQL schema.
@@ -65,9 +64,7 @@ func (r *schemaResource) read(ctx context.Context, data *schemaModel) (bool, err
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
-	rows, err := r.queryDatabase(ctx, data.Database.ValueString(),
-		"SELECT n.nspname AS schema_name, u.usename AS owner FROM pg_namespace n JOIN pg_user u ON n.nspowner = u.usesysid WHERE n.nspname = :name",
-		map[string]string{"name": data.Name.ValueString()})
+	rows, err := r.selectRows(ctx, data.Database.ValueString(), readSchemaQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
@@ -85,7 +82,7 @@ func (r *schemaResource) Create(ctx context.Context, req resource.CreateRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if _, err := r.queryDatabase(ctx, data.Database.ValueString(), "CREATE SCHEMA "+sqlclient.Identifier(data.Name.ValueString()), nil); err != nil {
+	if err := r.exec(ctx, data.Database.ValueString(), createSchemaStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Create schema", err.Error())
 		return
 	}
@@ -150,7 +147,7 @@ func (r *schemaResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
-		_, err = r.queryDatabase(ctx, data.Database.ValueString(), "DROP SCHEMA "+sqlclient.Identifier(data.Name.ValueString()), nil)
+		err = r.exec(ctx, data.Database.ValueString(), dropSchemaStatement(data))
 		if err == nil {
 			found, err = r.read(ctx, &data)
 			if err == nil && found {

@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // datashareResource manages an outbound share in its producer database.
@@ -75,9 +74,7 @@ func (r *datashareResource) read(ctx context.Context, data *datashareModel) (boo
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
-	rows, err := r.queryDatabase(ctx, data.Database.ValueString(),
-		"SELECT share_name, share_type, source_database, is_publicaccessible, managed_by FROM svv_datashares WHERE share_name = :name AND share_type = 'OUTBOUND'",
-		map[string]string{"name": data.Name.ValueString()})
+	rows, err := r.selectRows(ctx, data.Database.ValueString(), readDatashareQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
@@ -101,8 +98,7 @@ func (r *datashareResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	sql := "CREATE DATASHARE " + sqlclient.Identifier(data.Name.ValueString()) + " SET PUBLICACCESSIBLE " + strconv.FormatBool(data.PublicAccessible.ValueBool())
-	if _, err := r.queryDatabase(ctx, data.Database.ValueString(), sql, nil); err != nil {
+	if err := r.exec(ctx, data.Database.ValueString(), createDatashareStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Create datashare", err.Error())
 		return
 	}
@@ -147,12 +143,11 @@ func (r *datashareResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	sql := "ALTER DATASHARE " + sqlclient.Identifier(data.Name.ValueString()) + " SET PUBLICACCESSIBLE " + strconv.FormatBool(data.PublicAccessible.ValueBool())
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update datashare", err.Error())
 		return
 	}
-	if _, err := r.queryDatabase(ctx, data.Database.ValueString(), sql, nil); err != nil {
+	if err := r.exec(ctx, data.Database.ValueString(), alterDatashareStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Update datashare", err.Error())
 		return
 	}
@@ -178,7 +173,7 @@ func (r *datashareResource) Delete(ctx context.Context, req resource.DeleteReque
 	}
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
-		_, err = r.queryDatabase(ctx, data.Database.ValueString(), "DROP DATASHARE "+sqlclient.Identifier(data.Name.ValueString()), nil)
+		err = r.exec(ctx, data.Database.ValueString(), dropDatashareStatement(data))
 		if err == nil {
 			found, err = r.read(ctx, &data)
 			if err == nil && found {
