@@ -9,13 +9,31 @@ permissions:
   contents: read
 
 jobs:
+  guard:
+    name: Release guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # The main-branch check and the commit-based release notes need full history and tags.
+          fetch-depth: 0
+
+      - name: Require a SemVer tag on main
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Tag $TAG is not vMAJOR.MINOR.PATCH" >&2; exit 1; }
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "Tag $TAG is not on main" >&2; exit 1; }
+
   checks:
     name: Release checks
+    needs: guard
     uses: ./.github/workflows/ci.yml
 
   release:
     name: Publish signed provider
-    needs: checks
+    needs: [guard, checks]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -23,6 +41,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          # The main-branch check and the commit-based release notes need full history and tags.
           fetch-depth: 0
 
       - name: Set up Go

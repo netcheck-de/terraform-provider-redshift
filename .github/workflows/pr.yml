@@ -1,0 +1,21 @@
+---
+name: PR title
+
+# Squash merges use the PR title as the commit subject on main, and release notes are grouped by its Conventional
+# Commit type. A separate workflow keeps title edits from re-running the whole CI.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  semantic-title:
+    name: Semantic PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Conventional Commit title
+        uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
