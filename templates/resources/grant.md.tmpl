@@ -11,12 +11,8 @@ object-specific grants are independent. An empty `privileges` set revokes the pr
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
 
 ```sql
-GRANT | REVOKE privilege
-  ON DATABASE database_name
-  | ON SCHEMA database_name.schema_name
-  | FOR scope IN DATABASE database_name
-  | FOR scope IN SCHEMA schema_name DATABASE database_name
-  TO | FROM ROLE role | DATASHARE datashare;
+GRANT privilege ... TO ...;
+REVOKE privilege ... FROM ...;
 ```
 
 Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource

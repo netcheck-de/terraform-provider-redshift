@@ -10,7 +10,7 @@ Looks up an existing SQL user group without taking ownership or exposing members
 [PG_GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_GROUP.html).
 
 ```sql
-SELECT groname FROM pg_group WHERE groname = 'name';
+SELECT ... FROM pg_group WHERE groname = 'name';
 ```
 
 ## Example Usage

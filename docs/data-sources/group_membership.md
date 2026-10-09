@@ -10,8 +10,7 @@ Reads explicit SQL user-to-group membership. See AWS
 [ALTER GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_GROUP.html).
 
 ```sql
-SELECT g.groname FROM pg_group g JOIN pg_user u ON u.usesysid = ANY(g.grolist)
-WHERE g.groname = 'group' AND u.usename = 'user';
+SELECT ... FROM pg_group JOIN pg_user ... WHERE ...;
 ```
 
 ## Example Usage

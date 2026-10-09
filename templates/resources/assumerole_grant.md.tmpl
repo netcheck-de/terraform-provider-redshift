@@ -10,9 +10,8 @@ Owns the exact command set for one IAM role and one SQL identity. See AWS
 [GRANT ASSUMEROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-assumerole-permissions).
 
 ```sql
-GRANT | REVOKE ASSUMEROLE ON 'iam_role_arn' | default
-  TO | FROM ROLE grantee | GROUP grantee | grantee | PUBLIC
-  FOR COPY | UNLOAD | EXTERNAL FUNCTION | CREATE MODEL;
+GRANT ASSUMEROLE ON ... TO ... FOR ...;
+REVOKE ASSUMEROLE ON ... FROM ... FOR ...;
 ```
 
 Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource

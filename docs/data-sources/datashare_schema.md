@@ -10,8 +10,7 @@ Reads explicit schema membership and its actual future-object sharing policy. Se
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
 ```sql
-SELECT object_name, include_new FROM svv_datashare_objects
-WHERE share_type = 'OUTBOUND' AND share_name = 'datashare' AND object_name = 'schema';
+SELECT ... FROM svv_datashare_objects WHERE share_name = 'datashare' ...;
 ```
 
 ## Example Usage

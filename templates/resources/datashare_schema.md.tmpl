@@ -11,7 +11,7 @@ See AWS [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER
 
 ```sql
 ALTER DATASHARE datashare ADD SCHEMA schema;
-ALTER DATASHARE datashare SET INCLUDENEW true | false FOR SCHEMA schema;
+ALTER DATASHARE datashare SET INCLUDENEW ... FOR SCHEMA schema;
 ALTER DATASHARE datashare REMOVE SCHEMA schema;
 ```
 

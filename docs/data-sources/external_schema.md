@@ -10,7 +10,7 @@ Looks up an existing Glue Data Catalog external schema in a local Redshift datab
 [SVV_EXTERNAL_SCHEMAS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_SCHEMAS.html).
 
 ```sql
-SELECT schemaname, databasename, esoptions FROM svv_external_schemas WHERE schemaname = 'name';
+SELECT ... FROM svv_external_schemas WHERE schemaname = 'name';
 ```
 
 ## Example Usage

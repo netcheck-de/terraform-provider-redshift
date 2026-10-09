@@ -10,9 +10,7 @@ Reads one explicit default-privilege tuple without changing permissions on curre
 [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
 
 ```sql
-SELECT privilege_type FROM svv_default_privileges
-WHERE owner_name = 'owner' AND object_type = 'TABLE' | 'FUNCTION' | 'PROCEDURE'
-  AND grantee_name = 'grantee' AND grantee_type = 'grantee_type' [AND schema_name = 'schema_name'];
+SELECT ... FROM svv_default_privileges WHERE owner_name = 'owner' ...;
 ```
 
 ## Example Usage

@@ -10,8 +10,7 @@ Reads explicit SQL system permissions, excluding capabilities inherited from oth
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
 
 ```sql
-SELECT system_privilege FROM svv_system_privileges
-WHERE identity_type = 'role' AND identity_name = 'role';
+SELECT ... FROM svv_system_privileges WHERE identity_name = 'role';
 ```
 
 ## Example Usage

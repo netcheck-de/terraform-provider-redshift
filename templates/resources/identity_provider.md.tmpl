@@ -11,10 +11,8 @@ integration IAM role, role attachment to the namespace, and group assignments wi
 [CREATE IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_IDENTITY_PROVIDER.html).
 
 ```sql
-CREATE IDENTITY PROVIDER name TYPE AWSIDC
-  NAMESPACE 'namespace' APPLICATION_ARN 'application_arn' IAM_ROLE 'iam_role_arn';
-ALTER IDENTITY PROVIDER name IAM_ROLE 'iam_role_arn';
-ALTER IDENTITY PROVIDER name ENABLE | DISABLE;
+CREATE IDENTITY PROVIDER name ...;
+ALTER IDENTITY PROVIDER name ...;
 DROP IDENTITY PROVIDER name;
 ```
 

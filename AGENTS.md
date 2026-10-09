@@ -46,8 +46,8 @@ through the Data API or a direct TLS connection.
    `lifecycleCases` in `lifecycle_test.go`.
 3. Add `templates/<kind>/<name>.md.tmpl`, plus `examples/resources/redshift_<name>/{resource.tf,import.sh}` or
    `examples/data-sources/redshift_<name>/data-source.tf`, then run `task docs`. The template opens with a ```sql block
-   of the statements the type issues (resources) or the catalog query it runs (data sources); keep it in sync when the
-   SQL changes.
+   of simplified statements (statement kind, identifying names, `...` for options; data sources: the catalog source),
+   as described in `DEVELOPMENT.md`.
 4. Use it in `examples/complete`, expose each data source in `outputs.tf`, and assert it in
    `tests/composition.tftest.hcl`.
 

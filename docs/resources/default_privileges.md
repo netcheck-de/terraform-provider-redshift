@@ -10,9 +10,8 @@ Owns default privileges for future objects created by one user in one local data
 See AWS [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
 
 ```sql
-ALTER DEFAULT PRIVILEGES FOR USER owner [IN SCHEMA schema_name]
-  GRANT | REVOKE privilege ON TABLES | FUNCTIONS | PROCEDURES
-  TO | FROM ROLE grantee | GROUP grantee | grantee | PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR USER owner ... GRANT ... TO ...;
+ALTER DEFAULT PRIVILEGES FOR USER owner ... REVOKE ... FROM ...;
 ```
 
 Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource

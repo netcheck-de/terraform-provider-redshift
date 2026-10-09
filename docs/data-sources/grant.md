@@ -10,8 +10,7 @@ Reads an explicit scoped privilege set, excluding inherited role access and othe
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-scoped-syntax).
 
 ```sql
-SHOW GRANTS FOR ROLE role FROM DATABASE database_name;
-SHOW GRANTS ON SCHEMA schema_name;  -- datashare recipients
+SHOW GRANTS ...;
 ```
 
 ## Example Usage

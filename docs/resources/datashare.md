@@ -13,8 +13,8 @@ datashare authorization and consumer association are managed with the AWS provid
 [CREATE DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATASHARE.html).
 
 ```sql
-CREATE DATASHARE name SET PUBLICACCESSIBLE true | false;
-ALTER DATASHARE name SET PUBLICACCESSIBLE true | false;
+CREATE DATASHARE name ...;
+ALTER DATASHARE name ...;
 DROP DATASHARE name;
 ```
 

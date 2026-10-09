@@ -10,10 +10,8 @@ Manages a password-authenticated database user. Role memberships and object priv
 AWS [CREATE USER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html).
 
 ```sql
-CREATE USER name PASSWORD 'password_wo' CREATEUSER | NOCREATEUSER CREATEDB | NOCREATEDB;
-ALTER USER name PASSWORD 'password_wo';         -- when password_wo_version changes
-ALTER USER name CREATEUSER | NOCREATEUSER;      -- superuser
-ALTER USER name CREATEDB | NOCREATEDB;          -- create_database
+CREATE USER name PASSWORD '...' ...;
+ALTER USER name ...;
 DROP USER name;
 ```
 

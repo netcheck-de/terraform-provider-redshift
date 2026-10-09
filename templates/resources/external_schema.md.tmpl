@@ -12,8 +12,7 @@ must already have an IAM role that can access Glue and the underlying data. See 
 [CREATE EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_SCHEMA.html).
 
 ```sql
-CREATE EXTERNAL SCHEMA name
-  FROM DATA CATALOG DATABASE 'glue_database' IAM_ROLE 'iam_role_arn' [REGION 'region'];
+CREATE EXTERNAL SCHEMA name FROM DATA CATALOG ...;
 DROP SCHEMA name;
 ```
 

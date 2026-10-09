@@ -12,9 +12,7 @@ The provider waits up to five minutes for the inbound share to appear in the SQL
 [CREATE DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATABASE.html).
 
 ```sql
-CREATE DATABASE name;
-CREATE DATABASE name [WITH PERMISSIONS]
-  FROM DATASHARE share OF ACCOUNT 'account' NAMESPACE 'namespace';  -- from datashare_arn
+CREATE DATABASE name ...;
 DROP DATABASE name;
 ```
 

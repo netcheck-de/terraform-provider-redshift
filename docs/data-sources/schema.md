@@ -9,9 +9,7 @@ description: Looks up a local schema and its SQL owner.
 Looks up an existing local schema without managing it.
 
 ```sql
-SELECT n.nspname, u.usename AS owner
-FROM pg_namespace n JOIN pg_user u ON n.nspowner = u.usesysid
-WHERE n.nspname = 'name';  -- in database
+SELECT ... FROM pg_namespace WHERE nspname = 'name';
 ```
 
 ## Example Usage

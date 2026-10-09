@@ -9,8 +9,7 @@ description: Looks up an existing AWSIDC SQL identity provider.
 Looks up an existing AWSIDC SQL identity provider.
 
 ```sql
-SELECT name, type, instanceid, namespc, params, enabled
-FROM svv_identity_providers WHERE name = 'name';
+SELECT ... FROM svv_identity_providers WHERE name = 'name';
 ```
 
 ## Example Usage

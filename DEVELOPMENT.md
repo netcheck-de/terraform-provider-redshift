@@ -125,10 +125,12 @@ Registry pages in `docs/` are generated; do not edit them directly. Edit the tem
 in `examples/provider/`, `examples/resources/`, and `examples/data-sources/`, or the schema `MarkdownDescription`
 strings, then run `task docs` (or `go generate ./...`) to regenerate them with the pinned `tfplugindocs`.
 
-Every resource template opens with a short `sql` block listing the statements the resource issues for create, in-place
-updates, and delete; every data source template shows the catalog query its lookup runs. Use Terraform attribute names
-as placeholders, `[...]` for optional clauses, and `|` for alternatives, and update the block whenever the SQL builders
-change.
+Every resource template opens with a short `sql` block of simplified statements: one line per statement kind the
+resource issues (`CREATE`, `ALTER`, `DROP`, `GRANT`, `REVOKE`, `COMMENT`, …), with only the identifying Terraform
+attribute names and `...` for all further options. Data source templates show the catalog source as
+`SELECT ... FROM <view> WHERE <key> = '...';` or the `SHOW` command. Because options are elided, adding attributes or
+clauses keeps the block valid; update it only when a type starts or stops issuing a statement kind or reads a different
+catalog source.
 
 `task docs-check` runs the `tfplugindocs` validator against the live provider schema, checking publication layout,
 resource/data-source coverage, front matter, and document size limits, and then regenerates the documentation into

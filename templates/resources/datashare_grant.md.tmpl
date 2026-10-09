@@ -12,8 +12,8 @@ authorization in the producer account and association in the consumer account. S
 [GRANT USAGE ON DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax).
 
 ```sql
-GRANT USAGE ON DATASHARE datashare TO ACCOUNT 'account_id' | NAMESPACE 'namespace_id';
-REVOKE USAGE ON DATASHARE datashare FROM ACCOUNT 'account_id' | NAMESPACE 'namespace_id';
+GRANT USAGE ON DATASHARE datashare TO ...;
+REVOKE USAGE ON DATASHARE datashare FROM ...;
 ```
 
 ## Example Usage

@@ -10,11 +10,8 @@ Owns the exact explicit privilege set for one local database object and one gran
 AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
 
 ```sql
-GRANT | REVOKE privilege
-  ON DATABASE database_name
-  | ON SCHEMA database_name.schema_name
-  | ON TABLE database_name.schema_name.object_name
-  TO | FROM ROLE grantee | GROUP grantee | grantee | PUBLIC;
+GRANT privilege ON ... TO ...;
+REVOKE privilege ON ... FROM ...;
 ```
 
 Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource

@@ -11,8 +11,7 @@ This does not verify AWS authorization or consumer association. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax).
 
 ```sql
-SELECT consumer_account, consumer_namespace FROM svv_datashare_consumers
-WHERE share_name = 'datashare' AND (consumer_account = 'account_id' | consumer_namespace = 'namespace_id');
+SELECT ... FROM svv_datashare_consumers WHERE share_name = 'datashare' ...;
 ```
 
 ## Example Usage

@@ -10,7 +10,8 @@ Owns the exact explicit system privilege set for one SQL role. This permits gran
 complete system role. See AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
 
 ```sql
-GRANT | REVOKE system_privilege TO | FROM ROLE role;
+GRANT privilege TO ROLE role;
+REVOKE privilege FROM ROLE role;
 ```
 
 Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource

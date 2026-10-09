@@ -10,8 +10,7 @@ Reads explicit IAM-role usage permissions. See AWS
 [GRANT ASSUMEROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-assumerole-permissions).
 
 ```sql
-SELECT command_type FROM svv_iam_privileges
-WHERE iam_arn = 'iam_role_arn' AND identity_name = 'grantee' AND identity_type = 'grantee_type';
+SELECT ... FROM svv_iam_privileges WHERE ...;
 ```
 
 ## Example Usage

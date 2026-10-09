@@ -10,7 +10,7 @@ Reads explicit local database/schema/table privileges, including view access thr
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
 
 ```sql
-SHOW GRANTS ON DATABASE | SCHEMA | TABLE object;
+SHOW GRANTS ON ...;
 ```
 
 ## Example Usage
