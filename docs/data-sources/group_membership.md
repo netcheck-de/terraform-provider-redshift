@@ -9,6 +9,10 @@ description: Checks one user's explicit SQL group membership without managing it
 Reads explicit SQL user-to-group membership. See AWS
 [ALTER GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_GROUP.html).
 
+```sql
+SELECT ... FROM pg_group JOIN pg_user ... WHERE ...;
+```
+
 ## Example Usage
 
 ```terraform

@@ -1,14 +1,16 @@
 ---
-page_title: redshift Provider
+page_title: Redshift Provider
 description: Manages Redshift Serverless and provisioned SQL objects through Data API or direct TLS connections.
 ---
 
-# redshift Provider
+# Redshift Provider
 
-Manage Redshift SQL objects and permissions through Data API or direct TLS connections. Use the AWS provider for
-workgroups, namespaces, IAM roles, Identity Center applications, and datashare authorization/association. The SQL
-provider does not retrieve administration passwords automatically; direct connections require endpoint connectivity. See
-the AWS [SQL commands reference](https://docs.aws.amazon.com/redshift/latest/dg/c_SQL_commands.html).
+Manage [Amazon Redshift](https://docs.aws.amazon.com/redshift/) SQL objects and permissions through Data API or direct
+TLS connections. Use the AWS provider for workgroups, namespaces, IAM roles, Identity Center applications, and datashare
+authorization/association. The SQL provider does not retrieve administration passwords automatically; direct
+connections require endpoint connectivity. See the
+[Amazon Redshift Database Developer Guide](https://docs.aws.amazon.com/redshift/latest/dg/welcome.html) and its
+[SQL commands reference](https://docs.aws.amazon.com/redshift/latest/dg/c_SQL_commands.html).
 
 ## Example Usage
 

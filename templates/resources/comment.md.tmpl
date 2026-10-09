@@ -9,6 +9,10 @@ description: Manages existing local object annotations independently of object d
 Manages a comment on an existing local database, schema, table, view, or column without owning the object's definition.
 See AWS [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
 
+```sql
+COMMENT ON ... IS 'text' | NULL;
+```
+
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_comment/resource.tf" }}

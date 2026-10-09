@@ -9,6 +9,10 @@ description: Reads explicit permissions on one local object for one SQL identity
 Reads explicit local database/schema/table privileges, including view access through `TABLE`. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
 
+```sql
+SHOW GRANTS ON ...;
+```
+
 ## Example Usage
 
 ```terraform

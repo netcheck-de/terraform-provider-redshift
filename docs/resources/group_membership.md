@@ -9,6 +9,11 @@ description: Manages one user-to-group relationship.
 Owns one database user's membership in one SQL group. See AWS
 [ALTER GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_GROUP.html).
 
+```sql
+ALTER GROUP group ADD USER user;
+ALTER GROUP group DROP USER user;
+```
+
 ## Example Usage
 
 ```terraform

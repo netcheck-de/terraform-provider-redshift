@@ -45,7 +45,9 @@ through the Data API or a direct TLS connection.
 2. Add cases to `replacement_policy_test.go`, `data_source_parity_test.go`, and, where the fake supports it,
    `lifecycleCases` in `lifecycle_test.go`.
 3. Add `templates/<kind>/<name>.md.tmpl`, plus `examples/resources/redshift_<name>/{resource.tf,import.sh}` or
-   `examples/data-sources/redshift_<name>/data-source.tf`, then run `task docs`.
+   `examples/data-sources/redshift_<name>/data-source.tf`, then run `task docs`. The template opens with a ```sql block
+   of simplified statements (statement kind, identifying names, `...` for options; data sources: the catalog source),
+   as described in `DEVELOPMENT.md`.
 4. Use it in `examples/complete`, expose each data source in `outputs.tf`, and assert it in
    `tests/composition.tftest.hcl`.
 

@@ -9,6 +9,10 @@ description: Looks up an existing SQL user group.
 Looks up an existing SQL user group without taking ownership or exposing membership. See AWS
 [PG_GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_GROUP.html).
 
+```sql
+SELECT ... FROM pg_group WHERE groname = 'name';
+```
+
 ## Example Usage
 
 ```terraform
