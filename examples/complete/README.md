@@ -131,7 +131,9 @@ documented beside the resources; they are not a production security baseline.
 | `iam.tf`                   | Scoped warehouse IAM roles and fixture policies.                                         |
 | `databases.tf`             | Owned SQL databases, local schema, comments, and paired lookups.                         |
 | `datasharing.tf`           | Datashare membership, same-/cross-account sharing, shared database, and paired lookups.  |
-| `access_control.tf`        | SQL users, groups, roles, memberships, grants, default privileges, and paired lookups.   |
+| `access_users.tf`          | SQL users, groups, group memberships, and paired lookups.                                |
+| `access_roles.tf`          | SQL roles, role memberships, and paired lookups.                                         |
+| `access_grants.tf`         | Scoped, object, system, ASSUMEROLE, and default privilege grants with paired lookups.    |
 | `s3.tf`                    | Private fixture bucket module, TLS/cross-account policy, and CSV object.                 |
 | `spectrum.tf`              | Glue catalog resources/policy, SQL external schema, and its lookup.                      |
 | `secrets.tf`               | Reader credential secret module.                                                         |
@@ -140,8 +142,8 @@ documented beside the resources; they are not a production security baseline.
 | `identity_center.tf`       | Optional SSO application, directory groups/assignments, SQL identity provider and roles. |
 | `connections.tf`           | Optional IAM/password connection probes for both warehouse types.                        |
 | `variables.tf`             | Deployment inputs and validation.                                                        |
-| `outputs.tf`               | Warehouse/fixture metadata, catalog observations, connection checks, query identities.   |
-| `tests/`                   | Mocked `terraform test` composition and input-validation runs (no AWS access needed).    |
+| `outputs*.tf`              | Warehouse/fixture metadata, catalog observations, connection checks, query identities.   |
+| `tests/`                   | Mocked `terraform test` suites per feature area and their shared mocks (no AWS access).  |
 | `terraform.tfvars.example` | Every input with its default; copy to `terraform.tfvars` and adjust.                     |
 
 The example exercises each resource's documented variants where a single-account deployment allows it: all comment
@@ -267,8 +269,10 @@ configurations; create a new state/configuration directory rather than applying 
 ## Configuration tests
 
 The [composition suite](tests/composition.tftest.hcl) uses mocked apply runs for private defaults, ASSUMEROLE disabled,
-optional SSO, cross-account sharing, and all connection probes. AWS, Redshift, and the root Random provider are mocked;
-these tests require no AWS credentials and create no infrastructure or SQL objects. The secret module uses a separate
+optional SSO, cross-account sharing, and all connection probes. Each feature area has its own suite next to it, such as
+[grants](tests/grants.tftest.hcl), and all suites share the mock values in [tests/mocks](tests/mocks). AWS, Redshift,
+and the root Random provider are mocked; these tests require no AWS credentials and create no infrastructure or SQL
+objects. The secret module uses a separate
 Random alias because Terraform cannot mock ephemeral resource types; its password generation is disabled, so this
 alias creates no resources. The bucket module's policy-document merge is mocked with valid JSON, while assertions
 check the configured TLS and cross-account policy. Scenario-specific states keep different account and networking

@@ -1,61 +1,3 @@
-# Basic SQL roles never depend on SSO; adding an instance ARN enables separate group-mapped roles.
-resource "redshift_role" "readers" {
-  provider = redshift.consumer
-  name     = "example_readers"
-}
-
-resource "redshift_role" "operators" {
-  provider = redshift.consumer
-  name     = "example_operators"
-}
-
-# sys:operator covers operational access without full DBA rights; CREATE ROLE is granted separately below.
-resource "redshift_role_grant" "operators" {
-  provider = redshift.consumer
-  role     = "sys:operator"
-  to_role  = redshift_role.operators.name
-}
-
-# The password source and secret version retain the test user's password in Terraform state.
-resource "random_password" "reader" {
-  length      = 24
-  special     = false
-  min_lower   = 1
-  min_upper   = 1
-  min_numeric = 1
-}
-
-resource "redshift_user" "reader" {
-  provider            = redshift.consumer
-  name                = "example_reader"
-  password_wo         = random_password.reader.result
-  password_wo_version = 1
-}
-
-# A loader identity exercises the user capability flags; its password is not exported.
-resource "random_password" "loader" {
-  length      = 24
-  special     = false
-  min_lower   = 1
-  min_upper   = 1
-  min_numeric = 1
-}
-
-resource "redshift_user" "loader" {
-  provider            = redshift.consumer
-  name                = "example_loader"
-  password_wo         = random_password.loader.result
-  password_wo_version = 1
-  superuser           = false
-  create_database     = true
-}
-
-resource "redshift_role_grant" "reader" {
-  provider = redshift.consumer
-  role     = redshift_role.readers.name
-  to_user  = redshift_user.reader.name
-}
-
 resource "redshift_grant" "shared_read" {
   for_each = {
     DATABASE = ["USAGE"]
@@ -76,17 +18,6 @@ resource "redshift_grant" "local_schema" {
   role          = redshift_role.readers.name
   scope         = "SCHEMA"
   privileges    = ["USAGE"]
-}
-
-resource "redshift_group" "readers" {
-  provider = redshift.consumer
-  name     = "example_reader_group"
-}
-
-resource "redshift_group_membership" "reader" {
-  provider = redshift.consumer
-  group    = redshift_group.readers.name
-  user     = redshift_user.reader.name
 }
 
 # Scoped grants inside one schema. FUNCTIONS and PROCEDURES share one Redshift catalog scope, so each
@@ -232,39 +163,6 @@ resource "redshift_default_privileges" "operator_routines" {
   grantee       = redshift_role.operators.name
   grantee_type  = "ROLE"
   privileges    = ["EXECUTE"]
-}
-
-data "redshift_group" "readers" {
-  provider = redshift.consumer
-  name     = redshift_group.readers.name
-}
-
-data "redshift_role" "readers" {
-  provider = redshift.consumer
-  name     = redshift_role.readers.name
-}
-
-data "redshift_user" "reader" {
-  provider = redshift.consumer
-  name     = redshift_user.reader.name
-}
-
-data "redshift_group_membership" "reader" {
-  provider = redshift.consumer
-  group    = redshift_group_membership.reader.group
-  user     = redshift_group_membership.reader.user
-}
-
-data "redshift_role_grant" "reader" {
-  provider = redshift.consumer
-  role     = redshift_role_grant.reader.role
-  to_user  = redshift_role_grant.reader.to_user
-}
-
-data "redshift_role_grant" "operators" {
-  provider = redshift.consumer
-  role     = redshift_role_grant.operators.role
-  to_role  = redshift_role_grant.operators.to_role
 }
 
 data "redshift_grant" "shared_read" {
