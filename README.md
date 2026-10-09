@@ -55,7 +55,7 @@ show each method against the created warehouses.
 
 The [provider improvements](TODO.md) track remaining enhancements and acceptance fixtures.
 
-See [development and releases](DEVELOPMENT.md) for module-local checks, lint policy, CI, and Terraform Registry
+See [development and releases](DEVELOPMENT.md) for local checks, lint policy, CI, and Terraform Registry
 publication.
 
 The [comment resource](docs/resources/comment.md) annotates existing local objects independently of their definitions.
@@ -93,3 +93,7 @@ strict TLS and parameter/result handling. `TestAccTransportSwitchLifecycle` veri
 IAM, imports, updates, and cleanup. `TestAccDirectPasswordPrivileges` verifies a disposable non-superuser password
 identity can SELECT its fixture but cannot INSERT. Run each using
 `go test ./internal/provider -run '^<test-name>$' -count=1 -v`.
+
+## License
+
+This provider is distributed under the [Mozilla Public License 2.0](LICENSE).
