@@ -9,6 +9,11 @@ description: Manages a Redshift SQL role independently of its grants.
 Manages one database role, independently of memberships and grants. See AWS
 [CREATE ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_ROLE.html).
 
+```sql
+CREATE ROLE name;
+DROP ROLE name;
+```
+
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_role/resource.tf" }}

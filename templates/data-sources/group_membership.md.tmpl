@@ -9,6 +9,11 @@ description: Checks one user's explicit SQL group membership without managing it
 Reads explicit SQL user-to-group membership. See AWS
 [ALTER GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_GROUP.html).
 
+```sql
+SELECT g.groname FROM pg_group g JOIN pg_user u ON u.usesysid = ANY(g.grolist)
+WHERE g.groname = 'group' AND u.usename = 'user';
+```
+
 ## Example Usage
 
 {{ tffile "examples/data-sources/redshift_group_membership/data-source.tf" }}

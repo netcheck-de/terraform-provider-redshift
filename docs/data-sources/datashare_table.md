@@ -9,6 +9,11 @@ description: Checks explicit table or view membership in a producer datashare.
 Checks catalog membership of a producer table or view. See AWS
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
+```sql
+SELECT object_name FROM svv_datashare_objects
+WHERE share_type = 'OUTBOUND' AND share_name = 'datashare' AND object_name = 'schema.table';
+```
+
 ## Example Usage
 
 ```terraform

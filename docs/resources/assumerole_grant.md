@@ -9,6 +9,15 @@ description: Manages IAM role command permissions for one SQL identity.
 Owns the exact command set for one IAM role and one SQL identity. See AWS
 [GRANT ASSUMEROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-assumerole-permissions).
 
+```sql
+GRANT | REVOKE ASSUMEROLE ON 'iam_role_arn' | default
+  TO | FROM ROLE grantee | GROUP grantee | grantee | PUBLIC
+  FOR COPY | UNLOAD | EXTERNAL FUNCTION | CREATE MODEL;
+```
+
+Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
+revokes the privileges it owns.
+
 ## Example Usage
 
 ```terraform

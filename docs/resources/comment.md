@@ -9,6 +9,12 @@ description: Manages existing local object annotations independently of object d
 Manages a comment on an existing local database, schema, table, view, or column without owning the object's definition.
 See AWS [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
 
+```sql
+COMMENT ON DATABASE | SCHEMA object_name IS 'text' | NULL;
+COMMENT ON TABLE | VIEW schema_name.object_name IS 'text' | NULL;
+COMMENT ON COLUMN schema_name.object_name.column_name IS 'text' | NULL;  -- NULL when text is empty or on delete
+```
+
 ## Example Usage
 
 ```terraform

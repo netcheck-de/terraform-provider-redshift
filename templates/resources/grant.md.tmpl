@@ -10,6 +10,18 @@ Manages the exact privilege set for **one role or datashare, database, and scope
 object-specific grants are independent. An empty `privileges` set revokes the privileges in this tuple. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
 
+```sql
+GRANT | REVOKE privilege
+  ON DATABASE database_name
+  | ON SCHEMA database_name.schema_name
+  | FOR scope IN DATABASE database_name
+  | FOR scope IN SCHEMA schema_name DATABASE database_name
+  TO | FROM ROLE role | DATASHARE datashare;
+```
+
+Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
+revokes the privileges it owns.
+
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_grant/resource.tf" }}

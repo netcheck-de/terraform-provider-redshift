@@ -9,6 +9,13 @@ description: Reads a local object's annotation without adopting or clearing it.
 Reads a local database, schema, table, view, or column annotation. See AWS
 [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
 
+```sql
+-- <catalog> is pg_database, pg_namespace, pg_class, or pg_attribute, depending on object_type.
+SELECT d.description FROM <catalog> o
+  LEFT JOIN pg_description d ON d.objoid = o.oid
+WHERE <object matches database_name / schema_name / object_name / column_name>;
+```
+
 ## Example Usage
 
 {{ tffile "examples/data-sources/redshift_comment/data-source.tf" }}

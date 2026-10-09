@@ -9,6 +9,11 @@ description: Manages a local Redshift database schema.
 Manages a local schema in a Redshift database. External schemas and SQLMesh-managed objects have separate ownership. See
 AWS [CREATE SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_SCHEMA.html).
 
+```sql
+CREATE SCHEMA name;
+DROP SCHEMA name;
+```
+
 ## Example Usage
 
 ```terraform

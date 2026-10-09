@@ -9,6 +9,11 @@ description: Reads explicit role permissions within one database or schema scope
 Reads an explicit scoped privilege set, excluding inherited role access and other scopes. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-scoped-syntax).
 
+```sql
+SHOW GRANTS FOR ROLE role FROM DATABASE database_name;
+SHOW GRANTS ON SCHEMA schema_name;  -- datashare recipients
+```
+
 ## Example Usage
 
 ```terraform

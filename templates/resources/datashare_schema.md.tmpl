@@ -9,6 +9,12 @@ description: Manages schema membership and future-object inclusion in a datashar
 Manages one schema membership in a producer datashare. Schema creation and table/view membership are separate resources.
 See AWS [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
+```sql
+ALTER DATASHARE datashare ADD SCHEMA schema;
+ALTER DATASHARE datashare SET INCLUDENEW true | false FOR SCHEMA schema;
+ALTER DATASHARE datashare REMOVE SCHEMA schema;
+```
+
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_datashare_schema/resource.tf" }}

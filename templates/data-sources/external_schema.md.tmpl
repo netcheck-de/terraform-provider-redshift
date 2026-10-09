@@ -9,6 +9,10 @@ description: Looks up a Glue-backed external schema mapping.
 Looks up an existing Glue Data Catalog external schema in a local Redshift database. See AWS
 [SVV_EXTERNAL_SCHEMAS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_SCHEMAS.html).
 
+```sql
+SELECT schemaname, databasename, esoptions FROM svv_external_schemas WHERE schemaname = 'name';
+```
+
 ## Example Usage
 
 {{ tffile "examples/data-sources/redshift_external_schema/data-source.tf" }}

@@ -11,6 +11,13 @@ authorization and the namespace-scoped consumer association are AWS resources an
 The provider waits up to five minutes for the inbound share to appear in the SQL catalog. See AWS
 [CREATE DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATABASE.html).
 
+```sql
+CREATE DATABASE name;
+CREATE DATABASE name [WITH PERMISSIONS]
+  FROM DATASHARE share OF ACCOUNT 'account' NAMESPACE 'namespace';  -- from datashare_arn
+DROP DATABASE name;
+```
+
 ## Example Usage
 
 ```terraform

@@ -9,6 +9,11 @@ description: Checks explicit role-to-role or role-to-user membership.
 Checks an explicit role grant, including grants of built-in system roles. Inherited/transitive role access is not
 counted. See AWS [GRANT ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
 
+```sql
+SELECT role_name FROM svv_user_grants WHERE user_name = 'to_user' AND role_name = 'role';
+SELECT role_name FROM svv_role_grants WHERE role_name = 'to_role' AND granted_role_name = 'role';
+```
+
 ## Example Usage
 
 ```terraform
