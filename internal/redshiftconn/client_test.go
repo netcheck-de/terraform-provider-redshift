@@ -1,6 +1,7 @@
 package redshiftconn
 
 import (
+	"cmp"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -238,4 +239,64 @@ func TestDirectConfigurationRejectsInvalidPGEnvironment(t *testing.T) {
 	t.Setenv("PGPORT", "invalid")
 	_, err := directTestClient().configuration(context.Background(), "analytics")
 	require.ErrorContains(t, err, "parse SQL configuration")
+}
+
+// TestDirectConfigurationSSLModes maps each sslmode to its TLS behavior and verifies chains without hostnames for verify-ca.
+func TestDirectConfigurationSSLModes(t *testing.T) {
+	for mode, check := range map[string]func(*tls.Config){
+		"": func(config *tls.Config) {
+			assert.False(t, config.InsecureSkipVerify)
+			assert.Equal(t, "warehouse.example.com", config.ServerName)
+		},
+		SSLModeVerifyFull: func(config *tls.Config) { assert.False(t, config.InsecureSkipVerify) },
+		SSLModeVerifyCA: func(config *tls.Config) {
+			assert.True(t, config.InsecureSkipVerify)
+			require.NotNil(t, config.VerifyConnection)
+		},
+		SSLModeRequire: func(config *tls.Config) {
+			assert.True(t, config.InsecureSkipVerify)
+			assert.Nil(t, config.VerifyConnection)
+		},
+		SSLModeDisable: func(config *tls.Config) { assert.Nil(t, config) },
+	} {
+		t.Run(cmp.Or(mode, "default"), func(t *testing.T) {
+			client := directTestClient()
+			client.SSLMode = mode
+			config, err := client.configuration(context.Background(), "analytics")
+			require.NoError(t, err)
+			check(config.TLSConfig)
+			assert.Empty(t, config.Fallbacks)
+		})
+	}
+	client := directTestClient()
+	client.SSLMode = "prefer"
+	_, err := client.configuration(context.Background(), "analytics")
+	require.ErrorContains(t, err, "unsupported sslmode")
+
+	// verify-ca accepts a chain to a trusted root regardless of hostname and rejects untrusted or missing certificates.
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	root := &x509.Certificate{SerialNumber: big.NewInt(1), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign, NotAfter: time.Now().Add(time.Hour)}
+	rootDER, err := x509.CreateCertificate(rand.Reader, root, root, &key.PublicKey, key)
+	require.NoError(t, err)
+	rootCertificate, err := x509.ParseCertificate(rootDER)
+	require.NoError(t, err)
+	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), DNSNames: []string{"other.example.com"}, NotAfter: time.Now().Add(time.Hour), ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
+	leafDER, err := x509.CreateCertificate(rand.Reader, leaf, rootCertificate, &key.PublicKey, key)
+	require.NoError(t, err)
+	leafCertificate, err := x509.ParseCertificate(leafDER)
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "ca.pem")
+	require.NoError(t, os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rootDER}), 0o600))
+	client = directTestClient()
+	client.SSLMode, client.CACertFile = SSLModeVerifyCA, path
+	config, err := client.configuration(context.Background(), "analytics")
+	require.NoError(t, err)
+	verify := config.TLSConfig.VerifyConnection
+	require.NoError(t, verify(tls.ConnectionState{PeerCertificates: []*x509.Certificate{leafCertificate, rootCertificate}}))
+	require.ErrorContains(t, verify(tls.ConnectionState{}), "no certificate")
+	client.CACertFile = ""
+	config, err = client.configuration(context.Background(), "analytics")
+	require.NoError(t, err)
+	require.Error(t, config.TLSConfig.VerifyConnection(tls.ConnectionState{PeerCertificates: []*x509.Certificate{leafCertificate}}))
 }

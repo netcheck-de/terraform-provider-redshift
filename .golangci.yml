@@ -25,12 +25,13 @@ linters:
             - '**/internal/provider/*.go'
             - '!**/internal/provider/provider.go'
             - '!**/internal/provider/connection.go'
+            - '!**/internal/provider/connection_config.go'
             - '!$test'
           deny:
             - pkg: github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata
-              desc: construct SQL transports only in provider.go or connection.go
+              desc: construct SQL transports only in provider wiring (provider.go, connection*.go)
             - pkg: github.com/netcheck-de/terraform-provider-redshift/internal/redshiftconn
-              desc: construct SQL transports only in provider.go or connection.go
+              desc: construct SQL transports only in provider wiring (provider.go, connection*.go)
             - pkg: github.com/aws/aws-sdk-go-v2/service
               desc: AWS service clients belong to provider wiring
             - pkg: github.com/jackc/pgx

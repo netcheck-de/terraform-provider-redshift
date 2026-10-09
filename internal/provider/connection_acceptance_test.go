@@ -24,7 +24,7 @@ func TestAccDirectIAMQueries(t *testing.T) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
-	client := &redshiftconn.Client{IAM: &redshiftconn.IAM{Workgroup: workgroup, Serverless: redshiftserverless.NewFromConfig(cfg)}, Timeout: 30 * time.Second}
+	client := &redshiftconn.Client{IAM: &redshiftconn.IAM{Workgroup: workgroup, Serverless: redshiftserverless.NewFromConfig(cfg)}, SSLMode: testAccSSLMode(), Timeout: 30 * time.Second}
 	rows, err := client.Query(ctx, sqlclient.Connection{Database: database}, "SELECT current_user AS username, CAST(:value AS VARCHAR) AS value, true AS enabled, CAST(NULL AS VARCHAR) AS empty", map[string]string{"value": "O'Reilly"})
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
@@ -41,7 +41,7 @@ func TestAccTransportSwitchLifecycle(t *testing.T) {
 	configuration := func(direct bool, privileges string) string {
 		selector := fmt.Sprintf("workgroup_name = %q", workgroup)
 		if direct {
-			selector = fmt.Sprintf("direct_connection {\n iam { workgroup_name = %q }\n}", workgroup)
+			selector = fmt.Sprintf("direct_connection {\n %s iam { workgroup_name = %q }\n}", testAccSSLModeHCL(), workgroup)
 		}
 		return fmt.Sprintf(`
 provider "redshift" {

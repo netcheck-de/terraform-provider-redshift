@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -31,4 +32,17 @@ func testAccWorkgroup(t *testing.T, flags ...string) (region, profile, workgroup
 		require.NotEmpty(t, value, name)
 	}
 	return region, profile, workgroup, database
+}
+
+// testAccSSLMode returns REDSHIFT_ACC_SSLMODE for direct tests; empty keeps the provider default verify-full.
+func testAccSSLMode() string {
+	return os.Getenv("REDSHIFT_ACC_SSLMODE")
+}
+
+// testAccSSLModeHCL renders the optional sslmode argument for a direct_connection block.
+func testAccSSLModeHCL() string {
+	if mode := testAccSSLMode(); mode != "" {
+		return fmt.Sprintf("sslmode = %q\n", mode)
+	}
+	return ""
 }

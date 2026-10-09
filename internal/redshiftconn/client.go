@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 
@@ -43,6 +44,21 @@ type connection interface {
 // DefaultTimeout bounds a query when Client.Timeout is unset.
 const DefaultTimeout = 5 * time.Minute
 
+// Supported TLS modes, matching the libpq sslmode names. Fallback modes such as prefer are deliberately unsupported.
+const (
+	// SSLModeVerifyFull verifies the certificate chain and the hostname.
+	SSLModeVerifyFull = "verify-full"
+	// SSLModeVerifyCA verifies the certificate chain but not the hostname.
+	SSLModeVerifyCA = "verify-ca"
+	// SSLModeRequire encrypts without verifying the server certificate.
+	SSLModeRequire = "require"
+	// SSLModeDisable connects without TLS.
+	SSLModeDisable = "disable"
+)
+
+// SSLModes lists every supported sslmode value.
+var SSLModes = []string{SSLModeVerifyFull, SSLModeVerifyCA, SSLModeRequire, SSLModeDisable}
+
 // Client opens and closes one TLS SQL session per query; it never retains a pool without a lifecycle close hook.
 type Client struct {
 	// Credentials supplies static routing/authentication, including optional IAM endpoint overrides.
@@ -51,6 +67,9 @@ type Client struct {
 	IAM CredentialProvider
 	// CACertFile augments system certificate trust with a PEM bundle.
 	CACertFile string
+	// SSLMode selects TLS verification: SSLModeVerifyFull (the default when empty), SSLModeVerifyCA, SSLModeRequire,
+	// or SSLModeDisable.
+	SSLMode string
 	// Timeout bounds credential acquisition, connection establishment, and SQL execution; zero selects DefaultTimeout.
 	Timeout time.Duration
 	// dial permits deterministic protocol/error testing without a real warehouse.
@@ -83,7 +102,8 @@ func valueText(value any) (string, error) {
 	}
 }
 
-// configuration constructs strict TLS routing without connecting or consulting PostgreSQL credential files.
+// configuration constructs routing and TLS for the selected sslmode without connecting or consulting PostgreSQL
+// credential files.
 func (c *Client) configuration(ctx context.Context, database string) (*pgx.ConnConfig, error) {
 	credentials := c.Credentials
 	if c.IAM != nil {
@@ -105,33 +125,76 @@ func (c *Client) configuration(ctx context.Context, database string) (*pgx.ConnC
 	if credentials.Port == 0 {
 		credentials.Port = 5439
 	}
+	mode := cmp.Or(c.SSLMode, SSLModeVerifyFull)
+	if !slices.Contains(SSLModes, mode) {
+		return nil, fmt.Errorf("unsupported sslmode %q", mode)
+	}
 	// pgx requires a parsed config; explicitly overwrite environment/service/passfile-derived routing and authentication.
-	config, err := pgx.ParseConfig("sslmode=verify-full")
+	config, err := pgx.ParseConfig("sslmode=" + mode)
 	if err != nil {
 		return nil, fmt.Errorf("parse SQL configuration: %w", err)
 	}
 	config.Host, config.Port, config.User, config.Password, config.Database = credentials.Host, credentials.Port, credentials.Username, credentials.Password, database
 	config.Fallbacks = nil
-	config.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, ServerName: credentials.Host}
 	config.ConnectTimeout = cmp.Or(c.Timeout, DefaultTimeout)
 	config.RuntimeParams = map[string]string{"client_encoding": "UTF8"}
 	// Exec uses safe wire-protocol parameter binding without prepared-statement caching or PostgreSQL-only startup flags.
 	config.DefaultQueryExecMode = pgx.QueryExecModeExec
-	if c.CACertFile != "" {
-		pem, err := os.ReadFile(c.CACertFile)
-		if err != nil {
-			return nil, fmt.Errorf("read SQL CA bundle: %w", err)
-		}
-		roots, err := systemCertPool()
-		if err != nil {
-			return nil, fmt.Errorf("load system CA trust: %w", err)
-		}
-		if !roots.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("SQL CA bundle contains no valid certificates")
-		}
-		config.TLSConfig.RootCAs = roots
+	config.TLSConfig, err = c.tlsConfig(mode, credentials.Host)
+	if err != nil {
+		return nil, err
 	}
 	return config, nil
+}
+
+// tlsConfig builds the TLS settings for one sslmode; nil disables TLS.
+func (c *Client) tlsConfig(mode, host string) (*tls.Config, error) {
+	switch mode {
+	case SSLModeDisable:
+		return nil, nil
+	case SSLModeRequire:
+		return &tls.Config{MinVersion: tls.VersionTLS12, ServerName: host, InsecureSkipVerify: true}, nil //nolint:gosec // Explicit user opt-in.
+	}
+	roots, err := c.roots()
+	if err != nil {
+		return nil, err
+	}
+	config := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: host, RootCAs: roots}
+	if mode == SSLModeVerifyCA {
+		// Go cannot verify a chain without a hostname directly; skip the built-in check and verify the chain manually.
+		config.InsecureSkipVerify = true //nolint:gosec // The chain is verified in VerifyConnection.
+		config.VerifyConnection = func(state tls.ConnectionState) error {
+			if len(state.PeerCertificates) == 0 {
+				return fmt.Errorf("server presented no certificate")
+			}
+			intermediates := x509.NewCertPool()
+			for _, certificate := range state.PeerCertificates[1:] {
+				intermediates.AddCert(certificate)
+			}
+			_, err := state.PeerCertificates[0].Verify(x509.VerifyOptions{Roots: roots, Intermediates: intermediates})
+			return err
+		}
+	}
+	return config, nil
+}
+
+// roots returns nil for system trust, or the system pool extended with CACertFile.
+func (c *Client) roots() (*x509.CertPool, error) {
+	if c.CACertFile == "" {
+		return nil, nil
+	}
+	pem, err := os.ReadFile(c.CACertFile)
+	if err != nil {
+		return nil, fmt.Errorf("read SQL CA bundle: %w", err)
+	}
+	roots, err := systemCertPool()
+	if err != nil {
+		return nil, fmt.Errorf("load system CA trust: %w", err)
+	}
+	if !roots.AppendCertsFromPEM(pem) {
+		return nil, fmt.Errorf("SQL CA bundle contains no valid certificates")
+	}
+	return roots, nil
 }
 
 // Query executes one autocommit statement with safe positional binding and closes the connection deterministically.

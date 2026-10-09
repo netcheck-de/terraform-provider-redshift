@@ -59,7 +59,7 @@ func TestAccDirectPasswordPrivileges(t *testing.T) {
 	require.NoError(t, err)
 	_, err = admin.Query(ctx, target, "GRANT SELECT ON TABLE public.fixture TO "+sqlclient.Identifier(userName), nil)
 	require.NoError(t, err)
-	reader := &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: routing.Host, Port: routing.Port, Username: userName, Password: password}, Timeout: 30 * time.Second}
+	reader := &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: routing.Host, Port: routing.Port, Username: userName, Password: password}, SSLMode: testAccSSLMode(), Timeout: 30 * time.Second}
 	rows, err := reader.Query(ctx, target, "SELECT id FROM public.fixture WHERE id = CAST(:id AS INTEGER)", map[string]string{"id": "1"})
 	require.NoError(t, err)
 	assert.Equal(t, []sqlclient.Row{{"id": "1"}}, rows)

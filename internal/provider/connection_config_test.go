@@ -202,3 +202,19 @@ func TestDirectConfigurationDoesNotLoadAWSAndReconfiguresRouting(t *testing.T) {
 	p.ValidateConfig(context.Background(), framework.ValidateConfigRequest{Config: config}, &validated)
 	require.True(t, validated.Diagnostics.HasError())
 }
+
+// TestDirectSSLModeConfiguration passes sslmode to the direct client and rejects CA bundles that would be ignored.
+func TestDirectSSLModeConfiguration(t *testing.T) {
+	data := passwordProvider()
+	data.Connection.SSLMode = types.StringValue(redshiftconn.SSLModeRequire)
+	require.NoError(t, data.validate(false))
+	client, err := data.sqlClient(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, redshiftconn.SSLModeRequire, client.(*redshiftconn.Client).SSLMode)
+	data.Connection.CACertFile = types.StringValue("ca.pem")
+	require.ErrorContains(t, data.validate(false), "no effect")
+	data.Connection.SSLMode = types.StringValue(redshiftconn.SSLModeVerifyCA)
+	require.NoError(t, data.validate(false))
+	data.Connection.SSLMode = types.StringUnknown()
+	require.ErrorContains(t, data.validate(false), "sslmode must be known")
+}

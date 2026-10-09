@@ -14,16 +14,17 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
-// findDatashareARN reads consumer-visible datashares and matches their complete producer identity.
-func findDatashareARN(ctx context.Context, api redshift.DescribeDataSharesForConsumerAPIClient, source shareSource) (string, error) {
-	pages := redshift.NewDescribeDataSharesForConsumerPaginator(api, &redshift.DescribeDataSharesForConsumerInput{}, func(options *redshift.DescribeDataSharesForConsumerPaginatorOptions) {
+// findDatashareARN matches the producer identity against inbound and outbound datashares visible to the account.
+// DescribeDataSharesForConsumer omits same-account shares, so the general listing is required.
+func findDatashareARN(ctx context.Context, api redshift.DescribeDataSharesAPIClient, source shareSource) (string, error) {
+	pages := redshift.NewDescribeDataSharesPaginator(api, &redshift.DescribeDataSharesInput{}, func(options *redshift.DescribeDataSharesPaginatorOptions) {
 		options.StopOnDuplicateToken = true
 	})
 	var found string
 	for pages.HasMorePages() {
 		page, err := pages.NextPage(ctx)
 		if err != nil {
-			return "", fmt.Errorf("describe consumer datashares: %w", err)
+			return "", fmt.Errorf("describe datashares: %w", err)
 		}
 		for _, share := range page.DataShares {
 			value := aws.ToString(share.DataShareArn)
@@ -67,7 +68,7 @@ func (data providerModel) sqlClient(ctx context.Context) (sqlclient.Client, erro
 	var direct *redshiftconn.Client
 	if data.Connection != nil {
 		connection := data.Connection
-		direct = &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: connection.Host.ValueString(), Username: connection.Username.ValueString(), Password: connection.Password.ValueString()}, CACertFile: connection.CACertFile.ValueString(), Timeout: redshiftconn.DefaultTimeout}
+		direct = &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: connection.Host.ValueString(), Username: connection.Username.ValueString(), Password: connection.Password.ValueString()}, CACertFile: connection.CACertFile.ValueString(), SSLMode: connection.SSLMode.ValueString(), Timeout: redshiftconn.DefaultTimeout}
 		if !connection.Port.IsNull() && !connection.Port.IsUnknown() {
 			direct.Credentials.Port = uint16(connection.Port.ValueInt64())
 		}

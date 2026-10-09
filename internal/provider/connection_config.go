@@ -6,8 +6,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/redshiftconn"
 )
 
 // directConnectionModel configures a TLS PostgreSQL-wire connection with password or IAM authentication.
@@ -22,6 +25,8 @@ type directConnectionModel struct {
 	Password types.String `tfsdk:"password"`
 	// CACertFile optionally augments system trust with a PEM CA certificate bundle.
 	CACertFile types.String `tfsdk:"ca_cert_file"`
+	// SSLMode selects TLS verification; null means verify-full.
+	SSLMode types.String `tfsdk:"sslmode"`
 	// IAM selects an AWS warehouse whose temporary credentials authenticate each new connection.
 	IAM *iamConnectionModel `tfsdk:"iam"`
 }
@@ -45,7 +50,14 @@ func connectionSchema() schema.SingleNestedBlock {
 			"port":         schema.Int64Attribute{Optional: true, MarkdownDescription: "Port 1–65535; defaults to 5439 or the IAM-discovered endpoint port."},
 			"username":     schema.StringAttribute{Optional: true, MarkdownDescription: "Existing SQL user for password authentication."},
 			"password":     schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "SQL password; supports ephemeral input and is never part of resource state."},
-			"ca_cert_file": schema.StringAttribute{Optional: true, MarkdownDescription: "PEM CA bundle added to system trust. TLS certificate and hostname verification remain mandatory."},
+			"ca_cert_file": schema.StringAttribute{Optional: true, MarkdownDescription: "PEM CA bundle added to system trust for `verify-full` and `verify-ca`."},
+			"sslmode": schema.StringAttribute{
+				Optional: true,
+				MarkdownDescription: "TLS mode: `verify-full` (default) verifies the certificate chain and hostname, `verify-ca` only the chain, " +
+					"`require` encrypts without verifying the server, and `disable` connects without TLS. Anything weaker than `verify-full` " +
+					"exposes credentials to impersonation or eavesdropping.",
+				Validators: []validator.String{stringvalidator.OneOf(redshiftconn.SSLModes...)},
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"iam": schema.SingleNestedBlock{MarkdownDescription: "Obtain temporary SQL credentials for one Serverless workgroup or provisioned cluster.", Attributes: map[string]schema.Attribute{
@@ -102,8 +114,11 @@ func (data providerModel) validate(allowUnknown bool) error {
 	if !connection.Port.IsNull() && !connection.Port.IsUnknown() && (connection.Port.ValueInt64() < 1 || connection.Port.ValueInt64() > 65535) {
 		return fmt.Errorf("direct_connection.port must be between 1 and 65535")
 	}
-	if !allowUnknown && connection.CACertFile.IsUnknown() {
-		return fmt.Errorf("direct_connection.ca_cert_file must be known during configuration")
+	if !allowUnknown && (connection.CACertFile.IsUnknown() || connection.SSLMode.IsUnknown()) {
+		return fmt.Errorf("direct_connection.ca_cert_file and sslmode must be known during configuration")
+	}
+	if mode := connection.SSLMode.ValueString(); !connection.CACertFile.IsNull() && (mode == redshiftconn.SSLModeRequire || mode == redshiftconn.SSLModeDisable) {
+		return fmt.Errorf("direct_connection.ca_cert_file has no effect with sslmode %q", mode)
 	}
 	if connection.IAM == nil {
 		for name, value := range map[string]types.String{"host": connection.Host, "username": connection.Username, "password": connection.Password} {

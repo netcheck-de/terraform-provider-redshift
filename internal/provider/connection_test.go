@@ -20,10 +20,10 @@ import (
 )
 
 // datashareAPIFunc adapts a callback into the SDK's read-only datashare discovery interface.
-type datashareAPIFunc func(context.Context, *redshift.DescribeDataSharesForConsumerInput) (*redshift.DescribeDataSharesForConsumerOutput, error)
+type datashareAPIFunc func(context.Context, *redshift.DescribeDataSharesInput) (*redshift.DescribeDataSharesOutput, error)
 
-// DescribeDataSharesForConsumer returns synthetic pages without calling AWS.
-func (f datashareAPIFunc) DescribeDataSharesForConsumer(ctx context.Context, input *redshift.DescribeDataSharesForConsumerInput, _ ...func(*redshift.Options)) (*redshift.DescribeDataSharesForConsumerOutput, error) {
+// DescribeDataShares returns synthetic pages without calling AWS.
+func (f datashareAPIFunc) DescribeDataShares(ctx context.Context, input *redshift.DescribeDataSharesInput, _ ...func(*redshift.Options)) (*redshift.DescribeDataSharesOutput, error) {
 	return f(ctx, input)
 }
 
@@ -38,12 +38,12 @@ func TestDatashareDiscoveryMatchesProducerAcrossPages(t *testing.T) {
 	} {
 		t.Run(value, func(t *testing.T) {
 			calls := 0
-			api := datashareAPIFunc(func(_ context.Context, input *redshift.DescribeDataSharesForConsumerInput) (*redshift.DescribeDataSharesForConsumerOutput, error) {
+			api := datashareAPIFunc(func(_ context.Context, input *redshift.DescribeDataSharesInput) (*redshift.DescribeDataSharesOutput, error) {
 				calls++
-				assert.Nil(t, input.ConsumerArn)
+				assert.Nil(t, input.DataShareArn)
 				if calls == 1 {
 					assert.Nil(t, input.Marker)
-					return &redshift.DescribeDataSharesForConsumerOutput{
+					return &redshift.DescribeDataSharesOutput{
 						Marker: aws.String("next"),
 						DataShares: []redshifttypes.DataShare{
 							{}, {DataShareArn: aws.String("invalid")},
@@ -54,7 +54,7 @@ func TestDatashareDiscoveryMatchesProducerAcrossPages(t *testing.T) {
 					}, nil
 				}
 				assert.Equal(t, "next", aws.ToString(input.Marker))
-				return &redshift.DescribeDataSharesForConsumerOutput{DataShares: []redshifttypes.DataShare{{DataShareArn: aws.String(value)}, {DataShareArn: aws.String(value)}}}, nil
+				return &redshift.DescribeDataSharesOutput{DataShares: []redshifttypes.DataShare{{DataShareArn: aws.String(value)}, {DataShareArn: aws.String(value)}}}, nil
 			})
 			observed, err := findDatashareARN(context.Background(), api, source)
 			require.NoError(t, err)
@@ -70,11 +70,11 @@ func TestDatashareDiscoveryRejectsMissingAmbiguousAndFailedLookups(t *testing.T)
 	require.NoError(t, err)
 	for _, name := range []string{"missing", "ambiguous", "unavailable"} {
 		t.Run(name, func(t *testing.T) {
-			api := datashareAPIFunc(func(context.Context, *redshift.DescribeDataSharesForConsumerInput) (*redshift.DescribeDataSharesForConsumerOutput, error) {
+			api := datashareAPIFunc(func(context.Context, *redshift.DescribeDataSharesInput) (*redshift.DescribeDataSharesOutput, error) {
 				if name == "unavailable" {
 					return nil, errors.New("access denied")
 				}
-				page := &redshift.DescribeDataSharesForConsumerOutput{}
+				page := &redshift.DescribeDataSharesOutput{}
 				if name == "ambiguous" {
 					page.DataShares = []redshifttypes.DataShare{{DataShareArn: aws.String(shareARN)}, {DataShareArn: aws.String(strings.Replace(shareARN, "eu-central-1", "us-west-2", 1))}}
 				}
@@ -111,10 +111,10 @@ func TestDatashareDiscoveryUsesProviderAWSConfiguration(t *testing.T) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		assert.Equal(t, "DescribeDataSharesForConsumer", r.Form.Get("Action"))
+		assert.Equal(t, "DescribeDataShares", r.Form.Get("Action"))
 		assert.Contains(t, r.Header.Get("Authorization"), "/eu-central-1/redshift/")
 		w.Header().Set("Content-Type", "text/xml")
-		_, _ = fmt.Fprintf(w, `<DescribeDataSharesForConsumerResponse xmlns="http://redshift.amazonaws.com/doc/2012-12-01/"><DescribeDataSharesForConsumerResult><DataShares><member><DataShareArn>%s</DataShareArn></member></DataShares></DescribeDataSharesForConsumerResult></DescribeDataSharesForConsumerResponse>`, shareARN)
+		_, _ = fmt.Fprintf(w, `<DescribeDataSharesResponse xmlns="http://redshift.amazonaws.com/doc/2012-12-01/"><DescribeDataSharesResult><DataShares><member><DataShareArn>%s</DataShareArn></member></DataShares></DescribeDataSharesResult></DescribeDataSharesResponse>`, shareARN)
 	}))
 	defer server.Close()
 	t.Setenv("AWS_ENDPOINT_URL_REDSHIFT", server.URL)

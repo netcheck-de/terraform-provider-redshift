@@ -29,7 +29,7 @@ func TestAccClusterTransportLifecycle(t *testing.T) {
 			selector = fmt.Sprintf("cluster_identifier = %q\n secret_arn = %q", cluster, os.Getenv("REDSHIFT_ACC_SECRET_ARN"))
 		}
 		if mode == "direct" {
-			selector = fmt.Sprintf("direct_connection {\n iam {\n cluster_identifier = %q\n db_user = %q\n }\n}", cluster, user)
+			selector = fmt.Sprintf("direct_connection {\n %s iam {\n cluster_identifier = %q\n db_user = %q\n }\n}", testAccSSLModeHCL(), cluster, user)
 		}
 		return fmt.Sprintf(`
 provider "redshift" {
