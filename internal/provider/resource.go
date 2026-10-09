@@ -95,7 +95,7 @@ func (r *resourceClient) localDatabaseExists(ctx context.Context, database strin
 	if database == r.database.ValueString() {
 		return true, nil
 	}
-	rows, err := r.query(ctx, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :database AND database_type = 'local'", map[string]string{"database": database})
+	rows, err := r.selectRows(ctx, r.database.ValueString(), localDatabaseQuery(database))
 	return len(rows) > 0, err
 }
 

@@ -106,13 +106,6 @@ func privilegeGroupQuery(name string) sqlclient.Query {
 	return sqlclient.Select("groname").From("pg_group").Where("groname = :name", sqlclient.Bind("name", name))
 }
 
-// privilegeLocalDatabaseQuery confirms that a database exists and is local, since shared databases reject these grants.
-func privilegeLocalDatabaseQuery(database string) sqlclient.Query {
-	return sqlclient.Select("database_name").From("svv_redshift_databases").
-		Where("database_name = :database", sqlclient.Bind("database", database)).
-		Where("database_type = 'local'")
-}
-
 // privilegeSchemaQuery confirms that a schema exists in database.
 func privilegeSchemaQuery(database, schema string) sqlclient.Query {
 	return sqlclient.Select("schema_name").From("svv_all_schemas").

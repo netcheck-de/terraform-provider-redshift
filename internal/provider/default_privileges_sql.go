@@ -40,7 +40,7 @@ func defaultPrivilegesTarget(data types.Object) (privilegeTarget, error) {
 	default:
 		return privilegeTarget{}, fmt.Errorf("unsupported default object_type %q", kind)
 	}
-	queries := []sqlclient.Query{privilegeLocalDatabaseQuery(database), privilegeUserQuery(owner)}
+	queries := []sqlclient.Query{localDatabaseQuery(database), privilegeUserQuery(owner)}
 	if schemaName != "" {
 		queries = append(queries, privilegeSchemaQuery(database, schemaName))
 	}

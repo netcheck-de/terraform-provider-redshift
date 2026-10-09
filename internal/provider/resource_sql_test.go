@@ -90,3 +90,32 @@ func TestResourceClientSelectRows(t *testing.T) {
 	_, err = r.selectRows(context.Background(), "analytics", sqlclient.Select("current_user"))
 	require.ErrorContains(t, err, "permission denied")
 }
+
+// TestResourceClientLocalDatabaseExists skips the round trip for the administration database and otherwise asks
+// the catalog in it, because a dropped target database cannot be connected to.
+func TestResourceClientLocalDatabaseExists(t *testing.T) {
+	var calls []executedStatement
+	r := testResourceClient(recordingQueryFunc(&calls, "", nil))
+	exists, err := r.localDatabaseExists(context.Background(), "admin")
+	require.NoError(t, err)
+	assert.True(t, exists)
+	assert.Empty(t, calls)
+
+	exists, err = r.localDatabaseExists(context.Background(), "analytics")
+	require.NoError(t, err)
+	assert.False(t, exists)
+	assert.Equal(t, []executedStatement{{
+		database:   "admin",
+		sql:        "SELECT database_name FROM svv_redshift_databases WHERE database_name = :database AND database_type = 'local'",
+		parameters: map[string]string{"database": "analytics"},
+	}}, calls)
+
+	calls = nil
+	r = testResourceClient(recordingQueryFunc(&calls, "", []sqlclient.Row{{"database_name": "analytics"}}))
+	exists, err = r.localDatabaseExists(context.Background(), "analytics")
+	require.NoError(t, err)
+	assert.True(t, exists)
+
+	_, err = r.localDatabaseExists(context.Background(), "")
+	require.ErrorContains(t, err, "is empty", "the Data API rejects empty parameters, so the query is refused locally")
+}

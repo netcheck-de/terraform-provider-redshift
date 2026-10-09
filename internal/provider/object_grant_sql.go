@@ -23,7 +23,7 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 		return privilegeTarget{}, err
 	}
 	database, schemaName, name, kind := objectString(data, "database_name"), objectString(data, "schema_name"), objectString(data, "object_name"), objectString(data, "object_type")
-	queries := []sqlclient.Query{privilegeLocalDatabaseQuery(database)}
+	queries := []sqlclient.Query{localDatabaseQuery(database)}
 	parts := []string{database}
 	var keyword sqlclient.Keyword
 	allowed := []sqlclient.Keyword{"CREATE", "USAGE", "TEMPORARY", "ALTER"}
