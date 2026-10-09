@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // identityProviderResource manages the SQL side of an AWS Identity Center integration.
@@ -79,9 +78,7 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
-	rows, err := r.query(ctx,
-		"SELECT name, type, instanceid, namespc, params, enabled FROM svv_identity_providers WHERE name = :name",
-		map[string]string{"name": data.Name.ValueString()})
+	rows, err := r.selectRows(ctx, r.database.ValueString(), readIdentityProviderQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
@@ -120,16 +117,18 @@ func (r *identityProviderResource) Create(ctx context.Context, req resource.Crea
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	sql := "CREATE IDENTITY PROVIDER " + sqlclient.Identifier(data.Name.ValueString()) + " TYPE AWSIDC NAMESPACE " + sqlclient.Literal(data.Namespace.ValueString()) +
-		" APPLICATION_ARN " + sqlclient.Literal(data.ApplicationARN.ValueString()) + " IAM_ROLE " + sqlclient.Literal(data.IAMRoleARN.ValueString())
-	if _, err := r.query(ctx, sql, nil); err != nil {
+	statement, err := createIdentityProviderStatement(data)
+	if err == nil {
+		err = r.exec(ctx, r.database.ValueString(), statement)
+	}
+	if err != nil {
 		resp.Diagnostics.AddError("Create identity provider", err.Error())
 		return
 	}
 	data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	if !data.Enabled.ValueBool() {
-		if _, err := r.query(ctx, "ALTER IDENTITY PROVIDER "+sqlclient.Identifier(data.Name.ValueString())+" DISABLE", nil); err != nil {
+		if err := r.exec(ctx, r.database.ValueString(), identityProviderStatusStatement(data)); err != nil {
 			resp.Diagnostics.AddError("Disable identity provider", err.Error())
 			return
 		}
@@ -173,21 +172,12 @@ func (r *identityProviderResource) Update(ctx context.Context, req resource.Upda
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	prefix := "ALTER IDENTITY PROVIDER " + sqlclient.Identifier(data.Name.ValueString())
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update identity provider", err.Error())
 		return
 	}
-	if _, err := r.query(ctx, prefix+" IAM_ROLE "+sqlclient.Literal(data.IAMRoleARN.ValueString()), nil); err != nil {
-		resp.Diagnostics.AddError("Update identity provider role", err.Error())
-		return
-	}
-	operation := " DISABLE"
-	if data.Enabled.ValueBool() {
-		operation = " ENABLE"
-	}
-	if _, err := r.query(ctx, prefix+operation, nil); err != nil {
-		resp.Diagnostics.AddError("Update identity provider status", err.Error())
+	if err := r.exec(ctx, r.database.ValueString(), alterIdentityProviderStatements(data)...); err != nil {
+		resp.Diagnostics.AddError("Update identity provider", err.Error())
 		return
 	}
 	expected := data
@@ -223,7 +213,7 @@ func (r *identityProviderResource) Delete(ctx context.Context, req resource.Dele
 		resp.Diagnostics.AddError("Delete identity provider", "The identity binding changed; migrate it explicitly before deletion.")
 		return
 	}
-	users, err := r.query(ctx, "SELECT usename FROM pg_user WHERE LEFT(usename, LENGTH(:prefix)) = :prefix", map[string]string{"prefix": data.Namespace.ValueString() + ":"})
+	users, err := r.selectRows(ctx, r.database.ValueString(), readIdentityProviderUsersQuery(data))
 	if err != nil {
 		resp.Diagnostics.AddError("Inspect federated users", err.Error())
 		return
@@ -232,7 +222,7 @@ func (r *identityProviderResource) Delete(ctx context.Context, req resource.Dele
 		resp.Diagnostics.AddError("Delete identity provider", "Federated users still exist; migrate or remove them explicitly before deletion.")
 		return
 	}
-	if _, err := r.query(ctx, "DROP IDENTITY PROVIDER "+sqlclient.Identifier(data.Name.ValueString()), nil); err != nil {
+	if err := r.exec(ctx, r.database.ValueString(), dropIdentityProviderStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Delete identity provider", err.Error())
 		return
 	}

@@ -1,0 +1,1 @@
+CREATE USER "Odd""User" PASSWORD 'it''s \\secret' NOCREATEUSER NOCREATEDB;

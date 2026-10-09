@@ -1,0 +1,1 @@
+SHOW DATABASES LIKE 'it''s\\_DB';

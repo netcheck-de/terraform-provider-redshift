@@ -1,0 +1,1 @@
+CREATE IDENTITY PROVIDER "identity" TYPE AWSIDC NAMESPACE 'example' APPLICATION_ARN 'application' IAM_ROLE 'role-one';

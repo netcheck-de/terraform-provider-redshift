@@ -11,7 +11,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // externalSchemaResource manages a Redshift schema mapping to an existing Glue database.
@@ -70,9 +69,7 @@ func (r *externalSchemaResource) read(ctx context.Context, data *externalSchemaM
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
-	rows, err := r.queryDatabase(ctx, data.Database.ValueString(),
-		"SELECT schemaname, eskind, databasename, esoptions FROM svv_external_schemas WHERE schemaname = :name",
-		map[string]string{"name": data.Name.ValueString()})
+	rows, err := r.selectRows(ctx, data.Database.ValueString(), readExternalSchemaQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
@@ -116,11 +113,11 @@ func (r *externalSchemaResource) Create(ctx context.Context, req resource.Create
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	sql := "CREATE EXTERNAL SCHEMA " + sqlclient.Identifier(data.Name.ValueString()) + " FROM DATA CATALOG DATABASE " + sqlclient.Literal(data.GlueDatabase.ValueString()) + " IAM_ROLE " + sqlclient.Literal(data.IAMRoleARN.ValueString())
-	if data.Region.ValueString() != "" {
-		sql += " REGION " + sqlclient.Literal(data.Region.ValueString())
+	statement, err := createExternalSchemaStatement(data)
+	if err == nil {
+		err = r.exec(ctx, data.Database.ValueString(), statement)
 	}
-	if _, err := r.queryDatabase(ctx, data.Database.ValueString(), sql, nil); err != nil {
+	if err != nil {
 		resp.Diagnostics.AddError("Create external schema", err.Error())
 		return
 	}
@@ -186,7 +183,7 @@ func (r *externalSchemaResource) Delete(ctx context.Context, req resource.Delete
 	}
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
-		_, err = r.queryDatabase(ctx, data.Database.ValueString(), "DROP SCHEMA "+sqlclient.Identifier(data.Name.ValueString()), nil)
+		err = r.exec(ctx, data.Database.ValueString(), dropExternalSchemaStatement(data))
 		if err == nil {
 			found, err = r.read(ctx, &data)
 			if err == nil && found {

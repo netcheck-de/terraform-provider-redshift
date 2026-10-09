@@ -1,0 +1,1 @@
+-- error: invalid Redshift datashare ARN "arn:aws:s3:::bucket"

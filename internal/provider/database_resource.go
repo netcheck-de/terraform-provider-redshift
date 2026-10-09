@@ -130,9 +130,7 @@ func sharedDatabaseReplacement(ctx context.Context, req planmodifier.BoolRequest
 
 // databaseMetadata reads and decodes the same catalog-backed attributes for resources and lookups.
 func (r *resourceClient) databaseMetadata(ctx context.Context, name string) (databaseModel, bool, error) {
-	// SVV_REDSHIFT_DATABASES.database_options is VARCHAR(128) and truncates the
-	// producer JSON before its permissions flag. SHOW returns complete parameters.
-	rows, err := r.query(ctx, "SHOW DATABASES LIKE "+sqlclient.Literal(name), nil)
+	rows, err := r.query(ctx, readDatabaseStatement(name), nil)
 	matching := make([]sqlclient.Row, 0, 1)
 	for _, row := range rows {
 		// LIKE treats underscores/percent signs as wildcards; retain exact names.
@@ -218,7 +216,11 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 	if data.DatashareARN.IsNull() {
-		if _, err := r.query(ctx, "CREATE DATABASE "+sqlclient.Identifier(data.Name.ValueString()), nil); err != nil {
+		statement, err := createDatabaseStatement(data)
+		if err == nil {
+			err = r.exec(ctx, r.database.ValueString(), statement)
+		}
+		if err != nil {
 			resp.Diagnostics.AddError("Create database", err.Error())
 			return
 		}
@@ -246,9 +248,7 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	for {
-		rows, err := r.query(waitCtx,
-			"SELECT consumer_database FROM svv_datashares WHERE share_type = 'INBOUND' AND share_name = :share AND producer_account = :account AND producer_namespace = :namespace",
-			map[string]string{"share": source.Name, "account": source.Account, "namespace": source.Namespace})
+		rows, err := r.selectRows(waitCtx, r.database.ValueString(), readDatabaseInboundShareQuery(source))
 		if err != nil {
 			resp.Diagnostics.AddError("Discover associated datashare", err.Error())
 			return
@@ -267,12 +267,11 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 		case <-time.After(time.Second):
 		}
 	}
-	sql := "CREATE DATABASE " + sqlclient.Identifier(data.Name.ValueString())
-	if data.WithPermissions.ValueBool() {
-		sql += " WITH PERMISSIONS"
+	statement, err := createDatabaseStatement(data)
+	if err == nil {
+		err = r.exec(ctx, r.database.ValueString(), statement)
 	}
-	sql += " FROM DATASHARE " + sqlclient.Identifier(source.Name) + " OF ACCOUNT " + sqlclient.Literal(source.Account) + " NAMESPACE " + sqlclient.Literal(source.Namespace)
-	if _, err := r.query(ctx, sql, nil); err != nil {
+	if err != nil {
 		resp.Diagnostics.AddError("Create shared database", err.Error())
 		return
 	}
@@ -343,7 +342,7 @@ func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteReques
 	}
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
-		_, err = r.query(ctx, "DROP DATABASE "+sqlclient.Identifier(data.Name.ValueString()), nil)
+		err = r.exec(ctx, r.database.ValueString(), dropDatabaseStatement(data))
 		if err == nil {
 			found, err = r.read(ctx, &data)
 			if err == nil && found {

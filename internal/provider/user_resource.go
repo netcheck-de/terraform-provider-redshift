@@ -13,7 +13,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // userResource manages SQL user identity, capabilities, and write-only password rotation.
@@ -80,7 +79,7 @@ func (r *userResource) read(ctx context.Context, data *userModel) (bool, error) 
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
-	rows, err := r.query(ctx, "SELECT usename, usesuper, usecreatedb FROM pg_user WHERE usename = :name", map[string]string{"name": data.Name.ValueString()})
+	rows, err := r.selectRows(ctx, r.database.ValueString(), readUserQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
@@ -123,18 +122,11 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 		resp.Diagnostics.AddError("Create Redshift user", err.Error())
 		return
 	}
-	sql := "CREATE USER " + sqlclient.Identifier(data.Name.ValueString()) + " PASSWORD " + sqlclient.Literal(secret)
-	if data.Superuser.ValueBool() {
-		sql += " CREATEUSER"
-	} else {
-		sql += " NOCREATEUSER"
+	statement, err := createUserStatement(data, secret)
+	if err == nil {
+		err = r.exec(ctx, r.database.ValueString(), statement)
 	}
-	if data.CreateDB.ValueBool() {
-		sql += " CREATEDB"
-	} else {
-		sql += " NOCREATEDB"
-	}
-	if _, err := r.query(ctx, sql, nil); err != nil {
+	if err != nil {
 		resp.Diagnostics.AddError("Create Redshift user", err.Error())
 		return
 	}
@@ -189,36 +181,21 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		resp.Diagnostics.AddError("Update Redshift user", err.Error())
 		return
 	}
-	if !previous.PasswordVersion.IsNull() && !data.PasswordVersion.Equal(previous.PasswordVersion) {
-		var secret types.String
-		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("password_wo"), &secret)...)
-		if secret.IsNull() || secret.IsUnknown() || secret.ValueString() == "" {
-			resp.Diagnostics.AddError("Rotate Redshift password", "password_wo is required when password_wo_version changes.")
-			return
-		}
-		if _, err := r.query(ctx, "ALTER USER "+sqlclient.Identifier(data.Name.ValueString())+" PASSWORD "+sqlclient.Literal(secret.ValueString()), nil); err != nil {
-			resp.Diagnostics.AddError("Rotate Redshift password", err.Error())
-			return
-		}
+	// The plan never carries the write-only secret, so the rotation step reads it from configuration. An
+	// unreadable secret stays null, which alterUserStatements rejects only when a rotation needs it.
+	desired := data
+	var secret types.String
+	if diagnostics := req.Config.GetAttribute(ctx, path.Root("password_wo"), &secret); !diagnostics.HasError() {
+		desired.Password = secret
 	}
-	for _, change := range []struct {
-		before, after types.Bool
-		option        string
-	}{
-		{previous.Superuser, data.Superuser, "CREATEUSER"},
-		{previous.CreateDB, data.CreateDB, "CREATEDB"},
-	} {
-		if change.before.IsNull() || change.before.Equal(change.after) {
-			continue
-		}
-		option := change.option
-		if !change.after.ValueBool() {
-			option = "NO" + option
-		}
-		if _, err := r.query(ctx, "ALTER USER "+sqlclient.Identifier(data.Name.ValueString())+" "+option, nil); err != nil {
-			resp.Diagnostics.AddError("Update Redshift user", err.Error())
-			return
-		}
+	statements, err := alterUserStatements(previous, desired)
+	if err != nil {
+		resp.Diagnostics.AddError("Rotate Redshift password", err.Error()+".")
+		return
+	}
+	if err := r.exec(ctx, r.database.ValueString(), statements...); err != nil {
+		resp.Diagnostics.AddError("Update Redshift user", err.Error())
+		return
 	}
 	expectedSuperuser, expectedCreateDB := data.Superuser, data.CreateDB
 	found, err := r.read(ctx, &data)
@@ -242,7 +219,7 @@ func (r *userResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	}
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
-		_, err = r.query(ctx, "DROP USER "+sqlclient.Identifier(data.Name.ValueString()), nil)
+		err = r.exec(ctx, r.database.ValueString(), dropUserStatement(data))
 		if err == nil {
 			found, err = r.read(ctx, &data)
 			if err == nil && found {
