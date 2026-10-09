@@ -10,6 +10,12 @@ Manages an AWSIDC **SQL identity provider** in a Serverless warehouse. Create th
 integration IAM role, role attachment to the namespace, and group assignments with the AWS provider. See AWS
 [CREATE IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_IDENTITY_PROVIDER.html).
 
+```sql
+CREATE IDENTITY PROVIDER name ...;
+ALTER IDENTITY PROVIDER name ...;
+DROP IDENTITY PROVIDER name;
+```
+
 ## Example Usage
 
 ```terraform

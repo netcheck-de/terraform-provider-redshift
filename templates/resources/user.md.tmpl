@@ -9,6 +9,12 @@ description: Manages SQL users and write-only password rotation.
 Manages a password-authenticated database user. Role memberships and object privileges are independent resources. See
 AWS [CREATE USER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html).
 
+```sql
+CREATE USER name PASSWORD '...' ...;
+ALTER USER name ...;
+DROP USER name;
+```
+
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_user/resource.tf" }}

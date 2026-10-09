@@ -8,6 +8,10 @@ description: Looks up an existing AWSIDC SQL identity provider.
 
 Looks up an existing AWSIDC SQL identity provider.
 
+```sql
+SELECT ... FROM svv_identity_providers WHERE name = 'name';
+```
+
 ## Example Usage
 
 ```terraform

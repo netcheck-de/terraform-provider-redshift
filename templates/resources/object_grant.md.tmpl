@@ -9,6 +9,14 @@ description: Manages explicit privileges on one local database object for one SQ
 Owns the exact explicit privilege set for one local database object and one grantee. Tables and views use `TABLE`. See
 AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
 
+```sql
+GRANT privilege ON ... TO ...;
+REVOKE privilege ON ... FROM ...;
+```
+
+Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
+revokes the privileges it owns.
+
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_object_grant/resource.tf" }}

@@ -8,6 +8,10 @@ description: Looks up an existing outbound datashare.
 
 Looks up an existing outbound datashare in its producer database.
 
+```sql
+SELECT ... FROM svv_datashares WHERE share_name = 'name' ...;
+```
+
 ## Example Usage
 
 {{ tffile "examples/data-sources/redshift_datashare/data-source.tf" }}

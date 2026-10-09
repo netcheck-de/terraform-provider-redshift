@@ -9,6 +9,14 @@ description: Manages explicit default permissions for future objects created by 
 Owns default privileges for future objects created by one user in one local database, optionally restricted to a schema.
 See AWS [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
 
+```sql
+ALTER DEFAULT PRIVILEGES FOR USER owner ... GRANT ... TO ...;
+ALTER DEFAULT PRIVILEGES FOR USER owner ... REVOKE ... FROM ...;
+```
+
+Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
+revokes the privileges it owns.
+
 ## Example Usage
 
 ```terraform

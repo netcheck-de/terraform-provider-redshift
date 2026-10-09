@@ -9,6 +9,10 @@ description: Reads a local object's annotation without adopting or clearing it.
 Reads a local database, schema, table, view, or column annotation. See AWS
 [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
 
+```sql
+SELECT ... FROM pg_description ...;
+```
+
 ## Example Usage
 
 ```terraform

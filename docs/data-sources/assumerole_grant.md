@@ -9,6 +9,10 @@ description: Reads explicit IAM role command permissions for one SQL identity.
 Reads explicit IAM-role usage permissions. See AWS
 [GRANT ASSUMEROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-assumerole-permissions).
 
+```sql
+SELECT ... FROM svv_iam_privileges WHERE ...;
+```
+
 ## Example Usage
 
 ```terraform

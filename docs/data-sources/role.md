@@ -8,6 +8,10 @@ description: Looks up an existing SQL role.
 
 Looks up an existing database role without taking ownership of it.
 
+```sql
+SELECT ... FROM svv_roles WHERE role_name = 'name';
+```
+
 ## Example Usage
 
 ```terraform

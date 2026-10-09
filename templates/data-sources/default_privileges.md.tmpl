@@ -9,6 +9,10 @@ description: Reads explicit creator-specific default permissions for future obje
 Reads one explicit default-privilege tuple without changing permissions on current or future objects. See AWS
 [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
 
+```sql
+SELECT ... FROM svv_default_privileges WHERE owner_name = 'owner' ...;
+```
+
 ## Example Usage
 
 {{ tffile "examples/data-sources/redshift_default_privileges/data-source.tf" }}

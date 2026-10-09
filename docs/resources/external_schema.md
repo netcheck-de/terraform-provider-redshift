@@ -11,6 +11,11 @@ Manages a Redshift external schema backed by an AWS Glue Data Catalog database. 
 must already have an IAM role that can access Glue and the underlying data. See AWS
 [CREATE EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_SCHEMA.html).
 
+```sql
+CREATE EXTERNAL SCHEMA name FROM DATA CATALOG ...;
+DROP SCHEMA name;
+```
+
 ## Example Usage
 
 ```terraform

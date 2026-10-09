@@ -8,6 +8,10 @@ description: Looks up a local schema and its SQL owner.
 
 Looks up an existing local schema without managing it.
 
+```sql
+SELECT ... FROM pg_namespace WHERE nspname = 'name';
+```
+
 ## Example Usage
 
 ```terraform

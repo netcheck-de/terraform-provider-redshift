@@ -10,6 +10,14 @@ Manages the exact privilege set for **one role or datashare, database, and scope
 object-specific grants are independent. An empty `privileges` set revokes the privileges in this tuple. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
 
+```sql
+GRANT privilege ... TO ...;
+REVOKE privilege ... FROM ...;
+```
+
+Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
+revokes the privileges it owns.
+
 ## Example Usage
 
 ```terraform

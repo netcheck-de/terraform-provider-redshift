@@ -8,6 +8,10 @@ description: Looks up non-secret attributes of an existing SQL user.
 
 Looks up an existing database user without reading its password.
 
+```sql
+SELECT ... FROM pg_user WHERE usename = 'name';
+```
+
 ## Example Usage
 
 ```terraform

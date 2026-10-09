@@ -10,6 +10,10 @@ Checks SQL account- or namespace-level datashare usage. Specify exactly one of `
 This does not verify AWS authorization or consumer association. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax).
 
+```sql
+SELECT ... FROM svv_datashare_consumers WHERE share_name = 'datashare' ...;
+```
+
 ## Example Usage
 
 ```terraform
