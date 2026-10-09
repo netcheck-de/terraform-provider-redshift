@@ -30,6 +30,8 @@ type privilegeCatalog struct {
 	stuck bool
 	// admin supplies the catalog grant-option marker.
 	admin string
+	// options records privileges held with grant option, reported as admin_option = t.
+	options map[string]bool
 	// grantee identifies the row's SQL recipient.
 	grantee string
 	// kind identifies its user/role/group/public catalog type.
@@ -43,7 +45,11 @@ func (c *privilegeCatalog) Query(_ context.Context, _ sqlclient.Connection, sql 
 	if strings.HasPrefix(sql, "SHOW GRANTS") || strings.Contains(sql, " AS privilege_type") || strings.HasPrefix(sql, "SELECT privilege_type") {
 		rows := []sqlclient.Row{}
 		for value := range c.values {
-			rows = append(rows, sqlclient.Row{"privilege_type": value, "identity_name": c.grantee, "identity_type": c.kind, "privilege_scope": c.scope, "admin_option": c.admin})
+			admin := c.admin
+			if c.options[value] {
+				admin = "t"
+			}
+			rows = append(rows, sqlclient.Row{"privilege_type": value, "identity_name": c.grantee, "identity_type": c.kind, "privilege_scope": c.scope, "admin_option": admin})
 		}
 		return rows, nil
 	}
@@ -62,6 +68,7 @@ func (c *privilegeCatalog) Query(_ context.Context, _ sqlclient.Connection, sql 
 		verb = "REVOKE"
 	}
 	_, value, _ := strings.Cut(sql, verb+" ")
+	value, optionOnly := strings.CutPrefix(value, "GRANT OPTION FOR ")
 	if strings.HasPrefix(value, "ASSUMEROLE") {
 		_, value, _ = strings.Cut(value, " FOR ")
 	} else {
@@ -69,10 +76,20 @@ func (c *privilegeCatalog) Query(_ context.Context, _ sqlclient.Connection, sql 
 		value, _, _ = strings.Cut(value, " TO ")
 		value, _, _ = strings.Cut(value, " FROM ")
 	}
-	if verb == "GRANT" {
+	switch {
+	case verb == "GRANT":
 		c.values[value] = true
-	} else {
+		if strings.HasSuffix(sql, " WITH GRANT OPTION") {
+			if c.options == nil {
+				c.options = map[string]bool{}
+			}
+			c.options[value] = true
+		}
+	case optionOnly:
+		delete(c.options, value)
+	default:
 		delete(c.values, value)
+		delete(c.options, value)
 	}
 	return nil, nil
 }
@@ -86,6 +103,9 @@ func privilegeObject(t *testing.T, r *privilegeResource, fields map[string]strin
 	for name, attribute := range schema.Schema.Attributes {
 		attributeTypes[name] = attribute.GetType()
 		attributes[name] = types.StringNull()
+		if set, ok := attribute.GetType().(types.SetType); ok {
+			attributes[name] = types.SetValueMust(set.ElemType, nil)
+		}
 		if value, ok := fields[name]; ok {
 			attributes[name] = types.StringValue(value)
 		}

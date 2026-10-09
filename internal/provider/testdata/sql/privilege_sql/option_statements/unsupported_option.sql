@@ -1,0 +1,1 @@
+-- error: unsupported privilege: "SELECT; DROP TABLE x" is not one of DELETE, INSERT, SELECT, TRUNCATE, UPDATE

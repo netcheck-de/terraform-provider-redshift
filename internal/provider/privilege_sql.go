@@ -34,27 +34,79 @@ func (s grantSpec) statement(grant bool, privilege sqlclient.Keyword) string {
 	return s.prefix.Kw("REVOKE", privilege).Append(s.object).Kw("FROM").Append(s.grantee).String()
 }
 
+// optionStatement renders GRANT … WITH GRANT OPTION (grant = true) for a user that should pass privilege on, or
+// REVOKE GRANT OPTION FOR …, which removes only that right and keeps the privilege itself (r_GRANT, r_REVOKE).
+// Redshift reports dependent grants as an error instead of revoking them, because the statement never adds CASCADE.
+func (s grantSpec) optionStatement(grant bool, privilege sqlclient.Keyword) (string, error) {
+	if s.render != nil || s.option != "" {
+		return "", fmt.Errorf("grant options are not supported for this permission")
+	}
+	if grant {
+		return s.prefix.Kw("GRANT", privilege).Append(s.object).Kw("TO").Append(s.grantee).Kw("WITH GRANT OPTION").String(), nil
+	}
+	return s.prefix.Kw("REVOKE GRANT OPTION FOR", privilege).Append(s.object).Kw("FROM").Append(s.grantee).String(), nil
+}
+
 // privilegeStatements revokes current privileges that are not desired before granting desired ones that are missing,
 // so a failure part-way never leaves more access than either set. Each privilege is matched against allowed again
 // here, because it becomes unquoted SQL text.
 func privilegeStatements(spec grantSpec, allowed []sqlclient.Keyword, current, desired []string) ([]string, error) {
+	return privilegeOptionStatements(spec, allowed, privilegeSets{privileges: current}, privilegeSets{privileges: desired})
+}
+
+// privilegeSets is one side of a reconciliation: the explicit privileges and the subset held with grant option.
+type privilegeSets struct {
+	// privileges is the sorted explicit privilege set.
+	privileges []string
+	// options is the sorted subset of privileges the grantee may grant to others.
+	options []string
+}
+
+// privilegeOptionStatements reconciles privileges and grant options. Removals run first, then downgrades, then
+// plain grants, then upgrades, so a failure part-way never leaves more access or grant rights than either side.
+// A privilege that is removed loses its grant option with it, and a new privilege that should carry the option is
+// granted with it directly instead of being granted twice.
+func privilegeOptionStatements(spec grantSpec, allowed []sqlclient.Keyword, current, desired privilegeSets) ([]string, error) {
 	var statements []string
 	for _, step := range []struct {
-		grant    bool
-		from, to []string
-	}{{false, current, desired}, {true, desired, current}} {
+		grant, option bool
+		from, to      []string
+		skip          []string
+	}{
+		{grant: false, from: current.privileges, to: desired.privileges},
+		{grant: false, option: true, from: current.options, to: desired.options, skip: privilegesAbsent(desired.privileges, current.privileges)},
+		{grant: true, from: desired.privileges, to: current.privileges, skip: desired.options},
+		{grant: true, option: true, from: desired.options, to: current.options},
+	} {
 		for _, privilege := range step.from {
-			if slices.Contains(step.to, privilege) {
+			if slices.Contains(step.to, privilege) || slices.Contains(step.skip, privilege) {
 				continue
 			}
 			keyword, err := sqlclient.OneOf(privilege, allowed...)
 			if err != nil {
 				return nil, fmt.Errorf("unsupported privilege: %w", err)
 			}
-			statements = append(statements, spec.statement(step.grant, keyword))
+			statement := spec.statement(step.grant, keyword)
+			if step.option {
+				if statement, err = spec.optionStatement(step.grant, keyword); err != nil {
+					return nil, err
+				}
+			}
+			statements = append(statements, statement)
 		}
 	}
 	return statements, nil
+}
+
+// privilegesAbsent returns the values of from that are absent from in.
+func privilegesAbsent(in, from []string) []string {
+	var absent []string
+	for _, value := range from {
+		if !slices.Contains(in, value) {
+			absent = append(absent, value)
+		}
+	}
+	return absent
 }
 
 // privilegeAllowed reports whether name is exactly one of the allowlisted privilege keywords.

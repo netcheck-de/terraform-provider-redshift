@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -12,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -30,6 +33,12 @@ type privilegeResource struct {
 	fields []string
 	// prepare validates the tuple and supplies its catalog and mutation contract.
 	prepare func(types.Object) (privilegeTarget, error)
+	// grantOptions adds grant_option_privileges, so a user grantee can hold privileges WITH GRANT OPTION.
+	// Without it, catalog grant options are rejected as unmanaged, because REVOKE would silently drop them.
+	grantOptions bool
+	// recipient renders the grantee for contracts whose recipient is not a SQL identity, such as RLS POLICY "p";
+	// it replaces the grantee that prepare rendered, and such recipients never hold grant options.
+	recipient func(types.Object) (sqlclient.Statement, error)
 }
 
 // catalogCheck is a parameterized statement used for parent existence or permission reads.
@@ -79,14 +88,36 @@ func objectString(data types.Object, key string) string {
 
 // withPrivileges copies an object with a deterministic Terraform privilege set.
 func withPrivileges(data types.Object, privileges []string) types.Object {
+	return withPrivilegeSet(data, "privileges", privileges)
+}
+
+// withGrantOptions copies an object with a deterministic grant option set; types without grant options keep theirs.
+func withGrantOptions(data types.Object, options []string) types.Object {
+	if _, ok := data.Attributes()["grant_option_privileges"]; !ok {
+		return data
+	}
+	return withPrivilegeSet(data, "grant_option_privileges", options)
+}
+
+// withPrivilegeSet copies an object with key set to the sorted values.
+func withPrivilegeSet(data types.Object, key string, privileges []string) types.Object {
 	sort.Strings(privileges)
 	values := make([]attr.Value, 0, len(privileges))
 	for _, privilege := range privileges {
 		values = append(values, types.StringValue(privilege))
 	}
 	attributes := data.Attributes()
-	attributes["privileges"] = types.SetValueMust(types.StringType, values)
+	attributes[key] = types.SetValueMust(types.StringType, values)
 	return types.ObjectValueMust(data.AttributeTypes(context.Background()), attributes)
+}
+
+// grantOptionPrivileges returns the sorted grant option set, or nil for types without grant options.
+func grantOptionPrivileges(data types.Object) []string {
+	value, ok := data.Attributes()["grant_option_privileges"].(types.Set)
+	if !ok {
+		return nil
+	}
+	return knownStrings(value)
 }
 
 // Metadata identifies the concrete permission resource selected by its SQL contract.
@@ -96,7 +127,43 @@ func (r *privilegeResource) Metadata(_ context.Context, req resource.MetadataReq
 
 // Schema exposes this grant's identity fields and authoritative privilege set.
 func (r *privilegeResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	resp.Schema = schema.Schema{MarkdownDescription: "Owns the exact explicit privilege set for one permission tuple. Empty privileges revoke the owned grants.", Attributes: r.attributes}
+	description := "Owns the exact explicit privilege set for one permission tuple. Empty privileges revoke the owned grants."
+	attributes := r.attributes
+	if r.grantOptions {
+		description += " `grant_option_privileges` owns which of them a user grantee holds `WITH GRANT OPTION`."
+		attributes = maps.Clone(attributes)
+		attributes["grant_option_privileges"] = grantOptionAttribute()
+	}
+	resp.Schema = schema.Schema{MarkdownDescription: description, Attributes: attributes}
+}
+
+// grantOptionAttribute defines the grant option subset. It defaults to none, so options granted outside Terraform
+// are revoked instead of silently kept.
+func grantOptionAttribute() schema.SetAttribute {
+	return schema.SetAttribute{
+		Optional: true, Computed: true, ElementType: types.StringType,
+		Default:             setdefault.StaticValue(types.SetValueMust(types.StringType, nil)),
+		MarkdownDescription: "Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.",
+	}
+}
+
+// target prepares the tuple and applies the recipient override.
+func (r *privilegeResource) target(data types.Object) (privilegeTarget, error) {
+	target, err := r.prepare(data)
+	if err != nil || r.recipient == nil {
+		return target, err
+	}
+	grantee, err := r.recipient(data)
+	if err != nil {
+		return privilegeTarget{}, err
+	}
+	target.grant.grantee = grantee
+	return target, nil
+}
+
+// optionGrantee reports whether the tuple's recipient can hold grant options; Redshift grants them only to users.
+func (r *privilegeResource) optionGrantee(data types.Object) bool {
+	return r.recipient == nil && objectString(data, "grantee_type") == "USER"
 }
 
 // read verifies parents, normalizes explicit privileges, and rejects unmanaged grant options.
@@ -109,7 +176,7 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 	if err := r.bound(data.Attributes()["id"].(types.String), r.database.ValueString()); err != nil {
 		return privilegeTarget{}, false, err
 	}
-	target, err := r.prepare(*data)
+	target, err := r.target(*data)
 	if err != nil {
 		return target, false, err
 	}
@@ -126,12 +193,13 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 	if err != nil {
 		return target, false, err
 	}
-	privileges := map[string]bool{}
+	privileges, options := map[string]bool{}, map[string]bool{}
 	for _, row := range rows {
 		if target.filter != nil && !target.filter(row) {
 			continue
 		}
-		if managed && (row["admin_option"] == "true" || row["admin_option"] == "t") {
+		option := row["admin_option"] == "true" || row["admin_option"] == "t"
+		if managed && option && !r.grantOptions {
 			return target, false, fmt.Errorf("grant options are not managed; remove them explicitly before importing")
 		}
 		name := normalizePrivilege(row["privilege_type"])
@@ -139,12 +207,18 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 			return target, false, fmt.Errorf("unsupported catalog privilege %q", name)
 		}
 		privileges[name] = true
+		// Another grantor's plain grant can report the same privilege, so one row with the option is enough.
+		options[name] = options[name] || option
 	}
 	values := make([]string, 0, len(privileges))
+	var optionValues []string
 	for privilege := range privileges {
 		values = append(values, privilege)
+		if options[privilege] {
+			optionValues = append(optionValues, privilege)
+		}
 	}
-	*data = withPrivileges(*data, values)
+	*data = withGrantOptions(withPrivileges(*data, values), optionValues)
 	return target, true, nil
 }
 
@@ -170,13 +244,23 @@ func normalizePrivilege(name string) string {
 
 // validate checks the tuple and desired privileges without issuing SQL.
 func (r *privilegeResource) validate(data types.Object) error {
-	target, err := r.prepare(data)
+	target, err := r.target(data)
 	if err != nil {
 		return err
 	}
 	for _, value := range data.Attributes()["privileges"].(types.Set).Elements() {
 		if !privilegeAllowed(target.allowed, value.(types.String).ValueString()) {
 			return fmt.Errorf("unsupported privilege %q", value.(types.String).ValueString())
+		}
+	}
+	options := grantOptionPrivileges(data)
+	if len(options) != 0 && !r.optionGrantee(data) {
+		return fmt.Errorf("grant_option_privileges requires grantee_type USER; Redshift grants options only to users")
+	}
+	privileges := knownStrings(data.Attributes()["privileges"].(types.Set))
+	for _, option := range options {
+		if !slices.Contains(privileges, option) {
+			return fmt.Errorf("grant option privilege %q is not in privileges", option)
 		}
 	}
 	return nil
@@ -197,7 +281,10 @@ func (r *privilegeResource) reconcile(ctx context.Context, data types.Object) er
 	}
 	desired := data.Attributes()["privileges"].(types.Set)
 	current := actual.Attributes()["privileges"].(types.Set)
-	statements, err := privilegeStatements(target.grant, target.allowed, knownStrings(current), knownStrings(desired))
+	desiredOptions := grantOptionPrivileges(data)
+	statements, err := privilegeOptionStatements(target.grant, target.allowed,
+		privilegeSets{privileges: knownStrings(current), options: grantOptionPrivileges(actual)},
+		privilegeSets{privileges: knownStrings(desired), options: desiredOptions})
 	if err != nil {
 		return err
 	}
@@ -205,7 +292,7 @@ func (r *privilegeResource) reconcile(ctx context.Context, data types.Object) er
 		return err
 	}
 	_, found, err = r.read(ctx, &actual)
-	if err == nil && (!found || !actual.Attributes()["privileges"].Equal(desired)) {
+	if err == nil && (!found || !actual.Attributes()["privileges"].Equal(desired) || !slices.Equal(grantOptionPrivileges(actual), desiredOptions)) {
 		return fmt.Errorf("privileges did not converge")
 	}
 	return err
@@ -298,7 +385,7 @@ func (r *privilegeResource) Delete(ctx context.Context, req resource.DeleteReque
 	if !found {
 		return
 	}
-	if err := r.reconcile(ctx, withPrivileges(data, nil)); err != nil {
+	if err := r.reconcile(ctx, withGrantOptions(withPrivileges(data, nil), nil)); err != nil {
 		resp.Diagnostics.AddError("Delete "+r.name, err.Error())
 	}
 }
