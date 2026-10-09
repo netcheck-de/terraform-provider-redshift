@@ -7,6 +7,10 @@ vars:
   TF_DIR: '{{.ROOT_DIR}}/examples/complete'
 
 tasks:
+  # CI and local runs use the same golangci-lint release, pinned in .golangci-lint-version.
+  GOLANGCI_LINT_VERSION:
+    sh: cat .golangci-lint-version
+  GOLANGCI_LINT: '{{.ROOT_DIR}}/.cache/tools/golangci-lint/{{.GOLANGCI_LINT_VERSION}}/golangci-lint'
 
   # Checks
 
@@ -26,9 +30,26 @@ tasks:
       - gofmt -w .
 
   lint:
-    desc: Run golangci-lint
+    desc: Run the pinned golangci-lint release
+    deps: [golangci-lint:install]
     cmds:
-      - golangci-lint run ./...
+      - '"{{.GOLANGCI_LINT}}" run ./...'
+
+  lint-fix:
+    desc: Apply golangci-lint autofixes
+    deps: [golangci-lint:install]
+    cmds:
+      - '"{{.GOLANGCI_LINT}}" run --fix ./...'
+
+  golangci-lint:install:
+    internal: true
+    # The official installer, taken from the pinned release tag, verifies the archive checksum.
+    # The install path contains the version, so a version bump installs into a new directory.
+    status: ['test -x "{{.GOLANGCI_LINT}}"']
+    cmds:
+      - >-
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/{{.GOLANGCI_LINT_VERSION}}/install.sh
+        | sh -s -- -b "$(dirname "{{.GOLANGCI_LINT}}")" {{.GOLANGCI_LINT_VERSION}}
 
   test:
     desc: Run offline race tests and print statement coverage

@@ -8,7 +8,7 @@ resources. Follow its command-specific documentation and verify catalog and life
 
 ## Local checks
 
-Use Go matching `go.mod`, Terraform 1.14 or later, Task v3, and golangci-lint matching `.golangci-lint-version`. Run
+Use Go matching `go.mod`, Terraform 1.14 or later, Task v3, and `curl`; golangci-lint is fetched automatically. Run
 `task check` from the module root to check gofmt formatting, lint, `go vet`, and offline race tests with statement
 coverage printed to the terminal. Tests check that every resource and data source has a generated documentation
 page, a template, and examples. A golangci-lint `depguard` rule prevents resource code from importing concrete
@@ -92,9 +92,11 @@ markdownlint disable/enable comments for line length and inline anchors. The for
 aligns table columns and preserves existing prose line breaks. Markdownlint checks the 120-column prose limit
 separately.
 
-`.golangci-lint-version` pins the exact golangci-lint release installed by the action in CI and the release workflow.
-For local use, install the matching official release binary and put it on `PATH`. `task lint` runs that installed binary
-without installing or checking its version. When upgrading the version file, update your local installation too.
+`.golangci-lint-version` pins the exact golangci-lint release for CI (installed by the action) and local runs:
+`task lint` installs that release once into `.cache/tools/golangci-lint/<version>/` with the official installer from
+the same release tag, which verifies the checksum, and reuses it afterwards. `task lint-fix` applies autofixes. Bumping
+the version file upgrades both; choose a release built with a Go version at least as new as the `go` directive in
+`go.mod`.
 
 `task fmt` runs gofmt. `task lint` and `task check` enforce gofmt formatting and run govet through golangci-lint, as do
 CI and the release gate.
