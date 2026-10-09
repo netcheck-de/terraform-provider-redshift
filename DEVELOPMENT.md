@@ -15,8 +15,8 @@ page, a template, and examples. A golangci-lint `depguard` rule prevents resourc
 transports.
 [Live acceptance tests](README.md#acceptance-test) are opt-in.
 
-The Taskfile provides `fmt`, `markdown-fmt`, `markdown-fmt-check`, `lint`, `actionlint`, `test`, `check`, `docs`,
-`docs-check`, `build`, `terraform`, `terraform-check`, `terraform-test`, and `snapshot`. The Terraform runner defaults to
+The Taskfile provides `fmt`, `markdown-fmt`, `markdown-fmt-check`, `lint`, `actionlint`, `test`, `golden`, `check`,
+`docs`, `docs-check`, `build`, `terraform`, `terraform-check`, `terraform-test`, and `snapshot`. The Terraform runner defaults to
 `examples/complete`; override `TF_DIR` for another configuration. Cache and development overrides live in the ignored
 `.cache/` directory.
 
@@ -38,20 +38,69 @@ hand-roll `if ... { t.Errorf(...) }` comparisons. golangci-lint's `testifylint` 
 - Acceptance tests use `terraform-plugin-testing` with `resource.Test`, gated by `testAccPreCheck` / `testAccWorkgroup`
   in `acc_test.go`.
 
+## Adding resources and data sources
+
+The provider grows in parallel work blocks, so a new type adds files instead of editing shared ones.
+
+- **Registration.** Each type file registers itself with `var _ = registerResource(newX)` or
+  `var _ = registerDataSource(newX)` (`registry.go`); `provider.go` returns clones of the registry, and `main_test.go`
+  derives the expected counts from the generated `docs/` pages. The type's test files register its cross-cutting
+  cases next to the code they cover:
+  - `registerReplacementPolicy(type, rules)` declares, per attribute, whether a change never, always, or conditionally
+    replaces the object; `replacement_policy_test.go` checks the schema against it.
+  - `registerParity(parityCase{...})` pairs a lookup with its resource (or a collection lookup with its element shape);
+    a resource without a lookup registers an explicit exemption.
+  - `registerLifecycleCase(...)` adds the type to the lifecycle, retry, and transcript runs in `lifecycle_test.go`.
+  - `registerFakeFamily(...)` in `fake_<type>_test.go` teaches the stateful `catalog` fake the type's statements and
+    catalog reads; the fake consults registered families before its built-in cases.
+- **Renderers.** `<type>_sql.go` holds pure functions from the Terraform model to SQL: `create<X>Statement`,
+  `alter<X>Statements` (one statement per changed option, built from `alterStep`s in `alter.go`), `drop<X>Statement`,
+  and `read<X>Query`. Resource methods only call them and run the result through `resourceClient.exec` and
+  `selectRows`. Permission types reuse `privilegeResource` with a `prepare` function returning a `grantSpec`; set
+  `grantOptions` to add the `grant_option_privileges` subset for user grantees, and `recipient` for grantees that are
+  not SQL identities, such as `RLS POLICY`.
+- **Golden files.** `<type>_sql_test.go` pins every renderer with `checkSQL(t, group, cases)`, and lifecycle runs pin
+  the full SQL conversation with `runTranscripts`. Files live under `internal/provider/testdata/sql/<group>/<case>.sql`:
+  statements end with `;` and are separated by blank lines, `-- no statements` and `-- error: …` record empty and failed
+  renders, and transcripts add `-- database:` and `-- params:` lines. `task golden` rewrites them (refused when `CI` is
+  set) and removes stale files. Review each new file against the AWS command page, and justify every changed one.
+- **Statement builder.** `sqlclient.Stmt(verb)` and `Fragment()` build statements from quoted values (`Ident`,
+  `Qualified`, `Lit`, `Int`, `Bool`, `JSON`, `Body`) and trusted text. Every builder method returns a copy, so a shared
+  prefix can be extended per option. Text that is emitted unquoted is a `sqlclient.Keyword`: a constant, the result
+  of `OneOf` (an allowlist), `TypeName` (a validated, canonical Redshift type), or `Signature`, or a conversion annotated
+  `//sql:trusted` after review. Configured SQL such as view queries, defaults, and predicates is a `UserSQL` from
+  `CheckUserSQL` and enters a statement only through `Verbatim`. `trusted_sql_test.go` fails on unannotated
+  conversions. Catalog reads use `sqlclient.Select(...).From(...).Where(...)`, whose `Build` keeps `:name` bindings in
+  sync with the conditions and rejects empty values.
+- **Frozen files.** Blocks do not edit `provider.go`, `registry.go`, `resource.go`, `privilege_resource.go`,
+  `catalog_data_source.go`, the shared test files (`main_test.go`, `resource_test.go`, `golden_test.go`,
+  `transcript_test.go`, `lifecycle_test.go`, `fake_catalog_test.go`, `replacement_policy_test.go`,
+  `data_source_parity_test.go`, `documentation_contract_test.go`, `example_contract_test.go`,
+  `privilege_resource_test.go`), `examples/complete/tests/composition.tftest.hcl`, `examples/complete/outputs.tf`,
+  `templates/index.md.tmpl`, `README.md`, `TODO.md`, or `go.mod`. A block that needs a new hook reports it, and the hook
+  lands as a separate foundation change first.
+- **Examples.** A block adds its objects to `examples/complete/<block>.tf` (access control lives in
+  `access_users.tf`, `access_roles.tf`, and `access_grants.tf`), exposes each lookup in `outputs_<block>.tf`, and
+  asserts them in `tests/<block>.tftest.hcl`. `example_contract_test.go` requires every type in the example and every
+  lookup in an `outputs*.tf` file.
+
 ## Terraform example tests
 
-The complete example's configuration tests live in `examples/complete/tests/composition.tftest.hcl`. Run them from the
-provider root:
+The complete example's configuration tests live in `examples/complete/tests/`: `composition.tftest.hcl` covers the
+shared composition, and one `<block>.tftest.hcl` per work block holds that block's runs. Run them from the provider
+root:
 
 ```sh
 task terraform-test
 task terraform-test -- -filter=tests/composition.tftest.hcl -verbose
 ```
 
-The task builds the local provider, initializes `TF_DIR` without a backend, and runs `terraform test`. The suite mocks
+The task builds the local provider, initializes `TF_DIR` without a backend, and runs `terraform test`. The suites mock
 both AWS aliases, all eight Redshift aliases, and Random, so no AWS credentials or warehouse connectivity are needed.
-Five runs cover self-provisioning private defaults, ASSUMEROLE disabled, optional SSO, cross-account sharing,
-and all connection probes, including their policy and lookup output wiring.
+Mock values live in `tests/mocks/<provider>[_<alias>]/*.tfmock.hcl` and every suite references them with
+`mock_provider "<provider>" { source = "./tests/mocks/..." }`, because Terraform does not share mock providers between
+test files. Five composition runs cover self-provisioning private defaults, ASSUMEROLE disabled, optional SSO,
+cross-account sharing, and all connection probes, including their policy and lookup output wiring.
 
 Runs use mocked `apply` operations because Terraform defers dependent lookup reads until apply; deterministic overrides
 provide their output values. Terraform manages isolated test state and tears down the mocked objects. The assertions test

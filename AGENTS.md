@@ -6,7 +6,8 @@ through the Data API or a direct TLS connection.
 ## Layout
 
 - `internal/provider`: resources, data sources, provider config (`provider.go`, `connection*.go`).
-- `internal/sqlclient`: transport-neutral `Client` interface, `Identifier`/`Literal` quoting, mutation serialization.
+- `internal/sqlclient`: transport-neutral `Client` interface, statement and catalog query builders, mutation
+  serialization.
 - `internal/redshiftdata`, `internal/redshiftconn`: Data API and direct pgx transports.
 - `templates/`, `examples/{provider,resources,data-sources}`: sources for the generated `docs/`.
 - `examples/complete`: end-to-end example that uses every resource and data source; `tests/` holds mocked
@@ -24,7 +25,9 @@ through the Data API or a direct TLS connection.
 - Never edit `docs/` by hand. Change schema `MarkdownDescription`, `templates/`, or `examples/`, then run `task docs`.
 - Resource code talks to Redshift only through `sqlclient.Client`; depguard forbids importing transports or AWS
   service clients outside `provider.go` and `connection.go`.
-- Build SQL with `sqlclient.Identifier`/`Literal` or named `:param` bindings; never interpolate raw values.
+- Build statements with `sqlclient.Stmt`/`Fragment` and catalog reads with `sqlclient.Select(...).Build()`; never
+  concatenate SQL. Unquoted text is a `Keyword` (a constant, `OneOf`, `TypeName`, `Signature`, or a `//sql:trusted`
+  conversion); configured SQL is `UserSQL` from `CheckUserSQL`. `trusted_sql_test.go` enforces this.
 - Follow the AWS Redshift SQL reference for syntax and catalog behavior; catalog privilege names may differ from
   configuration names (see `normalizePrivilege`).
 - Validate a tuple before the first `State.Set` in Create, and expose the same check in `ValidateConfig`.
@@ -37,19 +40,27 @@ through the Data API or a direct TLS connection.
 
 - testify only: `require` for preconditions and errors, `assert` for independent checks.
 - Offline tests fake SQL with `queryFunc` (`resource_test.go`) or the `catalog` fake (`fake_catalog_test.go`).
+- Golden files under `testdata/sql/` pin all SQL (`checkSQL` for renderers, `runTranscripts` for lifecycle calls);
+  `task golden` rewrites them, and every changed file needs a reason.
 - Acceptance tests use `resource.Test`, gated by `testAccPreCheck`/`testAccWorkgroup` (`acc_test.go`) and `TF_ACC=1`.
 
 ## Adding a resource or data source
 
-1. Register it in `provider.go`, and update the type counts in `main_test.go`.
-2. Add cases to `replacement_policy_test.go`, `data_source_parity_test.go`, and, where the fake supports it,
-   `lifecycleCases` in `lifecycle_test.go`.
-3. Add `templates/<kind>/<name>.md.tmpl`, plus `examples/resources/redshift_<name>/{resource.tf,import.sh}` or
+New types only add files; the frozen shared files are listed in `DEVELOPMENT.md`, and a missing hook there is a
+separate foundation change.
+
+1. Register the type in its own file: `var _ = registerResource(newX)` or `registerDataSource(newX)`.
+2. Put pure renderers in `<type>_sql.go` (`create<X>Statement`, `alter<X>Statements` via `alterStep`,
+   `drop<X>Statement`, `read<X>Query`). Pin them in `<type>_sql_test.go` with `checkSQL` goldens under
+   `testdata/sql/<type>/`; record with `task golden` and check each file against the AWS page.
+3. In the type's tests, call `registerReplacementPolicy`, `registerParity` (or its exemption), and
+   `registerLifecycleCase`; teach the `catalog` fake with `registerFakeFamily` in `fake_<type>_test.go`.
+4. Add `templates/<kind>/<name>.md.tmpl`, plus `examples/resources/redshift_<name>/{resource.tf,import.sh}` or
    `examples/data-sources/redshift_<name>/data-source.tf`, then run `task docs`. The template opens with a ```sql block
    of simplified statements (statement kind, identifying names, `...` for options; data sources: the catalog source),
    as described in `DEVELOPMENT.md`.
-4. Use it in `examples/complete`, expose each data source in `outputs.tf`, and assert it in
-   `tests/composition.tftest.hcl`.
+5. In `examples/complete`, use it in the block's own `<block>.tf`, expose each data source in `outputs_<block>.tf`, and
+   assert it in `tests/<block>.tftest.hcl`, which declares the shared mocks from `tests/mocks/`.
 
 ## Changes and releases
 
