@@ -61,7 +61,7 @@ func TestSerializedMutationsAllowReadsAndCancelledWaiters(t *testing.T) {
 	}()
 	<-started
 	t.Cleanup(func() { close(release); <-done })
-	for _, sql := range []string{" SELECT name", "show grants"} {
+	for _, sql := range []string{" SELECT name", "show grants", "DESC DATASHARE sales", "desc identity provider oidc"} {
 		rows, err := client.Query(context.Background(), Connection{Database: "admin"}, sql, map[string]string{"name": "reader"})
 		require.NoError(t, err)
 		assert.Equal(t, []Row{{"name": "reader"}}, rows)

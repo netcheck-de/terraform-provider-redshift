@@ -70,6 +70,26 @@ func (r *resourceClient) queryDatabase(ctx context.Context, database, sql string
 	return r.client.Query(ctx, target, sql, parameters)
 }
 
+// exec runs DDL statements in order without parameters. It stops at the first failure because later
+// statements assume the earlier ones applied.
+func (r *resourceClient) exec(ctx context.Context, database string, statements ...string) error {
+	for _, statement := range statements {
+		if _, err := r.queryDatabase(ctx, database, statement, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// selectRows runs a catalog query in database after Build has checked its placeholders against its parameters.
+func (r *resourceClient) selectRows(ctx context.Context, database string, query sqlclient.Query) ([]sqlclient.Row, error) {
+	sql, parameters, err := query.Build()
+	if err != nil {
+		return nil, err
+	}
+	return r.queryDatabase(ctx, database, sql, parameters)
+}
+
 // localDatabaseExists distinguishes a dropped target database from query failures, so refresh can drop orphaned state.
 func (r *resourceClient) localDatabaseExists(ctx context.Context, database string) (bool, error) {
 	if database == r.database.ValueString() {

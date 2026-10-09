@@ -13,7 +13,7 @@ type serializedClient struct {
 	mutation chan struct{}
 }
 
-// SerializeMutations serializes writes while allowing SELECT and SHOW observations to run concurrently.
+// SerializeMutations serializes writes while allowing SELECT, SHOW and DESC observations to run concurrently.
 // Redshift catalog writes can conflict even when they target different grant tuples.
 // The gate covers statement completion, including Data API polling, without retrying mutations.
 func SerializeMutations(client Client) Client {
@@ -26,7 +26,7 @@ func (c *serializedClient) Query(ctx context.Context, target Connection, sql str
 		return nil, err
 	}
 	fields := strings.Fields(sql)
-	if len(fields) > 0 && (strings.EqualFold(fields[0], "SELECT") || strings.EqualFold(fields[0], "SHOW")) {
+	if len(fields) > 0 && (strings.EqualFold(fields[0], "SELECT") || strings.EqualFold(fields[0], "SHOW") || strings.EqualFold(fields[0], "DESC")) {
 		return c.client.Query(ctx, target, sql, parameters)
 	}
 	select {
