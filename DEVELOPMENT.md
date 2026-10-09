@@ -125,6 +125,11 @@ Registry pages in `docs/` are generated; do not edit them directly. Edit the tem
 in `examples/provider/`, `examples/resources/`, and `examples/data-sources/`, or the schema `MarkdownDescription`
 strings, then run `task docs` (or `go generate ./...`) to regenerate them with the pinned `tfplugindocs`.
 
+Every resource template opens with a short `sql` block listing the statements the resource issues for create, in-place
+updates, and delete; every data source template shows the catalog query its lookup runs. Use Terraform attribute names
+as placeholders, `[...]` for optional clauses, and `|` for alternatives, and update the block whenever the SQL builders
+change.
+
 `task docs-check` runs the `tfplugindocs` validator against the live provider schema, checking publication layout,
 resource/data-source coverage, front matter, and document size limits, and then regenerates the documentation into
 `.cache/docs-check` and fails if it differs from `docs/`, including added or missing pages. It is included in
