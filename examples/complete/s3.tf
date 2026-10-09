@@ -1,7 +1,3 @@
-locals {
-  fixture_bucket_name = "${local.name}-fixture"
-}
-
 # Owned disposable data needs no access-log bucket or retained versions; SSE-S3 uses an AWS-managed key.
 # trivy:ignore:AWS-0089
 # trivy:ignore:AWS-0090
@@ -27,6 +23,7 @@ module "fixture_bucket" {
 }
 
 locals {
+  fixture_bucket_name = "${local.name}-fixture"
   fixture_bucket_policy = jsonencode({
     Version = "2012-10-17"
     Statement = concat([

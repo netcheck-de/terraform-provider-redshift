@@ -15,8 +15,15 @@ import (
 
 // TestCompleteExampleCoversEverySQLType prevents resource or lookup additions from silently missing the full example.
 func TestCompleteExampleCoversEverySQLType(t *testing.T) {
-	configuration, err := os.ReadFile(filepath.Join("..", "..", "examples", "complete", "main.tf"))
+	files, err := filepath.Glob(filepath.Join("..", "..", "examples", "complete", "*.tf"))
 	require.NoError(t, err)
+	require.NotEmpty(t, files)
+	var configuration []byte
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		require.NoError(t, err)
+		configuration = append(configuration, content...)
+	}
 	outputs, err := os.ReadFile(filepath.Join("..", "..", "examples", "complete", "outputs.tf"))
 	require.NoError(t, err)
 	p := New("test")()

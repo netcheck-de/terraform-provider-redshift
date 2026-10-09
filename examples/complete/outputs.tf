@@ -69,6 +69,7 @@ output "catalog_checks" {
     iam_commands       = data.redshift_assumerole_grant.reader.privileges
     default_privileges = data.redshift_default_privileges.reader_tables.privileges
     schema_comment     = data.redshift_comment.local_schema.text
+    share_grants       = data.redshift_grant.share_schema.privileges
   }
 }
 
@@ -99,8 +100,8 @@ output "warehouses" {
       host             = aws_redshiftserverless_workgroup.consumer.endpoint[0].address
       port             = aws_redshiftserverless_workgroup.consumer.endpoint[0].port
       admin_database   = aws_redshiftserverless_namespace.consumer.db_name
-      admin_username   = nonsensitive(aws_redshiftserverless_namespace.consumer.admin_username)
-      admin_secret_arn = nonsensitive(aws_redshiftserverless_namespace.consumer.admin_password_secret_arn)
+      admin_username   = try(nonsensitive(aws_redshiftserverless_namespace.consumer.admin_username), aws_redshiftserverless_namespace.consumer.admin_username)
+      admin_secret_arn = try(nonsensitive(aws_redshiftserverless_namespace.consumer.admin_password_secret_arn), aws_redshiftserverless_namespace.consumer.admin_password_secret_arn)
       vpc_id           = module.consumer_vpc.vpc_id
     }
   }

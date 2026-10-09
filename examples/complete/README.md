@@ -5,9 +5,10 @@ and S3/Glue sample data, datasharing, users, groups, roles, grants, comments, an
 uses one AWS account, private endpoints, and managed administrator secrets with the Data API. No existing warehouse,
 VPC, source table, or Glue catalog is needed.
 
-All nineteen provider resource/data-source types are represented. Identity Center is optional: omitting its instance
-ARN skips the managed SSO application, directory groups/assignments, and SQL identity provider. The connection
-configurations are in `main.tf`, with optional read-only probes in `connections.tf`.
+All nineteen provider resource/data-source types are represented; `redshift_identity_provider` and its lookup are
+created only when Identity Center is enabled. Identity Center is optional: omitting its instance ARN skips the managed
+SSO application, directory groups/assignments, and SQL identity provider. The connection configurations are in
+`providers.tf`, with optional read-only probes in `connections.tf`.
 
 ## Architecture
 
@@ -24,15 +25,15 @@ configurations are in `main.tf`, with optional read-only probes in `connections.
        |                          |   |                          |
        | Encrypted RA3 cluster    |   | Serverless namespace /   |
        | - admin DB + secret ARN  |   | workgroup                |
-       | - owned source database |   | - admin DB + secret ARN  |
-       | - public.fixture rows   |   | - shared DB WITH         |
-       | - external schema       |   |   PERMISSIONS            |
-       | - outbound datashare    |===| - local DB + schema      |
-       |                          |   | - reader user + secret   |
-       | S3 gateway + Glue       |   | - roles / group / grants |
-       | interface endpoint      |   |                          |
-       +------------+-------------+   | S3 gateway + Glue       |
-                    |                 | interface endpoint      |
+       | - owned source database  |   | - admin DB + secret ARN  |
+       | - public.fixture rows    |   | - shared DB WITH         |
+       | - external schema        |   |   PERMISSIONS            |
+       | - outbound datashares    |===| - local DB, schema, view |
+       |                          |   | - reader/loader users    |
+       | S3 gateway + Glue        |   | - roles / group / grants |
+       | interface endpoint       |   |                          |
+       +------------+-------------+   | S3 gateway + Glue        |
+                    |                 | interface endpoint       |
                     | Spectrum        +------------+-------------+
                     v                              |
        +--------------------------+                | SELECT as reader
@@ -120,32 +121,45 @@ they are not a production security baseline.
 
 ## What is managed
 
-| File                 | Responsibility                                                                           |
-|----------------------|------------------------------------------------------------------------------------------|
-| `main.tf`            | Terraform requirements, all provider configurations, and shared naming/account settings. |
-| `vpc.tf`             | Two VPC modules, three subnets each, security groups, and private endpoint modules.      |
-| `redshift.tf`        | RA3 cluster and Serverless namespace/workgroup, TLS, IAM attachments, managed passwords. |
-| `iam.tf`             | Scoped warehouse IAM roles and fixture policies.                                         |
-| `databases.tf`       | Owned SQL databases, local schema, comments, and paired lookups.                         |
-| `datasharing.tf`     | Datashare membership, same-/cross-account sharing, shared database, and paired lookups.  |
-| `access_control.tf`  | SQL users, groups, roles, memberships, grants, default privileges, and paired lookups.   |
-| `s3.tf`              | Private fixture bucket module, TLS/cross-account policy, and CSV object.                 |
-| `spectrum.tf`        | Glue catalog resources/policy, SQL external schema, and its lookup.                      |
-| `secrets.tf`         | Reader credential secret module.                                                         |
-| `bootstrap.tf`       | Idempotent source-table initialization and optional PUBLIC ASSUMEROLE policy setup.      |
-| `verification.tf`    | Live shared-data and Spectrum queries.                                                   |
-| `identity_center.tf` | Optional SSO application, directory groups/assignments, SQL identity provider and roles. |
-| `connections.tf`     | Optional IAM/password connection probes for both warehouse types.                        |
-| `variables.tf`       | Deployment inputs and validation.                                                        |
-| `outputs.tf`         | Warehouse/fixture metadata, catalog observations, connection checks, query identities.   |
+| File                       | Responsibility                                                                           |
+|----------------------------|------------------------------------------------------------------------------------------|
+| `versions.tf`              | Terraform and provider version requirements.                                             |
+| `providers.tf`             | AWS, Random, and all eight Redshift provider configurations (every connection mode).     |
+| `main.tf`                  | Account lookups and shared naming/fixture locals.                                        |
+| `vpc.tf`                   | Two VPC modules, three subnets each, security groups, and private endpoint modules.      |
+| `redshift.tf`              | RA3 cluster and Serverless namespace/workgroup, TLS, IAM attachments, managed passwords. |
+| `iam.tf`                   | Scoped warehouse IAM roles and fixture policies.                                         |
+| `databases.tf`             | Owned SQL databases, local schema, comments, and paired lookups.                         |
+| `datasharing.tf`           | Datashare membership, same-/cross-account sharing, shared database, and paired lookups.  |
+| `access_control.tf`        | SQL users, groups, roles, memberships, grants, default privileges, and paired lookups.   |
+| `s3.tf`                    | Private fixture bucket module, TLS/cross-account policy, and CSV object.                 |
+| `spectrum.tf`              | Glue catalog resources/policy, SQL external schema, and its lookup.                      |
+| `secrets.tf`               | Reader credential secret module.                                                         |
+| `bootstrap.tf`             | Idempotent fixture tables/view and optional PUBLIC ASSUMEROLE policy setup.              |
+| `verification.tf`          | Live shared-data and Spectrum queries.                                                   |
+| `identity_center.tf`       | Optional SSO application, directory groups/assignments, SQL identity provider and roles. |
+| `connections.tf`           | Optional IAM/password connection probes for both warehouse types.                        |
+| `variables.tf`             | Deployment inputs and validation.                                                        |
+| `outputs.tf`               | Warehouse/fixture metadata, catalog observations, connection checks, query identities.   |
+| `tests/`                   | Mocked `terraform test` composition and input-validation runs (no AWS access needed).    |
+| `terraform.tfvars.example` | Every input with its default; copy to `terraform.tfvars` and adjust.                     |
+
+The example exercises each resource's documented variants where a single-account deployment allows it: all comment
+targets (database, schema, table, column, view), object grants to users, roles, groups, and PUBLIC, scoped grants for
+every scope including routines and datashare recipients, default privileges per schema and for routines, user capability
+flags, and every provider connection mode. Not covered by a live apply: `with_permissions = false` on a second consumer
+database, a direct-connection `ca_cert_file`, real cross-account sharing (mocked in `tests/`), and Identity Center
+without an existing instance.
 
 Administrator passwords are managed by AWS; only their secret ARNs are passed to the SQL provider and exported. The
-sample reader's `random_password` and secret version **do retain its password in Terraform state**, even though
-`redshift_user.password_wo` is write-only. Use protected state; password values are not exported by the example.
+sample reader's and loader's `random_password` values and the reader secret version **retain the passwords in Terraform
+state**, even though `redshift_user.password_wo` is write-only. Use protected state; password values are not exported
+by the example.
 
 ASSUMEROLE defaults to enabled. On the newly owned consumer warehouse, initialization revokes unrestricted
-`ASSUMEROLE ON ALL FROM PUBLIC FOR ALL` before granting COPY/UNLOAD to the reader role and the attached default IAM role.
-Set `enable_assumerole_grant = false` to omit both initialization and the managed command grant.
+`ASSUMEROLE ON ALL FROM PUBLIC FOR ALL` before granting COPY/UNLOAD to the reader role and the attached default IAM
+role, and COPY on the explicit consumer IAM role to the loader user. Set `enable_assumerole_grant = false` to omit both
+initialization and the managed command grants.
 
 ## Optional Identity Center
 

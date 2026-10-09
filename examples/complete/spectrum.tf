@@ -1,6 +1,4 @@
 locals {
-  fixture_table_name = "fixture"
-
   # Warehouse policies must precede the external schema and table, so they cannot reference the table resource.
   # Derive catalog/table ARNs from the database's ARN to retain its actual partition, region, and account.
   glue_catalog_arn = "${split(":database/", aws_glue_catalog_database.fixture.arn)[0]}:catalog"
@@ -14,6 +12,8 @@ resource "redshift_external_schema" "glue" {
   glue_database = aws_glue_catalog_database.fixture.name
   iam_role_arn  = aws_iam_role.producer.arn
   region        = var.region
+  # Bump to recreate the mapping after an incompatible Glue catalog change.
+  refresh_revision = "1"
 }
 
 data "redshift_external_schema" "glue" {

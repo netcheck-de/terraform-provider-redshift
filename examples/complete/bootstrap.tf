@@ -27,3 +27,23 @@ resource "aws_redshiftdata_statement" "assumerole_policy" {
   secret_arn     = aws_redshiftserverless_namespace.consumer.admin_password_secret_arn
   sql            = "REVOKE ASSUMEROLE ON ALL FROM PUBLIC FOR ALL"
 }
+
+# Consumer-local fixtures live in the owned database's public schema, so dropping the database removes them and the
+# managed example_schema stays empty for restrictive DROP SCHEMA.
+resource "aws_redshiftdata_statement" "local_table" {
+  provider       = aws.consumer
+  workgroup_name = aws_redshiftserverless_workgroup.consumer.workgroup_name
+  database       = redshift_database.local.name
+  secret_arn     = aws_redshiftserverless_namespace.consumer.admin_password_secret_arn
+  sql            = "CREATE TABLE IF NOT EXISTS public.${local.local_table_name} (id INTEGER, label VARCHAR(64))"
+}
+
+resource "aws_redshiftdata_statement" "local_view" {
+  provider       = aws.consumer
+  workgroup_name = aws_redshiftserverless_workgroup.consumer.workgroup_name
+  database       = redshift_database.local.name
+  secret_arn     = aws_redshiftserverless_namespace.consumer.admin_password_secret_arn
+  sql            = "CREATE OR REPLACE VIEW public.${local.local_view_name} AS SELECT id, label FROM public.${local.local_table_name}"
+
+  depends_on = [aws_redshiftdata_statement.local_table]
+}

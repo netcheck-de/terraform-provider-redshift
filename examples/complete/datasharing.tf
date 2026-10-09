@@ -4,9 +4,10 @@ locals {
 }
 
 resource "redshift_datashare" "producer" {
-  provider            = redshift.producer
-  database            = redshift_database.producer.name
-  name                = "example_share"
+  provider = redshift.producer
+  database = redshift_database.producer.name
+  name     = "example_share"
+  # A publicly accessible consumer workgroup can only consume shares that allow public access.
   publicly_accessible = var.allow_public_sql
 }
 
@@ -97,4 +98,35 @@ resource "redshift_database" "shared" {
 data "redshift_database" "shared" {
   provider = redshift.consumer
   name     = redshift_database.shared.name
+}
+
+# A second share receives schema permissions through scoped grants instead of explicit membership resources.
+# Grants and membership resources must not manage the same share/schema tuple, so this share stays separate.
+resource "redshift_datashare" "grants" {
+  provider = redshift.producer
+  database = redshift_database.producer.name
+  name     = "example_share_grants"
+}
+
+resource "redshift_grant" "share_schema" {
+  for_each = {
+    SCHEMA = ["USAGE"]
+    TABLES = ["SELECT"]
+  }
+  provider      = redshift.producer
+  database_name = redshift_datashare.grants.database
+  schema_name   = data.redshift_schema.source.name
+  datashare     = redshift_datashare.grants.name
+  scope         = each.key
+  privileges    = each.value
+
+  depends_on = [aws_redshiftdata_statement.source_table]
+}
+
+data "redshift_grant" "share_schema" {
+  provider      = redshift.producer
+  database_name = redshift_grant.share_schema["TABLES"].database_name
+  schema_name   = redshift_grant.share_schema["TABLES"].schema_name
+  datashare     = redshift_grant.share_schema["TABLES"].datashare
+  scope         = redshift_grant.share_schema["TABLES"].scope
 }

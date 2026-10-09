@@ -1,20 +1,37 @@
 # The defaults create both warehouses, private networks, and all non-SSO SQL/data fixtures in one account.
+# Every input is listed with its default; uncomment and adjust only what you need.
 region = "eu-central-1"
 # profile = "sandbox-admin"
 
+# Naming and sizing.
+# name_prefix         = "redshift-oss-e2e"
+# producer_vpc_cidr   = "10.42.0.0/16"
+# consumer_vpc_cidr   = "10.43.0.0/16"
+# cluster_node_type   = "ra3.xlplus"
+# serverless_capacity = 8
+# admin_username      = "tfadmin"
+# admin_database      = "dev"
+
+# Revoke PUBLIC ASSUMEROLE on the consumer and grant COPY/UNLOAD explicitly.
+# enable_assumerole_grant = true
+
 # Supply an existing instance ARN to enable the managed SSO application, groups, and SQL integration.
 # identity_center_instance_arn = "arn:aws:sso:::instance/ssoins-example"
+# identity_store_id            = null # Looked up from the instance when omitted.
 # identity_center_test_user_id = "existing-user-id"
 
 # Optional cross-account mode: distinct profiles create separate networks and warehouses in those accounts.
 # producer_profile = "producer-admin"
 # consumer_profile = "consumer-admin"
 
-# IAM Data API probes do not require TCP connectivity to the warehouse endpoints.
-# connection_checks = ["producer_data_api_iam", "consumer_data_api_iam"]
-
-# Direct probes require private connectivity or an explicit public SQL opt-in.
-# allow_public_sql = true
+# Direct probes require private connectivity or an explicit public SQL opt-in with restricted client CIDRs.
+# allow_public_sql = false
 # public_sql_cidrs = ["203.0.113.10/32"]
-# connection_checks = ["producer_direct_iam", "consumer_direct_iam"]
-# Direct password probes additionally use ephemeral TF_VAR_producer_password / TF_VAR_consumer_password.
+
+# Read-only connection probes. IAM Data API probes need no TCP connectivity; direct probes do, and direct password
+# probes additionally use ephemeral TF_VAR_producer_password / TF_VAR_consumer_password (never set them here).
+# connection_checks = [
+#   "producer_data_api_iam", "consumer_data_api_iam",
+#   "producer_direct_iam", "consumer_direct_iam",
+#   "producer_direct_password", "consumer_direct_password",
+# ]

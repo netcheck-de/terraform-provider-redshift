@@ -9,9 +9,10 @@ resource "redshift_role" "operators" {
   name     = "example_operators"
 }
 
+# sys:operator covers operational access without full DBA rights; CREATE ROLE is granted separately below.
 resource "redshift_role_grant" "operators" {
   provider = redshift.consumer
-  role     = "sys:dba"
+  role     = "sys:operator"
   to_role  = redshift_role.operators.name
 }
 
@@ -25,9 +26,28 @@ resource "random_password" "reader" {
 }
 
 resource "redshift_user" "reader" {
-  provider    = redshift.consumer
-  name        = "example_reader"
-  password_wo = random_password.reader.result
+  provider            = redshift.consumer
+  name                = "example_reader"
+  password_wo         = random_password.reader.result
+  password_wo_version = 1
+}
+
+# A loader identity exercises the user capability flags; its password is not exported.
+resource "random_password" "loader" {
+  length      = 24
+  special     = false
+  min_lower   = 1
+  min_upper   = 1
+  min_numeric = 1
+}
+
+resource "redshift_user" "loader" {
+  provider            = redshift.consumer
+  name                = "example_loader"
+  password_wo         = random_password.loader.result
+  password_wo_version = 1
+  superuser           = false
+  create_database     = true
 }
 
 resource "redshift_role_grant" "reader" {
@@ -60,13 +80,42 @@ resource "redshift_grant" "local_schema" {
 
 resource "redshift_group" "readers" {
   provider = redshift.consumer
-  name     = "example_readers"
+  name     = "example_reader_group"
 }
 
 resource "redshift_group_membership" "reader" {
   provider = redshift.consumer
   group    = redshift_group.readers.name
   user     = redshift_user.reader.name
+}
+
+# Scoped grants inside one schema. FUNCTIONS and PROCEDURES share one Redshift catalog scope, so each
+# role/schema tuple uses only one of them.
+resource "redshift_grant" "local_schema_tables" {
+  provider      = redshift.consumer
+  database_name = redshift_schema.local.database
+  schema_name   = redshift_schema.local.name
+  role          = redshift_role.readers.name
+  scope         = "TABLES"
+  privileges    = ["SELECT"]
+}
+
+resource "redshift_grant" "local_schema_functions" {
+  provider      = redshift.consumer
+  database_name = redshift_schema.local.database
+  schema_name   = redshift_schema.local.name
+  role          = redshift_role.readers.name
+  scope         = "FUNCTIONS"
+  privileges    = ["EXECUTE"]
+}
+
+resource "redshift_grant" "local_schema_procedures" {
+  provider      = redshift.consumer
+  database_name = redshift_schema.local.database
+  schema_name   = redshift_schema.local.name
+  role          = redshift_role.operators.name
+  scope         = "PROCEDURES"
+  privileges    = ["EXECUTE"]
 }
 
 resource "redshift_object_grant" "group_schema" {
@@ -76,6 +125,38 @@ resource "redshift_object_grant" "group_schema" {
   object_type   = "SCHEMA"
   grantee       = redshift_group.readers.name
   grantee_type  = "GROUP"
+  privileges    = ["USAGE"]
+}
+
+resource "redshift_object_grant" "loader_events" {
+  provider      = redshift.consumer
+  database_name = redshift_database.local.name
+  schema_name   = "public"
+  object_name   = local.local_table_name
+  object_type   = "TABLE"
+  grantee       = redshift_user.loader.name
+  grantee_type  = "USER"
+  privileges    = ["SELECT", "INSERT"]
+
+  depends_on = [aws_redshiftdata_statement.local_table]
+}
+
+resource "redshift_object_grant" "operators_database" {
+  provider      = redshift.consumer
+  database_name = redshift_database.local.name
+  object_type   = "DATABASE"
+  grantee       = redshift_role.operators.name
+  grantee_type  = "ROLE"
+  privileges    = ["TEMPORARY"]
+}
+
+resource "redshift_object_grant" "public_schema_usage" {
+  provider      = redshift.consumer
+  database_name = redshift_schema.local.database
+  schema_name   = redshift_schema.local.name
+  object_type   = "SCHEMA"
+  grantee       = "public"
+  grantee_type  = "PUBLIC"
   privileges    = ["USAGE"]
 }
 
@@ -104,6 +185,40 @@ resource "redshift_default_privileges" "reader_tables" {
   grantee       = redshift_group.readers.name
   grantee_type  = "GROUP"
   privileges    = ["SELECT"]
+}
+
+# An explicit IAM role ARN can be granted to a single user in addition to the role-wide default grant.
+resource "redshift_assumerole_grant" "loader" {
+  provider     = redshift.consumer
+  count        = var.enable_assumerole_grant ? 1 : 0
+  iam_role_arn = aws_iam_role.consumer.arn
+  grantee      = redshift_user.loader.name
+  grantee_type = "USER"
+  privileges   = ["COPY"]
+
+  depends_on = [aws_redshiftdata_statement.assumerole_policy]
+}
+
+resource "redshift_default_privileges" "reader_schema_tables" {
+  provider      = redshift.consumer
+  database_name = redshift_schema.local.database
+  schema_name   = redshift_schema.local.name
+  owner         = redshift_user.loader.name
+  object_type   = "TABLES"
+  grantee       = redshift_role.readers.name
+  grantee_type  = "ROLE"
+  privileges    = ["SELECT"]
+}
+
+resource "redshift_default_privileges" "operator_routines" {
+  for_each      = toset(["FUNCTIONS", "PROCEDURES"])
+  provider      = redshift.consumer
+  database_name = redshift_database.local.name
+  owner         = redshift_user.loader.name
+  object_type   = each.key
+  grantee       = redshift_role.operators.name
+  grantee_type  = "ROLE"
+  privileges    = ["EXECUTE"]
 }
 
 data "redshift_group" "readers" {

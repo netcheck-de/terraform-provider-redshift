@@ -230,7 +230,7 @@ run "private_same_account_defaults" {
     condition = (
       redshift_role.readers.name == "example_readers" && redshift_role.operators.name == "example_operators" &&
       redshift_role_grant.reader.role == redshift_role.readers.name && redshift_role_grant.reader.to_user == redshift_user.reader.name &&
-      redshift_role_grant.operators.role == "sys:dba" && redshift_role_grant.operators.to_role == redshift_role.operators.name &&
+      redshift_role_grant.operators.role == "sys:operator" && redshift_role_grant.operators.to_role == redshift_role.operators.name &&
       redshift_group_membership.reader.group == redshift_group.readers.name && redshift_group_membership.reader.user == redshift_user.reader.name &&
       redshift_object_grant.group_schema.grantee == redshift_group.readers.name && redshift_object_grant.group_schema.grantee_type == "GROUP" &&
       toset(keys(redshift_grant.shared_read)) == toset(["DATABASE", "SCHEMAS", "TABLES"]) &&
@@ -239,6 +239,40 @@ run "private_same_account_defaults" {
       alltrue([for scope, grant in redshift_grant.shared_read : grant.database_name == redshift_database.shared.name && grant.role == redshift_role.readers.name && grant.scope == scope])
     )
     error_message = "Ordinary reader/operator roles must wire users, groups, and least-privilege shared-database access without SSO."
+  }
+  assert {
+    condition = (
+      redshift_user.reader.password_wo_version == 1 &&
+      redshift_user.loader.create_database && !redshift_user.loader.superuser && redshift_user.loader.password_wo_version == 1 &&
+      redshift_system_grant.operators.privileges == toset(["CREATE ROLE"]) &&
+      redshift_grant.local_schema_tables.scope == "TABLES" && redshift_grant.local_schema_tables.schema_name == redshift_schema.local.name &&
+      redshift_grant.local_schema_functions.scope == "FUNCTIONS" && redshift_grant.local_schema_functions.role == redshift_role.readers.name &&
+      redshift_grant.local_schema_procedures.scope == "PROCEDURES" && redshift_grant.local_schema_procedures.role == redshift_role.operators.name &&
+      redshift_object_grant.loader_events.object_type == "TABLE" && redshift_object_grant.loader_events.object_name == local.local_table_name &&
+      redshift_object_grant.loader_events.grantee_type == "USER" && redshift_object_grant.loader_events.grantee == redshift_user.loader.name &&
+      redshift_object_grant.operators_database.object_type == "DATABASE" && redshift_object_grant.operators_database.grantee_type == "ROLE" &&
+      redshift_object_grant.public_schema_usage.grantee_type == "PUBLIC" && redshift_object_grant.public_schema_usage.grantee == "public" &&
+      redshift_default_privileges.reader_tables.grantee_type == "GROUP" &&
+      redshift_default_privileges.reader_schema_tables.schema_name == redshift_schema.local.name &&
+      redshift_default_privileges.reader_schema_tables.grantee_type == "ROLE" &&
+      toset(keys(redshift_default_privileges.operator_routines)) == toset(["FUNCTIONS", "PROCEDURES"]) &&
+      length(redshift_assumerole_grant.loader) == 1 && redshift_assumerole_grant.loader[0].iam_role_arn == aws_iam_role.consumer.arn &&
+      redshift_assumerole_grant.loader[0].grantee_type == "USER"
+    )
+    error_message = "User flags, scoped routine grants, object grants for every grantee type, and default privileges must be wired."
+  }
+  assert {
+    condition = (
+      toset([for comment in [redshift_comment.local_schema, redshift_comment.local_database, redshift_comment.local_table, redshift_comment.local_column, redshift_comment.local_view] : comment.object_type]) == toset(["SCHEMA", "DATABASE", "TABLE", "COLUMN", "VIEW"]) &&
+      redshift_comment.local_column.column_name == "label" && redshift_comment.local_view.object_name == local.local_view_name &&
+      aws_redshiftdata_statement.local_table.database == redshift_database.local.name &&
+      strcontains(aws_redshiftdata_statement.local_view.sql, "public.${local.local_table_name}") &&
+      redshift_external_schema.glue.region == var.region && redshift_external_schema.glue.refresh_revision == "1" &&
+      toset(keys(redshift_grant.share_schema)) == toset(["SCHEMA", "TABLES"]) &&
+      alltrue([for scope, grant in redshift_grant.share_schema : grant.datashare == redshift_datashare.grants.name && grant.role == null]) &&
+      redshift_grant.share_schema["TABLES"].privileges == toset(["SELECT"])
+    )
+    error_message = "Every comment target type, the external schema revision, and datashare-recipient grants must be wired."
   }
   assert {
     condition = (
@@ -419,11 +453,16 @@ run "all_connection_checks" {
     allow_public_sql  = true
     public_sql_cidrs  = ["203.0.113.10/32"]
   }
+  override_data {
+    target = data.redshift_datashare.producer
+    values = { publicly_accessible = true }
+  }
   assert {
     condition = (
       length(data.redshift_database.producer_data_api_iam) == 1 && length(data.redshift_database.consumer_data_api_iam) == 1 &&
       length(data.redshift_database.producer_direct_iam) == 1 && length(data.redshift_database.consumer_direct_iam) == 1 &&
       length(data.redshift_database.producer_direct_password) == 1 && length(data.redshift_database.consumer_direct_password) == 1 &&
+      redshift_datashare.producer.publicly_accessible && output.producer_share.publicly_accessible &&
       toset(keys(output.connection_checks)) == var.connection_checks &&
       alltrue([for name in values(output.connection_checks) : name == var.admin_database]) &&
       aws_redshift_cluster.producer.publicly_accessible && aws_redshiftserverless_workgroup.consumer.publicly_accessible &&
@@ -443,4 +482,49 @@ run "all_connection_checks" {
     )
     error_message = "All six optional read-only aliases must expose the created administration database when direct connectivity is opted in."
   }
+}
+
+# A plan-only run covers the initial plan without mocked applies.
+run "plan_defaults" {
+  command = plan
+  assert {
+    condition     = redshift_role_grant.operators.role == "sys:operator" && redshift_user.loader.create_database
+    error_message = "The default plan must include the least-privilege operator role and the loader identity."
+  }
+}
+
+run "rejects_unrestricted_public_cidr" {
+  command = plan
+  variables { public_sql_cidrs = ["0.0.0.0/0"] }
+  expect_failures = [var.public_sql_cidrs]
+}
+
+run "rejects_public_sql_without_cidrs" {
+  command = plan
+  variables { allow_public_sql = true }
+  expect_failures = [var.allow_public_sql]
+}
+
+run "rejects_reserved_admin_database" {
+  command = plan
+  variables { admin_database = "example_local" }
+  expect_failures = [var.admin_database]
+}
+
+run "rejects_unknown_connection_check" {
+  command = plan
+  variables { connection_checks = ["consumer_odbc"] }
+  expect_failures = [var.connection_checks]
+}
+
+run "rejects_invalid_identity_center_arn" {
+  command = plan
+  variables { identity_center_instance_arn = "arn:aws:sso:::application/invalid" }
+  expect_failures = [var.identity_center_instance_arn]
+}
+
+run "rejects_invalid_name_prefix" {
+  command = plan
+  variables { name_prefix = "Invalid_Prefix" }
+  expect_failures = [var.name_prefix]
 }
