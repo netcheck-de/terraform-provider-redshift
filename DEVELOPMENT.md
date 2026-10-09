@@ -164,12 +164,39 @@ Before the first signed release:
 2. [Create and configure the release signing key](#create-and-configure-the-release-signing-key), including the
    repository secrets and Terraform Registry public key.
 3. Connect/publish the provider repository in the Terraform Registry namespace.
-4. Align the intended version tag, example version constraints, and local Taskfile `VERSION`.
-5. Push a semantic version tag such as `v0.1.0`. Registry discovery requires the repository and signing-key setup above.
+4. Release `v0.2.0` as described in [Versioning and releases](#versioning-and-releases).
 
-Consumers can then declare `source = "netcheck-de/redshift"` and `version = "0.1.0"` in `required_providers` and
+Consumers can then declare `source = "netcheck-de/redshift"` and `version = "~> 0.2"` in `required_providers` and
 initialize Terraform normally. `task snapshot` uses GoReleaser v2 to build unsigned archives without publishing. Signed
 releases require the GPG key; local checks and snapshots do not require AWS credentials.
+
+### Versioning and releases
+
+The SemVer git tag `vMAJOR.MINOR.PATCH` is the only version source: GoReleaser builds the tagged commit with that
+version, and `Taskfile.yml` derives the local build version from the newest tag. Before 1.0, a minor release may break
+schemas or behavior and a patch release contains fixes and compatible additions. From 1.0, breaking changes need a
+major release with state upgraders or a documented migration.
+
+Release notes are generated from the commit subjects on `main`. Pull requests are squash-merged with the PR title as
+the commit subject, so PR titles must follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
+`type(scope): summary` with the types `feat`, `fix`, `docs`, `test`, `ci`, `chore`, `build`, `style`, `refactor`,
+`perf`, or `revert`. The scope is optional; `!` after the type or scope marks a breaking change. The "Semantic PR title"
+check (`pr.yml`) validates the title. In the repository settings, allow only squash merging with the pull request
+title as the default commit message, and require the "Semantic PR title" check in branch protection. GoReleaser groups
+the commits since the previous tag into breaking changes, features, fixes, documentation, and other changes, and
+leaves out `test`, `ci`, `chore`, `build`, `style`, and `refactor` commits. Docs and examples pin `~> MAJOR.MINOR` and
+change only when a new release series starts.
+
+To release:
+
+1. Confirm CI on `main` is green; optionally repeat the live `examples/complete` run.
+2. For a new series only, update the `~>` constraint in `README.md`, `examples/provider/provider.tf`, and
+   `examples/complete/versions.tf`, run `task docs` and `task check`, and commit it as `chore: prepare vX.Y.0`.
+3. Tag and push: `git tag -a vX.Y.Z -m "vX.Y.Z"` and `git push origin main vX.Y.Z`.
+4. `release.yml` rejects tags that are not `vX.Y.Z` or not on `main`; then it runs CI and publishes the signed release
+   with release notes generated from the commits since the previous tag. The Terraform Registry ingests the
+   release through its GitHub webhook; confirm the version appears there and that `terraform init` resolves it.
+5. Never move or reuse a published tag. Fix a broken release with a new patch version.
 
 ### Create and configure the release signing key
 
@@ -223,10 +250,10 @@ type. See HashiCorp's
    `GPG_FINGERPRINT`. No separate fingerprint secret is required.
 
 7. After publishing, download the release's checksum file and detached signature into the same directory and verify
-   them. For a `v0.1.0` release:
+   them. For a `v0.2.0` release:
 
    ```sh
-   gpg --verify terraform-provider-redshift_0.1.0_SHA256SUMS.sig terraform-provider-redshift_0.1.0_SHA256SUMS
+   gpg --verify terraform-provider-redshift_0.2.0_SHA256SUMS.sig terraform-provider-redshift_0.2.0_SHA256SUMS
    ```
 
    Confirm that GnuPG reports a good signature from the expected key. On another machine, import `signing-public.asc`

@@ -2,15 +2,17 @@
 version: '3'
 
 vars:
-  VERSION: '0.2.0'
+  # The newest release tag is the only version source; the fallback must satisfy the examples' "~> 0.2" constraint.
+  VERSION:
+    sh: git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//' | grep . || echo 0.2.0
   PACKAGE_DIR: '{{.ROOT_DIR}}/.cache/mirror/registry.terraform.io/netcheck-de/redshift/{{.VERSION}}/{{OS}}_{{ARCH}}'
   TF_DIR: '{{.ROOT_DIR}}/examples/complete'
-
-tasks:
   # CI and local runs use the same golangci-lint release, pinned in .golangci-lint-version.
   GOLANGCI_LINT_VERSION:
     sh: cat .golangci-lint-version
   GOLANGCI_LINT: '{{.ROOT_DIR}}/.cache/tools/golangci-lint/{{.GOLANGCI_LINT_VERSION}}/golangci-lint'
+
+tasks:
 
   # Checks
 

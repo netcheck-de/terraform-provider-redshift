@@ -48,3 +48,11 @@ through the Data API or a direct TLS connection.
    `examples/data-sources/redshift_<name>/data-source.tf`, then run `task docs`.
 4. Use it in `examples/complete`, expose each data source in `outputs.tf`, and assert it in
    `tests/composition.tftest.hcl`.
+
+## Changes and releases
+
+- PR titles (the squash-merge subject) must follow Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `ci:`,
+  `chore:`, …; `!` for breaking changes); use the same style for commits. They become the release notes, so describe
+  the user-visible effect.
+- Versions come only from `vX.Y.Z` tags; follow "Versioning and releases" in `DEVELOPMENT.md`. Never tag or push
+  unless asked.

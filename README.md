@@ -12,7 +12,7 @@ terraform {
   required_providers {
     redshift = {
       source  = "netcheck-de/redshift"
-      version = "0.2.0"
+      version = "~> 0.2"
     }
   }
 }
@@ -93,6 +93,16 @@ strict TLS and parameter/result handling. `TestAccTransportSwitchLifecycle` veri
 IAM, imports, updates, and cleanup. `TestAccDirectPasswordPrivileges` verifies a disposable non-superuser password
 identity can SELECT its fixture but cannot INSERT. Run each using
 `go test ./internal/provider -run '^<test-name>$' -count=1 -v`.
+
+## Known limitations
+
+- Unquoted database, schema, and table names are folded to lowercase by Redshift by default; use lowercase names for
+  these objects.
+- `redshift_database` with `with_permissions = false` and cross-account datashare grants have not been tested against
+  live warehouses yet.
+- On macOS, direct connections to Serverless endpoints fail certificate verification because those certificates lack
+  Certificate Transparency timestamps. Add the Amazon Trust Services root through `ca_cert_file`, use
+  `sslmode = "require"`, or connect through the Data API.
 
 ## License
 
