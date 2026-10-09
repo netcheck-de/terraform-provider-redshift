@@ -171,13 +171,7 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 		if managed && (row["admin_option"] == "true" || row["admin_option"] == "t") {
 			return target, false, fmt.Errorf("grant options are not managed; remove them explicitly before importing")
 		}
-		name := row["privilege_type"]
-		if name == "EXFUNC" {
-			name = "EXTERNAL FUNCTION"
-		}
-		if name == "TEMP" {
-			name = "TEMPORARY"
-		}
+		name := normalizePrivilege(row["privilege_type"])
 		if managed && !slices.Contains(target.allowed, name) {
 			return target, false, fmt.Errorf("unsupported catalog privilege %q", name)
 		}
@@ -191,8 +185,37 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 	return target, true, nil
 }
 
+// normalizePrivilege maps catalog privilege abbreviations to the names accepted in configuration.
+func normalizePrivilege(name string) string {
+	switch name {
+	case "EXFUNC":
+		return "EXTERNAL FUNCTION"
+	case "TEMP":
+		return "TEMPORARY"
+	default:
+		return name
+	}
+}
+
+// validate checks the tuple and desired privileges without issuing SQL.
+func (r *privilegeResource) validate(data types.Object) error {
+	target, err := r.prepare(data)
+	if err != nil {
+		return err
+	}
+	for _, value := range data.Attributes()["privileges"].(types.Set).Elements() {
+		if !slices.Contains(target.allowed, value.(types.String).ValueString()) {
+			return fmt.Errorf("unsupported privilege %q", value.(types.String).ValueString())
+		}
+	}
+	return nil
+}
+
 // reconcile applies privilege-set differences and verifies catalog convergence.
 func (r *privilegeResource) reconcile(ctx context.Context, data types.Object) error {
+	if err := r.validate(data); err != nil {
+		return err
+	}
 	actual := data
 	target, found, err := r.read(ctx, &actual)
 	if err != nil {
@@ -202,11 +225,6 @@ func (r *privilegeResource) reconcile(ctx context.Context, data types.Object) er
 		return fmt.Errorf("target object or identity does not exist")
 	}
 	desired := data.Attributes()["privileges"].(types.Set)
-	for _, value := range desired.Elements() {
-		if !slices.Contains(target.allowed, value.(types.String).ValueString()) {
-			return fmt.Errorf("unsupported privilege %q", value.(types.String).ValueString())
-		}
-	}
 	current := actual.Attributes()["privileges"].(types.Set)
 	connection, _ := r.connection(r.database.ValueString())
 	if target.database != "" {
@@ -243,6 +261,11 @@ func (r *privilegeResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	// Invalid tuples must fail before ownership is recorded, or Read and Delete could never succeed.
+	if err := r.validate(data); err != nil {
+		resp.Diagnostics.AddError("Create "+r.name, err.Error())
+		return
+	}
 	fields := map[string]string{}
 	for _, field := range r.fields {
 		if value := objectString(data, field); value != "" {
@@ -255,6 +278,18 @@ func (r *privilegeResource) Create(ctx context.Context, req resource.CreateReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 	if err := r.reconcile(ctx, data); err != nil {
 		resp.Diagnostics.AddError("Create "+r.name, err.Error())
+	}
+}
+
+// ValidateConfig reports invalid tuples and privileges during planning once the configuration is known.
+func (r *privilegeResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data types.Object
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+		return
+	}
+	if err := r.validate(data); err != nil {
+		resp.Diagnostics.AddError("Invalid "+r.name, err.Error())
 	}
 }
 

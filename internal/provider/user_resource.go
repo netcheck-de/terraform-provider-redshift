@@ -53,23 +53,23 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Database user name.",
+				Required: true, MarkdownDescription: "Database user name; changing it replaces the resource.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"password_wo": schema.StringAttribute{
-				Optional: true, WriteOnly: true, MarkdownDescription: "Password for creation or rotation; never stored in this provider's plan/state.",
+				Optional: true, WriteOnly: true, MarkdownDescription: "Write-only password (requires Terraform 1.11 or later); required on creation and rotation. Never stored in this resource's plan or state.",
 			},
 			"password_wo_version": schema.Int64Attribute{
 				Optional: true, Computed: true, Default: int64default.StaticInt64(0),
-				MarkdownDescription: "Increment to rotate password_wo. Imported users start at version 0 without changing their password.",
+				MarkdownDescription: "Password rotation trigger; defaults to `0`. Increment to rotate `password_wo`. Imported users start at version 0 without changing their password.",
 			},
 			"superuser": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(false),
-				MarkdownDescription: "CREATEUSER privilege; defaults to false.",
+				MarkdownDescription: "`CREATEUSER` privilege; defaults to `false`. Updated in place.",
 			},
 			"create_database": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(false),
-				MarkdownDescription: "CREATEDB privilege; defaults to false.",
+				MarkdownDescription: "`CREATEDB` privilege; defaults to `false`. Updated in place.",
 			},
 		},
 	}

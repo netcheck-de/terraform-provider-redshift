@@ -52,11 +52,11 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 		MarkdownDescription: "Manages one Glue Data Catalog external schema in a local Redshift database.",
 		Attributes: map[string]schema.Attribute{
 			"id":               idAttribute(),
-			"database":         schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Local Redshift database owning the external schema."},
-			"name":             schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Local external schema name."},
-			"glue_database":    schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "AWS Glue database referenced by the external schema."},
-			"iam_role_arn":     schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "IAM role attached to the Redshift namespace for Glue catalog access."},
-			"region":           schema.StringAttribute{Optional: true, Computed: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Glue catalog AWS region; defaults to the warehouse region and is read from the catalog."},
+			"database":         schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Local Redshift database owning the external schema; changing it replaces the resource."},
+			"name":             schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Local external schema name; changing it replaces the resource."},
+			"glue_database":    schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "AWS Glue database referenced by the external schema; changing it replaces the resource."},
+			"iam_role_arn":     schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "IAM role attached to the Redshift namespace for Glue catalog access; changing it replaces the resource."},
+			"region":           schema.StringAttribute{Optional: true, Computed: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Glue catalog AWS region; defaults to the warehouse region and is read from the catalog options. Changing it replaces the resource."},
 			"refresh_revision": schema.StringAttribute{Optional: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Bump to recreate the external schema after a Glue catalog change; deletion is restrictive."},
 		},
 	}
@@ -65,6 +65,9 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 // read verifies Glue schema kind and refreshes catalog/IAM settings.
 func (r *externalSchemaResource) read(ctx context.Context, data *externalSchemaModel) (bool, error) {
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
+		return false, err
+	}
+	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
 	rows, err := r.queryDatabase(ctx, data.Database.ValueString(),

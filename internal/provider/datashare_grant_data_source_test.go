@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -33,10 +34,12 @@ func TestDatashareGrantLookupRejectsAmbiguousConsumer(t *testing.T) {
 
 // TestDatashareGrantLookupUsesProducerIdentity checks local IDs independently of the provider database.
 func TestDatashareGrantLookupUsesProducerIdentity(t *testing.T) {
-	client := &catalog{shareGrant: true}
+	client := &catalog{shareGrant: true, localDB: true}
 	fields := map[string]string{"database": "analytics", "datashare": "producer", "account_id": "123456789012"}
 	exerciseCatalogLookup(t, newDatashareGrantDataSource, fields, map[string]attr.Value{"exists": types.BoolValue(true)}, queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
-		assert.Equal(t, "analytics", target.Database)
+		if !strings.Contains(sql, "svv_redshift_databases") {
+			assert.Equal(t, "analytics", target.Database)
+		}
 		return client.Query(ctx, target, sql, parameters)
 	}))
 }

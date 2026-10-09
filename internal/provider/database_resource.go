@@ -94,25 +94,38 @@ func (r *databaseResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 		MarkdownDescription: "Manages a local database or a consumer database bound to a producer datashare.",
 		Attributes: map[string]schema.Attribute{
 			"id":                 idAttribute(),
-			"database_type":      schema.StringAttribute{Computed: true, MarkdownDescription: "Local or shared database."},
+			"database_type":      schema.StringAttribute{Computed: true, MarkdownDescription: "`local` or `shared`."},
 			"share_name":         schema.StringAttribute{Computed: true, MarkdownDescription: "Producer share name; null for local databases."},
 			"producer_account":   schema.StringAttribute{Computed: true, MarkdownDescription: "Producer account ID; null for local databases."},
 			"producer_namespace": schema.StringAttribute{Computed: true, MarkdownDescription: "Producer namespace ID; null for local databases."},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Consumer database name.",
+				Required: true, MarkdownDescription: "Database name; changing it replaces the resource.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"datashare_arn": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database.",
+				Optional: true, MarkdownDescription: "Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database. Changing it replaces the resource.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"with_permissions": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(true),
-				MarkdownDescription: "Require object-level grants for a shared database; defaults to true. Ignored for local databases.",
-				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.RequiresReplace()},
+				MarkdownDescription: "Require object-level grants for a shared database; defaults to `true`. Changing it replaces a shared database (`datashare_arn` set); ignored for local databases.",
+				PlanModifiers: []planmodifier.Bool{boolplanmodifier.RequiresReplaceIf(
+					sharedDatabaseReplacement, "Replaces shared databases; ignored for local databases.", "Replaces shared databases; ignored for local databases.",
+				)},
 			},
 		},
 	}
+}
+
+// sharedDatabaseReplacement replaces only shared databases, because local databases ignore with_permissions.
+// A state whose datashare_arn cannot be read is treated as shared so replacement is never skipped silently.
+func sharedDatabaseReplacement(ctx context.Context, req planmodifier.BoolRequest, resp *boolplanmodifier.RequiresReplaceIfFuncResponse) {
+	var arn types.String
+	if diagnostics := req.State.GetAttribute(ctx, path.Root("datashare_arn"), &arn); diagnostics.HasError() {
+		resp.RequiresReplace = true
+		return
+	}
+	resp.RequiresReplace = !arn.IsNull()
 }
 
 // databaseMetadata reads and decodes the same catalog-backed attributes for resources and lookups.

@@ -32,7 +32,7 @@ func connectionProviderConfig(t *testing.T, p *redshiftProvider, data providerMo
 
 // TestConnectionSelectionAndIdentity preserves Serverless IDs while supporting cluster and endpoint bindings.
 func TestConnectionSelectionAndIdentity(t *testing.T) {
-	for _, mode := range []string{"workgroup", "cluster", "password", "serverless IAM", "cluster IAM", "unknown host", "unknown port", "new warehouse and secret"} {
+	for _, mode := range []string{"workgroup", "cluster", "password", "serverless IAM", "cluster IAM", "unknown host", "unknown port", "unknown username", "unknown password", "unknown IAM host", "unknown IAM port", "new warehouse and secret"} {
 		data := providerModel{Region: types.StringValue("eu-central-1"), Database: types.StringValue("admin")}
 		switch mode {
 		case "workgroup":
@@ -41,8 +41,14 @@ func TestConnectionSelectionAndIdentity(t *testing.T) {
 			data.Workgroup, data.SecretARN = types.StringUnknown(), types.StringUnknown()
 		case "cluster":
 			data.ClusterIdentifier, data.DBUser = types.StringValue("cluster"), types.StringValue("reader")
-		case "password", "unknown host", "unknown port":
+		case "password", "unknown host", "unknown port", "unknown username", "unknown password":
 			data = passwordProvider()
+			if mode == "unknown username" {
+				data.Connection.Username = types.StringUnknown()
+			}
+			if mode == "unknown password" {
+				data.Connection.Password = types.StringUnknown()
+			}
 			if mode == "unknown host" {
 				data.Connection.Host = types.StringUnknown()
 			}
@@ -51,12 +57,18 @@ func TestConnectionSelectionAndIdentity(t *testing.T) {
 			}
 		case "serverless IAM":
 			data.Connection = &directConnectionModel{IAM: &iamConnectionModel{Workgroup: types.StringValue("warehouse")}}
+		case "unknown IAM host":
+			data.Connection = &directConnectionModel{Host: types.StringUnknown(), IAM: &iamConnectionModel{Workgroup: types.StringValue("warehouse")}}
+		case "unknown IAM port":
+			data.Connection = &directConnectionModel{Port: types.Int64Unknown(), IAM: &iamConnectionModel{Workgroup: types.StringValue("warehouse")}}
 		case "cluster IAM":
 			data.Connection = &directConnectionModel{IAM: &iamConnectionModel{ClusterIdentifier: types.StringValue("cluster"), DBUser: types.StringValue("reader")}}
 		}
-		require.NoError(t, data.validate(data.SecretARN.IsUnknown()), mode)
+		require.NoError(t, data.validate(data.deferred()), mode)
 		binding := data.binding()
 		switch mode {
+		case "unknown username", "unknown password", "unknown IAM host", "unknown IAM port":
+			// The warehouse is known, but SQL must still wait for the deferred credentials or endpoint.
 		case "workgroup", "serverless IAM":
 			assert.Equal(t, "workgroup_name", binding.field)
 			assert.Equal(t, "warehouse", binding.value.ValueString())
@@ -80,7 +92,7 @@ func TestConnectionSelectionAndIdentity(t *testing.T) {
 		p.Configure(context.Background(), framework.ConfigureRequest{Config: config}, &resp)
 		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 		switch {
-		case data.SecretARN.IsUnknown():
+		case data.deferred():
 			assert.Nil(t, p.client)
 			assert.True(t, resp.ResourceData.(providerData).warehouse.value.IsUnknown())
 		case data.Connection != nil:
@@ -164,7 +176,7 @@ func TestConnectionValidationRejectsAmbiguousAuthentication(t *testing.T) {
 		assert.Equal(t, !deferred, validated.Diagnostics.HasError(), mode)
 		var configured framework.ConfigureResponse
 		p.Configure(context.Background(), framework.ConfigureRequest{Config: config}, &configured)
-		assert.Equal(t, mode != "unknown user" && mode != "unknown secret", configured.Diagnostics.HasError(), mode)
+		assert.Equal(t, mode != "unknown user" && mode != "unknown secret" && mode != "cluster IAM user unknown", configured.Diagnostics.HasError(), mode)
 	}
 }
 

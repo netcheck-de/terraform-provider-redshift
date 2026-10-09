@@ -1,6 +1,7 @@
 package redshiftconn
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -39,6 +40,9 @@ type connection interface {
 	Close(context.Context) error
 }
 
+// DefaultTimeout bounds a query when Client.Timeout is unset.
+const DefaultTimeout = 5 * time.Minute
+
 // Client opens and closes one TLS SQL session per query; it never retains a pool without a lifecycle close hook.
 type Client struct {
 	// Credentials supplies static routing/authentication, including optional IAM endpoint overrides.
@@ -47,7 +51,7 @@ type Client struct {
 	IAM CredentialProvider
 	// CACertFile augments system certificate trust with a PEM bundle.
 	CACertFile string
-	// Timeout bounds credential acquisition, connection establishment, and SQL execution.
+	// Timeout bounds credential acquisition, connection establishment, and SQL execution; zero selects DefaultTimeout.
 	Timeout time.Duration
 	// dial permits deterministic protocol/error testing without a real warehouse.
 	dial func(context.Context, *pgx.ConnConfig) (connection, error)
@@ -109,7 +113,7 @@ func (c *Client) configuration(ctx context.Context, database string) (*pgx.ConnC
 	config.Host, config.Port, config.User, config.Password, config.Database = credentials.Host, credentials.Port, credentials.Username, credentials.Password, database
 	config.Fallbacks = nil
 	config.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12, ServerName: credentials.Host}
-	config.ConnectTimeout = c.Timeout
+	config.ConnectTimeout = cmp.Or(c.Timeout, DefaultTimeout)
 	config.RuntimeParams = map[string]string{"client_encoding": "UTF8"}
 	// Exec uses safe wire-protocol parameter binding without prepared-statement caching or PostgreSQL-only startup flags.
 	config.DefaultQueryExecMode = pgx.QueryExecModeExec
@@ -132,7 +136,7 @@ func (c *Client) configuration(ctx context.Context, database string) (*pgx.ConnC
 
 // Query executes one autocommit statement with safe positional binding and closes the connection deterministically.
 func (c *Client) Query(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
+	ctx, cancel := context.WithTimeout(ctx, cmp.Or(c.Timeout, DefaultTimeout))
 	defer cancel()
 	statement, arguments, err := bindParameters(sql, parameters)
 	if err != nil {

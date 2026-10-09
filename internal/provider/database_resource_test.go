@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
@@ -274,4 +276,20 @@ func TestLocalDatabaseIgnoresPermissionMode(t *testing.T) {
 	_, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
 	assert.True(t, data.WithPermissions.ValueBool())
+}
+
+// TestWithPermissionsReplacesOnlySharedDatabases keeps local databases in place when the ignored argument changes.
+func TestWithPermissionsReplacesOnlySharedDatabases(t *testing.T) {
+	for name, arn := range map[string]types.String{"local": types.StringNull(), "shared": types.StringValue("arn:aws:redshift:eu-central-1:123456789012:datashare:11111111-2222-3333-4444-555555555555/source")} {
+		t.Run(name, func(t *testing.T) {
+			state := testState(t, newDatabaseResource(), &databaseModel{
+				ID: types.StringValue("{}"), Name: types.StringValue("analytics"), DatashareARN: arn, WithPermissions: types.BoolValue(true),
+				DatabaseType: types.StringNull(), ShareName: types.StringNull(), ProducerAccount: types.StringNull(), ProducerNamespace: types.StringNull(),
+			})
+			request := planmodifier.BoolRequest{State: state, StateValue: types.BoolValue(true), PlanValue: types.BoolValue(false), ConfigValue: types.BoolValue(false)}
+			var response boolplanmodifier.RequiresReplaceIfFuncResponse
+			sharedDatabaseReplacement(context.Background(), request, &response)
+			assert.Equal(t, !arn.IsNull(), response.RequiresReplace)
+		})
+	}
 }

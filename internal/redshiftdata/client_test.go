@@ -74,6 +74,8 @@ func TestQueryIAMAuthentication(t *testing.T) {
 
 // TestQueryPollingAndPagination checks polling, pagination, and scalar result normalization.
 func TestQueryPollingAndPagination(t *testing.T) {
+	// One statement result keeps the same columns on every page.
+	columns := []types.ColumnMetadata{{Name: aws.String("text")}, {Name: aws.String("enabled")}, {Name: aws.String("number")}}
 	polls := 0
 	s := &apiStub{
 		describe: func(context.Context) (*redshiftdata.DescribeStatementOutput, error) {
@@ -86,21 +88,21 @@ func TestQueryPollingAndPagination(t *testing.T) {
 		result: func(input *redshiftdata.GetStatementResultInput) (*redshiftdata.GetStatementResultOutput, error) {
 			if input.NextToken == nil {
 				return &redshiftdata.GetStatementResultOutput{
-					ColumnMetadata: []types.ColumnMetadata{{Name: aws.String("text")}, {Name: aws.String("enabled")}},
-					Records:        [][]types.Field{{&types.FieldMemberStringValue{Value: "value"}, &types.FieldMemberBooleanValue{Value: true}}},
+					ColumnMetadata: columns,
+					Records:        [][]types.Field{{&types.FieldMemberStringValue{Value: "value"}, &types.FieldMemberBooleanValue{Value: true}, &types.FieldMemberLongValue{Value: 2}}},
 					NextToken:      aws.String("next"),
 				}, nil
 			}
 			assert.Equal(t, "next", *input.NextToken)
 			return &redshiftdata.GetStatementResultOutput{
-				ColumnMetadata: []types.ColumnMetadata{{Name: aws.String("count")}, {Name: aws.String("number")}, {Name: aws.String("empty")}},
-				Records:        [][]types.Field{{&types.FieldMemberLongValue{Value: 2}, &types.FieldMemberDoubleValue{Value: 1.5}, &types.FieldMemberIsNull{Value: true}}},
+				ColumnMetadata: columns,
+				Records:        [][]types.Field{{&types.FieldMemberIsNull{Value: true}, &types.FieldMemberBooleanValue{Value: false}, &types.FieldMemberDoubleValue{Value: 1.5}}},
 			}, nil
 		},
 	}
 	client := Client{API: s, Timeout: time.Second, Poll: time.Millisecond}
 	rows, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT values", nil)
-	want := []sqlclient.Row{{"text": "value", "enabled": "true"}, {"count": "2", "number": "1.5", "empty": ""}}
+	want := []sqlclient.Row{{"text": "value", "enabled": "true", "number": "2"}, {"text": "", "enabled": "false", "number": "1.5"}}
 	require.NoError(t, err)
 	assert.Equal(t, want, rows)
 	assert.Equal(t, 2, polls)

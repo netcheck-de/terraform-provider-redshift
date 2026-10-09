@@ -61,6 +61,9 @@ func (r *datashareSchemaResource) read(ctx context.Context, data *datashareSchem
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, err
 	}
+	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
+		return false, err
+	}
 	rows, err := r.queryDatabase(ctx, data.Database.ValueString(),
 		"SELECT object_name, include_new FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND share_name = :share AND object_name = :schema AND object_type IN ('schema', 'schemas')",
 		map[string]string{"share": data.Datashare.ValueString(), "schema": data.Schema.ValueString()})

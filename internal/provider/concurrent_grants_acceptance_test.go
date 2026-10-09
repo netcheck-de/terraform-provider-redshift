@@ -17,9 +17,7 @@ import (
 // TestAccConcurrentSharedGrants exercises six independent scoped grants at Terraform's default parallelism.
 // Only uniquely named fixture roles and their grants are managed; the existing shared database is retained.
 func TestAccConcurrentSharedGrants(t *testing.T) {
-	if os.Getenv("TF_ACC") != "1" || os.Getenv("REDSHIFT_ACC_SHARED_DATABASE") == "" {
-		t.Skip("set TF_ACC=1 and REDSHIFT_ACC_SHARED_DATABASE for a consumer warehouse")
-	}
+	testAccPreCheck(t, "REDSHIFT_ACC_SHARED_DATABASE")
 	region, profile := os.Getenv("REDSHIFT_ACC_REGION"), os.Getenv("REDSHIFT_ACC_PROFILE")
 	workgroup, database := os.Getenv("REDSHIFT_ACC_WORKGROUP"), os.Getenv("REDSHIFT_ACC_DATABASE")
 	shared, secret := os.Getenv("REDSHIFT_ACC_SHARED_DATABASE"), os.Getenv("REDSHIFT_ACC_SECRET_ARN")

@@ -80,8 +80,8 @@ func (r *datashareGrantResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"id":           idAttribute(),
 			"database":     schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Local producer database owning the datashare."},
 			"datashare":    schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Datashare name."},
-			"account_id":   schema.StringAttribute{Optional: true, Validators: []validator.String{stringvalidator.ExactlyOneOf(path.MatchRoot("namespace_id")), stringvalidator.RegexMatches(datashareAccountPattern, "must contain exactly 12 digits")}, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Consumer AWS account ID. Specify exactly one of account_id and namespace_id."},
-			"namespace_id": schema.StringAttribute{Optional: true, Validators: []validator.String{stringvalidator.RegexMatches(datashareNamespacePattern, "must be a namespace UUID")}, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Consumer Redshift namespace UUID, not an ARN. Specify exactly one of account_id and namespace_id."},
+			"account_id":   schema.StringAttribute{Optional: true, Validators: []validator.String{stringvalidator.ExactlyOneOf(path.MatchRoot("namespace_id")), stringvalidator.RegexMatches(datashareAccountPattern, "must contain exactly 12 digits")}, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "12-digit consumer AWS account ID. Specify exactly one of `account_id` and `namespace_id`."},
+			"namespace_id": schema.StringAttribute{Optional: true, Validators: []validator.String{stringvalidator.RegexMatches(datashareNamespacePattern, "must be a namespace UUID")}, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Consumer Redshift namespace UUID, not an ARN. Specify exactly one of `account_id` and `namespace_id`."},
 		},
 	}
 }
@@ -93,6 +93,9 @@ func (r *datashareGrantResource) read(ctx context.Context, data datashareGrantMo
 		return false, err
 	}
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
+		return false, err
+	}
+	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
 	predicate := "consumer_account = :account AND NVL(consumer_namespace, '') = ''"

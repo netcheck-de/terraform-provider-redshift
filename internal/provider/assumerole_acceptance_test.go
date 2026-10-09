@@ -2,7 +2,6 @@ package provider
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -10,20 +9,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/stretchr/testify/require"
 )
 
 // TestAccAssumeroleGrantLifecycle requires a warehouse with ASSUMEROLE access control already enabled.
 func TestAccAssumeroleGrantLifecycle(t *testing.T) {
-	if os.Getenv("TF_ACC") != "1" || os.Getenv("REDSHIFT_ACC_ASSUMEROLE") != "1" {
-		t.Skip("set TF_ACC=1 and REDSHIFT_ACC_ASSUMEROLE=1 on a suitably configured test warehouse")
-	}
-	region, profile := os.Getenv("REDSHIFT_ACC_REGION"), os.Getenv("REDSHIFT_ACC_PROFILE")
-	workgroup, database := os.Getenv("REDSHIFT_ACC_WORKGROUP"), os.Getenv("REDSHIFT_ACC_DATABASE")
-	require.NotEmpty(t, region)
-	require.NotEmpty(t, profile)
-	require.NotEmpty(t, workgroup)
-	require.NotEmpty(t, database)
+	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_ASSUMEROLE")
 	name := "acc_iam_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(command string) string {
 		return fmt.Sprintf(`

@@ -40,7 +40,7 @@ func (d *userDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 		MarkdownDescription: "Looks up a database user without exposing its password.",
 		Attributes: map[string]schema.Attribute{
 			"id":              dataSourceIDAttribute(),
-			"name":            schema.StringAttribute{Required: true, MarkdownDescription: "Database user name."},
+			"name":            schema.StringAttribute{Required: true, MarkdownDescription: "Database user name; a missing user raises an error."},
 			"superuser":       schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether the user has CREATEUSER."},
 			"create_database": schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether the user has CREATEDB."},
 		},

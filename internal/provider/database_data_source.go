@@ -33,7 +33,7 @@ func (d *databaseDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 			"id":                 dataSourceIDAttribute(),
 			"name":               schema.StringAttribute{Required: true, MarkdownDescription: "Database name."},
 			"datashare_arn":      schema.StringAttribute{Computed: true, MarkdownDescription: "Backing producer datashare ARN; null for local databases. Shared lookups require redshift:DescribeDataSharesForConsumer."},
-			"database_type":      schema.StringAttribute{Computed: true, MarkdownDescription: "Local or shared."},
+			"database_type":      schema.StringAttribute{Computed: true, MarkdownDescription: "`local` or `shared`."},
 			"with_permissions":   schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether the shared database requires object grants."},
 			"share_name":         schema.StringAttribute{Computed: true, MarkdownDescription: "Producer share name; null for local databases."},
 			"producer_account":   schema.StringAttribute{Computed: true, MarkdownDescription: "Producer account ID; null for local databases."},

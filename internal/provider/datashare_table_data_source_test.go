@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -17,10 +18,12 @@ func TestDatashareTableLookup(t *testing.T) {
 
 // TestDatashareTableLookupUsesProducerIdentity checks local IDs independently of the provider database.
 func TestDatashareTableLookupUsesProducerIdentity(t *testing.T) {
-	client := &catalog{shareTable: true}
+	client := &catalog{shareTable: true, localDB: true}
 	fields := map[string]string{"database": "analytics", "datashare": "producer", "schema": "serving", "table": "table"}
 	exerciseCatalogLookup(t, newDatashareTableDataSource, fields, map[string]attr.Value{"exists": types.BoolValue(true)}, queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
-		assert.Equal(t, "analytics", target.Database)
+		if !strings.Contains(sql, "svv_redshift_databases") {
+			assert.Equal(t, "analytics", target.Database)
+		}
 		return client.Query(ctx, target, sql, parameters)
 	}))
 }

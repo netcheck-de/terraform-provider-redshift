@@ -80,13 +80,13 @@ func (p *redshiftProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages Redshift SQL objects through the Data API or a direct TLS SQL connection.",
 		Attributes: map[string]schema.Attribute{
-			"region":             schema.StringAttribute{Optional: true, MarkdownDescription: "AWS Region; defaults to the AWS SDK configuration."},
-			"profile":            schema.StringAttribute{Optional: true, MarkdownDescription: "AWS shared configuration profile; defaults to the AWS SDK credential chain."},
+			"region":             schema.StringAttribute{Optional: true, MarkdownDescription: "AWS Region; defaults to the AWS SDK configuration, such as the `AWS_REGION` environment variable."},
+			"profile":            schema.StringAttribute{Optional: true, MarkdownDescription: "AWS shared configuration profile; defaults to the `AWS_PROFILE` environment variable or the AWS SDK default credential chain."},
 			"workgroup_name":     schema.StringAttribute{Optional: true, MarkdownDescription: "Serverless Data API workgroup name or ARN; conflicts with cluster_identifier and direct_connection."},
 			"cluster_identifier": schema.StringAttribute{Optional: true, MarkdownDescription: "Provisioned Data API cluster identifier; conflicts with workgroup_name and direct_connection."},
 			"db_user":            schema.StringAttribute{Optional: true, MarkdownDescription: "Existing SQL user for cluster Data API authentication; conflicts with secret_arn."},
 			"secret_arn":         schema.StringAttribute{Optional: true, MarkdownDescription: "Data API Secrets Manager credentials; conflicts with db_user and direct_connection."},
-			"database":           schema.StringAttribute{Required: true, MarkdownDescription: "Local administration database for catalog queries."},
+			"database":           schema.StringAttribute{Required: true, MarkdownDescription: "Existing local administration database for catalog queries."},
 		},
 		Blocks: map[string]schema.Block{"direct_connection": connectionSchema()},
 	}
@@ -99,13 +99,13 @@ func (p *redshiftProvider) Configure(ctx context.Context, req provider.Configure
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	authenticationUnknown := data.DBUser.IsUnknown() || data.SecretARN.IsUnknown()
-	if err := data.validate(authenticationUnknown); err != nil {
+	deferred := data.deferred()
+	if err := data.validate(deferred); err != nil {
 		resp.Diagnostics.AddError("Invalid connection configuration", err.Error())
 		return
 	}
-	if authenticationUnknown {
-		// A managed administrator secret can be created alongside its warehouse.
+	if deferred {
+		// Credentials or endpoints can be created alongside their warehouse.
 		// Retain an unknown binding so no SQL can run with fallback credentials;
 		// Terraform reconfigures the provider with known credentials during apply.
 		p.client = nil

@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -21,15 +20,7 @@ import (
 
 // TestAccDatashareScopedGrants checks current/future objects, replacement, imports, drift, and cleanup in isolated state.
 func TestAccDatashareScopedGrants(t *testing.T) {
-	if os.Getenv("TF_ACC") != "1" {
-		t.Skip("set TF_ACC=1 with a disposable dev warehouse")
-	}
-	region, profile := os.Getenv("REDSHIFT_ACC_REGION"), os.Getenv("REDSHIFT_ACC_PROFILE")
-	workgroup, database := os.Getenv("REDSHIFT_ACC_WORKGROUP"), os.Getenv("REDSHIFT_ACC_DATABASE")
-	require.NotEmpty(t, region)
-	require.NotEmpty(t, profile)
-	require.NotEmpty(t, workgroup)
-	require.NotEmpty(t, database)
+	region, profile, workgroup, database := testAccWorkgroup(t)
 	name := "acc_scoped_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))

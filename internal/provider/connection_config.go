@@ -42,7 +42,7 @@ func connectionSchema() schema.SingleNestedBlock {
 		MarkdownDescription: "Direct TLS SQL connection. Use username/password or an IAM warehouse selector, never both.",
 		Attributes: map[string]schema.Attribute{
 			"host":         schema.StringAttribute{Optional: true, MarkdownDescription: "Endpoint hostname; required for password authentication, optional override for IAM."},
-			"port":         schema.Int64Attribute{Optional: true, MarkdownDescription: "Port 1–65535; default 5439 or the IAM-discovered endpoint port."},
+			"port":         schema.Int64Attribute{Optional: true, MarkdownDescription: "Port 1–65535; defaults to 5439 or the IAM-discovered endpoint port."},
 			"username":     schema.StringAttribute{Optional: true, MarkdownDescription: "Existing SQL user for password authentication."},
 			"password":     schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "SQL password; supports ephemeral input and is never part of resource state."},
 			"ca_cert_file": schema.StringAttribute{Optional: true, MarkdownDescription: "PEM CA bundle added to system trust. TLS certificate and hostname verification remain mandatory."},
@@ -135,6 +135,22 @@ func (data providerModel) validate(allowUnknown bool) error {
 		}
 	}
 	return nil
+}
+
+// deferred reports whether credentials or routing are unknown, so no SQL may run until apply reconfigures the provider.
+// Building a client from unknown values would silently substitute empty credentials or a discovered endpoint.
+func (data providerModel) deferred() bool {
+	if data.DBUser.IsUnknown() || data.SecretARN.IsUnknown() {
+		return true
+	}
+	connection := data.Connection
+	if connection == nil {
+		return false
+	}
+	if connection.Host.IsUnknown() || connection.Port.IsUnknown() || connection.Username.IsUnknown() || connection.Password.IsUnknown() {
+		return true
+	}
+	return connection.IAM != nil && connection.IAM.DBUser.IsUnknown()
 }
 
 // binding identifies the warehouse independently of transport while retaining legacy Serverless IDs verbatim.

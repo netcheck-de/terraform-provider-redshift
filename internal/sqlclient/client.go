@@ -30,6 +30,10 @@ func Identifier(value string) string {
 }
 
 // Literal quotes a Redshift SQL string literal.
+// Redshift treats backslashes in literals as escapes, so both backslashes and apostrophes are doubled.
 func Literal(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+	return "'" + literalEscaper.Replace(value) + "'"
 }
+
+// literalEscaper doubles the characters that would otherwise terminate or escape a literal.
+var literalEscaper = strings.NewReplacer(`\`, `\\`, "'", "''")

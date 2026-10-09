@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -68,7 +67,7 @@ func (data providerModel) sqlClient(ctx context.Context) (sqlclient.Client, erro
 	var direct *redshiftconn.Client
 	if data.Connection != nil {
 		connection := data.Connection
-		direct = &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: connection.Host.ValueString(), Username: connection.Username.ValueString(), Password: connection.Password.ValueString()}, CACertFile: connection.CACertFile.ValueString(), Timeout: 5 * time.Minute}
+		direct = &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: connection.Host.ValueString(), Username: connection.Username.ValueString(), Password: connection.Password.ValueString()}, CACertFile: connection.CACertFile.ValueString(), Timeout: redshiftconn.DefaultTimeout}
 		if !connection.Port.IsNull() && !connection.Port.IsUnknown() {
 			direct.Credentials.Port = uint16(connection.Port.ValueInt64())
 		}
@@ -95,5 +94,5 @@ func (data providerModel) sqlClient(ctx context.Context) (sqlclient.Client, erro
 		direct.IAM = &redshiftconn.IAM{Workgroup: iam.Workgroup.ValueString(), Cluster: iam.ClusterIdentifier.ValueString(), DBUser: iam.DBUser.ValueString(), Serverless: redshiftserverless.NewFromConfig(cfg), Provisioned: redshift.NewFromConfig(cfg)}
 		return direct, nil
 	}
-	return &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: data.Workgroup.ValueString(), Cluster: data.ClusterIdentifier.ValueString(), DBUser: data.DBUser.ValueString(), SecretARN: data.SecretARN.ValueString(), Timeout: 5 * time.Minute, Poll: time.Second}, nil
+	return &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: data.Workgroup.ValueString(), Cluster: data.ClusterIdentifier.ValueString(), DBUser: data.DBUser.ValueString(), SecretARN: data.SecretARN.ValueString(), Timeout: dataapi.DefaultTimeout, Poll: dataapi.DefaultPoll}, nil
 }

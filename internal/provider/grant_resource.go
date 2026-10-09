@@ -62,41 +62,68 @@ func (r *grantResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database_name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Database receiving scoped grants.",
+				Required: true, MarkdownDescription: "Local or shared database receiving scoped grants; changing it replaces the grant.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"schema_name": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Schema receiving SCHEMA, TABLES, FUNCTIONS, or PROCEDURES grants; omit for database-level scopes.",
+				Optional: true, MarkdownDescription: "Required for `SCHEMA`; optional for `TABLES`, `FUNCTIONS`, and `PROCEDURES` to limit the grant to one schema. Omit for `DATABASE` and `SCHEMAS`. Changing it replaces the grant.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"role": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Receiving Redshift role; configure exactly one of role or datashare.",
+				Optional: true, MarkdownDescription: "Receiving Redshift role; configure exactly one of `role` or `datashare`. Changing it replaces the grant.",
 				Validators:    []validator.String{stringvalidator.ExactlyOneOf(path.MatchRoot("role"), path.MatchRoot("datashare"))},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"datashare": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Producer datashare receiving SCHEMA USAGE or schema-scoped TABLES SELECT. Conflicts with role and datashare membership resources for the same tuple.",
+				Optional: true, MarkdownDescription: "Producer datashare receiving `SCHEMA` `USAGE` or schema-scoped `TABLES` `SELECT`; requires a local database and `schema_name`. Conflicts with `role` and with datashare membership resources for the same tuple. Changing it replaces the grant.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"scope": schema.StringAttribute{
-				Required: true, MarkdownDescription: "DATABASE, SCHEMAS, SCHEMA, TABLES, FUNCTIONS, or PROCEDURES.",
+				Required: true, MarkdownDescription: "`DATABASE`, `SCHEMAS`, `SCHEMA`, `TABLES`, `FUNCTIONS`, or `PROCEDURES`. `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope. Changing it replaces the grant.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.OneOf("DATABASE", "SCHEMAS", "SCHEMA", "TABLES", "FUNCTIONS", "PROCEDURES")},
 			},
 			"privileges": schema.SetAttribute{
 				Required: true, ElementType: types.StringType,
-				MarkdownDescription: "Desired uppercase SQL privileges. An empty set revokes all grants for this tuple.",
+				MarkdownDescription: "Desired uppercase SQL privileges; updated in place. An empty set revokes all grants for this tuple.",
 				Validators:          []validator.Set{setvalidator.ValueStringsAre(stringvalidator.OneOf(scopedPrivileges...))},
 			},
 		},
 	}
 }
 
+// validate checks scope, recipient, and datashare privilege rules without issuing SQL.
+func (data grantModel) validate() error {
+	schemaName, scope := data.SchemaName.ValueString(), data.Scope.ValueString()
+	if (scope == "SCHEMA" && schemaName == "") || (schemaName != "" && scope != "SCHEMA" && scope != "TABLES" && scope != "FUNCTIONS" && scope != "PROCEDURES") {
+		return fmt.Errorf("schema_name is required for SCHEMA and only valid with SCHEMA, TABLES, FUNCTIONS, or PROCEDURES scope")
+	}
+	if data.Datashare.ValueString() == "" {
+		if data.Role.ValueString() == "" {
+			return fmt.Errorf("configure exactly one nonempty role or datashare")
+		}
+		return nil
+	}
+	if data.Role.ValueString() != "" || schemaName == "" || (scope != "SCHEMA" && scope != "TABLES") {
+		return fmt.Errorf("datashare grants require a local database, schema_name, SCHEMA or TABLES scope, and no role")
+	}
+	privilege := "USAGE"
+	if scope == "TABLES" {
+		privilege = "SELECT"
+	}
+	for _, value := range data.Privileges.Elements() {
+		if value.(types.String).ValueString() != privilege {
+			return fmt.Errorf("datashare %s grants support only %s", scope, privilege)
+		}
+	}
+	return nil
+}
+
 // read refreshes explicit scoped privileges, routing local grants to their database and shared grants to admin.
 func (r *grantResource) read(ctx context.Context, data *grantModel) (sqlclient.Connection, bool, error) {
 	schemaName, scope := data.SchemaName.ValueString(), data.Scope.ValueString()
-	if (scope == "SCHEMA" && schemaName == "") || (schemaName != "" && scope != "SCHEMA" && scope != "TABLES" && scope != "FUNCTIONS" && scope != "PROCEDURES") {
-		return sqlclient.Connection{}, false, fmt.Errorf("schema_name is required for SCHEMA and only valid with SCHEMA, TABLES, FUNCTIONS, or PROCEDURES scope")
+	if err := data.validate(); err != nil {
+		return sqlclient.Connection{}, false, err
 	}
 	target, err := r.connection(r.database.ValueString())
 	if err != nil {
@@ -121,15 +148,13 @@ func (r *grantResource) read(ctx context.Context, data *grantModel) (sqlclient.C
 	parentQuery := "SELECT role_name FROM svv_roles WHERE role_name = :role"
 	parameters := map[string]string{"role": identity}
 	if data.Datashare.ValueString() != "" {
-		if identity != "" || rows[0]["database_type"] != "local" || schemaName == "" || (scope != "SCHEMA" && scope != "TABLES") {
+		if rows[0]["database_type"] != "local" {
 			return target, false, fmt.Errorf("datashare grants require a local database, schema_name, SCHEMA or TABLES scope, and no role")
 		}
 		identity = "ds:" + data.Datashare.ValueString()
 		query = "SHOW GRANTS ON SCHEMA " + sqlclient.Identifier(schemaName)
 		parentQuery = "SELECT share_name FROM svv_datashares WHERE share_type = 'OUTBOUND' AND share_name = :share"
 		parameters = map[string]string{"share": data.Datashare.ValueString()}
-	} else if identity == "" {
-		return target, false, fmt.Errorf("configure exactly one nonempty role or datashare")
 	}
 	parentTarget := target
 	if data.Datashare.ValueString() == "" {
@@ -138,6 +163,13 @@ func (r *grantResource) read(ctx context.Context, data *grantModel) (sqlclient.C
 	roles, err := r.client.Query(ctx, parentTarget, parentQuery, parameters)
 	if err != nil || len(roles) == 0 {
 		return target, false, err
+	}
+	if schemaName != "" && rows[0]["database_type"] == "local" {
+		// A schema dropped outside Terraform removes the grant instead of failing every refresh.
+		schemas, err := r.query(ctx, "SELECT schema_name FROM svv_all_schemas WHERE database_name = :database AND schema_name = :schema", map[string]string{"database": data.DatabaseName.ValueString(), "schema": schemaName})
+		if err != nil || len(schemas) == 0 {
+			return target, false, err
+		}
 	}
 	rows, err = r.client.Query(ctx, target, query, nil)
 	if err != nil {
@@ -151,7 +183,7 @@ func (r *grantResource) read(ctx context.Context, data *grantModel) (sqlclient.C
 		}
 		matchingScope := row["privilege_scope"] == scope || ((scope == "FUNCTIONS" || scope == "PROCEDURES") && (row["privilege_scope"] == "FUNCTIONS" || row["privilege_scope"] == "PROCEDURES"))
 		if row["identity_name"] == identity && row["database_name"] == data.DatabaseName.ValueString() && row["object_type"] == objectType && matchingScope && (schemaName == "" || row["schema_name"] == schemaName) {
-			privileges[row["privilege_type"]] = true
+			privileges[normalizePrivilege(row["privilege_type"])] = true
 		}
 	}
 	values := make([]string, 0, len(privileges))
@@ -191,15 +223,8 @@ func (r *grantResource) reconcile(ctx context.Context, data grantModel) error {
 	if data.Datashare.ValueString() != "" {
 		recipient = "DATASHARE " + sqlclient.Identifier(data.Datashare.ValueString())
 		object = "ON SCHEMA " + sqlclient.Identifier(data.SchemaName.ValueString())
-		privilege := "USAGE"
 		if data.Scope.ValueString() == "TABLES" {
 			object = "FOR TABLES IN SCHEMA " + sqlclient.Identifier(data.SchemaName.ValueString())
-			privilege = "SELECT"
-		}
-		for _, value := range data.Privileges.Elements() {
-			if value.(types.String).ValueString() != privilege {
-				return fmt.Errorf("datashare %s grants support only %s", data.Scope.ValueString(), privilege)
-			}
 		}
 	}
 	for _, privilege := range actual.Privileges.Elements() {
@@ -239,6 +264,11 @@ func (r *grantResource) Create(ctx context.Context, req resource.CreateRequest, 
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	// Invalid tuples must fail before ownership is recorded, or Read and Delete could never succeed.
+	if err := data.validate(); err != nil {
+		resp.Diagnostics.AddError("Create scoped grant", err.Error())
+		return
+	}
 	// Grants are idempotent; retain ownership even after a partially applied set.
 	fields := map[string]string{"database_name": data.DatabaseName.ValueString(), "role": data.Role.ValueString(), "scope": data.Scope.ValueString()}
 	if data.Datashare.ValueString() != "" {
@@ -252,6 +282,18 @@ func (r *grantResource) Create(ctx context.Context, req resource.CreateRequest, 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	if err := r.reconcile(ctx, data); err != nil {
 		resp.Diagnostics.AddError("Create scoped grant", err.Error())
+	}
+}
+
+// ValidateConfig reports invalid scope, recipient, and datashare combinations during planning.
+func (r *grantResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data grantModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+		return
+	}
+	if err := data.validate(); err != nil {
+		resp.Diagnostics.AddError("Invalid scoped grant", err.Error())
 	}
 }
 

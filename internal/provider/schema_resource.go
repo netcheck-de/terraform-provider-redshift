@@ -45,11 +45,11 @@ func (r *schemaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local database owning the schema.",
+				Required: true, MarkdownDescription: "Local database owning the schema; changing it replaces the resource.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Schema name.",
+				Required: true, MarkdownDescription: "Schema name; changing it replaces the resource.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"owner": schema.StringAttribute{Computed: true, MarkdownDescription: "Database user owning the schema."},
@@ -60,6 +60,9 @@ func (r *schemaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 // read refreshes the schema and its owner under the configured database binding.
 func (r *schemaResource) read(ctx context.Context, data *schemaModel) (bool, error) {
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
+		return false, err
+	}
+	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
 	rows, err := r.queryDatabase(ctx, data.Database.ValueString(),

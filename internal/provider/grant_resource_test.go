@@ -8,7 +8,9 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -117,6 +119,8 @@ func TestSchemaGrantsUseSchemaObjectAndScope(t *testing.T) {
 					return []dataapi.Row{{"database_type": "local"}}, nil
 				case strings.HasPrefix(sql, "SELECT role_name"):
 					return []dataapi.Row{{"role_name": "example:readers"}}, nil
+				case strings.HasPrefix(sql, "SELECT schema_name"):
+					return []dataapi.Row{{"schema_name": "serving"}}, nil
 				case strings.HasPrefix(sql, "SHOW GRANTS"):
 					assert.Equal(t, "analytics", target.Database)
 					if granted {
@@ -201,6 +205,8 @@ func TestDatashareScopedGrantLifecycle(t *testing.T) {
 				case strings.HasPrefix(sql, "SELECT share_name"):
 					assert.Equal(t, "analytics", target.Database)
 					return []dataapi.Row{{"share_name": "share"}}, nil
+				case strings.HasPrefix(sql, "SELECT schema_name"):
+					return []dataapi.Row{{"schema_name": "serving"}}, nil
 				case strings.HasPrefix(sql, "SHOW GRANTS"):
 					assert.Equal(t, `SHOW GRANTS ON SCHEMA "serving"`, sql)
 					rows := []dataapi.Row{{"database_name": "analytics", "schema_name": "serving", "object_type": "SCHEMA", "identity_name": "other", "privilege_scope": scope, "privilege_type": privilege}}
@@ -256,5 +262,74 @@ func TestDatashareScopedGrantRejectsInvalidTuples(t *testing.T) {
 			data.Datashare = types.StringNull()
 		}
 		require.Error(t, r.reconcile(context.Background(), data), mode)
+	}
+}
+
+// TestScopedGrantNormalizesTemporary maps the catalog's TEMP abbreviation to the configured TEMPORARY keyword.
+func TestScopedGrantNormalizesTemporary(t *testing.T) {
+	r := &grantResource{testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+		switch {
+		case strings.HasPrefix(sql, "SELECT database_type"):
+			return []dataapi.Row{{"database_type": "local"}}, nil
+		case strings.HasPrefix(sql, "SELECT role_name"):
+			return []dataapi.Row{{"role_name": "readers"}}, nil
+		default:
+			return []dataapi.Row{{"database_name": "analytics", "identity_name": "readers", "object_type": "DATABASE", "privilege_scope": "DATABASE", "privilege_type": "TEMP"}}, nil
+		}
+	}))}
+	data := grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("readers"), Scope: types.StringValue("DATABASE"), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("TEMPORARY")})}
+	require.NoError(t, r.reconcile(context.Background(), data))
+}
+
+// TestScopedGrantMissingSchemaIsNotFound removes grants whose schema was dropped outside Terraform.
+func TestScopedGrantMissingSchemaIsNotFound(t *testing.T) {
+	r := &grantResource{testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+		switch {
+		case strings.HasPrefix(sql, "SELECT database_type"):
+			return []dataapi.Row{{"database_type": "local"}}, nil
+		case strings.HasPrefix(sql, "SELECT role_name"):
+			return []dataapi.Row{{"role_name": "readers"}}, nil
+		case strings.HasPrefix(sql, "SELECT schema_name"):
+			return nil, nil
+		default:
+			return nil, fmt.Errorf("unexpected SQL %q", sql)
+		}
+	}))}
+	data := grantModel{DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Role: types.StringValue("readers"), Scope: types.StringValue("SCHEMA")}
+	_, found, err := r.read(context.Background(), &data)
+	require.NoError(t, err)
+	assert.False(t, found)
+}
+
+// TestScopedGrantCreateRejectsInvalidTupleBeforeState keeps invalid tuples out of state so they cannot block refresh.
+func TestScopedGrantCreateRejectsInvalidTupleBeforeState(t *testing.T) {
+	r := &grantResource{testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+		return nil, fmt.Errorf("unexpected SQL %q", sql)
+	}))}
+	data := grantModel{ID: types.StringNull(), DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Role: types.StringValue("readers"), Datashare: types.StringNull(), Scope: types.StringValue("DATABASE"), Privileges: types.SetValueMust(types.StringType, nil)}
+	plan := testState(t, r, data)
+	resp := resource.CreateResponse{State: tfsdk.State{Schema: plan.Schema, Raw: tftypes.NewValue(plan.Raw.Type(), nil)}}
+	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(plan)}, &resp)
+	require.True(t, resp.Diagnostics.HasError())
+	assert.True(t, resp.State.Raw.IsNull(), "invalid tuple must not be recorded in state")
+}
+
+// TestScopedGrantRejectsUnsupportedDatabases covers unknown bindings and database kinds outside the grant contract.
+func TestScopedGrantRejectsUnsupportedDatabases(t *testing.T) {
+	for name, databaseType := range map[string]string{"unbound": "", "shared datashare": "shared", "external": "external"} {
+		t.Run(name, func(t *testing.T) {
+			client := testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, _ string, _ map[string]string) ([]dataapi.Row, error) {
+				return []dataapi.Row{{"database_type": databaseType}}, nil
+			}))
+			if databaseType == "" {
+				client.warehouse.value = types.StringUnknown()
+			}
+			data := grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("readers"), Scope: types.StringValue("DATABASE")}
+			if databaseType == "shared" {
+				data = grantModel{DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Datashare: types.StringValue("share"), Scope: types.StringValue("SCHEMA")}
+			}
+			_, _, err := (&grantResource{client}).read(context.Background(), &data)
+			require.Error(t, err)
+		})
 	}
 }

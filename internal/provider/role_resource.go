@@ -40,7 +40,7 @@ func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Role name, including any identity namespace prefix.",
+				Required: true, MarkdownDescription: "Role name, including any identity namespace prefix; changing it replaces the resource.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 		},

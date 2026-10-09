@@ -36,7 +36,7 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 		MarkdownDescription: "Looks up an existing Redshift role.",
 		Attributes: map[string]schema.Attribute{
 			"id":   dataSourceIDAttribute(),
-			"name": schema.StringAttribute{Required: true, MarkdownDescription: "Role name."},
+			"name": schema.StringAttribute{Required: true, MarkdownDescription: "Role name; a missing role raises an error."},
 		},
 	}
 }

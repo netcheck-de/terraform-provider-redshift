@@ -2,7 +2,9 @@ package provider
 
 import (
 	"context"
+	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -33,6 +35,19 @@ func lookupValue(data *types.Object, name string, value attr.Value) {
 	*data = types.ObjectValueMust(data.AttributeTypes(context.Background()), attributes)
 }
 
+// replacementNote matches resource-only replacement wording that does not apply to lookups.
+var replacementNote = regexp.MustCompile(`(;\s*c|\s*C)hanging it replaces the \w+\.`)
+
+// lookupDescription removes replacement notes from a paired resource's attribute description.
+func lookupDescription(description string) string {
+	return replacementNote.ReplaceAllStringFunc(description, func(note string) string {
+		if strings.HasPrefix(note, ";") {
+			return "."
+		}
+		return ""
+	})
+}
+
 // newCatalogDataSource reuses a resource's identity schema while making observed values read-only.
 func newCatalogDataSource(name string, factory func() resource.Resource, computed []string, exists bool, lookup func(context.Context, *resourceClient, *types.Object) (bool, error)) datasource.DataSource {
 	var source resource.SchemaResponse
@@ -50,13 +65,13 @@ func newCatalogDataSource(name string, factory func() resource.Resource, compute
 		observed := attribute.IsComputed() || slices.Contains(computed, name)
 		switch attribute := attribute.(type) {
 		case resourceschema.StringAttribute:
-			value := schema.StringAttribute{Required: attribute.Required && !observed, Optional: attribute.Optional && !observed, Computed: observed, MarkdownDescription: attribute.MarkdownDescription}
+			value := schema.StringAttribute{Required: attribute.Required && !observed, Optional: attribute.Optional && !observed, Computed: observed, MarkdownDescription: lookupDescription(attribute.MarkdownDescription)}
 			if !observed {
 				value.Validators = attribute.Validators
 			}
 			attributes[name] = value
 		case resourceschema.BoolAttribute:
-			attributes[name] = schema.BoolAttribute{Computed: true, MarkdownDescription: attribute.MarkdownDescription}
+			attributes[name] = schema.BoolAttribute{Computed: true, MarkdownDescription: lookupDescription(attribute.MarkdownDescription)}
 		case resourceschema.SetAttribute:
 			attributes[name] = schema.SetAttribute{Computed: true, ElementType: attribute.ElementType, MarkdownDescription: "Current explicit privileges for the selected tuple; inherited privileges are excluded."}
 		}

@@ -2,9 +2,12 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
@@ -59,5 +62,27 @@ func TestExternalSchemaRejectsIncompatibleCatalog(t *testing.T) {
 		data := externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("example_external"), GlueDatabase: types.StringValue("glue"), IAMRoleARN: types.StringValue("role")}
 		_, err := r.read(context.Background(), &data)
 		require.Error(t, err)
+	}
+}
+
+// TestExternalSchemaCreationErrorsRetainKnownState keeps a known identity when readback fails after a successful CREATE.
+func TestExternalSchemaCreationErrorsRetainKnownState(t *testing.T) {
+	for _, unavailable := range []bool{false, true} {
+		for _, region := range []types.String{types.StringUnknown(), types.StringValue("eu-central-1")} {
+			t.Run(fmt.Sprintf("unavailable=%t/region=%s", unavailable, region), func(t *testing.T) {
+				r := &externalSchemaResource{creationOnlyClient(unavailable)}
+				state := testState(t, r, externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("raw"), GlueDatabase: types.StringValue("glue"), IAMRoleARN: types.StringValue("role"), Region: region})
+				resp := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
+				r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state)}, &resp)
+				require.True(t, resp.Diagnostics.HasError())
+				var observed externalSchemaModel
+				require.False(t, resp.State.Get(context.Background(), &observed).HasError())
+				assert.False(t, observed.ID.IsNull())
+				assert.True(t, resp.State.Raw.IsFullyKnown())
+				if !region.IsUnknown() {
+					assert.Equal(t, region, observed.Region)
+				}
+			})
+		}
 	}
 }

@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -16,23 +15,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // TestAccLocalSQLLifecycle creates only uniquely named objects on an existing test workgroup.
 func TestAccLocalSQLLifecycle(t *testing.T) {
-	if os.Getenv("TF_ACC") != "1" {
-		t.Skip("set TF_ACC=1 to run against a test Redshift workgroup")
-	}
-	region := os.Getenv("REDSHIFT_ACC_REGION")
-	profile := os.Getenv("REDSHIFT_ACC_PROFILE")
-	workgroup := os.Getenv("REDSHIFT_ACC_WORKGROUP")
-	database := os.Getenv("REDSHIFT_ACC_DATABASE")
-	require.NotEmpty(t, region)
-	require.NotEmpty(t, profile)
-	require.NotEmpty(t, workgroup)
-	require.NotEmpty(t, database)
+	region, profile, workgroup, database := testAccWorkgroup(t)
 
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	dbName, schemaName, roleName := "acc_db_"+suffix, "acc_schema_"+suffix, "acc_role_"+suffix
@@ -144,24 +132,21 @@ data "redshift_grant" "schema" {
 			"redshift": providerserver.NewProtocol6WithError(New("test")()),
 		},
 		CheckDestroy: func(*terraform.State) error {
-			rows, err := client.Query(ctx, connection, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": dbName})
-			if err != nil {
-				return err
+			for _, check := range []struct{ sql, name string }{
+				{"SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", dbName},
+				{"SELECT role_name FROM svv_roles WHERE role_name = :name", roleName},
+				{"SELECT groname FROM pg_group WHERE groname = :name", groupName},
+				{"SELECT usename FROM pg_user WHERE usename = :name", userName},
+			} {
+				rows, err := client.Query(ctx, connection, check.sql, map[string]string{"name": check.name})
+				if err != nil {
+					return err
+				}
+				if len(rows) != 0 {
+					return fmt.Errorf("%s still exists after destroy", check.name)
+				}
 			}
-			assert.Empty(t, rows)
-			rows, err = client.Query(ctx, connection, "SELECT role_name FROM svv_roles WHERE role_name = :role", map[string]string{"role": roleName})
-			assert.Empty(t, rows)
-			if err != nil {
-				return err
-			}
-			rows, err = client.Query(ctx, connection, "SELECT groname FROM pg_group WHERE groname = :name", map[string]string{"name": groupName})
-			assert.Empty(t, rows)
-			if err != nil {
-				return err
-			}
-			rows, err = client.Query(ctx, connection, "SELECT usename FROM pg_user WHERE usename = :name", map[string]string{"name": userName})
-			assert.Empty(t, rows)
-			return err
+			return nil
 		},
 		Steps: []resource.TestStep{
 			{Config: configSQL(`["USAGE"]`), Check: resource.ComposeTestCheckFunc(

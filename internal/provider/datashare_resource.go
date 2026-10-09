@@ -48,16 +48,16 @@ func (r *datashareResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local producer database owning the datashare.",
+				Required: true, MarkdownDescription: "Local producer database owning the datashare; changing it replaces the resource.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Datashare name, unique within the producer namespace.",
+				Required: true, MarkdownDescription: "Datashare name, unique within the producer namespace; changing it replaces the resource.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"publicly_accessible": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(false),
-				MarkdownDescription: "Whether public workgroups may consume the share; defaults to false.",
+				MarkdownDescription: "Whether public workgroups may consume the share; defaults to `false`. Updated in place.",
 			},
 		},
 	}
@@ -70,6 +70,9 @@ func (r *datashareResource) read(ctx context.Context, data *datashareModel) (boo
 		return false, err
 	}
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
+		return false, err
+	}
+	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
 	rows, err := r.queryDatabase(ctx, data.Database.ValueString(),

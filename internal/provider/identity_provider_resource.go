@@ -52,23 +52,23 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "SQL identity provider name.",
+				Required: true, MarkdownDescription: "SQL identity provider name; changing it replaces the resource.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"namespace": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Stable prefix for federated users and group roles.",
+				Required: true, MarkdownDescription: "Stable prefix for federated users and group roles; changing it replaces the resource.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"application_arn": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Identity Center managed application ARN.",
+				Required: true, MarkdownDescription: "Identity Center managed application ARN; changing it replaces the resource.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"iam_role_arn": schema.StringAttribute{
-				Required: true, MarkdownDescription: "IAM role attached to the Redshift namespace for Identity Center integration.",
+				Required: true, MarkdownDescription: "IAM role attached to the Redshift namespace for Identity Center integration; updated in place.",
 			},
 			"enabled": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(true),
-				MarkdownDescription: "Whether the provider is enabled; defaults to true.",
+				MarkdownDescription: "Whether the provider is enabled; defaults to `true`. Updated in place.",
 			},
 		},
 	}

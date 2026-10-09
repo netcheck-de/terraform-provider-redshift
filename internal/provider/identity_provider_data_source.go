@@ -45,7 +45,7 @@ func (d *identityProviderDataSource) Schema(_ context.Context, _ datasource.Sche
 		Attributes: map[string]schema.Attribute{
 			"id":              dataSourceIDAttribute(),
 			"name":            schema.StringAttribute{Required: true, MarkdownDescription: "SQL identity provider name."},
-			"namespace":       schema.StringAttribute{Computed: true, MarkdownDescription: "Identity namespace."},
+			"namespace":       schema.StringAttribute{Computed: true, MarkdownDescription: "Federated user and group-role prefix."},
 			"application_arn": schema.StringAttribute{Computed: true, MarkdownDescription: "Managed application ARN."},
 			"iam_role_arn":    schema.StringAttribute{Computed: true, MarkdownDescription: "Integration IAM role ARN."},
 			"enabled":         schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether the provider is enabled."},

@@ -2,6 +2,7 @@
 package redshiftdata
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"sort"
@@ -38,18 +39,25 @@ type Client struct {
 	DBUser string
 	// SecretARN selects Secrets Manager authentication for either warehouse type.
 	SecretARN string
-	// Timeout bounds a complete query, including polling and result retrieval.
+	// Timeout bounds a complete query, including polling and result retrieval; zero selects DefaultTimeout.
 	Timeout time.Duration
-	// Poll controls the delay between statement status checks.
+	// Poll controls the delay between statement status checks; zero selects DefaultPoll.
 	Poll time.Duration
 }
+
+const (
+	// DefaultTimeout bounds a query when Client.Timeout is unset.
+	DefaultTimeout = 5 * time.Minute
+	// DefaultPoll is the status-check interval when Client.Poll is unset.
+	DefaultPoll = time.Second
+)
 
 // Verify at compile time that the Data API adapter implements the neutral SQL contract.
 var _ sqlclient.Client = (*Client)(nil)
 
 // Query uses IAM authentication; AWS obtains temporary database credentials.
 func (c *Client) Query(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
+	ctx, cancel := context.WithTimeout(ctx, cmp.Or(c.Timeout, DefaultTimeout))
 	defer cancel()
 	input := &redshiftdata.ExecuteStatementInput{
 		Database: aws.String(connection.Database),
@@ -75,7 +83,7 @@ func (c *Client) Query(ctx context.Context, connection sqlclient.Connection, sql
 	}
 	statement, err := c.API.ExecuteStatement(ctx, input)
 	if err != nil {
-		return nil, fmt.Errorf("execute statement in %s/%s: %w", c.Workgroup, connection.Database, err)
+		return nil, fmt.Errorf("execute statement in %s/%s: %w", cmp.Or(c.Workgroup, c.Cluster), connection.Database, err)
 	}
 	if statement.Id == nil || *statement.Id == "" {
 		return nil, fmt.Errorf("data API returned no statement ID")
@@ -101,7 +109,7 @@ func (c *Client) Query(ctx context.Context, connection sqlclient.Connection, sql
 		case <-ctx.Done():
 			c.cancel(statement.Id)
 			return nil, fmt.Errorf("wait for statement %s: %w", *statement.Id, ctx.Err())
-		case <-time.After(c.Poll):
+		case <-time.After(cmp.Or(c.Poll, DefaultPoll)):
 		}
 	}
 }

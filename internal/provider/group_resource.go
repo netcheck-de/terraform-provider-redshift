@@ -37,7 +37,7 @@ func (r *groupResource) Metadata(_ context.Context, req resource.MetadataRequest
 func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{MarkdownDescription: "Manages a SQL user group. Memberships and grants are separate resources.", Attributes: map[string]schema.Attribute{
 		"id":   idAttribute(),
-		"name": schema.StringAttribute{Required: true, MarkdownDescription: "SQL group name.", PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
+		"name": schema.StringAttribute{Required: true, MarkdownDescription: "SQL group name; changing it replaces the resource.", PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
 	}}
 }
 

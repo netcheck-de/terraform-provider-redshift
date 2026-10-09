@@ -48,12 +48,13 @@ func attributeReplacement(t *testing.T, attribute schema.Attribute, changed, exi
 	require.NoError(t, err)
 	afterValue, err := after.ToTerraformValue(ctx)
 	require.NoError(t, err)
-	state := tfsdk.State{Raw: tftypes.NewValue(objectType, map[string]tftypes.Value{"value": beforeValue})}
+	single := schema.Schema{Attributes: map[string]schema.Attribute{"value": attribute}}
+	state := tfsdk.State{Schema: single, Raw: tftypes.NewValue(objectType, map[string]tftypes.Value{"value": beforeValue})}
 	if !existing {
 		state.Raw = tftypes.NewValue(objectType, nil)
 	}
-	plan := tfsdk.Plan{Raw: tftypes.NewValue(objectType, map[string]tftypes.Value{"value": afterValue})}
-	config := tfsdk.Config{Raw: plan.Raw}
+	plan := tfsdk.Plan{Schema: single, Raw: tftypes.NewValue(objectType, map[string]tftypes.Value{"value": afterValue})}
+	config := tfsdk.Config{Schema: single, Raw: plan.Raw}
 	replace := false
 	switch attribute := attribute.(type) {
 	case schema.StringAttribute:

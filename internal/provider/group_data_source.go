@@ -34,7 +34,7 @@ func (d *groupDataSource) Metadata(_ context.Context, req datasource.MetadataReq
 func (d *groupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{MarkdownDescription: "Looks up an existing SQL user group.", Attributes: map[string]schema.Attribute{
 		"id":   dataSourceIDAttribute(),
-		"name": schema.StringAttribute{Required: true, MarkdownDescription: "SQL group name."},
+		"name": schema.StringAttribute{Required: true, MarkdownDescription: "SQL group name; a missing group raises an error."},
 	}}
 }
 

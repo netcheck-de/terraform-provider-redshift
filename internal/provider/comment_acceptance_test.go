@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -24,15 +23,7 @@ import (
 
 // TestAccCommentLifecycle verifies all annotation kinds, imports, drift repair, and annotation-only deletion.
 func TestAccCommentLifecycle(t *testing.T) {
-	if os.Getenv("TF_ACC") != "1" {
-		t.Skip("set TF_ACC=1 to test annotations against a test workgroup")
-	}
-	region, profile := os.Getenv("REDSHIFT_ACC_REGION"), os.Getenv("REDSHIFT_ACC_PROFILE")
-	workgroup, database := os.Getenv("REDSHIFT_ACC_WORKGROUP"), os.Getenv("REDSHIFT_ACC_DATABASE")
-	require.NotEmpty(t, region)
-	require.NotEmpty(t, profile)
-	require.NotEmpty(t, workgroup)
-	require.NotEmpty(t, database)
+	region, profile, workgroup, database := testAccWorkgroup(t)
 	name := "acc_comment_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(text string, enabled bool) string {
 		base := fmt.Sprintf(`

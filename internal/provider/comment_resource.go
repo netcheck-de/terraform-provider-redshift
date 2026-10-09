@@ -150,7 +150,7 @@ func (r *commentResource) reconcile(ctx context.Context, data commentModel, dele
 	if actual.Text.ValueString() == desired {
 		return nil
 	}
-	statement, _, _ := data.target()
+	statement, _, _ := data.target() // read already validated this unchanged target.
 	if _, err := r.queryDatabase(ctx, data.DatabaseName.ValueString(), statement+" IS "+sqlValue, nil); err != nil {
 		return err
 	}
@@ -168,6 +168,11 @@ func (r *commentResource) Create(ctx context.Context, req resource.CreateRequest
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	// Invalid targets must fail before ownership is recorded, or Read and Delete could never succeed.
+	if _, _, err := data.target(); err != nil {
+		resp.Diagnostics.AddError("Create comment", err.Error())
+		return
+	}
 	fields := map[string]string{"database_name": data.DatabaseName.ValueString(), "object_type": data.ObjectType.ValueString(), "object_name": data.ObjectName.ValueString()}
 	if !data.SchemaName.IsNull() {
 		fields["schema_name"] = data.SchemaName.ValueString()
@@ -179,6 +184,18 @@ func (r *commentResource) Create(ctx context.Context, req resource.CreateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	if err := r.reconcile(ctx, data, false); err != nil {
 		resp.Diagnostics.AddError("Create comment", err.Error())
+	}
+}
+
+// ValidateConfig reports invalid comment targets during planning once the configuration is known.
+func (r *commentResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data commentModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+		return
+	}
+	if _, _, err := data.target(); err != nil {
+		resp.Diagnostics.AddError("Invalid comment target", err.Error())
 	}
 }
 

@@ -48,7 +48,7 @@ func (r *roleGrantResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"role": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Role being granted.",
+				Required: true, MarkdownDescription: "Role being granted, including built-in `sys:` roles.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"to_role": schema.StringAttribute{

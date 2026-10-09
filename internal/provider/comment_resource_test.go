@@ -3,11 +3,14 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -152,4 +155,17 @@ func TestCommentImport(t *testing.T) {
 		return []sqlclient.Row{{"text": "after"}}, nil
 	}))
 	require.False(t, invoke(t, r, "create", data, false).HasError())
+}
+
+// TestCommentCreateRejectsInvalidTargetBeforeState keeps invalid targets out of state so they cannot block refresh.
+func TestCommentCreateRejectsInvalidTargetBeforeState(t *testing.T) {
+	r := &commentResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+		return nil, fmt.Errorf("unexpected SQL %q", sql)
+	}))}
+	data := commentModel{ID: types.StringNull(), DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), ObjectType: types.StringValue("DATABASE"), ObjectName: types.StringValue("analytics"), ColumnName: types.StringNull(), Text: types.StringValue("note")}
+	plan := testState(t, r, data)
+	resp := resource.CreateResponse{State: tfsdk.State{Schema: plan.Schema, Raw: tftypes.NewValue(plan.Raw.Type(), nil)}}
+	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(plan)}, &resp)
+	require.True(t, resp.Diagnostics.HasError())
+	assert.True(t, resp.State.Raw.IsNull(), "invalid target must not be recorded in state")
 }

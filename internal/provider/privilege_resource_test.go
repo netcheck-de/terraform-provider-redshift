@@ -3,12 +3,16 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -202,4 +206,41 @@ func TestPrivilegeReadHandlesPublicAndCatalogAliases(t *testing.T) {
 	data = privilegeObject(t, r, map[string]string{"object_type": "invalid", "grantee_type": "USER"})
 	_, _, err = r.read(context.Background(), &data)
 	require.Error(t, err)
+}
+
+// TestPrivilegeCreateRejectsInvalidTupleBeforeState reports invalid tuples at plan time and keeps them out of state.
+func TestPrivilegeCreateRejectsInvalidTupleBeforeState(t *testing.T) {
+	for name, mutate := range map[string]func(map[string]attr.Value){
+		"tuple": func(values map[string]attr.Value) { values["schema_name"] = types.StringValue("serving") },
+		"privilege": func(values map[string]attr.Value) {
+			values["privileges"] = types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SELECT")})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newObjectGrantResource().(*privilegeResource)
+			r.resourceClient = testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+				return nil, fmt.Errorf("unexpected SQL %q", sql)
+			}))
+			var schemaResponse resource.SchemaResponse
+			r.Schema(context.Background(), resource.SchemaRequest{}, &schemaResponse)
+			objectType := schemaResponse.Schema.Type().(basetypes.ObjectType)
+			values := map[string]attr.Value{}
+			for key := range objectType.AttrTypes {
+				values[key] = types.StringNull()
+			}
+			values["privileges"] = types.SetValueMust(types.StringType, nil)
+			values["database_name"], values["object_type"] = types.StringValue("analytics"), types.StringValue("DATABASE")
+			values["grantee"], values["grantee_type"] = types.StringValue("readers"), types.StringValue("ROLE")
+			mutate(values)
+			plan := tfsdk.Plan{Schema: schemaResponse.Schema}
+			require.False(t, plan.Set(context.Background(), types.ObjectValueMust(objectType.AttrTypes, values)).HasError())
+			resp := resource.CreateResponse{State: tfsdk.State{Schema: plan.Schema, Raw: tftypes.NewValue(plan.Raw.Type(), nil)}}
+			r.Create(context.Background(), resource.CreateRequest{Plan: plan}, &resp)
+			require.True(t, resp.Diagnostics.HasError())
+			assert.True(t, resp.State.Raw.IsNull(), "invalid tuple must not be recorded in state")
+			var validated resource.ValidateConfigResponse
+			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(plan)}, &validated)
+			assert.True(t, validated.Diagnostics.HasError(), "invalid tuple must be reported during planning")
+		})
+	}
 }

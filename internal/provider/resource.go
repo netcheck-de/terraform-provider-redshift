@@ -70,6 +70,15 @@ func (r *resourceClient) queryDatabase(ctx context.Context, database, sql string
 	return r.client.Query(ctx, target, sql, parameters)
 }
 
+// localDatabaseExists distinguishes a dropped target database from query failures, so refresh can drop orphaned state.
+func (r *resourceClient) localDatabaseExists(ctx context.Context, database string) (bool, error) {
+	if database == r.database.ValueString() {
+		return true, nil
+	}
+	rows, err := r.query(ctx, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :database AND database_type = 'local'", map[string]string{"database": database})
+	return len(rows) > 0, err
+}
+
 // identity adds the warehouse/database binding to resource-specific JSON import fields.
 func (r *resourceClient) identity(database string, fields map[string]string) types.String {
 	fields[r.warehouse.field] = r.warehouse.value.ValueString()

@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -21,15 +20,7 @@ import (
 
 // TestAccDirectIAMQueries checks real TLS, IAM authentication, parameter binding, and textual results without mutations.
 func TestAccDirectIAMQueries(t *testing.T) {
-	if os.Getenv("TF_ACC") != "1" || os.Getenv("REDSHIFT_ACC_DIRECT") != "1" {
-		t.Skip("set TF_ACC=1 and REDSHIFT_ACC_DIRECT=1 with endpoint connectivity")
-	}
-	region, profile := os.Getenv("REDSHIFT_ACC_REGION"), os.Getenv("REDSHIFT_ACC_PROFILE")
-	workgroup, database := os.Getenv("REDSHIFT_ACC_WORKGROUP"), os.Getenv("REDSHIFT_ACC_DATABASE")
-	require.NotEmpty(t, region)
-	require.NotEmpty(t, profile)
-	require.NotEmpty(t, workgroup)
-	require.NotEmpty(t, database)
+	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
@@ -45,15 +36,7 @@ func TestAccDirectIAMQueries(t *testing.T) {
 
 // TestAccTransportSwitchLifecycle verifies stable Serverless identity while switching Data API to direct IAM and back.
 func TestAccTransportSwitchLifecycle(t *testing.T) {
-	if os.Getenv("TF_ACC") != "1" || os.Getenv("REDSHIFT_ACC_DIRECT") != "1" {
-		t.Skip("set TF_ACC=1 and REDSHIFT_ACC_DIRECT=1 with endpoint connectivity")
-	}
-	region, profile := os.Getenv("REDSHIFT_ACC_REGION"), os.Getenv("REDSHIFT_ACC_PROFILE")
-	workgroup, database := os.Getenv("REDSHIFT_ACC_WORKGROUP"), os.Getenv("REDSHIFT_ACC_DATABASE")
-	require.NotEmpty(t, region)
-	require.NotEmpty(t, profile)
-	require.NotEmpty(t, workgroup)
-	require.NotEmpty(t, database)
+	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
 	name := "acc_transport_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(direct bool, privileges string) string {
 		selector := fmt.Sprintf("workgroup_name = %q", workgroup)

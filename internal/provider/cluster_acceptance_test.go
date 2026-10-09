@@ -15,9 +15,7 @@ import (
 
 // TestAccClusterTransportLifecycle exercises provisioned Data API, optional secret authentication, and direct IAM fixtures.
 func TestAccClusterTransportLifecycle(t *testing.T) {
-	if os.Getenv("TF_ACC") != "1" || os.Getenv("REDSHIFT_ACC_CLUSTER") == "" {
-		t.Skip("set TF_ACC=1 and REDSHIFT_ACC_CLUSTER for an existing provisioned test fixture")
-	}
+	testAccPreCheck(t, "REDSHIFT_ACC_CLUSTER")
 	region, profile := os.Getenv("REDSHIFT_ACC_REGION"), os.Getenv("REDSHIFT_ACC_PROFILE")
 	cluster, database, user := os.Getenv("REDSHIFT_ACC_CLUSTER"), os.Getenv("REDSHIFT_ACC_DATABASE"), os.Getenv("REDSHIFT_ACC_DB_USER")
 	require.NotEmpty(t, region)
