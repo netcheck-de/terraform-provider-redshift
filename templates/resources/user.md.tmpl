@@ -1,0 +1,45 @@
+---
+subcategory: Identity and Access
+page_title: redshift_user Resource - terraform-provider-redshift
+description: Manages SQL users and write-only password rotation.
+---
+
+# redshift_user (Resource)
+
+Manages a password-authenticated database user. Role memberships and object privileges are independent resources. See
+AWS [CREATE USER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_user/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+Reads discover non-secret properties from `pg_user`; password values cannot be refreshed or compared. The provider
+changes the password only on creation or a version change. A missing password during rotation is an error. Deletion
+issues `DROP USER` without `CASCADE`; dependencies, including role grants, must be removed first.
+
+Refresh updates `superuser` and `create_database` from the catalog. `password_wo_version` retains the configured
+rotation revision rather than a catalog value.
+
+`password_wo` is a write-only argument and requires Terraform 1.11 or later. Write-only values are absent from
+**this resource's** state. The password source (for example, `random_password`) may
+still keep a value in its own Terraform state, and the Data API executes a SQL statement containing the password.
+Restrict Terraform state, provider logs, and Data API query-history access accordingly.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_user/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_user/import.sh" }}
+
+Import sets `password_wo_version` to `0` and does **not** rotate the existing password. Match the configured version and
+non-secret flags to the imported state for a no-change plan. Increase the version later to rotate the password.

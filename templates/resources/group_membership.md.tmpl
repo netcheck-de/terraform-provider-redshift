@@ -1,0 +1,35 @@
+---
+subcategory: Identity and Access
+page_title: redshift_group_membership Resource - terraform-provider-redshift
+description: Manages one user-to-group relationship.
+---
+
+# redshift_group_membership (Resource)
+
+Owns one database user's membership in one SQL group. See AWS
+[ALTER GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_GROUP.html).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_group_membership/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+Changing `group` or `user` replaces the membership.
+
+## Lifecycle and Ownership
+
+Creation adds this user if absent; deletion removes only this membership. Drift removes a missing relationship from
+state so Terraform can restore it. Other group members remain independent.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_group_membership/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_group_membership/import.sh" }}

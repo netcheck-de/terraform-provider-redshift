@@ -1,0 +1,38 @@
+---
+subcategory: Identity and Access
+page_title: redshift_role_grant Resource - terraform-provider-redshift
+description: Manages a SQL role grant to a user or another role.
+---
+
+# redshift_role_grant (Resource)
+
+Grants one role to a receiving role or database user. For example, a group role can inherit `sys:dba`, while Grafana's
+database user can inherit `sys:monitor`. See AWS
+[GRANT ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_role_grant/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+Specify exactly one of `to_role` and `to_user`. Changing any argument replaces the grant.
+
+## Lifecycle and Ownership
+
+Reads check `svv_role_grants` for roles or `svv_user_grants` for users. Deletion revokes only this relationship. A
+lifecycle trigger restores the grant after a same-name recipient replacement.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_role_grant/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_role_grant/import.sh" }}
+
+To import Grafana's role grant, use `"role":"sys:monitor","to_user":"grafana"` in the JSON identity.

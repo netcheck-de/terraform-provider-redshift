@@ -1,0 +1,38 @@
+---
+subcategory: Identity and Access
+page_title: redshift_identity_provider Resource - terraform-provider-redshift
+description: Manages the SQL side of an AWS Identity Center integration.
+---
+
+# redshift_identity_provider (Resource)
+
+Manages an AWSIDC **SQL identity provider** in a Serverless warehouse. Create the managed Identity Center application,
+integration IAM role, role attachment to the namespace, and group assignments with the AWS provider. See AWS
+[CREATE IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_IDENTITY_PROVIDER.html).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_identity_provider/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+Creation requires a Redshift database superuser. A read checks type `awsidc`, application binding, namespace, IAM role,
+and enabled status. Deletion refuses to drop the provider while namespace-prefixed federated users remain. Manage role
+grants and memberships separately; use resource dependencies so they are removed first.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_identity_provider/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_identity_provider/import.sh" }}
+
+Refresh discovers the namespace, application ARN, IAM role ARN, and enabled state. Match configuration to that identity
+before applying a plan.

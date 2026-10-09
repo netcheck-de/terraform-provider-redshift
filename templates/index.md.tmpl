@@ -1,0 +1,143 @@
+---
+page_title: redshift Provider
+description: Manages Redshift Serverless and provisioned SQL objects through Data API or direct TLS connections.
+---
+
+# redshift Provider
+
+Manage Redshift SQL objects and permissions through Data API or direct TLS connections. Use the AWS provider for
+workgroups, namespaces, IAM roles, Identity Center applications, and datashare authorization/association. The SQL
+provider does not retrieve administration passwords automatically; direct connections require endpoint connectivity. See
+the AWS [SQL commands reference](https://docs.aws.amazon.com/redshift/latest/dg/c_SQL_commands.html).
+
+## Example Usage
+
+{{ tffile "examples/provider/provider.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+Select exactly one warehouse method: `workgroup_name`, `cluster_identifier`, or `direct_connection`.
+`direct_connection` accepts optional `host`, `port`, `username`, sensitive `password`, `ca_cert_file`, and a nested
+`iam` block. Password mode requires host/username/password. IAM requires exactly one workgroup_name or
+cluster_identifier; cluster IAM also requires an existing db_user. Port defaults to 5439 or the discovered port. See
+[connection methods](guides/connection_methods.md) for complete configuration, permissions, TLS, and warehouse binding
+details.
+
+When `region` or `profile` is omitted, the provider falls back to the AWS SDK defaults, including the `AWS_REGION` and
+`AWS_PROFILE` environment variables, shared configuration files, and the standard credential chain. Profiles may include
+assumed-role settings. Use provider aliases with separate profiles for additional accounts or warehouses. The caller
+needs Data API permissions, `redshift-serverless:GetCredentials`, and the SQL privileges required by each operation.
+Identity-provider and SQL group creation require a SQL superuser.
+
+Catalog mutations are serialized within each configured provider instance, across its databases, to avoid Redshift
+catalog transaction conflicts. Read-only SELECT and SHOW statements remain concurrent. Separate provider instances or
+external SQL clients are not coordinated by this gate.
+
+## Reading arguments and attributes
+
+Each page's Schema section lists required and optional arguments, including optional/computed arguments, followed by
+read-only attributes. Except for write-only arguments, argument values are also readable through Terraform references.
+Read-only attributes list only additional computed outputs; arguments are not repeated there.
+
+Write-only arguments, such as `password_wo` on [`redshift_user`](resources/user.md), require Terraform 1.11 or later.
+Their values are never stored in plan or state.
+
+## Resources
+
+The provider currently implements nineteen SQL resources and nineteen read-only data sources. AWS infrastructure remains
+with the `hashicorp/aws` provider.
+
+| Resource                                                         | Description                               |
+|------------------------------------------------------------------|-------------------------------------------|
+| [`redshift_database`](resources/database.md)                     | Local or consumer database                |
+| [`redshift_datashare`](resources/datashare.md)                   | Producer datashare                        |
+| [`redshift_identity_provider`](resources/identity_provider.md)   | AWSIDC SQL identity provider              |
+| [`redshift_role`](resources/role.md)                             | Redshift database role                    |
+| [`redshift_user`](resources/user.md)                             | Database user                             |
+| [`redshift_schema`](resources/schema.md)                         | Local database schema                     |
+| [`redshift_external_schema`](resources/external_schema.md)       | Glue external schema                      |
+| [`redshift_datashare_schema`](resources/datashare_schema.md)     | Producer share schema member              |
+| [`redshift_datashare_table`](resources/datashare_table.md)       | Producer share table member               |
+| [`redshift_datashare_grant`](resources/datashare_grant.md)       | SQL account or namespace share grant      |
+| [`redshift_role_grant`](resources/role_grant.md)                 | `GRANT ROLE` membership                   |
+| [`redshift_grant`](resources/grant.md)                           | Scoped `GRANT` privileges                 |
+| [`redshift_group`](resources/group.md)                           | SQL user group                            |
+| [`redshift_group_membership`](resources/group_membership.md)     | User-to-group membership                  |
+| [`redshift_object_grant`](resources/object_grant.md)             | Explicit local object privileges          |
+| [`redshift_system_grant`](resources/system_grant.md)             | Role system privileges                    |
+| [`redshift_assumerole_grant`](resources/assumerole_grant.md)     | IAM role command permissions              |
+| [`redshift_default_privileges`](resources/default_privileges.md) | Creator-specific future object privileges |
+| [`redshift_comment`](resources/comment.md)                       | Existing object annotations               |
+
+## Data sources
+
+| Data source                                                            | Lookup                            |
+|------------------------------------------------------------------------|-----------------------------------|
+| [`data.redshift_database`](data-sources/database.md)                   | Existing local or shared database |
+| [`data.redshift_datashare`](data-sources/datashare.md)                 | Existing outbound datashare       |
+| [`data.redshift_identity_provider`](data-sources/identity_provider.md) | Existing AWSIDC provider          |
+| [`data.redshift_role`](data-sources/role.md)                           | Existing role                     |
+| [`data.redshift_group`](data-sources/group.md)                         | Existing SQL user group           |
+| [`data.redshift_user`](data-sources/user.md)                           | Existing user (no password)       |
+| [`data.redshift_schema`](data-sources/schema.md)                       | Existing local schema             |
+| [`data.redshift_external_schema`](data-sources/external_schema.md)     | Existing Glue external schema     |
+
+Relationship data sources return `exists`; datashare schema lookups additionally return the observed `include_new`
+policy. Permission data sources return explicit `privileges` without adopting or reconciling them; no matching grants
+produce an empty set, while missing permission parents raise errors. Comment lookups return `text`, using an empty
+string for an unannotated existing object. All data sources expose readable object attributes matching their paired
+resource, including a computed JSON `id` compatible with the resource's import identity. Lookup identifiers remain
+required or optional inputs; observed settings are computed. Write-only passwords, password-rotation counters, and
+replacement triggers are resource-only controls. Data sources never execute mutation SQL and do not take ownership;
+missing relationships return `exists = false` with `id = null`.
+
+Shared database lookups additionally require `redshift:DescribeDataSharesForConsumer` in the consumer account to resolve
+the backing `datashare_arn`. AWS credentials and a region are needed for that metadata read even with a direct password
+SQL connection. Local database lookups and shared database resource refreshes do not make this AWS metadata call.
+
+| Data source                                                              | Lookup                                     |
+|--------------------------------------------------------------------------|--------------------------------------------|
+| [`data.redshift_group_membership`](data-sources/group_membership.md)     | Explicit group membership                  |
+| [`data.redshift_role_grant`](data-sources/role_grant.md)                 | Explicit role relationship                 |
+| [`data.redshift_datashare_schema`](data-sources/datashare_schema.md)     | Schema membership and future-object policy |
+| [`data.redshift_datashare_table`](data-sources/datashare_table.md)       | Explicit relation membership               |
+| [`data.redshift_datashare_grant`](data-sources/datashare_grant.md)       | SQL account or namespace usage             |
+| [`data.redshift_grant`](data-sources/grant.md)                           | Explicit scoped privileges                 |
+| [`data.redshift_object_grant`](data-sources/object_grant.md)             | Explicit object privileges                 |
+| [`data.redshift_system_grant`](data-sources/system_grant.md)             | Role system capabilities                   |
+| [`data.redshift_assumerole_grant`](data-sources/assumerole_grant.md)     | IAM role command permissions               |
+| [`data.redshift_default_privileges`](data-sources/default_privileges.md) | Explicit creator-specific defaults         |
+| [`data.redshift_comment`](data-sources/comment.md)                       | Existing annotation text                   |
+
+## Provider connection and imports
+
+The provider selects one warehouse and a local administration database. Serverless Data API configuration remains valid:
+
+```hcl
+provider "redshift" {
+  region         = "eu-central-1"
+  workgroup_name = aws_redshiftserverless_workgroup.this.arn
+  database       = "admin"
+}
+```
+
+`workgroup_name` accepts a Serverless workgroup name or ARN. `profile` optionally selects an AWS shared configuration
+profile for that alias; otherwise the AWS SDK credential chain applies. Use provider aliases for additional warehouses.
+The datashare resource requires its producer database separately; grants require the database receiving privileges.
+Scoped grants connect to that database for local grants and the administration database for shared grants.
+
+All resources export a computed `id` containing their stable import identity as JSON; it is independent of Data API
+statement IDs. Import IDs contain exactly one of `workgroup_name`, `cluster_identifier`, or `endpoint`, the relevant
+`database`, and the resource-specific keys documented on each page. The first refresh reads the existing object; import
+does not execute creation SQL. Configure the provider with a known workgroup before importing. A resource rejects state
+whose stored workgroup or database differs from its provider binding, rather than adopting a same-named object in
+another warehouse. Check the import plan before applying changes.
+
+Object names and immutable bindings require replacement. For a warehouse migration, explicitly rebind/import resources
+under the new provider alias; changing provider configuration does not automatically move SQL objects. Reads refresh
+mutable catalog state and remove missing resources from state so Terraform can recreate them. Writes check convergence;
+deletion uses no `CASCADE`. Resource references order dependent operations, and changes to immutable referenced inputs
+require replacement through the provider's schema. Same-name recreation can require a follow-up refresh/plan/apply to
+reconcile relationships lost with the parent object.

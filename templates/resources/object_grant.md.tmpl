@@ -1,0 +1,44 @@
+---
+subcategory: Identity and Access
+page_title: redshift_object_grant Resource - terraform-provider-redshift
+description: Manages explicit privileges on one local database object for one SQL grantee.
+---
+
+# redshift_object_grant (Resource)
+
+Owns the exact explicit privilege set for one local database object and one grantee. Tables and views use `TABLE`. See
+AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_object_grant/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+All identity arguments require replacement when changed; `privileges` updates in place. Database privileges: `CREATE`,
+`USAGE`, `TEMPORARY`, `ALTER`. Schema privileges: `CREATE`, `USAGE`, `ALTER`, `DROP`. Table privileges: `SELECT`,
+`INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `ALTER`, `TRUNCATE`. Redshift validates which privileges apply to
+the specific object, including external schemas.
+
+## Lifecycle and Ownership
+
+The resource checks object/grantee existence and reads `SHOW GRANTS ON` the object in the local database. Scoped,
+inherited, and other grantee grants are independent. It revokes extras, adds missing privileges, and verifies
+convergence. Grant options are not managed; existing grant-option rows raise an error before mutation. Missing parents
+remove the resource from state. Avoid overlapping this resource with `redshift_grant` for the same explicit
+schema/database tuple. Function/procedure signatures, column grants, shared database objects, and Lake Formation IAM
+grants are future work.
+
+Refresh reads the current explicit grants into `privileges`.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_object_grant/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_object_grant/import.sh" }}

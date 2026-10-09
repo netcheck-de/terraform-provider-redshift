@@ -1,0 +1,24 @@
+---
+subcategory: Data Sharing
+page_title: redshift_datashare_table Data Source - terraform-provider-redshift
+description: Checks explicit table or view membership in a producer datashare.
+---
+
+# redshift_datashare_table (Data Source)
+
+Checks catalog membership of a producer table or view. See AWS
+[ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_datashare_table/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the relationship's JSON identity, using the same warehouse, producer database, datashare,
+schema, and table keys as the paired resource. It is null when `exists` is false.
+
+Missing memberships return false; missing databases and catalog errors remain errors. The lookup never modifies the
+source relation or share.

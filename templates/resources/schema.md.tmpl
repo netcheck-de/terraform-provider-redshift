@@ -1,0 +1,33 @@
+---
+subcategory: Databases and Schemas
+page_title: redshift_schema Resource - terraform-provider-redshift
+description: Manages a local Redshift database schema.
+---
+
+# redshift_schema (Resource)
+
+Manages a local schema in a Redshift database. External schemas and SQLMesh-managed objects have separate ownership. See
+AWS [CREATE SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_SCHEMA.html).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_schema/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+The resource creates and drops only the schema. `DROP SCHEMA` does **not** cascade; remove dependent tables, views, and
+datashare memberships first. This resource does not grant permissions or manage the schema owner's credentials.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_schema/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_schema/import.sh" }}

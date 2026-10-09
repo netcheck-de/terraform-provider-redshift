@@ -1,0 +1,40 @@
+---
+subcategory: Data Sharing
+page_title: redshift_datashare Resource - terraform-provider-redshift
+description: Manages an outbound Redshift datashare.
+---
+
+# redshift_datashare (Resource)
+
+Manages **one producer-side SQL datashare** in the local database specified by `database`. This is a different SQL
+object from the
+[consumer database](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/database). AWS
+datashare authorization and consumer association are managed with the AWS provider. See AWS
+[CREATE DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATASHARE.html).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_datashare/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+Reads check that the share is outbound, belongs to the configured database, and is not managed by another service.
+Creation and updates verify the catalog state. Deletion uses `DROP DATASHARE` without cascading into the producer
+database. Schema/table membership and account usage grants are managed by separate provider resources.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_datashare/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_datashare/import.sh" }}
+
+The producer database in the import ID must match the datashare's actual source database. Public accessibility is
+discovered on refresh.

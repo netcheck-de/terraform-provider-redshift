@@ -1,0 +1,36 @@
+---
+subcategory: Identity and Access
+page_title: redshift_group Resource - terraform-provider-redshift
+description: Manages a SQL user group independently of its membership and privileges.
+---
+
+# redshift_group (Resource)
+
+Manages a SQL user group. Groups contain database users; they are distinct from Identity Center group roles. See AWS
+[CREATE GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_GROUP.html) and
+[DROP GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_GROUP.html).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_group/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+Creation requires a SQL superuser. Memberships and privileges are separate resources; this resource does not reconcile
+them. Delete does not remove users or revoke unrelated grants. Redshift refuses deletion while the group has object
+privileges. Order managed grants and memberships through references; group-name changes propagate into their immutable
+identity inputs and require replacement through the provider's schema.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_group/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_group/import.sh" }}

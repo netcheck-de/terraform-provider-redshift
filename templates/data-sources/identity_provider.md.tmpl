@@ -1,0 +1,22 @@
+---
+subcategory: Identity and Access
+page_title: redshift_identity_provider Data Source - terraform-provider-redshift
+description: Looks up an existing AWSIDC SQL identity provider.
+---
+
+# redshift_identity_provider (Data Source)
+
+Looks up an existing AWSIDC SQL identity provider.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_identity_provider/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the observed identity provider's JSON identity, using the same warehouse, provider database,
+and name keys as the paired resource.
+
+A missing provider or one with an incompatible type or malformed catalog parameters is an error.

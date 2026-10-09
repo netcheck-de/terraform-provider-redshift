@@ -1,0 +1,42 @@
+---
+subcategory: Identity and Access
+page_title: redshift_default_privileges Resource - terraform-provider-redshift
+description: Manages explicit default permissions for future objects created by one SQL user.
+---
+
+# redshift_default_privileges (Resource)
+
+Owns default privileges for future objects created by one user in one local database, optionally restricted to a schema.
+See AWS [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_default_privileges/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`owner` is explicit rather than the executing identity. An empty `privileges` set revokes the owned grants. All
+identity arguments require replacement. Tables support `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`,
+and `TRUNCATE`; functions/procedures support `EXECUTE`.
+
+## Lifecycle and Ownership
+
+Reads `svv_default_privileges` in the target database. Changing another user's defaults requires appropriate SQL
+administration privileges. Schema-specific defaults add to database-wide defaults; this resource owns only its exact
+tuple. Existing tables/views/functions/procedures are unaffected, including on destroy. Grant options are not managed
+and cause an error before mutation. Scoped permissions are different: they cover current and future objects regardless
+of creator. Built-in implicit PUBLIC privileges are not part of the explicit set owned by this resource.
+
+Refresh reads the current explicit defaults into `privileges`.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_default_privileges/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_default_privileges/import.sh" }}

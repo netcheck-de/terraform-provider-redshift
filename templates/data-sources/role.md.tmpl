@@ -1,0 +1,20 @@
+---
+subcategory: Identity and Access
+page_title: redshift_role Data Source - terraform-provider-redshift
+description: Looks up an existing SQL role.
+---
+
+# redshift_role (Data Source)
+
+Looks up an existing database role without taking ownership of it.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_role/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the observed role's JSON identity, using the same warehouse, provider database, and name keys
+as the paired resource.

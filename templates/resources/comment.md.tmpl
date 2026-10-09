@@ -1,0 +1,48 @@
+---
+subcategory: Annotations
+page_title: redshift_comment Resource - terraform-provider-redshift
+description: Manages existing local object annotations independently of object definitions.
+---
+
+# redshift_comment (Resource)
+
+Manages a comment on an existing local database, schema, table, view, or column without owning the object's definition.
+See AWS [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_comment/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+For `DATABASE`, `object_name` must equal `database_name`. For `COLUMN`, `object_name` identifies the relation. An
+empty `text` clears the comment using `IS NULL`. All identity arguments require replacement; text updates in
+place.
+
+## Lifecycle and Ownership
+
+The SQL caller must own the object or be a superuser. Reads use the target database's `pg_description` and object
+catalogs. Database comments execute in the database being annotated, as required by Redshift. Shared database objects,
+constraints, external table/column comments, and columns of late-binding views are not supported.
+
+Creation sets the annotation on an existing object; it does not create the object. Read refreshes edited or removed text
+so Terraform can repair drift; a missing annotation is represented by an empty `text` string. If the underlying object
+disappears, the resource is removed from state. Destroy clears only the comment and leaves the target intact. It does
+not restore any annotation overwritten during adoption. Do not manage the same annotation with another Terraform
+resource or a model/migration tool. References establish creation order and changes to target identity inputs require
+replacement through the provider's schema.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_comment/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_comment/import.sh" }}
+
+For database/schema annotations, omit `schema_name` and `column_name`. For table/view annotations, omit `column_name`.
+The first refresh reads existing text; imports do not change annotations.

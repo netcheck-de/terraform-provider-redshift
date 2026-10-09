@@ -1,0 +1,24 @@
+---
+subcategory: Identity and Access
+page_title: redshift_group_membership Data Source - terraform-provider-redshift
+description: Checks one user's explicit SQL group membership without managing it.
+---
+
+# redshift_group_membership (Data Source)
+
+Reads explicit SQL user-to-group membership. See AWS
+[ALTER GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_GROUP.html).
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_group_membership/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the membership's JSON identity, using the same warehouse, provider database, group, and user
+keys as the paired resource. It is null when `exists` is false.
+
+The lookup never adds/removes members. SQL/catalog errors are reported, not converted
+to `exists = false`.

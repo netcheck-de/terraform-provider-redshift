@@ -10,6 +10,9 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/provider"
 )
 
+// Generate the Terraform Registry documentation in docs/ from templates/, examples/, and the provider schema.
+//go:generate go tool tfplugindocs generate --provider-name redshift
+
 // version is supplied by the build linker and defaults to dev for unversioned runs.
 var version = "dev"
 

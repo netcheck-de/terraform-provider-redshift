@@ -1,0 +1,22 @@
+---
+subcategory: Databases and Schemas
+page_title: redshift_schema Data Source - terraform-provider-redshift
+description: Looks up a local schema and its SQL owner.
+---
+
+# redshift_schema (Data Source)
+
+Looks up an existing local schema without managing it.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_schema/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the observed schema's JSON identity, using the same warehouse, owning database, and name keys
+as the paired resource.
+
+A missing schema or incomplete catalog ownership is an error.

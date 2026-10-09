@@ -1,0 +1,20 @@
+---
+subcategory: Identity and Access
+page_title: redshift_user Data Source - terraform-provider-redshift
+description: Looks up non-secret attributes of an existing SQL user.
+---
+
+# redshift_user (Data Source)
+
+Looks up an existing database user without reading its password.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_user/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the observed user's JSON identity, using the same warehouse, provider database, and name keys
+as the paired resource.

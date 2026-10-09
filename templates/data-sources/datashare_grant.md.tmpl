@@ -1,0 +1,34 @@
+---
+subcategory: Data Sharing
+page_title: redshift_datashare_grant Data Source - terraform-provider-redshift
+description: Checks explicit SQL share usage granted to a consumer account or namespace.
+---
+
+# redshift_datashare_grant (Data Source)
+
+Checks SQL account- or namespace-level datashare usage. Specify exactly one of `account_id` and `namespace_id`.
+This does not verify AWS authorization or consumer association. See AWS
+[GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax).
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_datashare_grant/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+Exactly one consumer selector is required. A namespace UUID may be unknown during planning; the lookup is deferred
+until its value resolves.
+
+`id` (String, computed) is the relationship's JSON identity, using the same warehouse, producer database, datashare, and
+selected `account_id` or `namespace_id` key as the paired resource. Existing account identities retain their format.
+It is null when `exists` is false.
+
+Absent SQL grants return false. Missing databases and catalog errors raise errors. No SQL grants or AWS resources
+change.
+
+Reads [SVV_DATASHARE_CONSUMERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARE_CONSUMERS.html).
+Account lookups match the share and account with an empty/null namespace. Namespace lookups match the share and exact
+namespace UUID; an account-wide grant does not count as an explicit namespace grant. The catalog has no consumer-type
+column. Only read-only SQL is executed.

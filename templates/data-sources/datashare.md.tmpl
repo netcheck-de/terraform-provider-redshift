@@ -1,0 +1,22 @@
+---
+subcategory: Data Sharing
+page_title: redshift_datashare Data Source - terraform-provider-redshift
+description: Looks up an existing outbound datashare.
+---
+
+# redshift_datashare (Data Source)
+
+Looks up an existing outbound datashare in its producer database.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_datashare/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the observed datashare's JSON identity, using the same warehouse, producer database, and name
+keys as the paired resource.
+
+A missing share, a share owned by another database, or a share managed by another service is an error.

@@ -1,0 +1,41 @@
+---
+subcategory: Identity and Access
+page_title: redshift_assumerole_grant Resource - terraform-provider-redshift
+description: Manages IAM role command permissions for one SQL identity.
+---
+
+# redshift_assumerole_grant (Resource)
+
+Owns the exact command set for one IAM role and one SQL identity. See AWS
+[GRANT ASSUMEROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-assumerole-permissions).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_assumerole_grant/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+Supported `privileges` are `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, and `CREATE MODEL`; an empty set revokes the owned
+grants. Identity changes require replacement. Declare commands explicitly; `ALL` is not accepted.
+
+## Lifecycle and Ownership
+
+Reads `svv_iam_privileges` and reconciles only the selected IAM role and SQL identity. AWS owns IAM policies, trust, and
+namespace role attachments. The warehouse must already have identity-specific ASSUMEROLE access control enabled:
+Redshift rejects individual grants while unrestricted `ASSUMEROLE ON ALL TO PUBLIC FOR ALL` remains active. The resource
+does not change that warehouse-wide policy. The opt-in `TestAccAssumeroleGrantLifecycle` requires
+`REDSHIFT_ACC_ASSUMEROLE=1` in addition to the normal acceptance-test environment and an attached default IAM role.
+
+Refresh reads the current explicit command permissions into `privileges`.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_assumerole_grant/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_assumerole_grant/import.sh" }}

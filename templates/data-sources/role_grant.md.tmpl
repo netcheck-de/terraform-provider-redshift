@@ -1,0 +1,23 @@
+---
+subcategory: Identity and Access
+page_title: redshift_role_grant Data Source - terraform-provider-redshift
+description: Checks explicit role-to-role or role-to-user membership.
+---
+
+# redshift_role_grant (Data Source)
+
+Checks an explicit role grant, including grants of built-in system roles. Inherited/transitive role access is not
+counted. See AWS [GRANT ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_role_grant/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the relationship's JSON identity, using the same warehouse, provider database, role, and
+selected `to_user` or `to_role` keys as the paired resource. It is null when `exists` is false.
+
+Catalog errors remain errors. No role grant is created, adopted, or revoked.

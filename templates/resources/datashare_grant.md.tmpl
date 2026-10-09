@@ -1,0 +1,54 @@
+---
+subcategory: Data Sharing
+page_title: redshift_datashare_grant Resource - terraform-provider-redshift
+description: Manages SQL datashare usage granted to a consumer account or namespace.
+---
+
+# redshift_datashare_grant (Resource)
+
+Grants SQL `USAGE` on a producer datashare to **one consumer AWS account or Redshift namespace UUID**. Specify exactly
+one of `account_id` and `namespace_id`. Cross-account sharing also requires AWS
+authorization in the producer account and association in the consumer account. See AWS
+[GRANT USAGE ON DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_datashare_grant/resource.tf" }}
+
+For a namespace in the same AWS account, grant usage directly to its UUID:
+
+{{ tffile "examples/resources/redshift_datashare_grant/namespace.tf" }}
+
+The namespace UUID may be unknown during planning, for example when a consumer warehouse is being created in the same
+apply. It must resolve before SQL execution. Use the UUID, not the namespace ARN.
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+Exactly one consumer selector is required. Changing any argument replaces the grant.
+
+## Lifecycle and Ownership
+
+Uses `GRANT/REVOKE USAGE ON DATASHARE ... TO/FROM ACCOUNT 'account-id'` or `... TO/FROM NAMESPACE 'namespace-uuid'`.
+Reads [SVV_DATASHARE_CONSUMERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARE_CONSUMERS.html),
+filtering by share name and consumer account with null/empty `consumer_namespace` for account grants, or by share name
+and exact `consumer_namespace` for namespace grants. This view has no consumer-type column; the namespace distinguishes
+the grant scope. Account and namespace grants are independent, including when the namespace belongs to the same account.
+This resource cannot authorize or associate a cross-account share: use the two AWS resources above. The [complete
+example](https://github.com/netcheck-de/terraform-provider-redshift/tree/main/examples/complete) shows the full
+producer-to-consumer sequence.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_datashare_grant/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`. Namespace grants use `namespace_id` instead of `account_id` in the JSON
+identity:
+
+{{ codefile "shell" "examples/resources/redshift_datashare_grant/import.sh" }}
+
+Existing account JSON identities and state retain the `account_id` key. Imports require exactly one valid consumer
+selector and one warehouse binding (`workgroup_name`, `cluster_identifier`, or `endpoint`).

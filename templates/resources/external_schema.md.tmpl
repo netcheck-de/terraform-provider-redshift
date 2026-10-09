@@ -1,0 +1,39 @@
+---
+subcategory: Databases and Schemas
+page_title: redshift_external_schema Resource - terraform-provider-redshift
+description: Manages a Glue-backed external schema mapping.
+---
+
+# redshift_external_schema (Resource)
+
+Manages a Redshift external schema backed by an AWS Glue Data Catalog database. This is a distinct SQL object from a
+[local schema](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/schema). The namespace
+must already have an IAM role that can access Glue and the underlying data. See AWS
+[CREATE EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_SCHEMA.html).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_external_schema/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+Reads `svv_external_schemas`, verifies that it is a Glue Data Catalog schema (`eskind = 1`), and compares its configured
+Glue database and IAM role. Creation uses `CREATE EXTERNAL SCHEMA ... FROM DATA CATALOG`. Deletion uses restrictive
+`DROP SCHEMA` **without `CASCADE`**. If dependent views exist, remove or migrate them first. Bumping `refresh_revision`
+plans replacement; changes in Glue metadata do not automatically appear as Terraform diffs.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_external_schema/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_external_schema/import.sh" }}
+
+The Glue database and IAM role are discovered on refresh. Match them in configuration before applying.

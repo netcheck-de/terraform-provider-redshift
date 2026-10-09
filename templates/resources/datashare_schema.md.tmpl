@@ -1,0 +1,42 @@
+---
+subcategory: Data Sharing
+page_title: redshift_datashare_schema Resource - terraform-provider-redshift
+description: Manages schema membership and future-object inclusion in a datashare.
+---
+
+# redshift_datashare_schema (Resource)
+
+Manages one schema membership in a producer datashare. Schema creation and table/view membership are separate resources.
+See AWS [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_datashare_schema/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+Changing `database`, `datashare`, or `schema` replaces the membership. `include_new` defaults to `false` and updates
+in place.
+
+## Lifecycle and Ownership
+
+Uses `ALTER DATASHARE ... ADD/REMOVE SCHEMA` and reads `svv_datashare_objects`. It owns this relationship only. Remove
+shared tables/views before removing their schema membership. Deleting the membership does not drop the producer schema.
+Refresh updates `include_new` from the observed future-object inclusion policy.
+Reference managed datashare and schema names to establish creation order. Changes to those names require membership
+replacement through the provider's schema.
+`include_new` does not add **existing** tables or views; include them with separate `redshift_datashare_table`
+resources. The existing producer provisioner uses a blanket `GRANT SELECT FOR TABLES IN SCHEMA` policy. Its exact
+catalog/drift semantics remain a live migration check; `include_new` alone does not replace existing object membership.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_datashare_schema/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_datashare_schema/import.sh" }}
