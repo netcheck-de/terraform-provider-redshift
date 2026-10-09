@@ -43,8 +43,14 @@ var datashareAccountPattern = regexp.MustCompile(`^[0-9]{12}$`)
 // datashareNamespacePattern validates Redshift namespace UUIDs.
 var datashareNamespacePattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-// consumer validates the resolved selector and returns its SQL type and identity key.
-func (data datashareGrantModel) consumer() (string, string, string, error) {
+// Consumer kinds as they appear in GRANT USAGE ON DATASHARE … TO ACCOUNT | NAMESPACE.
+const (
+	datashareGrantAccount   sqlclient.Keyword = "ACCOUNT"
+	datashareGrantNamespace sqlclient.Keyword = "NAMESPACE"
+)
+
+// consumer validates the resolved selector and returns its SQL type, identity key, and value.
+func (data datashareGrantModel) consumer() (sqlclient.Keyword, string, string, error) {
 	if data.AccountID.IsUnknown() || data.NamespaceID.IsUnknown() {
 		return "", "", "", fmt.Errorf("consumer identity must be known before executing SQL")
 	}
@@ -56,12 +62,12 @@ func (data datashareGrantModel) consumer() (string, string, string, error) {
 		if !datashareAccountPattern.MatchString(account) {
 			return "", "", "", fmt.Errorf("account_id must contain exactly 12 digits")
 		}
-		return "ACCOUNT", "account_id", account, nil
+		return datashareGrantAccount, "account_id", account, nil
 	}
 	if !datashareNamespacePattern.MatchString(namespace) {
 		return "", "", "", fmt.Errorf("namespace_id must be a UUID")
 	}
-	return "NAMESPACE", "namespace_id", namespace, nil
+	return datashareGrantNamespace, "namespace_id", namespace, nil
 }
 
 // newDatashareGrantResource constructs a SQL consumer share grant handler.
@@ -88,7 +94,7 @@ func (r *datashareGrantResource) Schema(_ context.Context, _ resource.SchemaRequ
 
 // read checks explicitly scoped consumer share usage in the producer catalog.
 func (r *datashareGrantResource) read(ctx context.Context, data datashareGrantModel) (bool, error) {
-	consumerType, _, value, err := data.consumer()
+	query, err := readDatashareGrantQuery(data)
 	if err != nil {
 		return false, err
 	}
@@ -98,14 +104,7 @@ func (r *datashareGrantResource) read(ctx context.Context, data datashareGrantMo
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
-	predicate := "consumer_account = :account AND NVL(consumer_namespace, '') = ''"
-	parameters := map[string]string{"share": data.Datashare.ValueString(), "account": value}
-	if consumerType == "NAMESPACE" {
-		predicate = "consumer_namespace = :namespace"
-		parameters = map[string]string{"share": data.Datashare.ValueString(), "namespace": value}
-	}
-	rows, err := r.queryDatabase(ctx, data.Database.ValueString(),
-		"SELECT consumer_account, consumer_namespace FROM svv_datashare_consumers WHERE share_name = :share AND "+predicate, parameters)
+	rows, err := r.selectRows(ctx, data.Database.ValueString(), query)
 	return len(rows) > 0, err
 }
 
@@ -116,13 +115,17 @@ func (r *datashareGrantResource) Create(ctx context.Context, req resource.Create
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	consumerType, field, value, err := data.consumer()
+	_, field, value, err := data.consumer()
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid datashare consumer", err.Error())
 		return
 	}
-	sql := "GRANT USAGE ON DATASHARE " + sqlclient.Identifier(data.Datashare.ValueString()) + " TO " + consumerType + " " + sqlclient.Literal(value)
-	if _, err := r.queryDatabase(ctx, data.Database.ValueString(), sql, nil); err != nil {
+	sql, err := createDatashareGrantStatement(data)
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid datashare consumer", err.Error())
+		return
+	}
+	if err := r.exec(ctx, data.Database.ValueString(), sql); err != nil {
 		resp.Diagnostics.AddError("Grant datashare usage", err.Error())
 		return
 	}
@@ -181,9 +184,11 @@ func (r *datashareGrantResource) Delete(ctx context.Context, req resource.Delete
 	}
 	found, err := r.read(ctx, data)
 	if err == nil && found {
-		consumerType, _, value, _ := data.consumer()
-		sql := "REVOKE USAGE ON DATASHARE " + sqlclient.Identifier(data.Datashare.ValueString()) + " FROM " + consumerType + " " + sqlclient.Literal(value)
-		_, err = r.queryDatabase(ctx, data.Database.ValueString(), sql, nil)
+		var sql string
+		sql, err = dropDatashareGrantStatement(data)
+		if err == nil {
+			err = r.exec(ctx, data.Database.ValueString(), sql)
+		}
 		if err == nil {
 			found, err = r.read(ctx, data)
 			if err == nil && found {

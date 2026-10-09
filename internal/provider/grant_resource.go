@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"sort"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
@@ -17,11 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
-
-// scopedPrivileges limits emitted SQL to supported privilege keywords.
-var scopedPrivileges = []string{"USAGE", "CREATE", "TEMPORARY", "SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "REFERENCES", "TRUNCATE", "ALTER", "EXECUTE"}
 
 // grantResource owns an exact role or datashare privilege set for a database or schema scope.
 type grantResource struct {
@@ -86,7 +81,7 @@ func (r *grantResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"privileges": schema.SetAttribute{
 				Required: true, ElementType: types.StringType,
 				MarkdownDescription: "Desired uppercase SQL privileges; updated in place. An empty set revokes all grants for this tuple.",
-				Validators:          []validator.Set{setvalidator.ValueStringsAre(stringvalidator.OneOf(scopedPrivileges...))},
+				Validators:          []validator.Set{setvalidator.ValueStringsAre(stringvalidator.OneOf(privilegeNames(scopedPrivileges)...))},
 			},
 		},
 	}
@@ -120,58 +115,47 @@ func (data grantModel) validate() error {
 }
 
 // read refreshes explicit scoped privileges, routing local grants to their database and shared grants to admin.
-func (r *grantResource) read(ctx context.Context, data *grantModel) (sqlclient.Connection, bool, error) {
+// It returns the database that grants for this tuple run in.
+func (r *grantResource) read(ctx context.Context, data *grantModel) (string, bool, error) {
 	schemaName, scope := data.SchemaName.ValueString(), data.Scope.ValueString()
 	if err := data.validate(); err != nil {
-		return sqlclient.Connection{}, false, err
+		return "", false, err
 	}
-	target, err := r.connection(r.database.ValueString())
-	if err != nil {
-		return target, false, err
+	admin := r.database.ValueString()
+	if err := r.bound(data.ID, admin); err != nil {
+		return admin, false, err
 	}
-	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
-		return target, false, err
-	}
-	rows, err := r.query(ctx, "SELECT database_type FROM svv_redshift_databases WHERE database_name = :database", map[string]string{"database": data.DatabaseName.ValueString()})
+	rows, err := r.selectRows(ctx, admin, grantDatabaseTypeQuery(data.DatabaseName.ValueString()))
 	if err != nil || len(rows) == 0 {
-		return target, false, err
+		return admin, false, err
 	}
+	target := admin
 	switch rows[0]["database_type"] {
 	case "local":
-		target.Database = data.DatabaseName.ValueString()
+		target = data.DatabaseName.ValueString()
 	case "shared":
 	default:
 		return target, false, fmt.Errorf("scoped grants require a local or shared database")
 	}
-	identity := data.Role.ValueString()
-	query := "SHOW GRANTS FOR ROLE " + sqlclient.Identifier(identity) + " FROM DATABASE " + sqlclient.Identifier(data.DatabaseName.ValueString())
-	parentQuery := "SELECT role_name FROM svv_roles WHERE role_name = :role"
-	parameters := map[string]string{"role": identity}
+	identity, parentDatabase := data.Role.ValueString(), admin
 	if data.Datashare.ValueString() != "" {
 		if rows[0]["database_type"] != "local" {
 			return target, false, fmt.Errorf("datashare grants require a local database, schema_name, SCHEMA or TABLES scope, and no role")
 		}
-		identity = "ds:" + data.Datashare.ValueString()
-		query = "SHOW GRANTS ON SCHEMA " + sqlclient.Identifier(schemaName)
-		parentQuery = "SELECT share_name FROM svv_datashares WHERE share_type = 'OUTBOUND' AND share_name = :share"
-		parameters = map[string]string{"share": data.Datashare.ValueString()}
+		identity, parentDatabase = "ds:"+data.Datashare.ValueString(), target
 	}
-	parentTarget := target
-	if data.Datashare.ValueString() == "" {
-		parentTarget.Database = r.database.ValueString()
-	}
-	roles, err := r.client.Query(ctx, parentTarget, parentQuery, parameters)
-	if err != nil || len(roles) == 0 {
+	parents, err := r.selectRows(ctx, parentDatabase, grantRecipientQuery(*data))
+	if err != nil || len(parents) == 0 {
 		return target, false, err
 	}
 	if schemaName != "" && rows[0]["database_type"] == "local" {
 		// A schema dropped outside Terraform removes the grant instead of failing every refresh.
-		schemas, err := r.query(ctx, "SELECT schema_name FROM svv_all_schemas WHERE database_name = :database AND schema_name = :schema", map[string]string{"database": data.DatabaseName.ValueString(), "schema": schemaName})
+		schemas, err := r.selectRows(ctx, admin, privilegeSchemaQuery(data.DatabaseName.ValueString(), schemaName))
 		if err != nil || len(schemas) == 0 {
 			return target, false, err
 		}
 	}
-	rows, err = r.client.Query(ctx, target, query, nil)
+	rows, err = r.queryDatabase(ctx, target, readGrantStatement(*data), nil)
 	if err != nil {
 		return target, false, err
 	}
@@ -209,46 +193,23 @@ func (r *grantResource) reconcile(ctx context.Context, data grantModel) error {
 	if !found {
 		return fmt.Errorf("target database or receiving role does not exist")
 	}
-	object := "ON DATABASE " + sqlclient.Identifier(data.DatabaseName.ValueString())
-	if data.SchemaName.ValueString() != "" {
-		if data.Scope.ValueString() == "SCHEMA" {
-			object = "ON SCHEMA " + sqlclient.Identifier(data.DatabaseName.ValueString()) + "." + sqlclient.Identifier(data.SchemaName.ValueString())
-		} else {
-			object = "FOR " + data.Scope.ValueString() + " IN SCHEMA " + sqlclient.Identifier(data.SchemaName.ValueString()) + " DATABASE " + sqlclient.Identifier(data.DatabaseName.ValueString())
-		}
-	} else if data.Scope.ValueString() != "DATABASE" {
-		object = "FOR " + data.Scope.ValueString() + " IN DATABASE " + sqlclient.Identifier(data.DatabaseName.ValueString())
-	}
-	recipient := "ROLE " + sqlclient.Identifier(data.Role.ValueString())
-	if data.Datashare.ValueString() != "" {
-		recipient = "DATASHARE " + sqlclient.Identifier(data.Datashare.ValueString())
-		object = "ON SCHEMA " + sqlclient.Identifier(data.SchemaName.ValueString())
-		if data.Scope.ValueString() == "TABLES" {
-			object = "FOR TABLES IN SCHEMA " + sqlclient.Identifier(data.SchemaName.ValueString())
-		}
-	}
-	for _, privilege := range actual.Privileges.Elements() {
-		if name := privilege.(types.String).ValueString(); !slices.Contains(scopedPrivileges, name) {
+	current := knownStrings(actual.Privileges)
+	for _, name := range current {
+		if !privilegeAllowed(scopedPrivileges, name) {
 			return fmt.Errorf("unsupported catalog privilege %q", name)
 		}
 	}
-	// Revoke extras before adding desired privileges; each operation is retryable.
-	for _, privilege := range actual.Privileges.Elements() {
-		if slices.ContainsFunc(data.Privileges.Elements(), func(value attr.Value) bool { return value.Equal(privilege) }) {
-			continue
-		}
-		name := privilege.(types.String).ValueString()
-		if _, err := r.client.Query(ctx, target, "REVOKE "+name+" "+object+" FROM "+recipient, nil); err != nil {
-			return err
-		}
+	spec, err := data.spec()
+	if err != nil {
+		return err
 	}
-	for _, privilege := range data.Privileges.Elements() {
-		if slices.ContainsFunc(actual.Privileges.Elements(), func(value attr.Value) bool { return value.Equal(privilege) }) {
-			continue
-		}
-		if _, err := r.client.Query(ctx, target, "GRANT "+privilege.(types.String).ValueString()+" "+object+" TO "+recipient, nil); err != nil {
-			return err
-		}
+	// Revoke extras before adding desired privileges; each operation is retryable.
+	statements, err := privilegeStatements(spec, scopedPrivileges, current, knownStrings(data.Privileges))
+	if err != nil {
+		return err
+	}
+	if err := r.exec(ctx, target, statements...); err != nil {
+		return err
 	}
 	_, found, err = r.read(ctx, &actual)
 	if err == nil && (!found || !actual.Privileges.Equal(data.Privileges)) {

@@ -1,0 +1,1 @@
+-- error: SCHEMA does not accept object_name

@@ -1,0 +1,1 @@
+-- error: unsupported object_type "VIEW"

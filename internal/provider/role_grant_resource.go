@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // roleGrantResource manages one role grant to a user or another role.
@@ -69,25 +68,8 @@ func (r *roleGrantResource) read(ctx context.Context, data roleGrantModel) (bool
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
-	var sql string
-	var parameters map[string]string
-	if !data.ToUser.IsNull() {
-		sql = "SELECT role_name FROM svv_user_grants WHERE user_name = :user AND role_name = :role"
-		parameters = map[string]string{"user": data.ToUser.ValueString(), "role": data.Role.ValueString()}
-	} else {
-		sql = "SELECT role_name FROM svv_role_grants WHERE role_name = :recipient AND granted_role_name = :role"
-		parameters = map[string]string{"recipient": data.ToRole.ValueString(), "role": data.Role.ValueString()}
-	}
-	rows, err := r.query(ctx, sql, parameters)
+	rows, err := r.selectRows(ctx, r.database.ValueString(), readRoleGrantQuery(data))
 	return len(rows) > 0, err
-}
-
-// recipient formats the SQL recipient without conflating roles and users.
-func (data roleGrantModel) recipient() string {
-	if !data.ToUser.IsNull() {
-		return sqlclient.Identifier(data.ToUser.ValueString())
-	}
-	return "ROLE " + sqlclient.Identifier(data.ToRole.ValueString())
 }
 
 // fields returns only the selected recipient's import identity fields.
@@ -109,7 +91,7 @@ func (r *roleGrantResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 	// Save the stable identity before post-write verification can fail.
-	if _, err := r.query(ctx, "GRANT ROLE "+sqlclient.Identifier(data.Role.ValueString())+" TO "+data.recipient(), nil); err != nil {
+	if err := r.exec(ctx, r.database.ValueString(), createRoleGrantStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Grant Redshift role membership", err.Error())
 		return
 	}
@@ -172,7 +154,7 @@ func (r *roleGrantResource) Delete(ctx context.Context, req resource.DeleteReque
 	}
 	found, err := r.read(ctx, data)
 	if err == nil && found {
-		_, err = r.query(ctx, "REVOKE ROLE "+sqlclient.Identifier(data.Role.ValueString())+" FROM "+data.recipient(), nil)
+		err = r.exec(ctx, r.database.ValueString(), dropRoleGrantStatement(data))
 		if err == nil {
 			found, err = r.read(ctx, data)
 			if err == nil && found {

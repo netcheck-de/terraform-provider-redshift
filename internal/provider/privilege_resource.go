@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"sort"
-	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -50,20 +48,12 @@ type privilegeTarget struct {
 	checks []catalogCheck
 	// query reads the explicit privilege set owned by this tuple.
 	query catalogCheck
-	// prefix precedes GRANT/REVOKE, for example ALTER DEFAULT PRIVILEGES.
-	prefix string
-	// object follows the privilege keyword, including its ON clause when needed.
-	object string
-	// recipient is a quoted SQL grantee with any required ROLE/GROUP prefix.
-	recipient string
-	// suffix contains any SQL following the grantee.
-	suffix string
+	// grant renders the GRANT and REVOKE statements for this tuple.
+	grant grantSpec
 	// allowed is the privilege allowlist used before emitting mutation SQL.
-	allowed []string
+	allowed []sqlclient.Keyword
 	// filter optionally excludes rows belonging to other grantees or scopes.
 	filter func(sqlclient.Row) bool
-	// statement overrides standard GRANT/REVOKE formatting for ASSUMEROLE command grants.
-	statement func(string, string) string
 }
 
 // privilegeString defines an immutable nonempty permission identity field.
@@ -99,26 +89,6 @@ func withPrivileges(data types.Object, privileges []string) types.Object {
 	return types.ObjectValueMust(data.AttributeTypes(context.Background()), attributes)
 }
 
-// principal formats a grantee and supplies its catalog existence check.
-func principal(data types.Object) (string, catalogCheck, error) {
-	name, kind := objectString(data, "grantee"), objectString(data, "grantee_type")
-	switch kind {
-	case "ROLE":
-		return "ROLE " + sqlclient.Identifier(name), catalogCheck{"SELECT role_name FROM svv_roles WHERE role_name = :name", map[string]string{"name": name}}, nil
-	case "USER":
-		return sqlclient.Identifier(name), catalogCheck{"SELECT usename FROM pg_user WHERE usename = :name", map[string]string{"name": name}}, nil
-	case "GROUP":
-		return "GROUP " + sqlclient.Identifier(name), catalogCheck{"SELECT groname FROM pg_group WHERE groname = :name", map[string]string{"name": name}}, nil
-	case "PUBLIC":
-		if name != "public" {
-			return "", catalogCheck{}, fmt.Errorf("PUBLIC requires grantee = public")
-		}
-		return "PUBLIC", catalogCheck{}, nil
-	default:
-		return "", catalogCheck{}, fmt.Errorf("unsupported grantee_type %q", kind)
-	}
-}
-
 // Metadata identifies the concrete permission resource selected by its SQL contract.
 func (r *privilegeResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_" + r.name
@@ -143,23 +113,16 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 	if err != nil {
 		return target, false, err
 	}
-	connection, err := r.connection(r.database.ValueString())
-	if err != nil {
-		return target, false, err
-	}
 	for _, check := range target.checks {
 		if check.sql == "" {
 			continue
 		}
-		rows, err := r.client.Query(ctx, connection, check.sql, check.parameters)
+		rows, err := r.queryDatabase(ctx, r.database.ValueString(), check.sql, check.parameters)
 		if err != nil || len(rows) == 0 {
 			return target, false, err
 		}
 	}
-	if target.database != "" {
-		connection.Database = target.database
-	}
-	rows, err := r.client.Query(ctx, connection, target.query.sql, target.query.parameters)
+	rows, err := r.queryDatabase(ctx, r.targetDatabase(target), target.query.sql, target.query.parameters)
 	if err != nil {
 		return target, false, err
 	}
@@ -172,7 +135,7 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 			return target, false, fmt.Errorf("grant options are not managed; remove them explicitly before importing")
 		}
 		name := normalizePrivilege(row["privilege_type"])
-		if managed && !slices.Contains(target.allowed, name) {
+		if managed && !privilegeAllowed(target.allowed, name) {
 			return target, false, fmt.Errorf("unsupported catalog privilege %q", name)
 		}
 		privileges[name] = true
@@ -183,6 +146,14 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 	}
 	*data = withPrivileges(*data, values)
 	return target, true, nil
+}
+
+// targetDatabase selects the tuple's database for privilege reads and mutations, defaulting to the admin database.
+func (r *privilegeResource) targetDatabase(target privilegeTarget) string {
+	if target.database != "" {
+		return target.database
+	}
+	return r.database.ValueString()
 }
 
 // normalizePrivilege maps catalog privilege abbreviations to the names accepted in configuration.
@@ -204,7 +175,7 @@ func (r *privilegeResource) validate(data types.Object) error {
 		return err
 	}
 	for _, value := range data.Attributes()["privileges"].(types.Set).Elements() {
-		if !slices.Contains(target.allowed, value.(types.String).ValueString()) {
+		if !privilegeAllowed(target.allowed, value.(types.String).ValueString()) {
 			return fmt.Errorf("unsupported privilege %q", value.(types.String).ValueString())
 		}
 	}
@@ -226,26 +197,12 @@ func (r *privilegeResource) reconcile(ctx context.Context, data types.Object) er
 	}
 	desired := data.Attributes()["privileges"].(types.Set)
 	current := actual.Attributes()["privileges"].(types.Set)
-	connection, _ := r.connection(r.database.ValueString())
-	if target.database != "" {
-		connection.Database = target.database
+	statements, err := privilegeStatements(target.grant, target.allowed, knownStrings(current), knownStrings(desired))
+	if err != nil {
+		return err
 	}
-	for _, operation := range []struct {
-		verb, direction string
-		from, to        types.Set
-	}{{"REVOKE", "FROM", current, desired}, {"GRANT", "TO", desired, current}} {
-		for _, value := range operation.from.Elements() {
-			if slices.ContainsFunc(operation.to.Elements(), func(other attr.Value) bool { return other.Equal(value) }) {
-				continue
-			}
-			sql := strings.TrimSpace(target.prefix + operation.verb + " " + value.(types.String).ValueString() + target.object + " " + operation.direction + " " + target.recipient + target.suffix)
-			if target.statement != nil {
-				sql = target.statement(operation.verb, value.(types.String).ValueString())
-			}
-			if _, err := r.client.Query(ctx, connection, sql, nil); err != nil {
-				return err
-			}
-		}
+	if err := r.exec(ctx, r.targetDatabase(target), statements...); err != nil {
+		return err
 	}
 	_, found, err = r.read(ctx, &actual)
 	if err == nil && (!found || !actual.Attributes()["privileges"].Equal(desired)) {

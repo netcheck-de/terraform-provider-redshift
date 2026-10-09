@@ -1,0 +1,1 @@
+-- error: schema_name is required for SCHEMA

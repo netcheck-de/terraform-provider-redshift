@@ -1,0 +1,1 @@
+-- error: configure exactly one nonempty role or datashare
