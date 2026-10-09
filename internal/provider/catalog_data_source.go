@@ -291,7 +291,12 @@ func newPrivilegeDataSource(factory func() resource.Resource) datasource.DataSou
 		lookupValue(&observed, "id", types.StringNull())
 		_, found, err := reader.readPrivileges(ctx, &observed, false)
 		if err == nil && found {
-			lookupValue(data, "privileges", observed.Attributes()["privileges"])
+			for _, name := range []string{"privileges", "grant_option_privileges"} {
+				// Only types with grant options carry the second set.
+				if value, ok := observed.Attributes()[name]; ok {
+					lookupValue(data, name, value)
+				}
+			}
 		}
 		return found, err
 	}})

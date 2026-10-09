@@ -23,6 +23,14 @@ func newOptionGrantTestResource() resource.Resource {
 	return r
 }
 
+// newHookedOptionGrantTestResource decides option eligibility through optionRecipient, as a contract that names its
+// user in another attribute than grantee_type does; here only the grantee analyst counts as a user.
+func newHookedOptionGrantTestResource() resource.Resource {
+	r := newOptionGrantTestResource().(*privilegeResource)
+	r.optionRecipient = func(data types.Object) bool { return objectString(data, "grantee") == "analyst" }
+	return r
+}
+
 // newPolicyGrantTestResource grants table lookups to an RLS policy through the recipient override, the shape
 // GRANT SELECT ON TABLE … TO RLS POLICY uses.
 func newPolicyGrantTestResource() resource.Resource {
@@ -106,6 +114,7 @@ func TestGrantOptionSpecSQL(t *testing.T) {
 		{"prefix", both(grantSpec{prefix: sqlclient.Stmt("ALTER DEFAULT PRIVILEGES FOR USER").Ident("loader").OptIdent("IN SCHEMA", "serving"), object: sqlclient.Kw("ON", "TABLES"), grantee: sqlclient.Ident("analyst")}, "INSERT")},
 		{"render_override", both(grantSpec{render: func(bool, sqlclient.Keyword) string { return "GRANT ASSUMEROLE" }}, "COPY")},
 		{"fixed_option", both(grantSpec{object: object, grantee: sqlclient.Ident("analyst"), option: "WITH GRANT OPTION"}, "SELECT")},
+		{"scoped", both(grantSpec{object: sqlclient.Kw("FOR TABLES").KwIdent("IN SCHEMA", "serving").KwIdent("DATABASE", "analytics"), grantee: sqlclient.Ident("analyst"), optionRevoke: scopedOptionRevoke}, "SELECT")},
 	})
 }
 
@@ -159,12 +168,14 @@ func TestPrivilegeGrantOptionValidation(t *testing.T) {
 	}{
 		{name: "user subset", factory: newOptionGrantTestResource, fields: optionGrantFields, privileges: []string{"INSERT", "SELECT"}, options: []string{"SELECT"}},
 		{name: "user without options", factory: newOptionGrantTestResource, fields: optionGrantFields, privileges: []string{"SELECT"}},
-		{name: "role", factory: newOptionGrantTestResource, fields: map[string]string{"grantee_type": "ROLE", "grantee": "readers"}, privileges: []string{"SELECT"}, options: []string{"SELECT"}, err: "requires grantee_type USER"},
-		{name: "group", factory: newOptionGrantTestResource, fields: map[string]string{"grantee_type": "GROUP", "grantee": "readers"}, privileges: []string{"SELECT"}, options: []string{"SELECT"}, err: "requires grantee_type USER"},
-		{name: "public", factory: newOptionGrantTestResource, fields: map[string]string{"grantee_type": "PUBLIC", "grantee": "public"}, privileges: []string{"SELECT"}, options: []string{"SELECT"}, err: "requires grantee_type USER"},
+		{name: "role", factory: newOptionGrantTestResource, fields: map[string]string{"grantee_type": "ROLE", "grantee": "readers"}, privileges: []string{"SELECT"}, options: []string{"SELECT"}, err: "requires a user recipient"},
+		{name: "group", factory: newOptionGrantTestResource, fields: map[string]string{"grantee_type": "GROUP", "grantee": "readers"}, privileges: []string{"SELECT"}, options: []string{"SELECT"}, err: "requires a user recipient"},
+		{name: "public", factory: newOptionGrantTestResource, fields: map[string]string{"grantee_type": "PUBLIC", "grantee": "public"}, privileges: []string{"SELECT"}, options: []string{"SELECT"}, err: "requires a user recipient"},
 		{name: "not a privilege", factory: newOptionGrantTestResource, fields: optionGrantFields, privileges: []string{"SELECT"}, options: []string{"INSERT"}, err: `grant option privilege "INSERT" is not in privileges`},
-		{name: "policy recipient", factory: newPolicyGrantTestResource, fields: policyGrantFields, privileges: []string{"SELECT"}, options: []string{"SELECT"}, err: "requires grantee_type USER"},
+		{name: "policy recipient", factory: newPolicyGrantTestResource, fields: policyGrantFields, privileges: []string{"SELECT"}, options: []string{"SELECT"}, err: "requires a user recipient"},
 		{name: "policy without options", factory: newPolicyGrantTestResource, fields: policyGrantFields, privileges: []string{"SELECT"}},
+		{name: "hook accepts", factory: newHookedOptionGrantTestResource, fields: map[string]string{"grantee_type": "ROLE", "grantee": "analyst"}, privileges: []string{"SELECT"}, options: []string{"SELECT"}},
+		{name: "hook rejects", factory: newHookedOptionGrantTestResource, fields: map[string]string{"grantee": "loader"}, privileges: []string{"SELECT"}, options: []string{"SELECT"}, err: "requires a user recipient"},
 		{name: "invalid recipient", factory: newPolicyGrantTestResource, fields: map[string]string{"policy": ""}, privileges: []string{"SELECT"}, err: "policy is required"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

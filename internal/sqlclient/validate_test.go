@@ -48,6 +48,7 @@ func TestTypeName(t *testing.T) {
 		"char":                            "character",
 		"CHAR(10)":                        "character(10)",
 		"nchar(4096)":                     "character(4096)",
+		"bpchar":                          "character",
 		"bpchar(max)":                     "character(4096)",
 		"varchar":                         "character varying",
 		"VARCHAR(256)":                    "character varying(256)",
@@ -121,6 +122,42 @@ func TestTypeName(t *testing.T) {
 	}
 }
 
+// TestColumnType adds the modifier Redshift gives a column declared without one, and keeps explicit modifiers.
+func TestColumnType(t *testing.T) {
+	for value, expected := range map[string]Keyword{
+		"char":              "character(1)",
+		"NCHAR":             "character(1)",
+		"character":         "character(1)",
+		"bpchar":            "character(256)",
+		"varchar":           "character varying(256)",
+		"text":              "character varying(256)",
+		"nvarchar":          "character varying(256)",
+		"character varying": "character varying(256)",
+		"decimal":           "numeric(18,0)",
+		"numeric":           "numeric(18,0)",
+		"varbyte":           "varbyte(64000)",
+		"varbinary":         "varbyte(64000)",
+		"bpchar(10)":        "character(10)",
+		"varchar(MAX)":      "character varying(65535)",
+		"numeric(10)":       "numeric(10,0)",
+		"int4":              "integer",
+		"timestamptz":       "timestamp with time zone",
+		"varchar(0)":        "",
+		"serial":            "",
+	} {
+		t.Run(value, func(t *testing.T) {
+			actual, err := ColumnType(value)
+			if expected == "" {
+				require.Error(t, err)
+				assert.Empty(t, actual)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, expected, actual)
+		})
+	}
+}
+
 // TestSignature canonicalizes and joins routine argument types and names the failing argument.
 func TestSignature(t *testing.T) {
 	signature, err := Signature("INT4", "varchar(10)", "timestamptz")
@@ -174,6 +211,9 @@ func TestCheckUserSQL(t *testing.T) {
 		// Redshift reads x$a$ as a name, so the semicolon is outside any dollar quote there.
 		{"SELECT x$a$; DROP TABLE t; $a$", "without ';'"},
 		{"SELECT é$a$; DROP TABLE t; $a$", "without ';'"},
+		// The server reads 1, the dollar string $a$--$a$, the name x$a$ and then a top-level semicolon.
+		{"SELECT 1$a$--$a$ AS x$a$; DROP TABLE t --$a$", "without ';'"},
+		{"1$a$--$a$x$a$;$a$", "without ';'"},
 		{"SELECT a FROM t WHERE b = :b", "placeholder :b"},
 		{"1) OR (true", "unmatched ')'"},
 		// Redshift reads \' as an escaped quote, so the semicolon below is outside the literal there.

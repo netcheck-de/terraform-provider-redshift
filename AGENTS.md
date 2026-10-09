@@ -26,8 +26,8 @@ through the Data API or a direct TLS connection.
 - Resource code talks to Redshift only through `sqlclient.Client`; depguard forbids importing transports or AWS
   service clients outside `provider.go` and `connection.go`.
 - Build statements with `sqlclient.Stmt`/`Fragment` and catalog reads with `sqlclient.Select(...).Build()`; never
-  concatenate SQL. Unquoted text is a `Keyword` (a constant, `OneOf`, `TypeName`, `Signature`, or a `//sql:trusted`
-  conversion); configured SQL is `UserSQL` from `CheckUserSQL`. `trusted_sql_test.go` enforces this.
+  concatenate SQL. Unquoted text is a `Keyword` (a constant, `OneOf`, `TypeName`, `ColumnType`, `Signature`, or a
+  `//sql:trusted` conversion); configured SQL is `UserSQL` from `CheckUserSQL`. `trusted_sql_test.go` enforces this.
 - Follow the AWS Redshift SQL reference for syntax and catalog behavior; catalog privilege names may differ from
   configuration names (see `normalizePrivilege`).
 - Validate a tuple before the first `State.Set` in Create, and expose the same check in `ValidateConfig`.

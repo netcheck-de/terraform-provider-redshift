@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -257,8 +258,13 @@ func TestUserLifecycleErrorPaths(t *testing.T) {
 	}
 }
 
-// TestUserUpdateFailures checks password-version, configuration, and SQL update failure branches.
+// TestUserUpdateFailures checks password-version, configuration, and SQL update failure branches, and that each
+// failure names the step that failed.
 func TestUserUpdateFailures(t *testing.T) {
+	summaries := map[string]string{
+		"rotation": "Rotate Redshift password", "privilege": "Update Redshift user", "catalog": "Verify Redshift user",
+		"missing": "Verify Redshift user", "mismatch": "Verify Redshift user",
+	}
 	for _, stage := range []string{"rotation", "privilege", "catalog", "missing", "mismatch", "invalid config"} {
 		t.Run(stage, func(t *testing.T) {
 			c := &catalog{user: true}
@@ -290,17 +296,25 @@ func TestUserUpdateFailures(t *testing.T) {
 				planned.Superuser = types.BoolValue(true)
 			}
 			if stage == "invalid config" {
+				// A secret of the wrong type makes reading it fail, which a rotation must report rather than
+				// mistake for a missing secret.
 				state := testState(t, r, previous)
 				plan := testState(t, r, planned)
+				secretType := tftypes.Object{AttributeTypes: map[string]tftypes.Type{"password_wo": tftypes.Number}}
+				config := tfsdk.Config{
+					Schema: schema.Schema{Attributes: map[string]schema.Attribute{"password_wo": schema.Int64Attribute{Optional: true}}},
+					Raw:    tftypes.NewValue(secretType, map[string]tftypes.Value{"password_wo": tftypes.NewValue(tftypes.Number, 5)}),
+				}
 				resp := resource.UpdateResponse{State: state}
-				r.Update(context.Background(), resource.UpdateRequest{
-					State: state, Plan: tfsdk.Plan(plan),
-					Config: tfsdk.Config{Schema: plan.Schema, Raw: tftypes.NewValue(tftypes.String, "invalid config")},
-				}, &resp)
-				assert.True(t, resp.Diagnostics.HasError())
+				r.Update(context.Background(), resource.UpdateRequest{State: state, Plan: tfsdk.Plan(plan), Config: config}, &resp)
+				require.True(t, resp.Diagnostics.HasError())
+				assert.NotEqual(t, "Rotate Redshift password", resp.Diagnostics.Errors()[0].Summary())
+				assert.Empty(t, c.writes)
 				return
 			}
-			assert.True(t, runUser(t, r, "update", planned, previous, "RotatedPass123").HasError())
+			diagnostics := runUser(t, r, "update", planned, previous, "RotatedPass123")
+			require.True(t, diagnostics.HasError())
+			assert.Equal(t, summaries[stage], diagnostics.Errors()[0].Summary())
 		})
 	}
 }

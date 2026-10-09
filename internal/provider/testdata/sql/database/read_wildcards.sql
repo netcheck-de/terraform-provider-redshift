@@ -1,0 +1,1 @@
+SHOW DATABASES LIKE 'a_b%c_d__';

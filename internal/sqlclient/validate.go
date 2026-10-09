@@ -49,6 +49,8 @@ type typeRule struct {
 	modifier typeModifier
 	// maximum bounds a length, which MAX expands to so configuration matches the catalog.
 	maximum int64
+	// columnDefault is the modifier Redshift gives a column declared without one, for ColumnType.
+	columnDefault string
 }
 
 // Maximum lengths documented for Redshift character and binary types.
@@ -71,12 +73,16 @@ var typeRules = func() map[string]typeRule {
 	add(typeRule{canonical: "smallint"}, "int2")
 	add(typeRule{canonical: "integer"}, "int", "int4")
 	add(typeRule{canonical: "bigint"}, "int8")
-	add(typeRule{canonical: "numeric", modifier: precisionModifier}, "decimal")
+	add(typeRule{canonical: "numeric", modifier: precisionModifier, columnDefault: "(18,0)"}, "decimal")
 	add(typeRule{canonical: "real"}, "float4")
 	add(typeRule{canonical: "double precision"}, "float8", "float")
 	add(typeRule{canonical: "boolean"}, "bool")
-	add(typeRule{canonical: "character", modifier: lengthModifier, maximum: maxCharLength}, "char", "nchar", "bpchar")
-	add(typeRule{canonical: "character varying", modifier: lengthModifier, maximum: maxVarcharLength}, "varchar", "nvarchar", "text")
+	character := typeRule{canonical: "character", modifier: lengthModifier, maximum: maxCharLength, columnDefault: "(1)"}
+	add(character, "char", "nchar")
+	// BPCHAR is the same type, but a column declared as BPCHAR becomes CHAR(256) rather than CHAR(1).
+	character.columnDefault = "(256)"
+	rules["bpchar"] = character
+	add(typeRule{canonical: "character varying", modifier: lengthModifier, maximum: maxVarcharLength, columnDefault: "(256)"}, "varchar", "nvarchar", "text")
 	add(typeRule{canonical: "date"})
 	add(typeRule{canonical: "timestamp without time zone"}, "timestamp")
 	add(typeRule{canonical: "timestamp with time zone"}, "timestamptz")
@@ -84,7 +90,7 @@ var typeRules = func() map[string]typeRule {
 	add(typeRule{canonical: "time with time zone"}, "timetz")
 	add(typeRule{canonical: "interval year to month"})
 	add(typeRule{canonical: "interval day to second", modifier: fractionModifier})
-	add(typeRule{canonical: "varbyte", modifier: lengthModifier, maximum: maxVarbyteLength}, "varbinary", "binary varying")
+	add(typeRule{canonical: "varbyte", modifier: lengthModifier, maximum: maxVarbyteLength, columnDefault: "(64000)"}, "varbinary", "binary varying")
 	for _, name := range []string{"geometry", "geography", "hllsketch", "super", "anyelement", "refcursor"} {
 		add(typeRule{canonical: name})
 	}
@@ -93,9 +99,10 @@ var typeRules = func() map[string]typeRule {
 
 // TypeName validates a Redshift data type and returns the spelling format_type() reports for it,
 // for example int4 → integer and varchar(10) → character varying(10), so configuration compares equal to the catalog.
-// Lengths are kept as written, except that MAX becomes the type's maximum.
+// Lengths are kept as written, except that MAX becomes the type's maximum. A type without modifiers stays bare, as
+// routine arguments are reported; column definitions use ColumnType, which adds the server's default modifier.
 func TypeName(value string) (Keyword, error) {
-	normalized := strings.ToLower(strings.Join(strings.Fields(value), " "))
+	normalized := normalizeTypeName(value)
 	base, arguments, hasArguments := normalized, "", false
 	if open := strings.IndexByte(normalized, '('); open >= 0 {
 		if !strings.HasSuffix(normalized, ")") {
@@ -138,6 +145,26 @@ func TypeName(value string) (Keyword, error) {
 		return Keyword(fmt.Sprintf("%s(%d)", rule.canonical, numbers[0])), nil
 	}
 	return "", fmt.Errorf("data type %q has unsupported modifiers", value)
+}
+
+// ColumnType is TypeName for column definitions. A type declared without modifiers gets the one Redshift gives the
+// column, for example varchar → character varying(256), char → character(1) and bpchar → character(256), so the
+// result compares equal to format_type() of the column and never silently narrows it.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_Character_types.html
+func ColumnType(value string) (Keyword, error) {
+	name, err := TypeName(value)
+	if err != nil {
+		return "", err
+	}
+	if rule := typeRules[normalizeTypeName(value)]; rule.columnDefault != "" {
+		return name + Keyword(rule.columnDefault), nil
+	}
+	return name, nil
+}
+
+// normalizeTypeName lowercases a type and collapses its whitespace, so aliases are looked up by one spelling.
+func normalizeTypeName(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(value), " "))
 }
 
 // Signature canonicalizes routine argument types into the comma-separated form that identifies an overload.

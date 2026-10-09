@@ -7,6 +7,9 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
@@ -18,15 +21,12 @@ import (
 // computed-only or unknown attribute, or that are listed twice.
 func alterCoverageGaps[M any](t *testing.T, r resource.Resource, steps []alterStep[M], exempt ...string) (missing, unexpected []string) {
 	t.Helper()
+	var metadata resource.MetadataResponse
+	r.Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
 	var response resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &response)
 	require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
-	inPlace := map[string]bool{}
-	for name, attribute := range response.Schema.Attributes {
-		if (attribute.IsRequired() || attribute.IsOptional()) && !attributeReplacement(t, attribute, true, true) {
-			inPlace[name] = true
-		}
-	}
+	inPlace := inPlaceAttributes(t, response.Schema.Attributes, replacementPolicies.entries[metadata.TypeName])
 	covered := map[string]bool{}
 	claims := slices.Clone(exempt)
 	for _, step := range steps {
@@ -38,14 +38,33 @@ func alterCoverageGaps[M any](t *testing.T, r resource.Resource, steps []alterSt
 		}
 		covered[name] = true
 	}
-	for name := range inPlace {
-		if !covered[name] {
+	for name, updates := range inPlace {
+		if updates && !covered[name] {
 			missing = append(missing, name)
 		}
 	}
 	slices.Sort(missing)
 	slices.Sort(unexpected)
 	return missing, unexpected
+}
+
+// inPlaceAttributes maps each input to whether an update can change it without replacement. The registered replacement
+// policy decides, because a conditional attribute such as a widening column type is updated in place for some
+// changes, which one generic sample cannot show. Inputs the policy does not name are sampled.
+func inPlaceAttributes(t *testing.T, attributes map[string]schema.Attribute, policy map[string]replaceRule) map[string]bool {
+	t.Helper()
+	inPlace := map[string]bool{}
+	for name, attribute := range attributes {
+		if !attribute.IsRequired() && !attribute.IsOptional() {
+			continue
+		}
+		if rule, ok := policy[name]; ok {
+			inPlace[name] = rule.kind != replaceKindAlways
+		} else {
+			inPlace[name] = !attributeReplacement(t, attribute, true, true)
+		}
+	}
+	return inPlace
 }
 
 // assertAlterCoverage checks that every input the schema updates in place has exactly one alter step, unless the
@@ -172,4 +191,24 @@ func TestAlterCoverage(t *testing.T) {
 			assert.Equal(t, test.unexpected, unexpected)
 		})
 	}
+}
+
+// TestAlterCoverageFollowsPolicy classifies attributes by the replacement policy, so a conditional attribute whose
+// generic sample replaces still needs its in-place step, and falls back to sampling without a policy.
+func TestAlterCoverageFollowsPolicy(t *testing.T) {
+	widening := stringplanmodifier.RequiresReplaceIf(func(_ context.Context, request planmodifier.StringRequest, response *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+		response.RequiresReplace = request.PlanValue.ValueString() != "VARCHAR(512)"
+	}, "Narrowing replaces.", "Narrowing replaces.")
+	attributes := map[string]schema.Attribute{
+		"name":        schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
+		"column_type": schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{widening}},
+		"comment":     schema.StringAttribute{Optional: true},
+		"id":          schema.StringAttribute{Computed: true},
+	}
+	policy := map[string]replaceRule{
+		"name": replaceAlways, "column_type": replaceConditional("TestAlterCoverageFollowsPolicy"), "comment": replaceNever,
+	}
+	assert.Equal(t, map[string]bool{"name": false, "column_type": true, "comment": true}, inPlaceAttributes(t, attributes, policy))
+	assert.Equal(t, map[string]bool{"name": false, "column_type": false, "comment": true}, inPlaceAttributes(t, attributes, nil),
+		"without a policy the generic sample decides")
 }

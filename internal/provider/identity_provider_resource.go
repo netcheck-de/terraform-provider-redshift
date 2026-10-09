@@ -178,8 +178,13 @@ func (r *identityProviderResource) Update(ctx context.Context, req resource.Upda
 		resp.Diagnostics.AddError("Update identity provider", err.Error())
 		return
 	}
-	if err := r.exec(ctx, r.database.ValueString(), alterIdentityProviderStatements(data)...); err != nil {
-		resp.Diagnostics.AddError("Update identity provider", err.Error())
+	// Each statement keeps its own summary so a failure names the setting that Redshift refused.
+	if err := r.exec(ctx, r.database.ValueString(), identityProviderRoleStatement(data)); err != nil {
+		resp.Diagnostics.AddError("Update identity provider role", err.Error())
+		return
+	}
+	if err := r.exec(ctx, r.database.ValueString(), identityProviderStatusStatement(data)); err != nil {
+		resp.Diagnostics.AddError("Update identity provider status", err.Error())
 		return
 	}
 	expected := data

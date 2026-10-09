@@ -63,12 +63,15 @@ The provider grows in parallel work blocks, so a new type adds files instead of 
   the full SQL conversation with `runTranscripts`. Files live under `internal/provider/testdata/sql/<group>/<case>.sql`:
   statements end with `;` and are separated by blank lines, `-- no statements` and `-- error: …` record empty and failed
   renders, and transcripts add `-- database:` and `-- params:` lines. `task golden` rewrites them (refused when `CI` is
-  set) and removes stale files. Review each new file against the AWS command page, and justify every changed one.
+  set) and removes stale files. Because of that cleanup, a group belongs to one test: one `checkSQL` call, or the
+  `checkTranscript` calls of one test. Review each new file against the AWS command page, and justify every changed
+  one.
 - **Statement builder.** `sqlclient.Stmt(verb)` and `Fragment()` build statements from quoted values (`Ident`,
   `Qualified`, `Lit`, `Int`, `Bool`, `JSON`, `Body`) and trusted text. Every builder method returns a copy, so a shared
   prefix can be extended per option. Text that is emitted unquoted is a `sqlclient.Keyword`: a constant, the result
-  of `OneOf` (an allowlist), `TypeName` (a validated, canonical Redshift type), or `Signature`, or a conversion annotated
-  `//sql:trusted` after review. Configured SQL such as view queries, defaults, and predicates is a `UserSQL` from
+  of `OneOf` (an allowlist), `TypeName` (a validated, canonical Redshift type), `ColumnType` (the same for a column,
+  with the default length or precision the server applies), or `Signature`, or a conversion annotated `//sql:trusted`
+  after review. Configured SQL such as view queries, defaults, and predicates is a `UserSQL` from
   `CheckUserSQL` and enters a statement only through `Verbatim`. `trusted_sql_test.go` fails on unannotated
   conversions. Catalog reads use `sqlclient.Select(...).From(...).Where(...)`, whose `Build` keeps `:name` bindings in
   sync with the conditions and rejects empty values.

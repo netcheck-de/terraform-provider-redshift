@@ -183,19 +183,24 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		resp.Diagnostics.AddError("Update Redshift user", err.Error())
 		return
 	}
-	// The plan never carries the write-only secret, so the rotation step reads it from configuration. An
-	// unreadable secret stays null, which alterUserStatements rejects only when a rotation needs it.
+	// The plan never carries the write-only secret, so a rotation reads it from configuration.
 	desired := data
-	var secret types.String
-	if diagnostics := req.Config.GetAttribute(ctx, path.Root("password_wo"), &secret); !diagnostics.HasError() {
-		desired.Password = secret
+	if userRotates(previous, data) {
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("password_wo"), &desired.Password)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
-	statements, err := alterUserStatements(previous, desired)
+	rotation, capabilities, err := alterUserBatches(previous, desired)
 	if err != nil {
 		resp.Diagnostics.AddError("Rotate Redshift password", err.Error()+".")
 		return
 	}
-	if err := r.exec(ctx, r.database.ValueString(), statements...); err != nil {
+	if err := r.exec(ctx, r.database.ValueString(), rotation...); err != nil {
+		resp.Diagnostics.AddError("Rotate Redshift password", err.Error())
+		return
+	}
+	if err := r.exec(ctx, r.database.ValueString(), capabilities...); err != nil {
 		resp.Diagnostics.AddError("Update Redshift user", err.Error())
 		return
 	}

@@ -27,11 +27,12 @@ var updateGolden = flag.Bool("update", false, "rewrite golden SQL files under te
 // goldenName restricts groups and cases to portable, review-friendly file names.
 var goldenName = regexp.MustCompile(`^[a-z0-9_]+$`)
 
-// ddlVerbs are the leading keywords SerializeMutations and the AWS reference expect for catalog writes.
-var ddlVerbs = []string{"ALTER", "COMMENT", "CREATE", "DROP", "GRANT", "REVOKE"}
+// ddlVerbs are the leading keywords of the catalog writes the provider renders: object DDL, permissions, policy
+// ATTACH/DETACH and materialized view REFRESH.
+var ddlVerbs = []string{"ALTER", "ATTACH", "COMMENT", "CREATE", "DETACH", "DROP", "GRANT", "REFRESH", "REVOKE"}
 
 // readVerbs are the leading keywords SerializeMutations lets run concurrently.
-var readVerbs = []string{"SELECT", "SHOW"}
+var readVerbs = sqlclient.ObservationVerbs()
 
 // sqlCase names one renderer output within a golden group.
 type sqlCase struct {
@@ -258,9 +259,12 @@ func checkStale(t *testing.T, group string, names map[string]bool) {
 }
 
 // checkSQL compares every renderer case of a group with testdata/sql/<group>/<case>.sql.
+// A group belongs to one checkSQL call, because the call removes every file of the group it did not produce.
 func checkSQL(t *testing.T, group string, cases []sqlCase) {
 	t.Helper()
 	require.NoError(t, checkGoldenGroup(group))
+	_, _, err := claimGoldenGroup(t, group, false)
+	require.NoError(t, err)
 	names := map[string]bool{}
 	for _, test := range cases {
 		require.NoError(t, checkGoldenName("case", test.name))
@@ -278,19 +282,47 @@ func checkSQL(t *testing.T, group string, cases []sqlCase) {
 	}
 }
 
-// transcriptGroup tracks the cases one test records into a group, so stale files are detectable afterwards.
-type transcriptGroup struct {
-	// owner is the test whose cleanup checks the group for stale files.
-	owner *testing.T
-	// names lists the cases recorded so far.
+// goldenGroup records the one test that writes a golden group. Stale detection removes every file of the group
+// that its owner did not produce, so a second writer would delete the first one's files on -update.
+type goldenGroup struct {
+	// test is the owning run; a rerun of the same test under -count takes the group over.
+	test *testing.T
+	// transcript marks checkTranscript groups, which collect cases across calls of the same test.
+	transcript bool
+	// names lists the transcript cases recorded so far.
 	names map[string]bool
 }
 
-// transcriptGroups maps each group to the test recording it.
-var transcriptGroups = struct {
+// goldenGroups maps each group to its owner for the whole test binary. Owners are never released, so two tests
+// that run one after the other cannot share a group either.
+var goldenGroups = struct {
 	sync.Mutex
-	groups map[string]*transcriptGroup
-}{groups: map[string]*transcriptGroup{}}
+	groups map[string]*goldenGroup
+}{groups: map[string]*goldenGroup{}}
+
+// claimGoldenGroup makes t the owner of group, reporting whether this call claimed it. A transcript owner may call
+// again; any other reuse, by another test, by a second checkSQL call or across both kinds, is an error.
+func claimGoldenGroup(t *testing.T, group string, transcript bool) (*goldenGroup, bool, error) {
+	t.Helper()
+	goldenGroups.Lock()
+	defer goldenGroups.Unlock()
+	owner, ok := goldenGroups.groups[group]
+	if ok && owner.test != t && owner.test.Name() == t.Name() {
+		ok = false
+	}
+	if !ok {
+		owner = &goldenGroup{test: t, transcript: transcript, names: map[string]bool{}}
+		goldenGroups.groups[group] = owner
+		return owner, true, nil
+	}
+	if owner.test != t {
+		return nil, false, fmt.Errorf("golden group %q is already written by %s; give each test its own group", group, owner.test.Name())
+	}
+	if !transcript || !owner.transcript {
+		return nil, false, fmt.Errorf("golden group %q needs one checkSQL call, or only checkTranscript calls, per test", group)
+	}
+	return owner, false, nil
+}
 
 // checkTranscript compares recorded calls with testdata/sql/<group>/<name>.sql.
 // All cases of a group must be recorded through the same *testing.T; stale files are checked when it finishes.
@@ -298,30 +330,63 @@ func checkTranscript(t *testing.T, group, name string, entries []sqlEntry) {
 	t.Helper()
 	require.NoError(t, checkGoldenGroup(group))
 	require.NoError(t, checkGoldenName("case", name))
-	transcriptGroups.Lock()
-	recorded, ok := transcriptGroups.groups[group]
-	if !ok {
-		recorded = &transcriptGroup{owner: t, names: map[string]bool{}}
-		transcriptGroups.groups[group] = recorded
+	recorded, claimed, err := claimGoldenGroup(t, group, true)
+	require.NoError(t, err)
+	if claimed {
 		t.Cleanup(func() {
-			transcriptGroups.Lock()
-			delete(transcriptGroups.groups, group)
-			transcriptGroups.Unlock()
 			// A failed or partial run has not recorded every case, so missing names are not evidence of staleness.
 			if !t.Failed() && !t.Skipped() {
-				checkStale(t, group, recorded.names)
+				goldenGroups.Lock()
+				names := maps.Clone(recorded.names)
+				goldenGroups.Unlock()
+				checkStale(t, group, names)
 			}
 		})
 	}
-	owner, duplicate := recorded.owner, recorded.names[name]
+	goldenGroups.Lock()
+	duplicate := recorded.names[name]
 	recorded.names[name] = true
-	transcriptGroups.Unlock()
-	require.Same(t, owner, t, "transcript group %q is already recorded by %s", group, owner.Name())
+	goldenGroups.Unlock()
 	require.False(t, duplicate, "duplicate transcript %q in group %q", name, group)
 	for _, entry := range entries {
 		require.NoError(t, checkStatement(entry.sql, entry.params), "transcript %s/%s", group, name)
 	}
 	checkGolden(t, group, name, formatTranscript(entries))
+}
+
+// TestGoldenGroupOwnership keeps each golden group with one writer, so -update never deletes another test's files.
+func TestGoldenGroupOwnership(t *testing.T) {
+	const plain, transcript = "zz_ownership_probe", "zz_ownership_transcript"
+	t.Cleanup(func() {
+		goldenGroups.Lock()
+		delete(goldenGroups.groups, plain)
+		delete(goldenGroups.groups, transcript)
+		goldenGroups.Unlock()
+	})
+	t.Run("first", func(t *testing.T) {
+		_, claimed, err := claimGoldenGroup(t, plain, false)
+		require.NoError(t, err)
+		assert.True(t, claimed)
+		_, _, err = claimGoldenGroup(t, plain, false)
+		require.ErrorContains(t, err, "one checkSQL call")
+		_, _, err = claimGoldenGroup(t, plain, true)
+		require.ErrorContains(t, err, "one checkSQL call")
+		_, claimed, err = claimGoldenGroup(t, transcript, true)
+		require.NoError(t, err)
+		assert.True(t, claimed)
+		_, claimed, err = claimGoldenGroup(t, transcript, true)
+		require.NoError(t, err)
+		assert.False(t, claimed, "a transcript owner records further cases")
+		_, _, err = claimGoldenGroup(t, transcript, false)
+		require.ErrorContains(t, err, "one checkSQL call")
+	})
+	// The first test has finished, so only a group registry that outlives its owner catches the reuse.
+	t.Run("second", func(t *testing.T) {
+		_, _, err := claimGoldenGroup(t, plain, false)
+		require.ErrorContains(t, err, "already written by "+t.Name()[:strings.LastIndex(t.Name(), "/")]+"/first")
+		_, _, err = claimGoldenGroup(t, transcript, true)
+		require.ErrorContains(t, err, "already written by")
+	})
 }
 
 // TestGoldenRenderForms checks every supported renderer shape and rejects others.
@@ -371,7 +436,11 @@ func TestGoldenFormat(t *testing.T) {
 
 // TestGoldenValidation checks statement verbs, bind placement, and file-name rules.
 func TestGoldenValidation(t *testing.T) {
-	for _, sql := range []string{"ALTER USER x", "COMMENT ON ROLE x IS NULL", "CREATE ROLE x", "DROP ROLE x", "GRANT USAGE ON SCHEMA x TO y", "REVOKE USAGE ON SCHEMA x FROM y", "SHOW GRANTS ON SCHEMA x"} {
+	for _, sql := range []string{
+		"ALTER USER x", "COMMENT ON ROLE x IS NULL", "CREATE ROLE x", "DROP ROLE x", "GRANT USAGE ON SCHEMA x TO y",
+		"REVOKE USAGE ON SCHEMA x FROM y", "SHOW GRANTS ON SCHEMA x", "DESC DATASHARE s", "DESC IDENTITY PROVIDER i",
+		"ATTACH RLS POLICY p ON t TO ROLE r", "DETACH MASKING POLICY p ON t (c) FROM PUBLIC", "REFRESH MATERIALIZED VIEW v",
+	} {
 		require.NoError(t, checkStatement(sql, nil), sql)
 	}
 	require.NoError(t, checkStatement("SELECT 1 WHERE a = :a", map[string]string{"a": "b"}))
@@ -379,6 +448,7 @@ func TestGoldenValidation(t *testing.T) {
 		require.Error(t, checkStatement(sql, nil), sql)
 	}
 	require.Error(t, checkStatement("DROP ROLE :name", map[string]string{"name": "x"}))
+	require.Error(t, checkStatement("ATTACH RLS POLICY :p ON t TO PUBLIC", map[string]string{"p": "x"}))
 	require.NoError(t, checkGoldenGroup("lifecycle/role_grant"))
 	for _, group := range []string{"", "Lifecycle", "lifecycle/", "life-cycle", "../x"} {
 		require.Error(t, checkGoldenGroup(group), group)

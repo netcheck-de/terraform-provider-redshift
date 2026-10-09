@@ -24,13 +24,15 @@ func identityProviderStatusStatement(data identityProviderModel) string {
 	return identityProviderAlter(data).Toggle(data.Enabled.ValueBool(), "ENABLE", "DISABLE").String()
 }
 
+// identityProviderRoleStatement renders the IAM_ROLE change.
+func identityProviderRoleStatement(data identityProviderModel) string {
+	return identityProviderAlter(data).KwLit("IAM_ROLE", data.IAMRoleARN.ValueString()).String()
+}
+
 // alterIdentityProviderStatements renders the role and status of plan. Both are reapplied on every update,
 // whatever the prior state, so an update also repairs drift that a refresh did not observe yet.
 func alterIdentityProviderStatements(plan identityProviderModel) []string {
-	return []string{
-		identityProviderAlter(plan).KwLit("IAM_ROLE", plan.IAMRoleARN.ValueString()).String(),
-		identityProviderStatusStatement(plan),
-	}
+	return []string{identityProviderRoleStatement(plan), identityProviderStatusStatement(plan)}
 }
 
 // dropIdentityProviderStatement renders DROP IDENTITY PROVIDER.

@@ -39,6 +39,9 @@ type privilegeResource struct {
 	// recipient renders the grantee for contracts whose recipient is not a SQL identity, such as RLS POLICY "p";
 	// it replaces the grantee that prepare rendered, and such recipients never hold grant options.
 	recipient func(types.Object) (sqlclient.Statement, error)
+	// optionRecipient reports whether the tuple names a user, the only recipient Redshift grants options to, for
+	// contracts that identify users by another attribute than grantee_type; nil checks grantee_type = USER.
+	optionRecipient func(types.Object) bool
 }
 
 // catalogCheck is a parameterized statement used for parent existence or permission reads.
@@ -163,7 +166,13 @@ func (r *privilegeResource) target(data types.Object) (privilegeTarget, error) {
 
 // optionGrantee reports whether the tuple's recipient can hold grant options; Redshift grants them only to users.
 func (r *privilegeResource) optionGrantee(data types.Object) bool {
-	return r.recipient == nil && objectString(data, "grantee_type") == "USER"
+	if r.recipient != nil {
+		return false
+	}
+	if r.optionRecipient != nil {
+		return r.optionRecipient(data)
+	}
+	return objectString(data, "grantee_type") == "USER"
 }
 
 // read verifies parents, normalizes explicit privileges, and rejects unmanaged grant options.
@@ -255,7 +264,7 @@ func (r *privilegeResource) validate(data types.Object) error {
 	}
 	options := grantOptionPrivileges(data)
 	if len(options) != 0 && !r.optionGrantee(data) {
-		return fmt.Errorf("grant_option_privileges requires grantee_type USER; Redshift grants options only to users")
+		return fmt.Errorf("grant_option_privileges requires a user recipient; Redshift grants options only to users")
 	}
 	privileges := knownStrings(data.Attributes()["privileges"].(types.Set))
 	for _, option := range options {

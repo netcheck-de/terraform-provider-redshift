@@ -419,7 +419,8 @@ func fakeState[F fakeFamily](c *catalog, name string) F {
 
 // fakeRead reports catalog reads, which the fake does not record as writes.
 func fakeRead(sql string) bool {
-	return strings.HasPrefix(sql, "SELECT") || strings.HasPrefix(sql, "SHOW") || strings.HasPrefix(sql, "DESC")
+	fields := strings.Fields(sql)
+	return len(fields) > 0 && slices.Contains(readVerbs, fields[0])
 }
 
 // probeFamily is a minimal family for testing the dispatcher; it also overrides one legacy statement.

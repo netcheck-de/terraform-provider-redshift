@@ -5,6 +5,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // grantSQL renders every statement a scoped grant can send: the database type and recipient checks, the schema
@@ -68,4 +70,17 @@ func TestGrantSQL(t *testing.T) {
 		{"datashare_database_scope", render("analytics", "serving", "", "producer", "FUNCTIONS", "EXECUTE")},
 		{"empty_database_name", render("", "", "readers", "", "DATABASE", "USAGE")},
 	})
+}
+
+// TestGrantSpecOptionRevoke selects the documented grant option revoke: scoped FOR forms omit FOR after GRANT
+// OPTION, while ON forms keep the object form.
+func TestGrantSpecOptionRevoke(t *testing.T) {
+	for scope, expected := range map[string]sqlclient.Keyword{"DATABASE": "", "TABLES": scopedOptionRevoke, "SCHEMAS": scopedOptionRevoke} {
+		t.Run(scope, func(t *testing.T) {
+			data := grantModel{DatabaseName: types.StringValue("analytics"), SchemaName: types.StringNull(), Role: types.StringValue("readers"), Datashare: types.StringNull(), Scope: types.StringValue(scope)}
+			spec, err := data.spec()
+			require.NoError(t, err)
+			assert.Equal(t, expected, spec.optionRevoke)
+		})
+	}
 }

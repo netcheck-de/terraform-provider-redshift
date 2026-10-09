@@ -136,3 +136,25 @@ func TestIdentityProviderCreatesDisabled(t *testing.T) {
 		})
 	}
 }
+
+// TestIdentityProviderUpdateNamesFailedStatement keeps the role and status failures apart, so a refused update
+// says which setting Redshift rejected.
+func TestIdentityProviderUpdateNamesFailedStatement(t *testing.T) {
+	for suffix, summary := range map[string]string{"IAM_ROLE 'role-two'": "Update identity provider role", `"identity" DISABLE`: "Update identity provider status"} {
+		t.Run(summary, func(t *testing.T) {
+			c := &catalog{identity: true, iamRole: "role-one", enabled: true}
+			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+				if strings.HasSuffix(sql, suffix) {
+					return nil, fmt.Errorf("ALTER denied")
+				}
+				return c.Query(ctx, target, sql, parameters)
+			})
+			r := &identityProviderResource{testResourceClient(client)}
+			data := identityProviderModel{Name: types.StringValue("identity"), Namespace: types.StringValue("example"), ApplicationARN: types.StringValue("application"), IAMRoleARN: types.StringValue("role-two"), Enabled: types.BoolValue(false)}
+			data.ID = r.identity("admin", map[string]string{"name": "identity"})
+			diagnostics := invoke(t, r, "update", data, false)
+			require.True(t, diagnostics.HasError())
+			assert.Equal(t, summary, diagnostics.Errors()[0].Summary())
+		})
+	}
+}

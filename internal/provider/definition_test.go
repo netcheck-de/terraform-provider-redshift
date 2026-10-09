@@ -33,7 +33,7 @@ func TestReconcileDefinition(t *testing.T) {
 		catalog                 string
 		definition, stored      types.String
 	}{
-		{"apply records the catalog fingerprint and keeps configuration", configured, recorded, catalogText, configured, recorded},
+		{"refresh after apply keeps configuration", configured, recorded, catalogText, configured, recorded},
 		{"refresh ignores catalog re-rendering", configured, recorded, "SELECT a FROM t;", configured, recorded},
 		{"outside change surfaces the catalog text", configured, recorded, changedText, types.StringValue(changedText), changed},
 		{"missing fingerprint surfaces the catalog text", configured, types.StringNull(), catalogText, types.StringValue(catalogText), recorded},
@@ -54,4 +54,20 @@ func TestReconcileDefinition(t *testing.T) {
 	attribute := definitionFingerprintAttribute()
 	assert.True(t, attribute.Computed)
 	assert.False(t, attribute.Optional)
+}
+
+// TestRecordDefinition keeps the configured text at apply, where the planned fingerprint is still unknown, and
+// stores the fingerprint that the next refresh compares against.
+func TestRecordDefinition(t *testing.T) {
+	configured := types.StringValue("select a from t")
+	catalogText := "SELECT a\nFROM t;"
+	definition, stored := recordDefinition(configured, catalogText)
+	assert.Equal(t, configured, definition)
+	assert.Equal(t, types.StringValue(definitionFingerprint(catalogText)), stored)
+	refreshed, storedAgain := reconcileDefinition(definition, stored, "SELECT a FROM t;")
+	assert.Equal(t, configured, refreshed, "the first refresh after apply keeps the configured text")
+	assert.Equal(t, stored, storedAgain)
+	// Passing the unknown plan value to reconcileDefinition instead would replace the configured text.
+	surfaced, _ := reconcileDefinition(configured, types.StringUnknown(), catalogText)
+	assert.NotEqual(t, configured, surfaced)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -309,6 +310,46 @@ func TestWithPermissionsReplacesOnlySharedDatabases(t *testing.T) {
 			var response boolplanmodifier.RequiresReplaceIfFuncResponse
 			sharedDatabaseReplacement(context.Background(), request, &response)
 			assert.Equal(t, !arn.IsNull(), response.RequiresReplace)
+		})
+	}
+}
+
+// TestDatabaseMetadataFindsWildcardNames reads names holding LIKE metacharacters through a fake that matches the
+// pattern the way Redshift does, with backslash as the escape character.
+func TestDatabaseMetadataFindsWildcardNames(t *testing.T) {
+	databases := []string{`a\b`, "ab", "a_b", "a%b", "axb"}
+	r := testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+		quoted, found := strings.CutPrefix(sql, "SHOW DATABASES LIKE ")
+		require.True(t, found, sql)
+		value := strings.NewReplacer(`''`, `'`, `\\`, `\`).Replace(strings.Trim(quoted, "'"))
+		var expression strings.Builder
+		for i := 0; i < len(value); i++ {
+			switch {
+			case value[i] == '\\' && i+1 < len(value):
+				i++
+				expression.WriteString(regexp.QuoteMeta(value[i : i+1]))
+			case value[i] == '%':
+				expression.WriteString(".*")
+			case value[i] == '_':
+				expression.WriteString(".")
+			default:
+				expression.WriteString(regexp.QuoteMeta(value[i : i+1]))
+			}
+		}
+		pattern := regexp.MustCompile("^" + expression.String() + "$")
+		var rows []dataapi.Row
+		for _, name := range databases {
+			if pattern.MatchString(name) {
+				rows = append(rows, dataapi.Row{"database_name": name, "database_type": "local"})
+			}
+		}
+		return rows, nil
+	}))
+	for _, name := range databases {
+		t.Run(name, func(t *testing.T) {
+			_, found, err := r.databaseMetadata(context.Background(), name)
+			require.NoError(t, err)
+			assert.True(t, found)
 		})
 	}
 }

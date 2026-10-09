@@ -55,13 +55,17 @@ const (
 var readings = []reading{transportReading, redshiftReading}
 
 // identifierContinues reports whether the $ at offset extends a name in the current code span under the Redshift
-// reading. Bytes of multibyte UTF-8 characters count because Redshift accepts them in identifiers.
+// reading. Bytes of multibyte UTF-8 characters count because Redshift accepts them in identifiers. The word must
+// start like a name: after a number such as 1 or a parameter such as $1 the server opens a dollar quote instead.
 func identifierContinues(sql string, code, offset int) bool {
-	if code < 0 || offset == code {
+	if code < 0 {
 		return false
 	}
-	previous := sql[offset-1]
-	return identifierByte(previous, false) || previous == '$' || previous >= 0x80
+	start := offset
+	for start > code && (identifierByte(sql[start-1], false) || sql[start-1] == '$' || sql[start-1] >= 0x80) {
+		start--
+	}
+	return start < offset && (identifierByte(sql[start], true) || sql[start] >= 0x80)
 }
 
 // lex splits SQL text into lexemes. Under transportReading the boundaries equal those of the direct transport's

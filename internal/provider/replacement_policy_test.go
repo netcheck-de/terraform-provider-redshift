@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"slices"
 	"strings"
 	"testing"
 
@@ -231,9 +232,11 @@ func attributeReplacement(t *testing.T, attribute schema.Attribute, changed, exi
 	}
 }
 
-// assertCollectionElementsDoNotReplace checks that elements of nested collections never request replacement
-// themselves: a collection replaces only through its top-level RequiresReplaceIf, which sees the whole value.
-func assertCollectionElementsDoNotReplace(t *testing.T, attribute schema.Attribute) {
+// replacingNestedAttributes lists the nested attributes, at any depth and as dotted paths, whose own modifiers
+// request replacement. The framework runs those modifiers too, so a replacing child would replace the resource
+// behind the top-level policy's back; nested values replace only through the top-level RequiresReplaceIf, which
+// sees the whole value.
+func replacingNestedAttributes(t *testing.T, attribute schema.Attribute) []string {
 	t.Helper()
 	var nested map[string]schema.Attribute
 	switch attribute := attribute.(type) {
@@ -244,19 +247,21 @@ func assertCollectionElementsDoNotReplace(t *testing.T, attribute schema.Attribu
 	case schema.MapNestedAttribute:
 		nested = attribute.NestedObject.Attributes
 	case schema.SingleNestedAttribute:
-		for name, child := range attribute.Attributes {
-			t.Run(name, func(t *testing.T) { assertCollectionElementsDoNotReplace(t, child) })
-		}
-		return
+		nested = attribute.Attributes
 	default:
-		return
+		return nil
 	}
+	var replacing []string
 	for name, child := range nested {
-		t.Run(name, func(t *testing.T) {
-			assert.False(t, attributeReplacement(t, child, true, true), "collection elements replace only through the top-level attribute")
-			assertCollectionElementsDoNotReplace(t, child)
-		})
+		if attributeReplacement(t, child, true, true) {
+			replacing = append(replacing, name)
+		}
+		for _, inner := range replacingNestedAttributes(t, child) {
+			replacing = append(replacing, name+"."+inner)
+		}
 	}
+	slices.Sort(replacing)
+	return replacing
 }
 
 // checkReplacementRule checks one attribute against its rule; a conditional rule delegates the changed-value
@@ -271,7 +276,7 @@ func checkReplacementRule(t *testing.T, attribute schema.Attribute, rule replace
 	}
 	assert.False(t, attributeReplacement(t, attribute, false, true), "unchanged input")
 	assert.False(t, attributeReplacement(t, attribute, true, false), "initial creation")
-	assertCollectionElementsDoNotReplace(t, attribute)
+	assert.Empty(t, replacingNestedAttributes(t, attribute), "nested attributes replace only through the top-level attribute")
 }
 
 // TestEveryResourceAttributeReplacementPolicy covers every input and computed attribute across all resources.
@@ -349,6 +354,31 @@ func TestReplacementSamplesCoverEveryAttributeKind(t *testing.T) {
 			checkReplacementRule(t, attribute, rule)
 		})
 	}
+}
+
+// TestReplacingNestedAttributesFound finds a replacing child in every nested shape, including a single nested
+// object, whose children the framework plans like collection elements.
+func TestReplacingNestedAttributesFound(t *testing.T) {
+	replacing := map[string]schema.Attribute{
+		"child": schema.StringAttribute{Optional: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
+		"other": schema.StringAttribute{Optional: true},
+	}
+	object := schema.NestedAttributeObject{Attributes: replacing}
+	for name, attribute := range map[string]schema.Attribute{
+		"single": schema.SingleNestedAttribute{Optional: true, Attributes: replacing},
+		"list":   schema.ListNestedAttribute{Optional: true, NestedObject: object},
+		"set":    schema.SetNestedAttribute{Optional: true, NestedObject: object},
+		"map":    schema.MapNestedAttribute{Optional: true, NestedObject: object},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, []string{"child"}, replacingNestedAttributes(t, attribute))
+		})
+	}
+	deep := schema.SingleNestedAttribute{Optional: true, Attributes: map[string]schema.Attribute{
+		"inner": schema.ListNestedAttribute{Optional: true, NestedObject: object},
+	}}
+	assert.Equal(t, []string{"inner.child"}, replacingNestedAttributes(t, deep))
+	assert.Empty(t, replacingNestedAttributes(t, schema.StringAttribute{Optional: true}))
 }
 
 // TestReferencedRoleNameChangeReplacesMembership verifies Terraform propagates names without caller lifecycle triggers.

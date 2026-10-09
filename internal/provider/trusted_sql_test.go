@@ -110,7 +110,8 @@ func untrustedConversions(fileSet *token.FileSet, file *ast.File, constants map[
 }
 
 // TestNoUntrustedKeywordConversions keeps runtime text out of unquoted SQL: a Keyword or UserSQL built from a
-// variable must come from sqlclient.OneOf, TypeName or CheckUserSQL, or carry a reviewed //sql:trusted annotation.
+// variable must come from sqlclient.OneOf, TypeName, ColumnType or CheckUserSQL, or carry a reviewed //sql:trusted
+// annotation.
 func TestNoUntrustedKeywordConversions(t *testing.T) {
 	paths, err := filepath.Glob("*.go")
 	require.NoError(t, err)
@@ -124,7 +125,8 @@ func TestNoUntrustedKeywordConversions(t *testing.T) {
 	}
 	constants := packageConstants(files)
 	for _, file := range files {
-		assert.Empty(t, untrustedConversions(fileSet, file, constants), "use sqlclient.OneOf, TypeName or CheckUserSQL, or annotate a reviewed conversion with %s", trustedAnnotation)
+		assert.Empty(t, untrustedConversions(fileSet, file, constants),
+			"use sqlclient.OneOf, TypeName, ColumnType or CheckUserSQL, or annotate a reviewed conversion with %s", trustedAnnotation)
 	}
 }
 

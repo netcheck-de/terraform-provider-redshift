@@ -53,15 +53,35 @@ var userAlterSteps = []alterStep[userModel]{
 	},
 }
 
-// alterUserStatements renders the in-place changes from prev to plan. plan.Password must hold the
-// configuration secret, because a rotation without one would silently keep the old password.
-func alterUserStatements(prev, plan userModel) ([]string, error) {
+// userRotates reports whether plan rotates the password. A null prior version comes from import, which must not
+// assign a new password implicitly.
+func userRotates(prev, plan userModel) bool {
 	before, after := prev.PasswordVersion, plan.PasswordVersion
-	rotates := !before.IsNull() && !after.IsUnknown() && !before.Equal(after)
-	if rotates && knownString(plan.Password) == "" {
-		return nil, errUserPasswordRequired
+	return !before.IsNull() && !after.IsUnknown() && !before.Equal(after)
+}
+
+// alterUserBatches renders the in-place changes from prev to plan, with the rotation apart from the capability
+// toggles so a refused rotation is reported as such. plan.Password must hold the configuration secret, because a
+// rotation without one would silently keep the old password.
+func alterUserBatches(prev, plan userModel) (rotation, capabilities []string, err error) {
+	if userRotates(prev, plan) && knownString(plan.Password) == "" {
+		return nil, nil, errUserPasswordRequired
 	}
-	return alterStatements(prev, plan, userAlterSteps), nil
+	for _, step := range userAlterSteps {
+		statements := alterStatements(prev, plan, []alterStep[userModel]{step})
+		if step.attribute == "password_wo_version" {
+			rotation = append(rotation, statements...)
+		} else {
+			capabilities = append(capabilities, statements...)
+		}
+	}
+	return rotation, capabilities, nil
+}
+
+// alterUserStatements renders every in-place change from prev to plan in execution order.
+func alterUserStatements(prev, plan userModel) ([]string, error) {
+	rotation, capabilities, err := alterUserBatches(prev, plan)
+	return append(rotation, capabilities...), err
 }
 
 // dropUserStatement renders DROP USER.

@@ -50,7 +50,7 @@ func (data grantModel) spec() (grantSpec, error) {
 		if err != nil {
 			return grantSpec{}, err
 		}
-		spec.object = sqlclient.Kw("FOR", keyword)
+		spec.object, spec.optionRevoke = sqlclient.Kw("FOR", keyword), scopedOptionRevoke
 		if schemaName != "" {
 			spec.object = spec.object.KwIdent("IN SCHEMA", schemaName).KwIdent("DATABASE", database)
 		} else {

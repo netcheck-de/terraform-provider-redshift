@@ -19,6 +19,9 @@ type grantSpec struct {
 	grantee sqlclient.Statement
 	// option follows the grantee on GRANT only, such as WITH GRANT OPTION; REVOKE removes the privilege with it.
 	option sqlclient.Keyword
+	// optionRevoke opens the statement that removes only the grant option; empty means REVOKE GRANT OPTION FOR,
+	// the object form. Scoped permissions document REVOKE GRANT OPTION without FOR (scopedOptionRevoke).
+	optionRevoke sqlclient.Keyword
 	// render replaces the standard form for commands with another shape, such as GRANT ASSUMEROLE … FOR command.
 	render func(grant bool, privilege sqlclient.Keyword) string
 }
@@ -34,6 +37,11 @@ func (s grantSpec) statement(grant bool, privilege sqlclient.Keyword) string {
 	return s.prefix.Kw("REVOKE", privilege).Append(s.object).Kw("FROM").Append(s.grantee).String()
 }
 
+// scopedOptionRevoke is the grant option revoke of scoped permissions (FOR TABLES IN …), which r_REVOKE documents
+// as REVOKE [ GRANT OPTION ] rather than the REVOKE [ GRANT OPTION FOR ] of object permissions.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-scoped-permissions
+const scopedOptionRevoke sqlclient.Keyword = "REVOKE GRANT OPTION"
+
 // optionStatement renders GRANT … WITH GRANT OPTION (grant = true) for a user that should pass privilege on, or
 // REVOKE GRANT OPTION FOR …, which removes only that right and keeps the privilege itself (r_GRANT, r_REVOKE).
 // Redshift reports dependent grants as an error instead of revoking them, because the statement never adds CASCADE.
@@ -44,7 +52,11 @@ func (s grantSpec) optionStatement(grant bool, privilege sqlclient.Keyword) (str
 	if grant {
 		return s.prefix.Kw("GRANT", privilege).Append(s.object).Kw("TO").Append(s.grantee).Kw("WITH GRANT OPTION").String(), nil
 	}
-	return s.prefix.Kw("REVOKE GRANT OPTION FOR", privilege).Append(s.object).Kw("FROM").Append(s.grantee).String(), nil
+	revoke := s.optionRevoke
+	if revoke == "" {
+		revoke = "REVOKE GRANT OPTION FOR"
+	}
+	return s.prefix.Kw(revoke, privilege).Append(s.object).Kw("FROM").Append(s.grantee).String(), nil
 }
 
 // privilegeStatements revokes current privileges that are not desired before granting desired ones that are missing,

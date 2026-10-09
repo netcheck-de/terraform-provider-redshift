@@ -88,3 +88,10 @@ func TestSerializedMutationsReleaseAfterErrors(t *testing.T) {
 	}
 	assert.Equal(t, 2, calls)
 }
+
+// TestObservationVerbsAreACopy keeps callers from changing which statements bypass the mutation gate.
+func TestObservationVerbsAreACopy(t *testing.T) {
+	verbs := ObservationVerbs()
+	verbs[0] = "DROP"
+	assert.Equal(t, []string{"SELECT", "SHOW", "DESC"}, ObservationVerbs())
+}

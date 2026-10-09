@@ -30,6 +30,7 @@ func TestDatabaseSQL(t *testing.T) {
 		{"drop_quoted", func() string { return dropDatabaseStatement(local(`Sales"DB`)) }},
 		{"read", func() string { return readDatabaseStatement("analytics") }},
 		{"read_quoted", func() string { return readDatabaseStatement(`it's\_DB`) }},
+		{"read_wildcards", func() string { return readDatabaseStatement(`a\b%c_d\\`) }},
 		{"read_inbound_share", func() (string, error) {
 			sql, parameters, err := readDatabaseInboundShareQuery(shareSource{Account: "123456789012", Namespace: "ns", Name: `Odd"Share`}).Build()
 			assert.Equal(t, map[string]string{"share": `Odd"Share`, "account": "123456789012", "namespace": "ns"}, parameters)

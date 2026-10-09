@@ -78,6 +78,12 @@ func TestLexBoundaries(t *testing.T) {
 	assert.Equal(t, []lexeme{{kind: lexCode, text: "x"}, {kind: lexDollarQuote, text: "$a$;$a$"}}, lex("x$a$;$a$", transportReading))
 	assert.Equal(t, []lexeme{{kind: lexCode, text: "x$a$;"}, {kind: lexDollarQuote, text: "$a$ 1", open: true}}, lex("x$a$;$a$ 1", redshiftReading))
 	assert.Equal(t, []lexeme{{kind: lexCode, text: "é$a$"}}, lex("é$a$", redshiftReading))
+	// A number or positional parameter is not a name, so the server opens a dollar quote right after it.
+	assert.Equal(t, []lexeme{{kind: lexCode, text: "1"}, {kind: lexDollarQuote, text: "$a$;$a$"}}, lex("1$a$;$a$", redshiftReading))
+	assert.Equal(t, []lexeme{{kind: lexCode, text: "x 1e5"}, {kind: lexDollarQuote, text: "$a$;$a$"}}, lex("x 1e5$a$;$a$", redshiftReading))
+	assert.Equal(t, []lexeme{{kind: lexCode, text: "$1"}, {kind: lexDollarQuote, text: "$a$;$a$"}}, lex("$1$a$;$a$", redshiftReading))
+	assert.Equal(t, []lexeme{{kind: lexCode, text: "x1$a$;"}}, lex("x1$a$;", redshiftReading))
+	assert.Equal(t, []lexeme{{kind: lexCode, text: "_1$a$;"}}, lex("_1$a$;", redshiftReading))
 	assert.Equal(t, []lexeme{{kind: lexCode, text: "x "}, {kind: lexDollarQuote, text: "$a$;$a$"}, {kind: lexDollarQuote, text: "$b$$b$"}}, lex("x $a$;$a$$b$$b$", redshiftReading))
 	assert.Equal(t, []lexeme{{kind: lexDollarQuote, text: "$$;$$"}}, lex("$$;$$", redshiftReading))
 	assert.Empty(t, lex("", transportReading))

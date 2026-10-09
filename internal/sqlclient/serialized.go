@@ -2,6 +2,7 @@ package sqlclient
 
 import (
 	"context"
+	"slices"
 	"strings"
 )
 
@@ -11,6 +12,15 @@ type serializedClient struct {
 	client Client
 	// mutation permits one autocommit catalog write at a time across databases.
 	mutation chan struct{}
+}
+
+// observationVerbs lead the statements that only read the catalog.
+var observationVerbs = []string{"SELECT", "SHOW", "DESC"}
+
+// ObservationVerbs returns the leading keywords of statements that SerializeMutations lets run concurrently, so
+// tests that check statement shapes share the list instead of keeping a copy that can drift.
+func ObservationVerbs() []string {
+	return slices.Clone(observationVerbs)
 }
 
 // SerializeMutations serializes writes while allowing SELECT, SHOW and DESC observations to run concurrently.
@@ -26,7 +36,7 @@ func (c *serializedClient) Query(ctx context.Context, target Connection, sql str
 		return nil, err
 	}
 	fields := strings.Fields(sql)
-	if len(fields) > 0 && (strings.EqualFold(fields[0], "SELECT") || strings.EqualFold(fields[0], "SHOW") || strings.EqualFold(fields[0], "DESC")) {
+	if len(fields) > 0 && slices.ContainsFunc(observationVerbs, func(verb string) bool { return strings.EqualFold(fields[0], verb) }) {
 		return c.client.Query(ctx, target, sql, parameters)
 	}
 	select {

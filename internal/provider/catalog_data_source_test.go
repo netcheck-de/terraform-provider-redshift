@@ -122,6 +122,19 @@ func TestPrivilegeLookupsReturnEmptySetsAndGrantOptions(t *testing.T) {
 	}
 }
 
+// TestPrivilegeLookupReportsGrantOptions observes the grant option subset on types that manage grant options.
+func TestPrivilegeLookupReportsGrantOptions(t *testing.T) {
+	source := newPrivilegeDataSource(newOptionGrantTestResource)
+	client := optionCatalog(optionGrantFields, []string{"INSERT", "SELECT"}, []string{"SELECT"})
+	state, diagnostics := readSource(t, source, catalogLookupObject(t, source, optionGrantFields), client)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	var observed types.Object
+	require.False(t, state.Get(context.Background(), &observed).HasError())
+	assert.Equal(t, []string{"INSERT", "SELECT"}, knownStrings(observed.Attributes()["privileges"].(types.Set)))
+	assert.Equal(t, []string{"SELECT"}, grantOptionPrivileges(observed))
+	assert.Empty(t, client.writes)
+}
+
 // TestLookupAttributesConvertEveryKind checks the resource-to-lookup conversion for every attribute kind.
 func TestLookupAttributesConvertEveryKind(t *testing.T) {
 	nested := resourceschema.NestedAttributeObject{Attributes: map[string]resourceschema.Attribute{

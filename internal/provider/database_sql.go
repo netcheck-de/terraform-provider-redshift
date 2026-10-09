@@ -1,6 +1,8 @@
 package provider
 
 import (
+	"strings"
+
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
@@ -27,9 +29,11 @@ func dropDatabaseStatement(data databaseModel) string {
 
 // readDatabaseStatement lists databases matching name. SVV_REDSHIFT_DATABASES.database_options is VARCHAR(128)
 // and truncates the producer JSON before its permissions flag, while SHOW returns complete parameters. LIKE
-// treats _ and % as wildcards, so callers keep only the exact name.
+// treats _ and % as wildcards, so callers keep only the exact name. A backslash would escape the character after
+// it and the pattern would miss the database, so it becomes _, which matches the backslash itself whether or not
+// the pattern honors escapes.
 func readDatabaseStatement(name string) string {
-	return sqlclient.Stmt("SHOW DATABASES").KwLit("LIKE", name).String()
+	return sqlclient.Stmt("SHOW DATABASES").KwLit("LIKE", strings.ReplaceAll(name, `\`, "_")).String()
 }
 
 // readDatabaseInboundShareQuery finds the associated inbound share and the database already bound to it.
