@@ -35,6 +35,11 @@ tasks:
     cmds:
       - go test -race -cover ./...
 
+  actionlint:
+    desc: Lint GitHub Actions workflows
+    cmds:
+      - go tool actionlint -color
+
   # Documentation
 
   markdown-fmt:
@@ -42,23 +47,34 @@ tasks:
     shopt: [globstar]
     cmds:
       - >-
-        go run github.com/bwplotka/mdox@latest fmt
+        go tool mdox fmt
         --soft-wraps
-        *.md docs/**/*.md examples/**/*.md
+        *.md examples/**/*.md
 
   markdown-fmt-check:
     desc: Check Markdown formatting
     shopt: [globstar]
     cmds:
       - >-
-        go run github.com/bwplotka/mdox@latest fmt --check
+        go tool mdox fmt --check
         --soft-wraps
-        *.md docs/**/*.md examples/**/*.md
+        *.md examples/**/*.md
+
+  docs:
+    desc: Generate Registry documentation
+    cmds:
+      - go tool tfplugindocs generate --provider-name redshift
 
   docs-check:
-    desc: Validate Terraform Registry documentation against the provider schema
+    desc: Validate Registry documentation and check that docs/ matches freshly generated output
     cmds:
-      - go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.25.0 validate --provider-name redshift --provider-dir .
+      - go tool tfplugindocs validate --provider-name redshift --provider-dir .
+      - rm -rf .cache/docs-check
+      - >-
+        go tool tfplugindocs generate
+        --provider-name redshift
+        --rendered-website-dir .cache/docs-check
+      - diff -r docs .cache/docs-check
 
   # Local build
 

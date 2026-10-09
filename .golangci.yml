@@ -4,6 +4,7 @@ version: "2"
 linters:
   default: standard
   enable:
+    - depguard
     - durationcheck
     - errorlint
     - gocritic
@@ -16,6 +17,24 @@ linters:
     - thelper
     - unconvert
   settings:
+    depguard:
+      rules:
+        # Resources use Redshift SQL semantics through sqlclient; only provider wiring constructs transports.
+        sql-transport:
+          files:
+            - '**/internal/provider/*.go'
+            - '!**/internal/provider/provider.go'
+            - '!**/internal/provider/connection.go'
+            - '!$test'
+          deny:
+            - pkg: github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata
+              desc: construct SQL transports only in provider.go or connection.go
+            - pkg: github.com/netcheck-de/terraform-provider-redshift/internal/redshiftconn
+              desc: construct SQL transports only in provider.go or connection.go
+            - pkg: github.com/aws/aws-sdk-go-v2/service
+              desc: AWS service clients belong to provider wiring
+            - pkg: github.com/jackc/pgx
+              desc: pgx belongs to the direct SQL transport
     revive:
       rules:
         - name: exported

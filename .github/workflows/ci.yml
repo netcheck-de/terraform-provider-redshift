@@ -1,7 +1,12 @@
 ---
 name: CI
 
-on: [ push ]
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -43,10 +48,6 @@ jobs:
       - name: Set up Task
         uses: go-task/setup-task@v2
 
-      - name: Setup actionlint
-        id: setup-actionlint
-        run: bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
-
       - name: YAML lint
         uses: ibiqlik/action-yamllint@v3
 
@@ -59,7 +60,7 @@ jobs:
         run: task markdown-fmt-check
 
       - name: Actionlint
-        run: '"${{ steps.setup-actionlint.outputs.executable }}" -color'
+        run: task actionlint
 
   test-go:
     name: Go tests
@@ -106,7 +107,7 @@ jobs:
       - name: Test example composition
         run: task terraform-test
 
-      - name: Validate Registry documentation
+      - name: Validate and check generated Registry documentation
         run: task docs-check
 
   build:
@@ -124,6 +125,7 @@ jobs:
       - name: Build unsigned snapshot
         uses: goreleaser/goreleaser-action@v7
         with:
+          version: '~> v2'
           args: release --snapshot --clean --skip=publish,sign
 
       - name: Upload archives
