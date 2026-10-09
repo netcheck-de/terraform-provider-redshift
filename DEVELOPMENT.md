@@ -190,9 +190,9 @@ the commit subject, so PR titles must follow [Conventional Commits](https://www.
 `perf`, or `revert`. The scope is optional; `!` after the type or scope marks a breaking change. The "Semantic PR title"
 check (`pr.yml`) validates the title. In the repository settings, allow only squash merging with the pull request
 title as the default commit message, and require the "Semantic PR title" check in branch protection. GoReleaser groups
-the commits since the previous tag into breaking changes, features, fixes, documentation, and other changes, and
-leaves out `test`, `ci`, `chore`, `build`, `style`, and `refactor` commits. Docs and examples pin `~> MAJOR.MINOR` and
-change only when a new release series starts.
+the commits since the previous tag into breaking changes, features, fixes, documentation, dependencies (`build(deps)`),
+and other changes, and leaves out `test`, `ci`, `chore`, `style`, `refactor`, and other `build` commits. Docs and
+examples pin `~> MAJOR.MINOR` and change only when a new release series starts.
 
 To release:
 

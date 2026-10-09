@@ -62,9 +62,14 @@ changelog:
     - title: Documentation
       regexp: '^docs(\([^)]*\))?:'
       order: 3
+    - title: Dependencies
+      regexp: '^build\(deps\):'
+      order: 4
     - title: Other changes
       order: 999
   filters:
     exclude:
-      - '^(test|ci|chore|build|style|refactor)(\([^)]*\))?:'
+      - '^(test|ci|chore|style|refactor)(\([^)]*\))?:'
+      # Drop build commits except build(deps) dependency updates (RE2 has no lookahead).
+      - '^build(\([^d)][^)]*\))?:'
       - '^Merge '
