@@ -81,7 +81,7 @@ of 8 RPUs. Account quotas and regional availability apply.
 Deployment credentials need AWS provisioning and `iam:PassRole` permissions, Data API execute/describe/result access,
 and Secrets Manager access to the two managed administrator secrets and the created reader secret. IAM permission and
 SQL permission are separate: bootstrap uses the administrator secrets, rather than assuming the caller's IAM-derived
-SQL user is a superuser. Shared database lookups also need `redshift:DescribeDataSharesForConsumer`.
+SQL user is a superuser. Shared database lookups also need `redshift:DescribeDataShares`.
 
 For a published provider, from this directory:
 
@@ -115,9 +115,9 @@ warehouse snapshots and allows deletion of the owned fixture bucket's contents.
 
 The example has scoped Trivy exceptions for its disposable fixtures: AWS-managed encryption keys (`AWS-0084`,
 `AWS-0098`, `AWS-0132`), no VPC flow-log infrastructure (`AWS-0178`), and no S3 access-log bucket or retained versions
-(`AWS-0089`, `AWS-0090`). The resources remain encrypted, the bucket blocks public access, SQL uses verified TLS,
-and public SQL access requires the explicit restricted-CIDR opt-in. These exceptions are documented beside the resources;
-they are not a production security baseline.
+(`AWS-0089`, `AWS-0090`). The resources remain encrypted, the bucket blocks public access, SQL uses verified TLS by
+default (`direct_sslmode`), and public SQL access requires the explicit restricted-CIDR opt-in. These exceptions are
+documented beside the resources; they are not a production security baseline.
 
 ## What is managed
 
@@ -167,6 +167,9 @@ initialization and the managed command grants.
 identity_center_instance_arn = "arn:aws:sso:::instance/ssoins-example"
 # Optional existing directory user to join the example reader group:
 identity_center_test_user_id = "existing-user-id"
+# Or map existing directory groups instead of creating example groups (their membership is never changed):
+# identity_center_reader_group_name   = "existing-readers"
+# identity_center_operator_group_name = "existing-operators"
 ```
 
 The instance must already exist and be visible in the consumer account/region. For a single-account deployment an

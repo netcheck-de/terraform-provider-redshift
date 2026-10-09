@@ -411,6 +411,54 @@ run "identity_center_enabled" {
   }
 }
 
+run "identity_center_existing_groups" {
+  command   = apply
+  state_key = "identity_center_existing"
+  variables {
+    identity_center_instance_arn        = "arn:aws:sso:::instance/ssoins-1234567890abcdef"
+    identity_center_reader_group_name   = "existing-developers"
+    identity_center_operator_group_name = "existing-devops"
+    identity_center_test_user_id        = "12345678-1234-1234-1234-123456789abc"
+  }
+  override_data {
+    target = data.aws_identitystore_group.readers[0]
+    values = { group_id = "reader-group-id", display_name = "existing-developers" }
+  }
+  override_data {
+    target = data.aws_identitystore_group.operators[0]
+    values = { group_id = "operator-group-id", display_name = "existing-devops" }
+  }
+  override_data {
+    target = module.consumer_endpoints.data.aws_vpc_endpoint_service.this["sso_oauth"]
+    values = { service_name = "com.amazonaws.eu-central-1.sso-oauth" }
+  }
+  override_data {
+    target = module.consumer_endpoints.data.aws_vpc_endpoint_service.this["identitystore"]
+    values = { service_name = "com.amazonaws.eu-central-1.identitystore" }
+  }
+  assert {
+    condition = (
+      length(aws_identitystore_group.readers) == 0 && length(aws_identitystore_group.operators) == 0 &&
+      length(aws_identitystore_group_membership.reader) == 0 &&
+      aws_ssoadmin_application_assignment.readers[0].principal_id == "reader-group-id" &&
+      aws_ssoadmin_application_assignment.operators[0].principal_id == "operator-group-id" &&
+      redshift_role.sso_readers[0].name == "${redshift_identity_provider.this[0].namespace}:existing-developers" &&
+      redshift_role.sso_operators[0].name == "${redshift_identity_provider.this[0].namespace}:existing-devops" &&
+      output.identity_center.readers_group_id == "reader-group-id" && output.identity_center.operators_group_id == "operator-group-id"
+    )
+    error_message = "Existing groups must be looked up and assigned without creating groups or changing their membership."
+  }
+}
+
+run "rejects_single_existing_group" {
+  command = plan
+  variables {
+    identity_center_instance_arn      = "arn:aws:sso:::instance/ssoins-1234567890abcdef"
+    identity_center_reader_group_name = "existing-developers"
+  }
+  expect_failures = [var.identity_center_reader_group_name]
+}
+
 run "cross_account_sharing" {
   command = apply
   # A different account is a separate deployment, not a credential migration of the preceding SSO environment.
@@ -527,4 +575,10 @@ run "rejects_invalid_name_prefix" {
   command = plan
   variables { name_prefix = "Invalid_Prefix" }
   expect_failures = [var.name_prefix]
+}
+
+run "rejects_password_probe_without_password" {
+  command = plan
+  variables { connection_checks = ["consumer_direct_password"] }
+  expect_failures = [var.consumer_password]
 }

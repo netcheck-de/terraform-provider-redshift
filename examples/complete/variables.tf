@@ -122,6 +122,23 @@ variable "identity_store_id" {
   default     = null
 }
 
+variable "identity_center_reader_group_name" {
+  description = "Existing Identity Center group display name to map to the reader role; null creates an example group."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = (var.identity_center_reader_group_name == null) == (var.identity_center_operator_group_name == null)
+    error_message = "Set both existing Identity Center group names or neither."
+  }
+}
+
+variable "identity_center_operator_group_name" {
+  description = "Existing Identity Center group display name to map to the operator role; null creates an example group."
+  type        = string
+  default     = null
+}
+
 variable "identity_center_test_user_id" {
   description = "Optional existing Identity Center user to join the created reader group for interactive SSO testing."
   type        = string
@@ -165,12 +182,28 @@ variable "connection_checks" {
   }
 }
 
+variable "direct_sslmode" {
+  description = "TLS mode for direct probes. On macOS, Go's platform verifier rejects Serverless certificates without Certificate Transparency timestamps; use require there."
+  type        = string
+  default     = "verify-full"
+
+  validation {
+    condition     = contains(["verify-full", "verify-ca", "require", "disable"], var.direct_sslmode)
+    error_message = "Choose verify-full, verify-ca, require, or disable."
+  }
+}
+
 variable "producer_password" {
   description = "Ephemeral administrator password for an optional direct producer probe; obtain it from the managed secret outside Terraform state."
   type        = string
   sensitive   = true
   ephemeral   = true
   default     = null
+
+  validation {
+    condition     = !contains(var.connection_checks, "producer_direct_password") || var.producer_password != null
+    error_message = "The producer_direct_password probe requires TF_VAR_producer_password."
+  }
 }
 
 variable "consumer_password" {
@@ -179,4 +212,9 @@ variable "consumer_password" {
   sensitive   = true
   ephemeral   = true
   default     = null
+
+  validation {
+    condition     = !contains(var.connection_checks, "consumer_direct_password") || var.consumer_password != null
+    error_message = "The consumer_direct_password probe requires TF_VAR_consumer_password."
+  }
 }

@@ -199,6 +199,17 @@ resource "redshift_assumerole_grant" "loader" {
   depends_on = [aws_redshiftdata_statement.assumerole_policy]
 }
 
+# Schema-scoped default privileges require the owning user to hold CREATE on that schema.
+resource "redshift_object_grant" "loader_schema" {
+  provider      = redshift.consumer
+  database_name = redshift_schema.local.database
+  schema_name   = redshift_schema.local.name
+  object_type   = "SCHEMA"
+  grantee       = redshift_user.loader.name
+  grantee_type  = "USER"
+  privileges    = ["CREATE", "USAGE"]
+}
+
 resource "redshift_default_privileges" "reader_schema_tables" {
   provider      = redshift.consumer
   database_name = redshift_schema.local.database
@@ -208,6 +219,8 @@ resource "redshift_default_privileges" "reader_schema_tables" {
   grantee       = redshift_role.readers.name
   grantee_type  = "ROLE"
   privileges    = ["SELECT"]
+
+  depends_on = [redshift_object_grant.loader_schema]
 }
 
 resource "redshift_default_privileges" "operator_routines" {

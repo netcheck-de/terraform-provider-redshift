@@ -145,8 +145,8 @@ output "identity_center" {
     instance_arn       = var.identity_center_instance_arn
     application_arn    = aws_redshift_idc_application.this[0].idc_managed_application_arn
     namespace          = data.redshift_identity_provider.this[0].namespace
-    readers_group_id   = aws_identitystore_group.readers[0].group_id
-    operators_group_id = aws_identitystore_group.operators[0].group_id
+    readers_group_id   = local.sso_reader_group.id
+    operators_group_id = local.sso_operator_group.id
     test_user_id       = var.identity_center_test_user_id
   } : null
 }

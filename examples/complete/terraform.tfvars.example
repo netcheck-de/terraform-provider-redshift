@@ -19,6 +19,9 @@ region = "eu-central-1"
 # identity_center_instance_arn = "arn:aws:sso:::instance/ssoins-example"
 # identity_store_id            = null # Looked up from the instance when omitted.
 # identity_center_test_user_id = "existing-user-id"
+# Map existing directory groups instead of creating example groups; their membership is never changed.
+# identity_center_reader_group_name   = "existing-readers"
+# identity_center_operator_group_name = "existing-operators"
 
 # Optional cross-account mode: distinct profiles create separate networks and warehouses in those accounts.
 # producer_profile = "producer-admin"

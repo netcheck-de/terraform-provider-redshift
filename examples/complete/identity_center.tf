@@ -43,7 +43,7 @@ resource "aws_redshift_idc_application" "this" {
   provider                      = aws.consumer
   count                         = local.sso_enabled ? 1 : 0
   redshift_idc_application_name = "${local.name}-consumer"
-  idc_display_name              = "${local.name} Redshift"
+  idc_display_name              = "${local.name}-redshift"
   idc_instance_arn              = var.identity_center_instance_arn
   iam_role_arn                  = aws_iam_role.consumer.arn
   identity_namespace            = replace(local.name, "-", "_")
@@ -62,9 +62,48 @@ resource "aws_redshift_idc_application" "this" {
   depends_on = [aws_iam_role_policy.identity_center]
 }
 
+locals {
+  # Existing directory groups are only read and assigned; the example never changes their membership.
+  sso_existing_groups = local.sso_enabled && var.identity_center_reader_group_name != null
+  sso_create_groups   = local.sso_enabled && !local.sso_existing_groups
+  # Exactly one source exists per group when SSO is enabled.
+  sso_reader_group = one(concat(
+    [for group in data.aws_identitystore_group.readers : { id = group.group_id, name = group.display_name }],
+    [for group in aws_identitystore_group.readers : { id = group.group_id, name = group.display_name }],
+  ))
+  sso_operator_group = one(concat(
+    [for group in data.aws_identitystore_group.operators : { id = group.group_id, name = group.display_name }],
+    [for group in aws_identitystore_group.operators : { id = group.group_id, name = group.display_name }],
+  ))
+}
+
+data "aws_identitystore_group" "readers" {
+  provider          = aws.consumer
+  count             = local.sso_existing_groups ? 1 : 0
+  identity_store_id = local.identity_store_id
+  alternate_identifier {
+    unique_attribute {
+      attribute_path  = "DisplayName"
+      attribute_value = var.identity_center_reader_group_name
+    }
+  }
+}
+
+data "aws_identitystore_group" "operators" {
+  provider          = aws.consumer
+  count             = local.sso_existing_groups ? 1 : 0
+  identity_store_id = local.identity_store_id
+  alternate_identifier {
+    unique_attribute {
+      attribute_path  = "DisplayName"
+      attribute_value = var.identity_center_operator_group_name
+    }
+  }
+}
+
 resource "aws_identitystore_group" "readers" {
   provider          = aws.consumer
-  count             = local.sso_enabled ? 1 : 0
+  count             = local.sso_create_groups ? 1 : 0
   identity_store_id = local.identity_store_id
   display_name      = "${substr(local.name, 0, 55)}-readers"
   description       = "Readers of the complete Redshift example"
@@ -81,7 +120,7 @@ resource "aws_identitystore_group" "readers" {
 
 resource "aws_identitystore_group" "operators" {
   provider          = aws.consumer
-  count             = local.sso_enabled ? 1 : 0
+  count             = local.sso_create_groups ? 1 : 0
   identity_store_id = local.identity_store_id
   display_name      = "${substr(local.name, 0, 54)}-operators"
   description       = "Operators of the complete Redshift example"
@@ -100,7 +139,7 @@ resource "aws_ssoadmin_application_assignment" "readers" {
   provider        = aws.consumer
   count           = local.sso_enabled ? 1 : 0
   application_arn = aws_redshift_idc_application.this[0].idc_managed_application_arn
-  principal_id    = aws_identitystore_group.readers[0].group_id
+  principal_id    = local.sso_reader_group.id
   principal_type  = "GROUP"
 }
 
@@ -108,13 +147,13 @@ resource "aws_ssoadmin_application_assignment" "operators" {
   provider        = aws.consumer
   count           = local.sso_enabled ? 1 : 0
   application_arn = aws_redshift_idc_application.this[0].idc_managed_application_arn
-  principal_id    = aws_identitystore_group.operators[0].group_id
+  principal_id    = local.sso_operator_group.id
   principal_type  = "GROUP"
 }
 
 resource "aws_identitystore_group_membership" "reader" {
   provider          = aws.consumer
-  count             = local.sso_enabled && var.identity_center_test_user_id != null ? 1 : 0
+  count             = local.sso_create_groups && var.identity_center_test_user_id != null ? 1 : 0
   identity_store_id = local.identity_store_id
   group_id          = aws_identitystore_group.readers[0].group_id
   member_id         = var.identity_center_test_user_id
@@ -139,13 +178,13 @@ data "redshift_identity_provider" "this" {
 resource "redshift_role" "sso_readers" {
   provider = redshift.consumer
   count    = local.sso_enabled ? 1 : 0
-  name     = "${redshift_identity_provider.this[0].namespace}:${aws_identitystore_group.readers[0].display_name}"
+  name     = "${redshift_identity_provider.this[0].namespace}:${local.sso_reader_group.name}"
 }
 
 resource "redshift_role" "sso_operators" {
   provider = redshift.consumer
   count    = local.sso_enabled ? 1 : 0
-  name     = "${redshift_identity_provider.this[0].namespace}:${aws_identitystore_group.operators[0].display_name}"
+  name     = "${redshift_identity_provider.this[0].namespace}:${local.sso_operator_group.name}"
 }
 
 resource "redshift_role_grant" "sso_readers" {

@@ -62,6 +62,7 @@ provider "redshift" {
   profile  = local.producer_profile
   database = aws_redshift_cluster.producer.database_name
   direct_connection {
+    sslmode = var.direct_sslmode
     iam {
       cluster_identifier = aws_redshift_cluster.producer.cluster_identifier
       db_user            = aws_redshift_cluster.producer.master_username
@@ -76,21 +77,25 @@ provider "redshift" {
   database = aws_redshiftserverless_namespace.consumer.db_name
   # IAM mode discovers the endpoint; host and port override the discovered values.
   direct_connection {
-    port = aws_redshiftserverless_workgroup.consumer.endpoint[0].port
+    sslmode = var.direct_sslmode
+    port    = aws_redshiftserverless_workgroup.consumer.endpoint[0].port
     iam {
       workgroup_name = aws_redshiftserverless_workgroup.consumer.workgroup_name
     }
   }
 }
 
+# Terraform validates every provider block, even when its probe is disabled. A disabled probe gets a placeholder
+# password; no SQL runs through it because its lookup has count = 0.
 provider "redshift" {
   alias    = "producer_direct_password"
   database = aws_redshift_cluster.producer.database_name
   direct_connection {
+    sslmode  = var.direct_sslmode
     host     = aws_redshift_cluster.producer.dns_name
     port     = aws_redshift_cluster.producer.port
     username = aws_redshift_cluster.producer.master_username
-    password = var.producer_password
+    password = coalesce(var.producer_password, "disabled-probe")
   }
 }
 
@@ -98,9 +103,10 @@ provider "redshift" {
   alias    = "consumer_direct_password"
   database = aws_redshiftserverless_namespace.consumer.db_name
   direct_connection {
+    sslmode  = var.direct_sslmode
     host     = aws_redshiftserverless_workgroup.consumer.endpoint[0].address
     port     = aws_redshiftserverless_workgroup.consumer.endpoint[0].port
     username = aws_redshiftserverless_namespace.consumer.admin_username
-    password = var.consumer_password
+    password = coalesce(var.consumer_password, "disabled-probe")
   }
 }
