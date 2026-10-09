@@ -58,6 +58,11 @@ tasks:
     cmds:
       - go test -race -cover ./...
 
+  golden:
+    desc: Rewrite golden SQL files under internal/provider/testdata/sql; review the diff before committing
+    cmds:
+      - go test ./internal/provider -run 'SQL|Transcript' -update
+
   actionlint:
     desc: Lint GitHub Actions workflows
     cmds:

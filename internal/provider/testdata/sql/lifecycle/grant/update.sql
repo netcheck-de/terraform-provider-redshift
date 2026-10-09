@@ -1,0 +1,31 @@
+-- database: admin
+SELECT database_type FROM svv_redshift_databases WHERE database_name = :database;
+-- params: {"database":"analytics"}
+
+-- database: admin
+SELECT role_name FROM svv_roles WHERE role_name = :role;
+-- params: {"role":"example:readers"}
+
+-- database: admin
+SHOW GRANTS FOR ROLE "example:readers" FROM DATABASE "analytics";
+-- params: {}
+
+-- database: admin
+REVOKE INSERT FOR TABLES IN DATABASE "analytics" FROM ROLE "example:readers";
+-- params: {}
+
+-- database: admin
+GRANT SELECT FOR TABLES IN DATABASE "analytics" TO ROLE "example:readers";
+-- params: {}
+
+-- database: admin
+SELECT database_type FROM svv_redshift_databases WHERE database_name = :database;
+-- params: {"database":"analytics"}
+
+-- database: admin
+SELECT role_name FROM svv_roles WHERE role_name = :role;
+-- params: {"role":"example:readers"}
+
+-- database: admin
+SHOW GRANTS FOR ROLE "example:readers" FROM DATABASE "analytics";
+-- params: {}

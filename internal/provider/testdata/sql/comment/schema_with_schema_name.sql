@@ -1,0 +1,1 @@
+-- error: SCHEMA does not accept schema_name or column_name

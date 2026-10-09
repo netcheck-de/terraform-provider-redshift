@@ -169,3 +169,29 @@ func TestCommentCreateRejectsInvalidTargetBeforeState(t *testing.T) {
 	require.True(t, resp.Diagnostics.HasError())
 	assert.True(t, resp.State.Raw.IsNull(), "invalid target must not be recorded in state")
 }
+
+// TestCommentTargetSQL pins the COMMENT ON target and the validation message for every object kind.
+func TestCommentTargetSQL(t *testing.T) {
+	render := func(kind, schema, name, column string) func() (string, error) {
+		return func() (string, error) {
+			data := commentModel{DatabaseName: types.StringValue("analytics"), ObjectType: types.StringValue(kind), ObjectName: types.StringValue(name), SchemaName: types.StringValue(schema), ColumnName: types.StringValue(column)}
+			statement, _, err := data.target()
+			// reconcile appends the annotation; a quoted literal pins the escaping it uses.
+			return statement + " IS " + sqlclient.Literal(`it's \annotated`), err
+		}
+	}
+	checkSQL(t, "comment", []sqlCase{
+		{"database", render("DATABASE", "", "analytics", "")},
+		{"schema", render("SCHEMA", "", "serving", "")},
+		{"table", render("TABLE", "serving", "table", "")},
+		{"view", render("VIEW", "serving", "view", "")},
+		{"column", render("COLUMN", "serving", "table", "column")},
+		{"quoted_identifiers", render("COLUMN", `odd"schema`, `odd"table`, `odd"column`)},
+		{"database_other_name", render("DATABASE", "", "other", "")},
+		{"schema_with_schema_name", render("SCHEMA", "serving", "serving", "")},
+		{"table_without_schema", render("TABLE", "", "table", "")},
+		{"table_with_column", render("TABLE", "serving", "table", "column")},
+		{"column_without_column", render("COLUMN", "serving", "table", "")},
+		{"unsupported_kind", render("FUNCTION", "serving", "f", "")},
+	})
+}
