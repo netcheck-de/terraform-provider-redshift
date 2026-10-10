@@ -44,6 +44,11 @@ columns stay unmasked for the recipient until the next apply, and the error says
 replaces the attachment with the same detach-then-attach window. Update compares with the catalog, so it also repairs a
 priority changed outside Terraform.
 
+A change to the policy's `input_column` blocks replaces the policy under the same name, which leaves these arguments
+unchanged. Because Redshift refuses to drop an attached policy, add
+`lifecycle { replace_triggered_by = [redshift_masking_policy.<name>.input_column] }`, as in the example, so Terraform
+detaches the policy before the replacement and attaches it again afterwards, with the same window.
+
 ## Import
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity; `columns` is a JSON list inside the identity:

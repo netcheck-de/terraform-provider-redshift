@@ -81,6 +81,10 @@ documented catalog view reports `lambda_function`, `iam_role`, or the retry and 
 from configuration: changes made outside Terraform are not detected, and an import leaves them unset until the next
 apply restates the definition. `DROP FUNCTION` does **not** cascade; remove dependent views first.
 
+For the same reason there is no `redshift_external_function` data source: a lookup could not report the Lambda
+options. `redshift_functions` lists Lambda UDFs with their signature, return type, volatility, language, and owner,
+and `redshift_routine_parameters` lists their parameters.
+
 ## Import
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity. `arguments` is the canonical signature

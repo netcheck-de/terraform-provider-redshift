@@ -64,6 +64,11 @@ resource "redshift_masking_policy_attachment" "email_readers" {
 
   # The policy reads its lookup table only once the grant exists.
   depends_on = [redshift_policy_grant.masking_lookup]
+
+  # Redshift refuses to drop an attached policy, so a change that replaces the policy must detach it first.
+  lifecycle {
+    replace_triggered_by = [redshift_masking_policy.email.input_column]
+  }
 }
 
 data "redshift_masking_policy" "email" {

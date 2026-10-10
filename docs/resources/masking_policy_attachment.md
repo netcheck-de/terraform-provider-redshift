@@ -27,6 +27,11 @@ resource "redshift_masking_policy_attachment" "email_analysts" {
   grantee      = redshift_role.analysts.name
   grantee_type = "ROLE"
   priority     = 10
+
+  # Redshift refuses to drop an attached policy, so a change that replaces the policy must detach it first.
+  lifecycle {
+    replace_triggered_by = [redshift_masking_policy.email.input_column]
+  }
 }
 
 # The card policy masks card_number and also reads is_fraud, so the input mapping lists both relation columns.
@@ -39,6 +44,10 @@ resource "redshift_masking_policy_attachment" "card_public" {
   input_columns = ["is_fraud", "card_number"]
   grantee       = "public"
   grantee_type  = "PUBLIC"
+
+  lifecycle {
+    replace_triggered_by = [redshift_masking_policy.card.input_column]
+  }
 }
 ```
 
@@ -86,6 +95,11 @@ re-attaches the policy with the priority and inputs it had and reports the error
 columns stay unmasked for the recipient until the next apply, and the error says so. Changing any other argument
 replaces the attachment with the same detach-then-attach window. Update compares with the catalog, so it also repairs a
 priority changed outside Terraform.
+
+A change to the policy's `input_column` blocks replaces the policy under the same name, which leaves these arguments
+unchanged. Because Redshift refuses to drop an attached policy, add
+`lifecycle { replace_triggered_by = [redshift_masking_policy.<name>.input_column] }`, as in the example, so Terraform
+detaches the policy before the replacement and attaches it again afterwards, with the same window.
 
 ## Import
 

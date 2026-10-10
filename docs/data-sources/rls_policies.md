@@ -19,6 +19,10 @@ SELECT ... FROM svv_rls_policy WHERE poldb = 'database';
 data "redshift_rls_policies" "analytics" {
   database = "analytics"
 }
+
+output "rls_policy_names" {
+  value = data.redshift_rls_policies.analytics.rls_policies[*].name
+}
 ```
 
 <!-- markdownlint-disable MD013 MD022 MD033 -->

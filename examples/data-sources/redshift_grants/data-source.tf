@@ -13,3 +13,7 @@ data "redshift_grants" "analysts" {
   grantee_type  = "ROLE"
   schema_name   = "reporting"
 }
+
+output "events_grants" {
+  value = [for grant in data.redshift_grants.events.grants : "${grant.grantee_type} ${grant.grantee}: ${grant.privilege}"]
+}

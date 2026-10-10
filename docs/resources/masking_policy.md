@@ -83,8 +83,12 @@ The provider must connect as a superuser or a member of `sys:secadmin`, the only
 policies and read `SVV_MASKING_POLICY`. Statements run in `database`, so the policy name stays unqualified.
 
 `expression` updates in place with `ALTER MASKING POLICY`, which keeps the policy's attachments. `ALTER` cannot change
-the input columns or their types, so changing an input column's name or type replaces the policy; Redshift refuses to
-drop a policy that is still attached, so replace or remove its attachments first. Deletion never cascades.
+the input columns or their types, so changing an input column's name or type replaces the policy under the same name.
+Deletion never cascades, and Redshift refuses to drop a policy that is still attached. Referencing the policy from its
+attachments makes Terraform detach them first when everything is destroyed, but a replacement leaves those references
+unchanged. Give every attachment `replace_triggered_by` on the policy's `input_column`, as in the
+`redshift_masking_policy_attachment` example: Terraform then detaches the attachments, replaces the policy, and attaches
+them again. A switch between equivalent input types also updates `input_column` and so re-creates the attachments.
 
 Redshift stores the expression in its own rendering, for example with the input columns qualified. State keeps the
 configured `expression` while the catalog still matches `definition_fingerprint`, the hash recorded at apply time.

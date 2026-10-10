@@ -5,6 +5,7 @@ import (
 	"maps"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -24,6 +25,40 @@ var _ = registerReplacementPolicy("redshift_datashare_privilege", map[string]rep
 
 // datashareFullFields names the share, database, and role that fullCatalog contains.
 var datashareFullFields = map[string]string{"database_name": "admin", "datashare_name": "producer", "grantee_type": "ROLE", "grantee": "example:readers"}
+
+// datasharePrivilegeTestModel mirrors the datashare privilege schema as a struct, because the shared lifecycle tests
+// replace the ID field of their models by name.
+type datasharePrivilegeTestModel struct {
+	// ID is the JSON import identity.
+	ID types.String `tfsdk:"id"`
+	// DatabaseName is the producer database that owns the share.
+	DatabaseName types.String `tfsdk:"database_name"`
+	// DatashareName is the outbound share.
+	DatashareName types.String `tfsdk:"datashare_name"`
+	// Grantee is the receiving identity.
+	Grantee types.String `tfsdk:"grantee"`
+	// GranteeType is ROLE, USER, GROUP, or PUBLIC.
+	GranteeType types.String `tfsdk:"grantee_type"`
+	// Privileges is the ALTER/SHARE set.
+	Privileges types.Set `tfsdk:"privileges"`
+}
+
+var _ = registerLifecycleCase(lifecycleCase{
+	name: "datashare privilege", kind: lifecyclePermission, new: newDatasharePrivilegeResource,
+	model: datasharePrivilegeTestModel{
+		ID: types.StringNull(), DatabaseName: types.StringValue(datashareFullFields["database_name"]),
+		DatashareName: types.StringValue(datashareFullFields["datashare_name"]), Grantee: types.StringValue(datashareFullFields["grantee"]),
+		GranteeType: types.StringValue(datashareFullFields["grantee_type"]),
+		Privileges:  types.SetValueMust(types.StringType, []attr.Value{types.StringValue("ALTER")}),
+	},
+	absent: func(c *catalog) { clear(fakeState[*fakeDatashares](c, "datashare").privileges) },
+	prepare: func(c *catalog, operation string) {
+		if operation == "update" {
+			// A permission granted outside Terraform shows the REVOKE that restores the exact set.
+			fakeState[*fakeDatashares](c, "datashare").privileges["role:example:readers"] = map[string]bool{"SHARE": true}
+		}
+	},
+})
 
 // TestDatasharePrivilegeLifecycle runs the shared permission lifecycle checks for every grantee form.
 func TestDatasharePrivilegeLifecycle(t *testing.T) {

@@ -42,7 +42,7 @@ resource "redshift_default_privileges" "reports" {
 - `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`. Changing it replaces the grant.
 - `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.
 - `object_type` (String) `TABLES` (tables and views), `FUNCTIONS`, or `PROCEDURES`. Changing it replaces the grant.
-- `privileges` (Set of String) Exact explicit default privilege set; updated in place. `TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `TRUNCATE`. `FUNCTIONS` and `PROCEDURES`: `EXECUTE`. Redshift grants `EXECUTE` on new functions to `PUBLIC` without being asked; the database-wide `PUBLIC` `FUNCTIONS` tuple reports it, an empty set revokes it, and deleting that tuple grants it back.
+- `privileges` (Set of String) Exact explicit default privilege set; updated in place. `TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `TRUNCATE`. `FUNCTIONS` and `PROCEDURES`: `EXECUTE`. Redshift grants `EXECUTE` on new functions to `PUBLIC` without being asked; the database-wide `PUBLIC` `FUNCTIONS` tuple reports it, an empty set revokes it, and deleting that tuple revokes what it holds and never grants the default back.
 
 ### Optional
 
