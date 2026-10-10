@@ -24,7 +24,7 @@ var _ = registerParity(parityCase{source: newMaskingPoliciesDataSource, resource
 func TestMaskingPolicyLookup(t *testing.T) {
 	text := "CAST('***' AS TEXT)"
 	exerciseCatalogLookup(t, newMaskingPolicyDataSource, map[string]string{"database": "admin", "name": "mask_email"}, map[string]attr.Value{
-		"input_column":           maskingPolicyColumnList([]maskingPolicyColumn{{Name: "email", Type: "character varying(256)"}}),
+		"input_column":           maskingPolicyColumnList([]maskingPolicyColumn{{Name: "email", Type: "CHARACTER VARYING(256)"}}),
 		"expression":             types.StringValue(text),
 		"definition_fingerprint": types.StringValue(definitionFingerprint(text)),
 	}, fullCatalog())

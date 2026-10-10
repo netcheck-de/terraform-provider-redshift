@@ -35,7 +35,7 @@ data "redshift_external_schema" "raw" {
 
 ### Read-Only
 
-- `authentication` (String) Streaming authentication mode `none`, `iam`, or `mtls`. Null when the catalog does not record it.
+- `authentication` (String) Streaming authentication mode `NONE`, `IAM`, or `MTLS`. Null when the catalog does not record it.
 - `authentication_arn` (String) ACM certificate ARN used for mTLS. Null when the catalog does not record it.
 - `glue_database` (String) Glue database name of a `DATA_CATALOG` schema.
 - `iam_role_arn` (String) IAM role, or role chain, used to reach the source. Null when the catalog does not record it.

@@ -25,7 +25,7 @@ func TestDatabaseLookup(t *testing.T) {
 			require.False(t, state.Get(context.Background(), &data).HasError())
 			assert.Equal(t, name, data.Name.ValueString())
 			if name == "analytics" {
-				assert.Equal(t, "shared", data.DatabaseType.ValueString())
+				assert.Equal(t, "SHARED", data.DatabaseType.ValueString())
 				assert.True(t, data.Owner.IsNull(), "shared databases have no managed owner")
 				assert.True(t, data.IsolationLevel.IsNull())
 				assert.True(t, data.WithPermissions.ValueBool())
@@ -34,7 +34,7 @@ func TestDatabaseLookup(t *testing.T) {
 				assert.Equal(t, shareARN, data.DatashareARN.ValueString())
 				assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","name":"analytics","datashare_arn":"`+shareARN+`"}`, data.ID.ValueString())
 			} else {
-				assert.Equal(t, "local", data.DatabaseType.ValueString())
+				assert.Equal(t, "LOCAL", data.DatabaseType.ValueString())
 				assert.Equal(t, "admin", data.Owner.ValueString())
 				assert.Equal(t, int64(-1), data.ConnectionLimit.ValueInt64())
 				assert.Equal(t, "CASE_SENSITIVE", data.Collation.ValueString())

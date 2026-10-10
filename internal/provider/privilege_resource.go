@@ -31,6 +31,9 @@ type privilegeResource struct {
 	attributes map[string]schema.Attribute
 	// fields lists identity attributes persisted in JSON import IDs.
 	fields []string
+	// canonical rewrites identity fields that configuration may spell in several ways, such as a keyword in any
+	// case, to the one spelling identities record, so a lookup and an import agree with Create.
+	canonical func(map[string]string)
 	// prepare validates the tuple and supplies its catalog and mutation contract.
 	prepare func(types.Object) (privilegeTarget, error)
 	// grantOptions adds grant_option_privileges, so a user grantee can hold privileges WITH GRANT OPTION.
@@ -80,6 +83,16 @@ func privilegeString(description string, optional bool, choices ...string) schem
 	return schema.StringAttribute{
 		Required: !optional, Optional: optional, MarkdownDescription: description,
 		PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, Validators: validators,
+	}
+}
+
+// privilegeKeyword defines an immutable keyword-like identity field. Configuration may spell it in any case: another
+// case of the same keyword is recorded in place, and the identity holds the canonical uppercase spelling.
+func privilegeKeyword(description string, choices ...string) schema.StringAttribute {
+	return schema.StringAttribute{
+		Required: true, MarkdownDescription: description,
+		PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(keywordChanged, "Changing it replaces the grant.", "Changing it replaces the grant.")},
+		Validators:    []validator.String{stringvalidator.OneOfCaseInsensitive(choices...)},
 	}
 }
 
@@ -334,6 +347,9 @@ func (r *privilegeResource) Create(ctx context.Context, req resource.CreateReque
 		if value := objectString(data, field); value != "" {
 			fields[field] = value
 		}
+	}
+	if r.canonical != nil {
+		r.canonical(fields)
 	}
 	attributes := data.Attributes()
 	attributes["id"] = r.identity(r.database.ValueString(), fields)

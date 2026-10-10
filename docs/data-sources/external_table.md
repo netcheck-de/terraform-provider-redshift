@@ -58,7 +58,7 @@ data "redshift_external_table" "sales" {
 Read-Only:
 
 - `name` (String) Column name. The external catalog stores names in lowercase, so names differing only in case are the same column.
-- `type` (String) Data type: `smallint`, `integer`, `bigint`, `decimal(p,s)`, `real`, `double precision`, `boolean`, `char(n)`, `varchar(n)`, `date`, or `timestamp`, including their aliases such as `int4` or `numeric`. Spellings of the same type, such as `int` and `integer`, are equivalent.
+- `type` (String) Data type: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `REAL`, `DOUBLE PRECISION`, `BOOLEAN`, `CHAR(n)`, `VARCHAR(n)`, `DATE`, or `TIMESTAMP`, including their aliases such as `INT4` or `NUMERIC`, in any case. Spellings of the same type, such as `INT` and `INTEGER`, are equivalent. A refresh or import reports the uppercase name, and Glue types the provider cannot declare, such as `STRING`, with uppercase type names.
 
 
 <a id="nestedatt--partition_key"></a>
@@ -67,7 +67,7 @@ Read-Only:
 Read-Only:
 
 - `name` (String) Column name. The external catalog stores names in lowercase, so names differing only in case are the same column.
-- `type` (String) Data type: `smallint`, `integer`, `bigint`, `decimal(p,s)`, `real`, `double precision`, `boolean`, `char(n)`, `varchar(n)`, `date`, or `timestamp`, including their aliases such as `int4` or `numeric`. Spellings of the same type, such as `int` and `integer`, are equivalent.
+- `type` (String) Data type: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `REAL`, `DOUBLE PRECISION`, `BOOLEAN`, `CHAR(n)`, `VARCHAR(n)`, `DATE`, or `TIMESTAMP`, including their aliases such as `INT4` or `NUMERIC`, in any case. Spellings of the same type, such as `INT` and `INTEGER`, are equivalent. A refresh or import reports the uppercase name, and Glue types the provider cannot declare, such as `STRING`, with uppercase type names.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the observed table's JSON identity, using the same warehouse, database, schema, and name keys

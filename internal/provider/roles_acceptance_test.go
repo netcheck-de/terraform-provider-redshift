@@ -123,7 +123,7 @@ provider "redshift" {
 }
 resource "redshift_identity_provider" "this" {
   name                     = %q
-  type                     = "azure"
+  type                     = "AZURE"
   namespace                = %q
   issuer                   = %q
   client_id                = "87f4aa26-78b7-410e-bf29-57b39929ef9a"
@@ -148,7 +148,7 @@ data "redshift_identity_provider" "this" { name = redshift_identity_provider.thi
 		},
 		Steps: []resource.TestStep{
 			{Config: configuration("acc"+suffix, issuer, 1, true), Check: resource.ComposeTestCheckFunc(
-				resource.TestCheckResourceAttr("redshift_identity_provider.this", "type", "azure"),
+				resource.TestCheckResourceAttr("redshift_identity_provider.this", "type", "AZURE"),
 				resource.TestCheckResourceAttrSet("redshift_identity_provider.this", "provider_id"),
 				resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "issuer", issuer),
 				resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "audience.#", "1"),

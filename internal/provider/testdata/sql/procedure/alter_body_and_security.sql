@@ -1,1 +1,1 @@
-CREATE OR REPLACE PROCEDURE "public"."sp_example"("min_id" IN integer, "total" OUT bigint) AS $$BEGIN total := min_id; END;$$ LANGUAGE plpgsql SECURITY DEFINER;
+CREATE OR REPLACE PROCEDURE "public"."sp_example"("min_id" IN INTEGER, "total" OUT BIGINT) AS $$BEGIN total := min_id; END;$$ LANGUAGE PLPGSQL SECURITY DEFINER;

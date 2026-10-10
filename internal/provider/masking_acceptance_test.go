@@ -117,7 +117,7 @@ resource "redshift_database" "local" { name = %q }
 				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachment.email", "exists", "true"),
 				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachment.email", "priority", "10"),
 				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachment.email", "input_columns.0", "email"),
-				resource.TestCheckResourceAttr("data.redshift_masking_policy.email", "input_column.0.type", "character varying(256)"),
+				resource.TestCheckResourceAttr("data.redshift_masking_policy.email", "input_column.0.type", "CHARACTER VARYING(256)"),
 				resource.TestCheckResourceAttr("data.redshift_masking_policies.local", "masking_policies.#", "1"),
 			)},
 			{Config: initial, PlanOnly: true},

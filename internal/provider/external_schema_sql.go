@@ -69,8 +69,8 @@ var externalSchemaSources = map[string]externalSchemaSource{
 	},
 }
 
-// externalSchemaAuthentications are the AUTHENTICATION keywords of a streaming schema.
-var externalSchemaAuthentications = []sqlclient.Keyword{"none", "iam", "mtls"}
+// externalSchemaAuthentications are the AUTHENTICATION keywords of a streaming schema, accepted in any case.
+var externalSchemaAuthentications = []sqlclient.Keyword{"NONE", "IAM", "MTLS"}
 
 // externalSchemaSourceName returns the configured source type, treating null as the DATA CATALOG default.
 func externalSchemaSourceName(value types.String) string {
@@ -95,7 +95,7 @@ func externalSchemaOption(data externalSchemaModel, name string) attr.Value {
 	return map[string]attr.Value{
 		"glue_database": data.GlueDatabase, "source_database": data.SourceDatabase, "source_schema": data.SourceSchema,
 		"iam_role_arn": data.IAMRoleARN, "region": data.Region, "uri": data.URI, "port": data.Port,
-		"secret_arn": data.SecretARN, "authentication": data.Authentication, "authentication_arn": data.AuthenticationARN,
+		"secret_arn": data.SecretARN, "authentication": keywordCanonical(data.Authentication), "authentication_arn": data.AuthenticationARN,
 	}[name]
 }
 
@@ -145,19 +145,19 @@ func externalSchemaAuthenticationProblems(data externalSchemaModel, set func(str
 	role, roleKnown := set("iam_role_arn")
 	certificate, certificateKnown := set("authentication_arn")
 	secret, secretKnown := set("secret_arn")
-	switch data.Authentication.ValueString() {
-	case "iam":
+	switch strings.ToUpper(data.Authentication.ValueString()) {
+	case "IAM":
 		if roleKnown && !role {
-			problems = append(problems, "AUTHENTICATION iam requires iam_role_arn")
+			problems = append(problems, "AUTHENTICATION IAM requires iam_role_arn")
 		}
 		fallthrough
-	case "none":
+	case "NONE":
 		if (certificateKnown && certificate) || (secretKnown && secret) {
-			problems = append(problems, "authentication_arn and secret_arn apply only to AUTHENTICATION mtls")
+			problems = append(problems, "authentication_arn and secret_arn apply only to AUTHENTICATION MTLS")
 		}
-	case "mtls":
+	case "MTLS":
 		if certificateKnown && secretKnown && certificate == secret {
-			problems = append(problems, "AUTHENTICATION mtls requires exactly one of authentication_arn and secret_arn")
+			problems = append(problems, "AUTHENTICATION MTLS requires exactly one of authentication_arn and secret_arn")
 		}
 	}
 	return problems

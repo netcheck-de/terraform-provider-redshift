@@ -41,7 +41,7 @@ func TestTableLookup(t *testing.T) {
 	assert.True(t, data.Backup.IsNull(), "backup is not observable")
 	columns := tableTestColumnsOf(t, data.Column)
 	require.Len(t, columns, 2)
-	assert.Equal(t, "character varying(64)", columns[1].Type.ValueString())
+	assert.Equal(t, "CHARACTER VARYING(64)", columns[1].Type.ValueString())
 	assert.Equal(t, "'none'::character varying", columns[1].Default.ValueString())
 	assert.False(t, columns[0].Identity.IsNull())
 

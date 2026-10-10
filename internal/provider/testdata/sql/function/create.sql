@@ -1,1 +1,1 @@
-CREATE FUNCTION "public"."f_example"(integer, character varying(10)) RETURNS integer IMMUTABLE AS $$SELECT $1 + 1$$ LANGUAGE sql;
+CREATE FUNCTION "public"."f_example"(INTEGER, CHARACTER VARYING(10)) RETURNS INTEGER IMMUTABLE AS $$SELECT $1 + 1$$ LANGUAGE SQL;

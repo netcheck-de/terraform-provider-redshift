@@ -36,7 +36,7 @@ func routineBaseType(name sqlclient.Keyword) sqlclient.Keyword {
 }
 
 // routineSignature canonicalizes input argument types into the comma-separated bare form that identifies an
-// overload in ALTER, DROP and the catalog, for example int and varchar(10) → integer, character varying.
+// overload in ALTER, DROP and the catalog, for example int and varchar(10) → INTEGER, CHARACTER VARYING.
 func routineSignature(argumentTypes []string) (sqlclient.Keyword, error) {
 	bases := make([]string, len(argumentTypes))
 	for i, argumentType := range argumentTypes {
@@ -47,6 +47,22 @@ func routineSignature(argumentTypes []string) (sqlclient.Keyword, error) {
 		bases[i] = string(routineBaseType(name))
 	}
 	return sqlclient.Signature(bases...)
+}
+
+// routineCatalogArguments spells a canonical signature the way oidvectortypes reports it, in lowercase, so a query
+// can match the catalog without wrapping the catalog column in a function.
+func routineCatalogArguments(signature sqlclient.Keyword) string {
+	return strings.ToLower(string(signature))
+}
+
+// routineCatalogSignature canonicalizes a signature oidvectortypes reports, such as "integer, character varying", to
+// the uppercase spelling that routineSignature gives configuration.
+func routineCatalogSignature(catalog string) string {
+	names := routineSignatureTypes(catalog)
+	for i, name := range names {
+		names[i] = sqlclient.CatalogType(name)
+	}
+	return strings.Join(names, ", ")
 }
 
 // routineSignatureTypes splits a canonical signature into its types; an empty signature has none.
@@ -111,22 +127,19 @@ func routineCatalogTypeMatches(configured, catalog string) bool {
 	return routineBaseType(left) == routineBaseType(right)
 }
 
-// routineCatalogType returns the canonical spelling of a catalog type, or the catalog text when TypeName does not
-// know it, so an unexpected type still surfaces as drift rather than an error.
+// routineCatalogType returns the canonical spelling of a catalog type; an unexpected type still surfaces as drift
+// rather than an error.
 func routineCatalogType(catalog string) string {
-	if name, err := routineType(catalog); err == nil {
-		return string(name)
-	}
-	return catalog
+	return sqlclient.CatalogType(catalog)
 }
 
 // routineRejectedType explains the types the routine kind cannot use; TypeName accepts them for other contexts.
 func routineRejectedType(name sqlclient.Keyword, kind string) error {
 	switch {
-	case name == "anyelement":
+	case name == "ANYELEMENT":
 		return fmt.Errorf("ANYELEMENT is supported only by Python UDFs, which a %s cannot use", kind)
-	case name == "refcursor" && kind == "function":
-		return fmt.Errorf("refcursor is supported only by stored procedures")
+	case name == "REFCURSOR" && kind == "function":
+		return fmt.Errorf("REFCURSOR is supported only by stored procedures")
 	}
 	return nil
 }

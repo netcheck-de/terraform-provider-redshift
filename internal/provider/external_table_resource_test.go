@@ -121,8 +121,9 @@ func TestExternalTableImportAdoptsCatalog(t *testing.T) {
 	var observed externalTableModel
 	require.False(t, read.State.Get(context.Background(), &observed).HasError())
 	expected := externalTableTestModel()
-	assert.Equal(t, expected.Columns, observed.Columns)
-	assert.Equal(t, expected.PartitionKeys, observed.PartitionKeys)
+	// Import adopts the catalog types in their canonical uppercase spelling.
+	assert.Equal(t, externalTableTestColumns("id", "INTEGER", "label", "VARCHAR(64)"), observed.Columns)
+	assert.Equal(t, externalTableTestColumns("event_date", "DATE"), observed.PartitionKeys)
 	assert.Equal(t, expected.FieldDelimiter, observed.FieldDelimiter)
 	assert.Equal(t, expected.StoredAs, observed.StoredAs)
 	assert.Equal(t, expected.Location, observed.Location)
@@ -202,7 +203,7 @@ func TestExternalTableUpdateAltersInPlace(t *testing.T) {
 	assert.Equal(t, "s3://example-bucket/events-v2/", table.location)
 	assert.Equal(t, "42", table.parameters["numRows"])
 	assert.Equal(t, []string{
-		`ALTER TABLE "example_external"."events" ADD COLUMN "amount" decimal(8, 2)`,
+		`ALTER TABLE "example_external"."events" ADD COLUMN "amount" DECIMAL(8, 2)`,
 		`ALTER TABLE "example_external"."events" SET FILE FORMAT PARQUET`,
 		`ALTER TABLE "example_external"."events" SET LOCATION 's3://example-bucket/events-v2/'`,
 		`ALTER TABLE "example_external"."events" SET TABLE PROPERTIES ('numRows' = '42')`,
@@ -537,15 +538,15 @@ resource "redshift_external_table" "events" {
 
   column {
     name = "id"
-    type = "integer"
+    type = "INTEGER"
   }
   column {
     name = "label"
-    type = "varchar(64)"
+    type = "VARCHAR(64)"
   }
   partition_key {
     name = "event_date"
-    type = "date"
+    type = "DATE"
   }
 }`, properties)
 }
@@ -672,17 +673,17 @@ func TestExternalTableColumnOrderPlan(t *testing.T) {
 	alter := `ALTER TABLE "example_external"."events" `
 	t.Run("orc maps by name", func(t *testing.T) {
 		c := empty()
-		created := externalTableOrderConfig("ORC", "", "id", "integer", "label", "varchar(64)")
-		inserted := externalTableOrderConfig("ORC", "", "id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)")
-		reordered := externalTableOrderConfig("ORC", "", "label", "varchar(64)", "amount", "decimal(8,2)", "id", "integer")
-		dropped := externalTableOrderConfig("ORC", "", "label", "varchar(64)", "id", "integer")
+		created := externalTableOrderConfig("ORC", "", "id", "INTEGER", "label", "VARCHAR(64)")
+		inserted := externalTableOrderConfig("ORC", "", "id", "INTEGER", "amount", "DECIMAL(8,2)", "label", "VARCHAR(64)")
+		reordered := externalTableOrderConfig("ORC", "", "label", "VARCHAR(64)", "amount", "DECIMAL(8,2)", "id", "INTEGER")
+		dropped := externalTableOrderConfig("ORC", "", "label", "VARCHAR(64)", "id", "INTEGER")
 		testresource.UnitTest(t, testresource.TestCase{
 			ProtoV6ProviderFactories: providers(c),
 			Steps: []testresource.TestStep{
-				{Config: created, Check: catalogColumns(c, []string{`CREATE EXTERNAL TABLE "example_external"."events" ("id" integer, "label" varchar(64)) STORED AS ORC LOCATION 's3://example-bucket/events/'`}, "id", "label")},
+				{Config: created, Check: catalogColumns(c, []string{`CREATE EXTERNAL TABLE "example_external"."events" ("id" INTEGER, "label" VARCHAR(64)) STORED AS ORC LOCATION 's3://example-bucket/events/'`}, "id", "label")},
 				{Config: created, PlanOnly: true},
 				{Config: inserted, ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: testresource.ComposeTestCheckFunc(
-					catalogColumns(c, []string{alter + `ADD COLUMN "amount" decimal(8, 2)`}, "id", "label", "amount"),
+					catalogColumns(c, []string{alter + `ADD COLUMN "amount" DECIMAL(8, 2)`}, "id", "label", "amount"),
 					testresource.TestCheckResourceAttr(address, "column.1.name", "amount"),
 				)},
 				{Config: inserted, PlanOnly: true},
@@ -697,11 +698,11 @@ func TestExternalTableColumnOrderPlan(t *testing.T) {
 		})
 	})
 	t.Run("textfile maps by position", func(t *testing.T) {
-		inserted := externalTableOrderConfig("TEXTFILE", "", "id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)")
+		inserted := externalTableOrderConfig("TEXTFILE", "", "id", "INTEGER", "amount", "DECIMAL(8,2)", "label", "VARCHAR(64)")
 		testresource.UnitTest(t, testresource.TestCase{
 			ProtoV6ProviderFactories: providers(empty()),
 			Steps: []testresource.TestStep{
-				{Config: externalTableOrderConfig("TEXTFILE", "", "id", "integer", "label", "varchar(64)")},
+				{Config: externalTableOrderConfig("TEXTFILE", "", "id", "INTEGER", "label", "VARCHAR(64)")},
 				{Config: inserted, ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
 				{Config: inserted, PlanOnly: true},
 			},
@@ -712,7 +713,7 @@ func TestExternalTableColumnOrderPlan(t *testing.T) {
 		table := externalTableFakeOf(c)
 		table.inputFormat, table.serde, table.partitionKeys, table.partitions = externalTableFileFormats["ORC"], externalTableImpliedSerdes["ORC"], nil, nil
 		table.serdeParameters, table.parameters = map[string]string{}, map[string]string{"EXTERNAL": "TRUE", "orc.schema.resolution": "position"}
-		imported := externalTableOrderConfig("ORC", "", "id", "integer", "label", "varchar(64)")
+		imported := externalTableOrderConfig("ORC", "", "id", "INTEGER", "label", "VARCHAR(64)")
 		testresource.UnitTest(t, testresource.TestCase{
 			ProtoV6ProviderFactories: providers(c),
 			Steps: []testresource.TestStep{
@@ -721,23 +722,23 @@ func TestExternalTableColumnOrderPlan(t *testing.T) {
 					ImportStateId: `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","name":"events"}`,
 				},
 				{Config: imported, PlanOnly: true},
-				{Config: externalTableOrderConfig("ORC", "", "label", "varchar(64)", "id", "integer"), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
+				{Config: externalTableOrderConfig("ORC", "", "label", "VARCHAR(64)", "id", "INTEGER"), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
 			},
 		})
 	})
 	position := `table_properties = { "orc.schema.resolution" = "position" }`
-	create := `CREATE EXTERNAL TABLE "example_external"."events" ("id" integer, "label" varchar(64)) STORED AS ORC LOCATION 's3://example-bucket/events/'`
+	create := `CREATE EXTERNAL TABLE "example_external"."events" ("id" INTEGER, "label" VARCHAR(64)) STORED AS ORC LOCATION 's3://example-bucket/events/'`
 	t.Run("orc switching to position out of catalog order", func(t *testing.T) {
 		c := empty()
-		switched := externalTableOrderConfig("ORC", position, "id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)")
+		switched := externalTableOrderConfig("ORC", position, "id", "INTEGER", "amount", "DECIMAL(8,2)", "label", "VARCHAR(64)")
 		testresource.UnitTest(t, testresource.TestCase{
 			ProtoV6ProviderFactories: providers(c),
 			Steps: []testresource.TestStep{
-				{Config: externalTableOrderConfig("ORC", "", "id", "integer", "label", "varchar(64)"), Check: catalogColumns(c, []string{create}, "id", "label")},
-				{Config: externalTableOrderConfig("ORC", "", "id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)"), Check: catalogColumns(c, []string{alter + `ADD COLUMN "amount" decimal(8, 2)`}, "id", "label", "amount")},
+				{Config: externalTableOrderConfig("ORC", "", "id", "INTEGER", "label", "VARCHAR(64)"), Check: catalogColumns(c, []string{create}, "id", "label")},
+				{Config: externalTableOrderConfig("ORC", "", "id", "INTEGER", "amount", "DECIMAL(8,2)", "label", "VARCHAR(64)"), Check: catalogColumns(c, []string{alter + `ADD COLUMN "amount" DECIMAL(8, 2)`}, "id", "label", "amount")},
 				{Config: switched, ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate), Check: catalogColumns(c, []string{
 					`DROP TABLE "example_external"."events"`,
-					`CREATE EXTERNAL TABLE "example_external"."events" ("id" integer, "amount" decimal(8, 2), "label" varchar(64)) STORED AS ORC LOCATION 's3://example-bucket/events/' TABLE PROPERTIES ('orc.schema.resolution' = 'position')`,
+					`CREATE EXTERNAL TABLE "example_external"."events" ("id" INTEGER, "amount" DECIMAL(8, 2), "label" VARCHAR(64)) STORED AS ORC LOCATION 's3://example-bucket/events/' TABLE PROPERTIES ('orc.schema.resolution' = 'position')`,
 				}, "id", "amount", "label")},
 				{Config: switched, PlanOnly: true},
 			},
@@ -745,12 +746,12 @@ func TestExternalTableColumnOrderPlan(t *testing.T) {
 	})
 	t.Run("orc switching to position in catalog order", func(t *testing.T) {
 		c := empty()
-		switched := externalTableOrderConfig("ORC", position, "id", "integer", "label", "varchar(64)", "amount", "decimal(8,2)")
+		switched := externalTableOrderConfig("ORC", position, "id", "INTEGER", "label", "VARCHAR(64)", "amount", "DECIMAL(8,2)")
 		testresource.UnitTest(t, testresource.TestCase{
 			ProtoV6ProviderFactories: providers(c),
 			Steps: []testresource.TestStep{
-				{Config: externalTableOrderConfig("ORC", "", "id", "integer", "label", "varchar(64)"), Check: catalogColumns(c, []string{create}, "id", "label")},
-				{Config: externalTableOrderConfig("ORC", "", "id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)"), Check: catalogColumns(c, []string{alter + `ADD COLUMN "amount" decimal(8, 2)`}, "id", "label", "amount")},
+				{Config: externalTableOrderConfig("ORC", "", "id", "INTEGER", "label", "VARCHAR(64)"), Check: catalogColumns(c, []string{create}, "id", "label")},
+				{Config: externalTableOrderConfig("ORC", "", "id", "INTEGER", "amount", "DECIMAL(8,2)", "label", "VARCHAR(64)"), Check: catalogColumns(c, []string{alter + `ADD COLUMN "amount" DECIMAL(8, 2)`}, "id", "label", "amount")},
 				{Config: switched, ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: catalogColumns(c, []string{alter + `SET TABLE PROPERTIES ('orc.schema.resolution' = 'position')`}, "id", "label", "amount")},
 				{Config: switched, PlanOnly: true},
 			},
@@ -758,8 +759,8 @@ func TestExternalTableColumnOrderPlan(t *testing.T) {
 	})
 	// The catalog's mapping still decides once table_properties is configured without orc.schema.resolution.
 	for name, edited := range map[string][]string{
-		"reorder": {"label", "varchar(64)", "id", "integer"},
-		"insert":  {"id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)"},
+		"reorder": {"label", "VARCHAR(64)", "id", "INTEGER"},
+		"insert":  {"id", "INTEGER", "amount", "DECIMAL(8,2)", "label", "VARCHAR(64)"},
 	} {
 		t.Run("imported orc by position with managed properties, "+name, func(t *testing.T) {
 			c := fullCatalog()
@@ -771,10 +772,10 @@ func TestExternalTableColumnOrderPlan(t *testing.T) {
 				ProtoV6ProviderFactories: providers(c),
 				Steps: []testresource.TestStep{
 					{
-						Config: externalTableOrderConfig("ORC", "", "id", "integer", "label", "varchar(64)"), ResourceName: address, ImportState: true, ImportStatePersist: true,
+						Config: externalTableOrderConfig("ORC", "", "id", "INTEGER", "label", "VARCHAR(64)"), ResourceName: address, ImportState: true, ImportStatePersist: true,
 						ImportStateId: `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","name":"events"}`,
 					},
-					{Config: externalTableOrderConfig("ORC", managed, "id", "integer", "label", "varchar(64)"), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate)},
+					{Config: externalTableOrderConfig("ORC", managed, "id", "INTEGER", "label", "VARCHAR(64)"), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate)},
 					{Config: externalTableOrderConfig("ORC", managed, edited...), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
 				},
 			})
@@ -785,7 +786,7 @@ func TestExternalTableColumnOrderPlan(t *testing.T) {
 		testresource.UnitTest(t, testresource.TestCase{
 			ProtoV6ProviderFactories: providers(c),
 			Steps: []testresource.TestStep{
-				{Config: externalTableOrderConfig("ORC", "", "id", "integer", "label", "varchar(64)")},
+				{Config: externalTableOrderConfig("ORC", "", "id", "INTEGER", "label", "VARCHAR(64)")},
 				{
 					PreConfig: func() {
 						table := externalTableFakeOf(c)
@@ -793,7 +794,7 @@ func TestExternalTableColumnOrderPlan(t *testing.T) {
 						defer c.mu.Unlock()
 						table.parameters["orc.schema.resolution"] = "position"
 					},
-					Config: externalTableOrderConfig("ORC", "", "label", "varchar(64)", "id", "integer"), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate),
+					Config: externalTableOrderConfig("ORC", "", "label", "VARCHAR(64)", "id", "INTEGER"), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate),
 				},
 			},
 		})

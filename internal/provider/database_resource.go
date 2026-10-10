@@ -125,7 +125,7 @@ func (r *databaseResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 		MarkdownDescription: "Manages a local database or a consumer database bound to a producer datashare.",
 		Attributes: map[string]schema.Attribute{
 			"id":                 idAttribute(),
-			"database_type":      schema.StringAttribute{Computed: true, MarkdownDescription: "`local` or `shared`."},
+			"database_type":      schema.StringAttribute{Computed: true, MarkdownDescription: "`LOCAL` or `SHARED`."},
 			"share_name":         schema.StringAttribute{Computed: true, MarkdownDescription: "Producer share name; null for local databases."},
 			"producer_account":   schema.StringAttribute{Computed: true, MarkdownDescription: "Producer account ID; null for local databases."},
 			"producer_namespace": schema.StringAttribute{Computed: true, MarkdownDescription: "Producer namespace ID; null for local databases."},
@@ -239,19 +239,20 @@ func (r *resourceClient) databaseMetadata(ctx context.Context, name string) (dat
 	if err != nil || len(rows) == 0 {
 		return databaseModel{}, false, err
 	}
-	if len(rows) != 1 || (rows[0]["database_type"] != "local" && rows[0]["database_type"] != "shared") {
+	if len(rows) != 1 || (!strings.EqualFold(rows[0]["database_type"], databaseTypeLocal) && !strings.EqualFold(rows[0]["database_type"], databaseTypeShared)) {
 		return databaseModel{}, false, fmt.Errorf("expected one local or shared database named %q", name)
 	}
 	row := rows[0]
+	databaseType := strings.ToUpper(row["database_type"])
 	data := databaseModel{
-		Name: types.StringValue(row["database_name"]), DatabaseType: types.StringValue(row["database_type"]),
+		Name: types.StringValue(row["database_name"]), DatabaseType: types.StringValue(databaseType),
 		WithPermissions: types.BoolValue(false),
 		Owner:           types.StringNull(), ConnectionLimit: types.Int64Null(), Collation: types.StringNull(), IsolationLevel: types.StringNull(),
 	}
-	if row["database_type"] == "local" {
+	if databaseType == databaseTypeLocal {
 		return data, true, r.databaseLocalMetadata(ctx, &data, row["database_isolation_level"])
 	}
-	if row["database_type"] == "shared" {
+	if databaseType == databaseTypeShared {
 		var options sharedDatabaseOptions
 		if err := json.Unmarshal([]byte(row["parameters"]), &options); err != nil {
 			return databaseModel{}, false, fmt.Errorf("decode shared database %q parameters: %w", name, err)
@@ -317,7 +318,7 @@ func (r *resourceClient) databaseCollation(ctx context.Context, name string) (st
 // refuses the connection. The collation is supplementary, so a failed read is a warning that keeps the current
 // value rather than an error that would block every refresh of a database that exists.
 func (r *resourceClient) databaseReadCollation(ctx context.Context, data *databaseModel, diagnostics *diag.Diagnostics) {
-	if data.DatabaseType.ValueString() != "local" {
+	if data.DatabaseType.ValueString() != databaseTypeLocal {
 		return
 	}
 	collation, err := r.databaseCollation(ctx, data.Name.ValueString())
@@ -332,6 +333,12 @@ func (r *resourceClient) databaseReadCollation(ctx context.Context, data *databa
 	}
 	data.Collation = types.StringValue(collation)
 }
+
+// Database types as the provider reports them; SVV_REDSHIFT_DATABASES spells them in lowercase.
+const (
+	databaseTypeLocal  = "LOCAL"
+	databaseTypeShared = "SHARED"
+)
 
 // databaseIsolationLevel maps the catalog's "Snapshot Isolation" and "Serializable" to the configuration keywords.
 func databaseIsolationLevel(catalog string) (string, error) {
@@ -389,7 +396,7 @@ func (r *databaseResource) read(ctx context.Context, data *databaseModel) (bool,
 	}
 	observed.ID, observed.DatashareARN = data.ID, data.DatashareARN
 	if data.DatashareARN.IsNull() {
-		if observed.DatabaseType.ValueString() != "local" {
+		if observed.DatabaseType.ValueString() != databaseTypeLocal {
 			return false, fmt.Errorf("database %q is not a local database; migrate it explicitly", data.Name.ValueString())
 		}
 		// Collation is create-only and needs a session inside the database, so it is read only at creation,
@@ -410,7 +417,7 @@ func (r *databaseResource) read(ctx context.Context, data *databaseModel) (bool,
 	if err != nil {
 		return false, err
 	}
-	if observed.DatabaseType.ValueString() != "shared" || observed.ShareName.ValueString() != source.Name ||
+	if observed.DatabaseType.ValueString() != databaseTypeShared || observed.ShareName.ValueString() != source.Name ||
 		observed.ProducerAccount.ValueString() != source.Account || observed.ProducerNamespace.ValueString() != source.Namespace {
 		return false, fmt.Errorf("database %q has an incompatible type or producer binding; migrate it explicitly", data.Name.ValueString())
 	}
@@ -476,7 +483,7 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 			return
 		}
 		data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
-		data.DatabaseType = types.StringValue("local")
+		data.DatabaseType = types.StringValue(databaseTypeLocal)
 		data.ShareName, data.ProducerAccount, data.ProducerNamespace = types.StringNull(), types.StringNull(), types.StringNull()
 		databaseClearUnknown(&data.databaseModel)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -522,7 +529,7 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 	data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString(), "datashare_arn": data.DatashareARN.ValueString()})
-	data.DatabaseType = types.StringValue("shared")
+	data.DatabaseType = types.StringValue(databaseTypeShared)
 	data.ShareName = types.StringValue(source.Name)
 	data.ProducerAccount = types.StringValue(source.Account)
 	data.ProducerNamespace = types.StringValue(source.Namespace)

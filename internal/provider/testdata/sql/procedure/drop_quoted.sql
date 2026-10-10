@@ -1,1 +1,1 @@
-DROP PROCEDURE "Odd""Schema"."SP""Mixed"(character varying, integer);
+DROP PROCEDURE "Odd""Schema"."SP""Mixed"(CHARACTER VARYING, INTEGER);

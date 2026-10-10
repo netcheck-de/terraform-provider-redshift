@@ -1,1 +1,1 @@
-DROP FUNCTION "public"."f_example"(integer, character varying);
+DROP FUNCTION "public"."f_example"(INTEGER, CHARACTER VARYING);

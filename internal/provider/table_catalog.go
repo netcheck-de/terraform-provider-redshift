@@ -25,7 +25,7 @@ var tableIdentityPattern = regexp.MustCompile(`^"?(identity|default_identity)"?\
 type tableCatalogColumn struct {
 	// name is the column name.
 	name string
-	// dataType is the format_type() spelling.
+	// dataType is the canonical spelling of format_type(), as sqlclient.CatalogType reports it.
 	dataType string
 	// notNull is pg_attribute.attnotnull.
 	notNull bool
@@ -146,7 +146,7 @@ func tableCatalogFrom(table sqlclient.Row, attributes, columns, constraints, sor
 			return catalog, fmt.Errorf("column %q has an invalid sort key position %q", row["column_name"], detail["sortkey"])
 		}
 		column := tableCatalogColumn{
-			name: row["column_name"], dataType: strings.TrimSpace(row["data_type"]), notNull: tableCatalogBool(row["not_null"]),
+			name: row["column_name"], dataType: sqlclient.CatalogType(row["data_type"]), notNull: tableCatalogBool(row["not_null"]),
 			defaultText: strings.TrimSpace(detail["column_default"]), encoding: tableEncodingName(detail["encoding"]),
 			distKey: tableCatalogBool(detail["distkey"]), sortKey: sortKey,
 		}

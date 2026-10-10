@@ -66,7 +66,8 @@ func rlsFakeWith(sql string) (columns, alias string, err error) {
 		if !ok {
 			return "", "", fmt.Errorf("fake RLS catalog cannot parse WITH item %q", item)
 		}
-		parsed = append(parsed, rlsPolicyCatalogColumn{Name: strings.ToLower(name), Type: dataType})
+		// format_type() spells the type in lowercase.
+		parsed = append(parsed, rlsPolicyCatalogColumn{Name: strings.ToLower(name), Type: strings.ToLower(dataType)})
 	}
 	encoded, err := json.Marshal(parsed)
 	return string(encoded), alias, err

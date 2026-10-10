@@ -118,17 +118,17 @@ func TestLanguageGrantPublicDefault(t *testing.T) {
 		r, c, fake := setup()
 		require.True(t, fake.defaults["sql"], "PUBLIC starts with the built-in USAGE")
 		require.NoError(t, r.reconcile(ctx, optionObject(t, r, public, nil, nil)))
-		assert.Equal(t, []string{"REVOKE USAGE ON LANGUAGE sql FROM PUBLIC"}, c.writes)
+		assert.Equal(t, []string{"REVOKE USAGE ON LANGUAGE SQL FROM PUBLIC"}, c.writes)
 		assert.False(t, fake.defaults["sql"], "the default is gone")
 		assert.True(t, fake.defaults["plpgsql"], "other languages keep their default")
 		c.writes = nil
 		require.NoError(t, r.reconcile(ctx, optionObject(t, r, public, nil, nil)))
-		assert.Equal(t, []string{"REVOKE USAGE ON LANGUAGE sql FROM PUBLIC"}, c.writes, "the REVOKE is repeated, because the read cannot tell")
+		assert.Equal(t, []string{"REVOKE USAGE ON LANGUAGE SQL FROM PUBLIC"}, c.writes, "the REVOKE is repeated, because the read cannot tell")
 	})
 	t.Run("granted explicitly when desired", func(t *testing.T) {
 		r, c, fake := setup()
 		require.NoError(t, r.reconcile(ctx, optionObject(t, r, public, []string{"USAGE"}, nil)))
-		assert.Equal(t, []string{"GRANT USAGE ON LANGUAGE sql TO PUBLIC"}, c.writes)
+		assert.Equal(t, []string{"GRANT USAGE ON LANGUAGE SQL TO PUBLIC"}, c.writes)
 		assert.True(t, fake.defaults["sql"], "granting does not revoke the default")
 	})
 	t.Run("other grantees", func(t *testing.T) {
@@ -168,10 +168,10 @@ func TestLanguageGrantOptionReconcile(t *testing.T) {
 	c := &privilegeCatalog{values: map[string]bool{}, grantee: "analyst", kind: "user"}
 	r.resourceClient = testResourceClient(c)
 	require.NoError(t, r.reconcile(context.Background(), optionObject(t, r, fields, []string{"USAGE"}, []string{"USAGE"})))
-	assert.Equal(t, []string{`GRANT USAGE ON LANGUAGE sql TO "analyst" WITH GRANT OPTION`}, c.writes)
+	assert.Equal(t, []string{`GRANT USAGE ON LANGUAGE SQL TO "analyst" WITH GRANT OPTION`}, c.writes)
 	c.writes = nil
 	require.NoError(t, r.reconcile(context.Background(), optionObject(t, r, fields, []string{"USAGE"}, nil)))
-	assert.Equal(t, []string{`REVOKE GRANT OPTION FOR USAGE ON LANGUAGE sql FROM "analyst"`}, c.writes)
+	assert.Equal(t, []string{`REVOKE GRANT OPTION FOR USAGE ON LANGUAGE SQL FROM "analyst"`}, c.writes)
 	c.writes, c.stuck = nil, true
 	require.ErrorContains(t, r.reconcile(context.Background(), optionObject(t, r, fields, nil, nil)), "did not converge")
 }

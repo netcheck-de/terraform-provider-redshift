@@ -473,7 +473,7 @@ func (d *catalogDataSource) Read(ctx context.Context, req datasource.ReadRequest
 // newPrivilegeDataSource observes a permission resource's catalog contract without its mutation restrictions.
 func newPrivilegeDataSource(factory func() resource.Resource) datasource.DataSource {
 	r := factory().(*privilegeResource)
-	return newCatalogDataSource(catalogSpec{name: r.name, factory: factory, computed: []string{"privileges"}, lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
+	return newCatalogDataSource(catalogSpec{name: r.name, factory: factory, computed: []string{"privileges"}, adjust: r.canonical, lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
 		reader := *r
 		reader.resourceClient = *client
 		observed := *data

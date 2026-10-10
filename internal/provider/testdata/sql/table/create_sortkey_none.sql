@@ -1,4 +1,4 @@
-CREATE TABLE "serving"."staging" ("payload" super) DISTSTYLE AUTO;
+CREATE TABLE "serving"."staging" ("payload" SUPER) DISTSTYLE AUTO;
 
 ALTER TABLE "serving"."staging" ALTER SORTKEY NONE;
 

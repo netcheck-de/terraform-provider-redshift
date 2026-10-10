@@ -48,12 +48,12 @@ output "lambda_udfs" {
 
 Read-Only:
 
-- `arguments` (List of String) Input argument types in order, as the catalog spells them without length or precision; with the name they identify the overload.
+- `arguments` (List of String) Input argument types in order, as the catalog reports them without length or precision but in uppercase, such as `INTEGER` or `CHARACTER VARYING`; with the name they identify the overload.
 - `database` (String) Database containing the function.
-- `language` (String) Implementation language, such as `sql`, `plpythonu`, `plpgsql`, or `exfunc` for Lambda UDFs.
+- `language` (String) Implementation language in uppercase, such as `SQL`, `PLPYTHONU`, `PLPGSQL`, or `EXFUNC` for Lambda UDFs.
 - `name` (String) Name of the function.
 - `owner` (String) SQL user owning the function; empty when the catalog no longer resolves the owner.
-- `return_type` (String) Result type, as the catalog spells it without length or precision.
+- `return_type` (String) Result type, as the catalog reports it without length or precision but in uppercase, such as `INTEGER`.
 - `schema` (String) Schema containing the function.
 - `volatility` (String) `VOLATILE`, `STABLE`, or `IMMUTABLE`.
 <!-- markdownlint-enable MD013 MD022 MD033 -->

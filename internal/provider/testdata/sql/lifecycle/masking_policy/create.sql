@@ -1,5 +1,5 @@
 -- database: admin
-CREATE MASKING POLICY "mask_email" WITH ("email" character varying(256)) USING ('***'::VARCHAR(256));
+CREATE MASKING POLICY "mask_email" WITH ("email" CHARACTER VARYING(256)) USING ('***'::VARCHAR(256));
 -- params: {}
 
 -- database: admin

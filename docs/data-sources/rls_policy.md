@@ -47,7 +47,7 @@ data "redshift_rls_policy" "own_region" {
 Read-Only:
 
 - `name` (String) Column name in the attached relations.
-- `type` (String) Redshift data type in the catalog's canonical form, such as `character varying(64)`.
+- `type` (String) Redshift data type in the catalog's canonical form, in uppercase, such as `CHARACTER VARYING(64)`.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the policy's JSON identity, using the same warehouse, database, and name keys as the paired

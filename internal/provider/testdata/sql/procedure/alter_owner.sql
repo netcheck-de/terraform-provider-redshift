@@ -1,1 +1,1 @@
-ALTER PROCEDURE "public"."sp_example"(integer) OWNER TO "Etl""User";
+ALTER PROCEDURE "public"."sp_example"(INTEGER) OWNER TO "Etl""User";

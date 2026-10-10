@@ -42,7 +42,7 @@ func newProcedureDataSource() datasource.DataSource {
 		selectors: map[string]schema.Attribute{
 			"arguments": schema.ListAttribute{
 				ElementType: types.StringType, Optional: true,
-				MarkdownDescription: "Ordered `IN` and `INOUT` argument types selecting the overload, at most 32, as `signature` and the import identity hold them; `OUT` arguments are not part of it. Another spelling of the same type, such as `int` for `integer`, selects the same overload, and modifiers such as `varchar(64)` are ignored. Omit for a procedure without input arguments.",
+				MarkdownDescription: "Ordered `IN` and `INOUT` argument types selecting the overload, at most 32, as `signature` and the import identity hold them; `OUT` arguments are not part of it. Another spelling of the same type, such as `INT` for `INTEGER`, selects the same overload, and modifiers such as `VARCHAR(64)` are ignored. Omit for a procedure without input arguments.",
 				// A null element would otherwise drop out of the signature and select a shorter overload.
 				Validators: []validator.List{listvalidator.SizeAtMost(routineMaxArguments), listvalidator.NoNullValues()},
 			},
@@ -72,6 +72,6 @@ func newProcedureDataSource() datasource.DataSource {
 		"argument":      "Every argument in order, including `OUT` arguments, as `SHOW PARAMETERS` reports it.",
 		"argument.name": "Argument name; `null` when the catalog does not keep it, as for an unnamed argument.",
 		"argument.mode": "`OUT` or `INOUT`, or `null` for an `IN` argument. `OUT` arguments are returned by `CALL` and are not part of the signature.",
-		"argument.type": "Argument data type without length or precision, such as `integer` or `character varying`.",
+		"argument.type": "Argument data type without length or precision, such as `INTEGER` or `CHARACTER VARYING`.",
 	})
 }

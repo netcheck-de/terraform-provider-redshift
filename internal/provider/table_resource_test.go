@@ -570,7 +570,7 @@ func TestTableCatalogParsing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, tableCatalog{
 		owner: "admin", distStyle: "AUTO", effectiveDistStyle: "KEY", sortKeyListed: true, sortKey1: "AUTO(SORTKEY)",
-		columns: []tableCatalogColumn{{name: "a", dataType: "integer", notNull: true, encoding: "RAW"}},
+		columns: []tableCatalogColumn{{name: "a", dataType: "INTEGER", notNull: true, encoding: "RAW"}},
 	}, catalog)
 	hidden, err := tableCatalogFrom(dataapi.Row{"owner": "admin", "diststyle": "9", "effective_diststyle": ""}, attributes, details, nil, nil)
 	require.NoError(t, err)
@@ -627,8 +627,8 @@ func TestTableReconcileKeepsConfiguredSpellings(t *testing.T) {
 	imported, _, err := tableReconcile(tableNullModel(types.StringValue("admin"), types.StringValue("serving"), types.StringValue("events")), tableFakeCatalog(t, events))
 	require.NoError(t, err)
 	columns := tableTestColumnsOf(t, imported.Column)
-	assert.Equal(t, "character varying(64)", columns[1].Type.ValueString())
-	assert.Equal(t, "'none'::character varying", columns[1].Default.ValueString())
+	assert.Equal(t, "CHARACTER VARYING(64)", columns[1].Type.ValueString())
+	assert.Equal(t, "'none'::character varying", columns[1].Default.ValueString(), "a default is reported as the catalog wrote it")
 	assert.True(t, imported.Backup.IsNull(), "backup is not observable")
 	assert.Equal(t, tableTestDistribution("KEY", "id"), imported.Distribution, "an explicit layout is reported after import")
 	assert.Equal(t, tableTestSortKey("COMPOUND", "id"), imported.SortKey)
@@ -1061,8 +1061,8 @@ func TestTablePlans(t *testing.T) {
 			}}},
 		},
 	})
-	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ADD COLUMN "note" character varying(32)`)
-	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ALTER COLUMN "note" TYPE character varying(128)`)
+	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ADD COLUMN "note" CHARACTER VARYING(32)`)
+	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ALTER COLUMN "note" TYPE CHARACTER VARYING(128)`)
 }
 
 // tableAutoConfig renders serving.events without layout blocks, so Redshift manages distribution and sort key.

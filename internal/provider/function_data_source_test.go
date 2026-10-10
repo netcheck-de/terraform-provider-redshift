@@ -23,11 +23,11 @@ func TestFunctionLookup(t *testing.T) {
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	attributes := observed.Attributes()
-	for name, expected := range map[string]string{"signature": "integer", "return_type": "integer", "volatility": "IMMUTABLE", "language": "sql", "body": "SELECT $1 + 1", "owner": "admin"} {
+	for name, expected := range map[string]string{"signature": "INTEGER", "return_type": "INTEGER", "volatility": "IMMUTABLE", "language": "SQL", "body": "SELECT $1 + 1", "owner": "admin"} {
 		assert.Equal(t, types.StringValue(expected), attributes[name], name)
 	}
 	assert.Equal(t, types.StringValue(definitionFingerprint("SELECT $1 + 1")), attributes["definition_fingerprint"])
-	assertLookupIdentity(t, attributes["id"].(types.String), "admin", map[string]string{"schema": "public", "name": "f_example", "arguments": "integer"})
+	assertLookupIdentity(t, attributes["id"].(types.String), "admin", map[string]string{"schema": "public", "name": "f_example", "arguments": "INTEGER"})
 	assert.Empty(t, c.writes)
 
 	// Another overload of the same name is not found, which is an error for an object lookup.

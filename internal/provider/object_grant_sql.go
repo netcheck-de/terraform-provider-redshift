@@ -35,7 +35,8 @@ func objectGrantTableQuery(database, schema, name string) sqlclient.Query {
 }
 
 // objectGrantRoutineQuery confirms that one function or procedure overload exists. The catalog lists argument types
-// without length or precision, as objectGrantSignature renders them.
+// without length or precision, as objectGrantSignature renders them, but in lowercase, as routineCatalogArguments
+// binds them.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_FUNCTIONS.html
 func objectGrantRoutineQuery(database, schema, name, arguments string) sqlclient.Query {
 	return sqlclient.Select("function_name").From("svv_redshift_functions").
@@ -115,8 +116,8 @@ func readObjectGrantSnapshotQuery(kind, database, schema, grantee, granteeType s
 		Where(count, sqlclient.Bind("database", database), sqlclient.Bind("schema", schema))
 }
 
-// objectGrantSignature canonicalizes a comma-separated argument type list into the spelling the routine catalogs
-// report: canonical type names without length or precision, which do not distinguish overloads.
+// objectGrantSignature canonicalizes a comma-separated argument type list into the uppercase spelling of the type
+// names the routine catalogs report, without length or precision, which do not distinguish overloads.
 // https://docs.aws.amazon.com/redshift/latest/dg/stored-procedure-naming.html
 func objectGrantSignature(arguments string) (sqlclient.Keyword, error) {
 	if strings.TrimSpace(arguments) == "" {
@@ -197,13 +198,13 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 		queries = append(queries, privilegeSchemaQuery(database, schemaName), objectGrantTableQuery(database, schemaName, name))
 		object, showGrants = sqlclient.Kw("ON TABLE").Qualified(database, schemaName, name), true
 	case "FUNCTION", "PROCEDURE":
-		queries = append(queries, privilegeSchemaQuery(database, schemaName), objectGrantRoutineQuery(database, schemaName, name, string(signature)))
+		queries = append(queries, privilegeSchemaQuery(database, schemaName), objectGrantRoutineQuery(database, schemaName, name, routineCatalogArguments(signature)))
 		keyword, err := sqlclient.OneOf(kind, "FUNCTION", "PROCEDURE")
 		if err != nil {
 			return privilegeTarget{}, err
 		}
 		object = sqlclient.Kw("ON", keyword).Qualified(database, schemaName, name).Args(sqlclient.Kw(signature))
-		read = readObjectGrantRoutineQuery(schemaName, name, string(signature), granteeName, granteeType)
+		read = readObjectGrantRoutineQuery(schemaName, name, routineCatalogArguments(signature), granteeName, granteeType)
 	case "ALL TABLES":
 		queries = append(queries, objectGrantMembersQuery("svv_all_tables", database, schemaName))
 		object = sqlclient.Kw("ON ALL TABLES IN SCHEMA").Ident(schemaName)

@@ -127,7 +127,7 @@ func TestExternalFunctionReadReportsMetadata(t *testing.T) {
 	data.ReturnType = types.StringValue("int")
 	_, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
-	assert.Equal(t, "character varying", data.ReturnType.ValueString(), "a different base type surfaces as drift")
+	assert.Equal(t, "CHARACTER VARYING", data.ReturnType.ValueString(), "a different base type surfaces as drift in uppercase")
 }
 
 // TestExternalFunctionReadRejectsUnexpectedMetadata fails on incomplete, ambiguous, or non-Lambda catalog rows.
@@ -255,7 +255,7 @@ func TestExternalFunctionImport(t *testing.T) {
 	importID := func(signature string) string {
 		return fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"f_exfunc_upper","arguments":%q}`, signature)
 	}
-	for signature, expected := range map[string][]string{"character varying": {"character varying"}, "": {}, "integer, timestamp without time zone": {"integer", "timestamp without time zone"}} {
+	for signature, expected := range map[string][]string{"CHARACTER VARYING": {"CHARACTER VARYING"}, "": {}, "INTEGER, TIMESTAMP WITHOUT TIME ZONE": {"INTEGER", "TIMESTAMP WITHOUT TIME ZONE"}} {
 		response := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: importID(signature)}, &response)
 		require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
@@ -266,7 +266,8 @@ func TestExternalFunctionImport(t *testing.T) {
 	for _, id := range []string{
 		`{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"f"}`,
 		importID("varchar"),
-		importID("integer,integer"),
+		importID("character varying"),
+		importID("INTEGER,INTEGER"),
 		`{"workgroup_name":"warehouse","database":"admin","name":"f","arguments":""}`,
 	} {
 		response := resource.ImportStateResponse{State: emptyState(t, r)}
@@ -287,7 +288,7 @@ func TestExternalFunctionImportMatchesCreatedIdentity(t *testing.T) {
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	var id types.String
 	require.False(t, state.GetAttribute(context.Background(), path.Root("id"), &id).HasError())
-	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"f_exfunc_upper","arguments":"character varying"}`, id.ValueString())
+	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"f_exfunc_upper","arguments":"CHARACTER VARYING"}`, id.ValueString())
 	require.False(t, importAndRead(t, r, id.ValueString()).HasError())
 }
 

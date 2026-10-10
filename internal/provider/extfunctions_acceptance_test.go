@@ -19,7 +19,7 @@ func TestAccExternalFunctionLifecycle(t *testing.T) {
 	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_LAMBDA_FUNCTION")
 	role := os.Getenv("REDSHIFT_ACC_LAMBDA_ROLE")
 	if role == "" {
-		role = "default"
+		role = "DEFAULT"
 	}
 	name := "acc_exfunc_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(retryTimeout int, volatility string) string {
@@ -61,10 +61,10 @@ data "redshift_routine_parameters" "upper" {
 				resource.TestCheckResourceAttr("redshift_external_function.upper", "volatility", "VOLATILE"),
 				resource.TestCheckResourceAttrSet("redshift_external_function.upper", "owner"),
 				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.#", "1"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.language", "exfunc"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.arguments.0", "character varying"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.arguments.1", "integer"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.return_type", "character varying"),
+				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.language", "EXFUNC"),
+				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.arguments.0", "CHARACTER VARYING"),
+				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.arguments.1", "INTEGER"),
+				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.return_type", "CHARACTER VARYING"),
 			)},
 			{Config: configuration(3000, "STABLE"), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_external_function.upper", "volatility", "STABLE"),

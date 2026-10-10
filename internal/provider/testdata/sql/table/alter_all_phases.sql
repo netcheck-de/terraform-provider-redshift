@@ -4,7 +4,7 @@ ALTER TABLE "serving"."events" DROP CONSTRAINT "odd""key";
 
 ALTER TABLE "serving"."events" DROP CONSTRAINT "events_label_key";
 
-ALTER TABLE "serving"."events" ADD COLUMN "extra" date ENCODE AZ64;
+ALTER TABLE "serving"."events" ADD COLUMN "extra" DATE ENCODE AZ64;
 
 ALTER TABLE "serving"."events" ALTER COMPOUND SORTKEY ("extra");
 

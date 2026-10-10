@@ -57,8 +57,8 @@ func TestFunctionImportKeepsModifiedTypes(t *testing.T) {
 	r := newFunctionResource()
 	configureTestResource(t, r, recorder)
 	imported := routineImportState(t, r, configured)
-	require.Equal(t, []string{"integer", "character varying"}, routineStrings(imported.Arguments))
-	require.Equal(t, "character varying", imported.ReturnType.ValueString())
+	require.Equal(t, []string{"INTEGER", "CHARACTER VARYING"}, routineStrings(imported.Arguments))
+	require.Equal(t, "CHARACTER VARYING", imported.ReturnType.ValueString())
 
 	var arguments listplanmodifier.RequiresReplaceIfFuncResponse
 	functionArgumentsChanged(context.Background(), planmodifier.ListRequest{StateValue: imported.Arguments, PlanValue: configured.Arguments}, &arguments)
@@ -73,7 +73,7 @@ func TestFunctionImportKeepsModifiedTypes(t *testing.T) {
 	recorder.take()
 	updated, diagnostics := applyOperation(t, r, "update", imported, planned, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
-	assert.Equal(t, []string{`CREATE OR REPLACE FUNCTION "public"."f_example"(integer, character varying(64)) RETURNS character varying(128) IMMUTABLE AS $$SELECT $2 || '-' || $1::varchar$$ LANGUAGE sql`},
+	assert.Equal(t, []string{`CREATE OR REPLACE FUNCTION "public"."f_example"(INTEGER, CHARACTER VARYING(64)) RETURNS CHARACTER VARYING(128) IMMUTABLE AS $$SELECT $2 || '-' || $1::varchar$$ LANGUAGE SQL`},
 		routineStatements(recorder, "CREATE"))
 	var state functionModel
 	require.False(t, updated.Get(context.Background(), &state).HasError())
@@ -92,7 +92,7 @@ func TestProcedureImportKeepsModifiedTypes(t *testing.T) {
 	imported := routineImportState(t, r, configured)
 	importedArguments := procedureArguments(imported.Arguments)
 	require.Len(t, importedArguments, 2)
-	require.Equal(t, "character varying", importedArguments[1].Type.ValueString())
+	require.Equal(t, "CHARACTER VARYING", importedArguments[1].Type.ValueString())
 
 	var arguments listplanmodifier.RequiresReplaceIfFuncResponse
 	procedureArgumentsChanged(context.Background(), planmodifier.ListRequest{StateValue: imported.Arguments, PlanValue: configured.Arguments}, &arguments)
@@ -106,7 +106,7 @@ func TestProcedureImportKeepsModifiedTypes(t *testing.T) {
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	statements := routineStatements(recorder, "CREATE")
 	require.Len(t, statements, 1)
-	assert.Contains(t, statements[0], `("factor" IN integer, "label" OUT character varying(64))`)
+	assert.Contains(t, statements[0], `("factor" IN INTEGER, "label" OUT CHARACTER VARYING(64))`)
 	var state procedureModel
 	require.False(t, updated.Get(context.Background(), &state).HasError())
 	assert.Equal(t, "varchar(64)", procedureArguments(state.Arguments)[1].Type.ValueString())

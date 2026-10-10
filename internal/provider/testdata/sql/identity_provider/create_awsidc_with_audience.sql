@@ -1,1 +1,1 @@
--- error: audience does not apply to type awsidc
+-- error: audience does not apply to type AWSIDC

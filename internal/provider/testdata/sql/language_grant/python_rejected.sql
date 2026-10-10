@@ -1,1 +1,1 @@
--- error: unsupported language_name: "plpythonu" is not one of sql, plpgsql
+-- error: unsupported language_name: "plpythonu" is not one of SQL, PLPGSQL

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -52,17 +53,17 @@ var externalTablePseudoColumns = []string{"$path", "$size", "$spectrum_oid"}
 // CREATE EXTERNAL TABLE documents, for the data types it supports. VARBYTE is left out because its catalog spelling
 // is undocumented, so a refresh could not recognize it.
 var externalTableTypeNames = map[string]sqlclient.Keyword{
-	"smallint":                    "smallint",
-	"integer":                     "integer",
-	"bigint":                      "bigint",
-	"numeric":                     "decimal",
-	"real":                        "real",
-	"double precision":            "double precision",
-	"boolean":                     "boolean",
-	"character":                   "char",
-	"character varying":           "varchar",
-	"date":                        "date",
-	"timestamp without time zone": "timestamp",
+	"SMALLINT":                    "SMALLINT",
+	"INTEGER":                     "INTEGER",
+	"BIGINT":                      "BIGINT",
+	"NUMERIC":                     "DECIMAL",
+	"REAL":                        "REAL",
+	"DOUBLE PRECISION":            "DOUBLE PRECISION",
+	"BOOLEAN":                     "BOOLEAN",
+	"CHARACTER":                   "CHAR",
+	"CHARACTER VARYING":           "VARCHAR",
+	"DATE":                        "DATE",
+	"TIMESTAMP WITHOUT TIME ZONE": "TIMESTAMP",
 }
 
 // externalTableHiveTypes maps Hive spellings that the external catalog reports to the Redshift names they stand for.
@@ -128,7 +129,7 @@ func (t externalTableType) fragment() sqlclient.Statement {
 }
 
 // externalTableCatalogType converts a catalog external_type to the Redshift spelling; types this provider cannot
-// declare, such as Glue's string or nested types, keep the catalog spelling.
+// declare, such as Glue's string or nested types, keep the catalog spelling with their type names uppercased.
 func externalTableCatalogType(external string) string {
 	normalized := strings.ToLower(strings.Join(strings.Fields(external), " "))
 	normalized = strings.ReplaceAll(strings.ReplaceAll(normalized, "( ", "("), ", ", ",")
@@ -139,7 +140,24 @@ func externalTableCatalogType(external string) string {
 	if parsed, err := parseExternalTableType(normalized); err == nil {
 		return parsed.String()
 	}
-	return external
+	return externalTableUpperTypeNames(strings.TrimSpace(external))
+}
+
+// externalTableTypeWord matches a word of a Hive type, with the colon that marks it as a struct field name.
+var externalTableTypeWord = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*\s*:?`)
+
+// externalTableUpperTypeNames uppercases the type names of a Hive type such as struct<id:int,tags:array<string>>,
+// but not its struct field names, which are names rather than keywords, nor a type holding quoted names.
+func externalTableUpperTypeNames(external string) string {
+	if strings.ContainsAny(external, "`\"") {
+		return external
+	}
+	return externalTableTypeWord.ReplaceAllStringFunc(external, func(word string) string {
+		if strings.HasSuffix(word, ":") {
+			return word
+		}
+		return strings.ToUpper(word)
+	})
 }
 
 // externalTableTypesEqual compares two type spellings by the type they declare.

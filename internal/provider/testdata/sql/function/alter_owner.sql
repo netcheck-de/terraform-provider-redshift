@@ -1,1 +1,1 @@
-ALTER FUNCTION "public"."f_example"(integer) OWNER TO "Etl""User";
+ALTER FUNCTION "public"."f_example"(INTEGER) OWNER TO "Etl""User";

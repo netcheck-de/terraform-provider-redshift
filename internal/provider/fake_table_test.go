@@ -212,7 +212,8 @@ func (t *tableFakeTable) alter(table, clause string) (bool, error) {
 		if encoding == "" {
 			encoding = "lzo"
 		}
-		t.columns = append(t.columns, tableFakeColumn{name: name, dataType: match[1], defaultText: match[2], encoding: encoding, notNull: match[4] != ""})
+		// format_type() spells the type in lowercase.
+		t.columns = append(t.columns, tableFakeColumn{name: name, dataType: strings.ToLower(match[1]), defaultText: match[2], encoding: encoding, notNull: match[4] != ""})
 		return true, nil
 	case strings.HasPrefix(clause, "DROP COLUMN "):
 		name, _, ok := tableFakeIdent(strings.TrimPrefix(clause, "DROP COLUMN "))
@@ -235,7 +236,7 @@ func (t *tableFakeTable) alter(table, clause string) (bool, error) {
 		case strings.HasPrefix(rest, "ENCODE "):
 			t.columns[index].encoding = strings.ToLower(strings.TrimPrefix(rest, "ENCODE "))
 		case strings.HasPrefix(rest, "TYPE "):
-			t.columns[index].dataType = strings.TrimPrefix(rest, "TYPE ")
+			t.columns[index].dataType = strings.ToLower(strings.TrimPrefix(rest, "TYPE "))
 		default:
 			return false, nil
 		}

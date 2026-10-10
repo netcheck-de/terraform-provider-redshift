@@ -66,7 +66,7 @@ resource "redshift_column_grant" "group_view" {
 }
 resource "redshift_language_grant" "role" {
   database_name = redshift_database.local.name
-  language_name = "plpgsql"
+  language_name = "PLPGSQL"
   grantee = redshift_role.readers.name
   grantee_type = "ROLE"
   privileges = ["USAGE"]
@@ -218,14 +218,14 @@ resource "redshift_database" "local" { name = %q }
 		return base + `
 resource "redshift_language_grant" "public_plpgsql" {
   database_name = redshift_database.local.name
-  language_name = "plpgsql"
+  language_name = "PLPGSQL"
   grantee = "public"
   grantee_type = "PUBLIC"
   privileges = []
 }
 resource "redshift_language_grant" "public_sql" {
   database_name = redshift_database.local.name
-  language_name = "sql"
+  language_name = "SQL"
   grantee = "public"
   grantee_type = "PUBLIC"
   privileges = []

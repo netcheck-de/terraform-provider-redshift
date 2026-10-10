@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 var _ = registerDataSource(newColumnsDataSource)
@@ -28,7 +29,7 @@ func newColumnsDataSource() datasource.DataSource {
 			"table":                    discoveryComputed("string", "Relation containing the column."),
 			"name":                     discoveryComputed("string", "Column name."),
 			"ordinal_position":         discoveryComputed("int64", "Position of the column in the relation, starting at 1."),
-			"data_type":                discoveryComputed("string", "Data type name as the catalog reports it, such as `integer` or `character varying`, without length or precision."),
+			"data_type":                discoveryComputed("string", "Data type name as the catalog reports it but in uppercase, such as `INTEGER` or `CHARACTER VARYING`, without length or precision."),
 			"character_maximum_length": discoveryComputed("int64", "Maximum length of a character column; null for other types."),
 			"numeric_precision":        discoveryComputed("int64", "Numeric precision as the catalog reports it: decimal digits for `DECIMAL`/`NUMERIC`, bits for integer types (for example 32 for `INTEGER` and 16 for `SMALLINT`); null for non-numeric types."),
 			"numeric_scale":            discoveryComputed("int64", "Numeric scale as the catalog reports it: digits after the decimal point for `DECIMAL`/`NUMERIC`, 0 for integer types; null for non-numeric types."),
@@ -68,7 +69,7 @@ func columnsItem(database string, row map[string]string) (map[string]attr.Value,
 		"schema":    types.StringValue(row["schema_name"]),
 		"table":     types.StringValue(row["table_name"]),
 		"name":      types.StringValue(row["column_name"]),
-		"data_type": discoveryText(row["data_type"]),
+		"data_type": discoveryText(sqlclient.CatalogType(row["data_type"])),
 		"default":   discoveryText(row["column_default"]),
 		"remarks":   discoveryText(row["remarks"]),
 	}

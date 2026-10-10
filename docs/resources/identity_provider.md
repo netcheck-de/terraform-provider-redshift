@@ -63,24 +63,24 @@ resource "redshift_identity_provider" "entra" {
 
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
-- `application_arn` (String) Identity Center managed application ARN. Required for `awsidc`; not allowed for `azure`. Changing it replaces the identity provider.
-- `audience` (Set of String) Accepted token audiences (`audience` in `PARAMETERS`), for example the Power BI connector. Only for `azure`. Updated in place together with `client_secret_wo`.
-- `auto_create_roles` (Boolean) Whether Redshift creates roles for the provider's groups automatically (`AUTO_CREATE_ROLES`). Unset keeps the type default, `false` for `awsidc` and `true` for `azure`, and removing the attribute restores that default. The catalog does not report this setting, so Terraform keeps the configured value, changes made outside Terraform are not detected, and imports and lookups report null. Updated in place.
+- `application_arn` (String) Identity Center managed application ARN. Required for `AWSIDC`; not allowed for `AZURE`. Changing it replaces the identity provider.
+- `audience` (Set of String) Accepted token audiences (`audience` in `PARAMETERS`), for example the Power BI connector. Only for `AZURE`. Updated in place together with `client_secret_wo`.
+- `auto_create_roles` (Boolean) Whether Redshift creates roles for the provider's groups automatically (`AUTO_CREATE_ROLES`). Unset keeps the type default, `false` for `AWSIDC` and `true` for `AZURE`, and removing the attribute restores that default. The catalog does not report this setting, so Terraform keeps the configured value, changes made outside Terraform are not detected, and imports and lookups report null. Updated in place.
 - `auto_create_roles_exclude_groups` (String) Case-sensitive `LIKE` pattern (`EXCLUDE GROUPS LIKE`) of the identity-provider groups for which Redshift does not create roles automatically. Requires `auto_create_roles = true`; conflicts with `auto_create_roles_include_groups`. Patterns use letters, digits, and `_ % ^ * + ? { } , $`. Not reported by the catalog, like `auto_create_roles`. Updated in place.
 - `auto_create_roles_include_groups` (String) Case-sensitive `LIKE` pattern (`INCLUDE GROUPS LIKE`) of the identity-provider groups for which Redshift creates roles automatically. Requires `auto_create_roles = true`; conflicts with `auto_create_roles_exclude_groups`. Patterns use letters, digits, and `_ % ^ * + ? { } , $`. Not reported by the catalog, like `auto_create_roles`. Updated in place.
-- `client_id` (String) Application (client) ID of the Redshift application registered in Microsoft Entra ID (`client_id` in `PARAMETERS`). Required for `azure`; not allowed for `awsidc`. Updated in place together with `client_secret_wo`.
-- `client_secret_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only client secret of the Microsoft Entra ID application (requires Terraform 1.11 or later); not allowed for `awsidc`. Required to create an `azure` provider and whenever `issuer`, `client_id`, `audience`, or `client_secret_wo_version` change, because `ALTER IDENTITY PROVIDER ... PARAMETERS` replaces every parameter. Never stored in plan or state, and the catalog never returns it.
-- `client_secret_wo_version` (Number) Secret rotation trigger. Required for `azure`; not allowed for `awsidc`. Change it to send `client_secret_wo` again. An imported provider has no version in state, so setting it for the first time after an import does not send the secret.
+- `client_id` (String) Application (client) ID of the Redshift application registered in Microsoft Entra ID (`client_id` in `PARAMETERS`). Required for `AZURE`; not allowed for `AWSIDC`. Updated in place together with `client_secret_wo`.
+- `client_secret_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only client secret of the Microsoft Entra ID application (requires Terraform 1.11 or later); not allowed for `AWSIDC`. Required to create an `AZURE` provider and whenever `issuer`, `client_id`, `audience`, or `client_secret_wo_version` change, because `ALTER IDENTITY PROVIDER ... PARAMETERS` replaces every parameter. Never stored in plan or state, and the catalog never returns it.
+- `client_secret_wo_version` (Number) Secret rotation trigger. Required for `AZURE`; not allowed for `AWSIDC`. Change it to send `client_secret_wo` again. An imported provider has no version in state, so setting it for the first time after an import does not send the secret.
 - `enabled` (Boolean) Whether the provider is enabled; defaults to `true`. Updated in place and reapplied on every update.
-- `iam_role_arn` (String) IAM role attached to the Redshift namespace for the Identity Center connection. Required for `awsidc`; not allowed for `azure`. Updated in place and reapplied on every update.
-- `issuer` (String) Token issuer URL of the Microsoft Entra ID tenant (`issuer` in `PARAMETERS`). Required for `azure`; not allowed for `awsidc`. Updated in place together with `client_secret_wo`.
-- `type` (String) Identity provider type: `awsidc` (AWS IAM Identity Center) or `azure` (Microsoft Entra ID, native IdP federation). Defaults to `awsidc`. Changing it replaces the identity provider.
+- `iam_role_arn` (String) IAM role attached to the Redshift namespace for the Identity Center connection. Required for `AWSIDC`; not allowed for `AZURE`. Updated in place and reapplied on every update.
+- `issuer` (String) Token issuer URL of the Microsoft Entra ID tenant (`issuer` in `PARAMETERS`). Required for `AZURE`; not allowed for `AWSIDC`. Updated in place together with `client_secret_wo`.
+- `type` (String) Identity provider type: `AWSIDC` (AWS IAM Identity Center) or `AZURE` (Microsoft Entra ID, native IdP federation). Defaults to `AWSIDC`. Accepted in any case; another case of the same type is recorded in place. Changing it replaces the identity provider.
 
 ### Read-Only
 
 - `id` (String) JSON import identity; independent of Data API execution history.
-- `identity_center_instance_arn` (String) IAM Identity Center instance ARN of an `awsidc` provider (`instance_arn` in the catalog parameters); null for `azure`.
-- `instance_id` (String) Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `awsidc` and the tenant ID for `azure`.
+- `identity_center_instance_arn` (String) IAM Identity Center instance ARN of an `AWSIDC` provider (`instance_arn` in the catalog parameters); null for `AZURE`.
+- `instance_id` (String) Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `AWSIDC` and the tenant ID for `AZURE`.
 - `provider_id` (Number) Catalog ID of the identity provider (`svv_identity_providers.uid`).
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 

@@ -132,7 +132,7 @@ data "redshift_external_partition" "first" {
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
 			{Config: initial, Check: resource.ComposeTestCheckFunc(
-				resource.TestCheckResourceAttr("data.redshift_external_table.events", "column.0.type", "integer"),
+				resource.TestCheckResourceAttr("data.redshift_external_table.events", "column.0.type", "INTEGER"),
 				resource.TestCheckResourceAttr("data.redshift_external_table.events", "stored_as", "TEXTFILE"),
 				resource.TestCheckResourceAttr("data.redshift_external_table.events", "field_delimiter", "\t"),
 				resource.TestCheckResourceAttr("data.redshift_external_table.events", "partition_key.0.name", "event_date"),

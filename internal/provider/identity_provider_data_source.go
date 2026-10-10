@@ -21,7 +21,7 @@ type identityProviderData struct {
 	ID types.String `tfsdk:"id"`
 	// Name identifies the SQL identity provider.
 	Name types.String `tfsdk:"name"`
-	// Type reports awsidc or azure.
+	// Type reports AWSIDC or AZURE.
 	Type types.String `tfsdk:"type"`
 	// Namespace reports the prefix used by federated SQL identities.
 	Namespace types.String `tfsdk:"namespace"`
@@ -67,24 +67,24 @@ func (d *identityProviderDataSource) Schema(_ context.Context, _ datasource.Sche
 		return schema.StringAttribute{Computed: true, MarkdownDescription: description}
 	}
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Looks up an existing SQL identity provider (`awsidc` or `azure`) from `svv_identity_providers`, which only superusers can read.",
+		MarkdownDescription: "Looks up an existing SQL identity provider (`AWSIDC` or `AZURE`) from `svv_identity_providers`, which only superusers can read.",
 		Attributes: map[string]schema.Attribute{
 			"id":                               dataSourceIDAttribute(),
 			"name":                             schema.StringAttribute{Required: true, MarkdownDescription: "SQL identity provider name; a missing provider raises an error."},
-			"type":                             observed("Identity provider type: `awsidc` or `azure`."),
+			"type":                             observed("Identity provider type: `AWSIDC` or `AZURE`."),
 			"namespace":                        observed("Prefix of federated users and group roles."),
-			"application_arn":                  observed("Identity Center managed application ARN; null for `azure`."),
-			"iam_role_arn":                     observed("Identity Center integration IAM role ARN; null for `azure`."),
-			"issuer":                           observed("Microsoft Entra ID token issuer URL; null for `awsidc`."),
-			"client_id":                        observed("Microsoft Entra ID application (client) ID; null for `awsidc`."),
-			"audience":                         schema.SetAttribute{Computed: true, ElementType: types.StringType, MarkdownDescription: "Accepted Microsoft Entra ID token audiences; null for `awsidc` or when none are set."},
+			"application_arn":                  observed("Identity Center managed application ARN; null for `AZURE`."),
+			"iam_role_arn":                     observed("Identity Center integration IAM role ARN; null for `AZURE`."),
+			"issuer":                           observed("Microsoft Entra ID token issuer URL; null for `AWSIDC`."),
+			"client_id":                        observed("Microsoft Entra ID application (client) ID; null for `AWSIDC`."),
+			"audience":                         schema.SetAttribute{Computed: true, ElementType: types.StringType, MarkdownDescription: "Accepted Microsoft Entra ID token audiences; null for `AWSIDC` or when none are set."},
 			"auto_create_roles":                schema.BoolAttribute{Computed: true, MarkdownDescription: "Always null: the catalog does not report automatic role creation."},
 			"auto_create_roles_include_groups": observed("Always null: the catalog does not report the group filter."),
 			"auto_create_roles_exclude_groups": observed("Always null: the catalog does not report the group filter."),
 			"enabled":                          schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether the provider is enabled."},
 			"provider_id":                      schema.Int64Attribute{Computed: true, MarkdownDescription: "Catalog ID of the identity provider (`svv_identity_providers.uid`)."},
-			"instance_id":                      observed("Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `awsidc` and the tenant ID for `azure`."),
-			"identity_center_instance_arn":     observed("IAM Identity Center instance ARN of an `awsidc` provider; null for `azure`."),
+			"instance_id":                      observed("Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `AWSIDC` and the tenant ID for `AZURE`."),
+			"identity_center_instance_arn":     observed("IAM Identity Center instance ARN of an `AWSIDC` provider; null for `AZURE`."),
 		},
 	}
 }

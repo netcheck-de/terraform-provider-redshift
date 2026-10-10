@@ -1,1 +1,1 @@
--- error: "TLS" is not one of none, iam, mtls
+-- error: "TLS" is not one of NONE, IAM, MTLS

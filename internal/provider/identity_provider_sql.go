@@ -11,24 +11,25 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
-// Identity provider types as svv_identity_providers.type reports them. r_CREATE_IDENTITY_PROVIDER: "Azure and AWSIDC
-// are currently the only supported identity providers."
+// Identity provider types in their canonical uppercase spelling; svv_identity_providers.type reports them in
+// lowercase, and configuration may use any case. r_CREATE_IDENTITY_PROVIDER: "Azure and AWSIDC are currently the only
+// supported identity providers."
 // https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_IDENTITY_PROVIDER.html
 const (
-	identityProviderAWSIDC = "awsidc"
-	identityProviderAzure  = "azure"
+	identityProviderAWSIDC = "AWSIDC"
+	identityProviderAzure  = "AZURE"
 )
 
 // errIdentityProviderSecret rejects creating or re-parameterizing an Azure provider without the client secret.
 // ALTER IDENTITY PROVIDER deletes every previously set parameter before assigning the new ones, so the secret must be
 // sent with any parameter change, and the plan never carries write-only values.
-var errIdentityProviderSecret = errors.New("client_secret_wo is required to create an azure identity provider and whenever issuer, client_id, audience, or client_secret_wo_version change, because PARAMETERS replaces every parameter")
+var errIdentityProviderSecret = errors.New("client_secret_wo is required to create an AZURE identity provider and whenever issuer, client_id, audience, or client_secret_wo_version change, because PARAMETERS replaces every parameter")
 
-// identityProviderType returns the configured type, defaulting to awsidc like the schema; state written before the
-// attribute existed is null.
+// identityProviderType returns the configured type in its canonical spelling, defaulting to AWSIDC like the schema;
+// state written before the attribute existed is null.
 func identityProviderType(data identityProviderModel) string {
 	if value := knownString(data.Type); value != "" {
-		return strings.ToLower(value)
+		return strings.ToUpper(value)
 	}
 	return identityProviderAWSIDC
 }
@@ -97,7 +98,12 @@ func validateIdentityProviderInputs(inputs identityProviderInputs) error {
 	present := func(name string) bool { return !inputs[name].IsNull() && !inputs[name].IsUnknown() }
 	if kind, ok := inputs["type"].(types.String); ok && !kind.IsUnknown() {
 		name := identityProviderType(identityProviderModel{Type: kind})
-		if _, err := sqlclient.OneOf(name, identityProviderAWSIDC, identityProviderAzure); err != nil {
+		// The configured spelling, not the uppercased one, belongs in the error.
+		configured := kind.ValueString()
+		if configured == "" {
+			configured = name
+		}
+		if _, err := sqlclient.OneOf(configured, identityProviderAWSIDC, identityProviderAzure); err != nil {
 			return fmt.Errorf("unsupported identity provider type: %w", err)
 		}
 		awsidc := []string{"application_arn", "iam_role_arn"}
@@ -167,7 +173,7 @@ func createIdentityProviderStatement(data identityProviderModel, secret string) 
 	if err := identityProviderValidated(data, secret); err != nil {
 		return "", err
 	}
-	kind, err := sqlclient.OneOf(identityProviderType(data), "AWSIDC", "azure")
+	kind, err := sqlclient.OneOf(identityProviderType(data), identityProviderAWSIDC, identityProviderAzure)
 	if err != nil {
 		return "", err
 	}

@@ -31,5 +31,5 @@ func newMaskingPolicyDataSource() datasource.DataSource {
 // report, instead of the resource's apply-time rules for configured spellings.
 var maskingPolicyOutputDescriptions = map[string]string{
 	"input_column":      "Ordered input columns of the `WITH` clause that the expression reads.",
-	"input_column.type": "Data type as the catalog reports it, such as `character varying(256)` for a configured `VARCHAR(256)`.",
+	"input_column.type": "Data type in the canonical form the catalog reports, in uppercase, such as `CHARACTER VARYING(256)` for a configured `VARCHAR(256)`.",
 }

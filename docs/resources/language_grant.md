@@ -61,7 +61,7 @@ resource "redshift_language_grant" "public_procedures" {
 - `database_name` (String) Local database whose language privileges are managed; language privileges are per database. Changing it replaces the grant.
 - `grantee` (String) Receiving identity name; use `public` for `PUBLIC`. Changing it replaces the grant.
 - `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.
-- `language_name` (String) `sql` (SQL user-defined functions) or `plpgsql` (stored procedures). Changing it replaces the grant.
+- `language_name` (String) `SQL` (SQL user-defined functions) or `PLPGSQL` (stored procedures), in any case; another case of the same language is recorded in place. Changing it replaces the grant.
 - `privileges` (Set of String) Exact explicit privilege set. An empty set revokes owned privileges.
 
 ### Optional
@@ -140,7 +140,7 @@ SELECT privilege_type, admin_option FROM svv_language_privileges WHERE language_
 -- params: {"grantee":"public","identity_type":"public","language":"sql"}
 
 -- database: warehouse
-REVOKE USAGE ON LANGUAGE sql FROM PUBLIC;
+REVOKE USAGE ON LANGUAGE SQL FROM PUBLIC;
 -- params: {}
 
 -- database: admin

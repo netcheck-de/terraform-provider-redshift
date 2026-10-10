@@ -1,1 +1,1 @@
--- error: unsupported identity provider type: "okta" is not one of awsidc, azure
+-- error: unsupported identity provider type: "OKTA" is not one of AWSIDC, AZURE

@@ -1,1 +1,1 @@
--- error: client_secret_wo_version does not apply to type awsidc
+-- error: client_secret_wo_version does not apply to type AWSIDC

@@ -137,7 +137,8 @@ func TestFunctionReadKeepsConfiguredSpelling(t *testing.T) {
 	assert.Equal(t, "varchar(20)", data.ReturnType.ValueString())
 	assert.Equal(t, "ETL", data.Owner.ValueString())
 	assert.Equal(t, "STABLE", data.Volatility.ValueString())
-	assert.Equal(t, "integer, numeric", data.Signature.ValueString())
+	assert.Equal(t, "INTEGER, NUMERIC", data.Signature.ValueString())
+	assert.Equal(t, "sql", data.Language.ValueString(), "the configured spelling of the language is kept")
 	// Without a recorded fingerprint, the catalog body is surfaced.
 	assert.Equal(t, "SELECT 'x'", data.Body.ValueString())
 	assert.Equal(t, definitionFingerprint("SELECT 'x'"), data.DefinitionFingerprint.ValueString())
@@ -147,14 +148,14 @@ func TestFunctionReadKeepsConfiguredSpelling(t *testing.T) {
 	data.Body = types.StringValue("SELECT  'x'")
 	_, err = (&functionResource{functionRowClient([]sqlclient.Row{row}, nil)}).read(context.Background(), &data)
 	require.NoError(t, err)
-	assert.Equal(t, "bigint", data.ReturnType.ValueString())
+	assert.Equal(t, "BIGINT", data.ReturnType.ValueString())
 	assert.Equal(t, "other", data.Owner.ValueString())
 	assert.Equal(t, "SELECT  'x'", data.Body.ValueString(), "an unchanged fingerprint keeps the configured body")
 }
 
 // TestFunctionCatalogArguments reports the catalog's types when the stored ones do not match.
 func TestFunctionCatalogArguments(t *testing.T) {
-	assert.Equal(t, []string{"integer", "character varying"}, routineStrings(functionCatalogArguments(functionTestModel("bigint").Arguments, "integer, character varying")))
+	assert.Equal(t, []string{"INTEGER", "CHARACTER VARYING"}, routineStrings(functionCatalogArguments(functionTestModel("bigint").Arguments, "INTEGER, CHARACTER VARYING")))
 	assert.True(t, functionCatalogArguments(functionTestModel("bigint").Arguments, "").IsNull())
 	assert.True(t, functionCatalogArguments(types.ListNull(types.StringType), "").IsNull())
 }
@@ -217,8 +218,8 @@ func TestFunctionCreateKeepsStateWhenVerificationFails(t *testing.T) {
 			require.True(t, resp.Diagnostics.HasError())
 			var observed functionModel
 			require.False(t, resp.State.Get(context.Background(), &observed).HasError())
-			assert.Equal(t, "integer", observed.Signature.ValueString())
-			assertLookupIdentity(t, observed.ID, "admin", map[string]string{"schema": "public", "name": "f_example", "arguments": "integer"})
+			assert.Equal(t, "INTEGER", observed.Signature.ValueString())
+			assertLookupIdentity(t, observed.ID, "admin", map[string]string{"schema": "public", "name": "f_example", "arguments": "INTEGER"})
 			assert.True(t, resp.State.Raw.IsFullyKnown())
 		})
 	}
@@ -243,7 +244,7 @@ func TestFunctionVerifyDetectsDivergence(t *testing.T) {
 func TestFunctionImportIdentity(t *testing.T) {
 	r := &functionResource{}
 	for id, expected := range map[string][]string{
-		`{"workgroup_name":"w","database":"d","schema":"s","name":"f","arguments":"int4, varchar"}`: {"integer", "character varying"},
+		`{"workgroup_name":"w","database":"d","schema":"s","name":"f","arguments":"int4, varchar"}`: {"INTEGER", "CHARACTER VARYING"},
 		`{"workgroup_name":"w","database":"d","schema":"s","name":"f","arguments":""}`:              nil,
 	} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
@@ -306,17 +307,24 @@ func TestFunctionDriftSurfacesCatalogBody(t *testing.T) {
 }
 
 // TestFunctionValidateConfigExplainsPython reports a Python UDF even while other values are unknown, invalid types
-// once everything is known, and a language spelled other than the catalog's lowercase sql.
+// once everything is known, and a language other than SQL; SQL itself is accepted in any case.
 func TestFunctionValidateConfigExplainsPython(t *testing.T) {
 	r := newFunctionResource().(*functionResource)
 	python := functionTestModel("integer")
 	python.Language, python.Body = types.StringValue("plpythonu"), types.StringUnknown()
-	uppercase := functionTestModel("integer")
-	uppercase.Language = types.StringValue("SQL")
-	for name, data := range map[string]functionModel{"python with unknown body": python, "unknown type": functionTestModel("money"), "uppercase sql": uppercase} {
+	plpgsql := functionTestModel("integer")
+	plpgsql.Language = types.StringValue("PLPGSQL")
+	for name, data := range map[string]functionModel{"python with unknown body": python, "unknown type": functionTestModel("money"), "plpgsql": plpgsql} {
 		var resp resource.ValidateConfigResponse
 		r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, data))}, &resp)
 		assert.True(t, resp.Diagnostics.HasError(), name)
+	}
+	for _, language := range []string{"SQL", "sql", "Sql"} {
+		data := functionTestModel("integer")
+		data.Language = types.StringValue(language)
+		var resp resource.ValidateConfigResponse
+		r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, data))}, &resp)
+		assert.False(t, resp.Diagnostics.HasError(), "%s: %v", language, resp.Diagnostics)
 	}
 }
 

@@ -44,7 +44,7 @@ data "redshift_object_grant" "report" {
 
 ### Optional
 
-- `arguments` (String) Comma-separated argument types of a `FUNCTION` or `PROCEDURE`, such as `integer, varchar`, which select one overload; omit it for a routine without arguments. Types are canonicalized and lengths dropped, because Redshift identifies overloads by type names only.
+- `arguments` (String) Comma-separated argument types of a `FUNCTION` or `PROCEDURE`, such as `INTEGER, VARCHAR`, which select one overload; omit it for a routine without arguments. Types are canonicalized and lengths dropped, because Redshift identifies overloads by type names only.
 - `object_name` (String) Table, view, function, or procedure name; required for `TABLE`, `FUNCTION`, and `PROCEDURE` only.
 - `schema_name` (String) Schema containing the object, or whose objects an `ALL …` snapshot covers; required for every type except `DATABASE`.
 

@@ -1,1 +1,1 @@
--- error: type awsidc requires iam_role_arn
+-- error: type AWSIDC requires iam_role_arn

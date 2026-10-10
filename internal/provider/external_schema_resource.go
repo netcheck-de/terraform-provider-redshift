@@ -55,7 +55,7 @@ type externalSchemaModel struct {
 	Port types.Int64 `tfsdk:"port"`
 	// SecretARN is the federated credentials secret or the mTLS certificate secret.
 	SecretARN types.String `tfsdk:"secret_arn"`
-	// Authentication is the streaming authentication mode none, iam, or mtls.
+	// Authentication is the streaming authentication mode NONE, IAM, or MTLS, in any case.
 	Authentication types.String `tfsdk:"authentication"`
 	// AuthenticationARN is the ACM certificate used for mTLS.
 	AuthenticationARN types.String `tfsdk:"authentication_arn"`
@@ -123,7 +123,7 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Optional: true,
 				PlanModifiers: []planmodifier.String{externalSchemaReplaceUnlessAltered("iam_role_arn",
 					"Updated in place with ALTER EXTERNAL SCHEMA for DATA_CATALOG and MSK schemas; replaces the others.")},
-				MarkdownDescription: "IAM role attached to the namespace, or a comma-separated role chain, used to reach the source. Required by every form except `REDSHIFT`, which rejects it, and `MSK`, where it is optional unless `authentication` is `iam`. Updated in place with `ALTER EXTERNAL SCHEMA ... IAM_ROLE` for `DATA_CATALOG` and `MSK`; changing it replaces other external schemas.",
+				MarkdownDescription: "IAM role attached to the namespace, or a comma-separated role chain, used to reach the source. Required by every form except `REDSHIFT`, which rejects it, and `MSK`, where it is optional unless `authentication` is `IAM`. Updated in place with `ALTER EXTERNAL SCHEMA ... IAM_ROLE` for `DATA_CATALOG` and `MSK`; changing it replaces other external schemas.",
 			},
 			"region": schema.StringAttribute{
 				// UseStateForUnknown keeps the computed region known during an in-place ALTER, where the framework
@@ -150,12 +150,12 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 				MarkdownDescription: "AWS Secrets Manager secret ARN: the database credentials that `POSTGRES` and `MYSQL` require, or the mTLS certificate of an `MSK` schema as an alternative to `authentication_arn`. Updated in place for `MSK`; changing it replaces other external schemas.",
 			},
 			"authentication": schema.StringAttribute{
-				Optional: true, Validators: []validator.String{stringvalidator.OneOf("none", "iam", "mtls")},
-				MarkdownDescription: "Streaming authentication of an `MSK` schema, which requires it: `none`, `iam`, or `mtls`. `mtls` requires exactly one of `authentication_arn` and `secret_arn`. Updated in place with `ALTER EXTERNAL SCHEMA ... AUTHENTICATION`.",
+				Optional: true, Validators: []validator.String{stringvalidator.OneOfCaseInsensitive("NONE", "IAM", "MTLS")},
+				MarkdownDescription: "Streaming authentication of an `MSK` schema, which requires it: `NONE`, `IAM`, or `MTLS`, in any case; another case of the same mode is recorded in place without a statement. `MTLS` requires exactly one of `authentication_arn` and `secret_arn`. Updated in place with `ALTER EXTERNAL SCHEMA ... AUTHENTICATION`.",
 			},
 			"authentication_arn": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "AWS Certificate Manager certificate ARN for `mtls` authentication of an `MSK` schema. Updated in place together with `authentication`.",
+				MarkdownDescription: "AWS Certificate Manager certificate ARN for `MTLS` authentication of an `MSK` schema. Updated in place together with `authentication`.",
 			},
 			"owner": schema.StringAttribute{
 				Optional: true, Computed: true,
@@ -278,8 +278,8 @@ func (r *externalSchemaResource) read(ctx context.Context, data *externalSchemaM
 	observed.SecretARN = externalSchemaObserved(options, "SECRET_ARN", data.SecretARN)
 	observed.AuthenticationARN = externalSchemaObserved(options, "AUTHENTICATION_ARN", data.AuthenticationARN)
 	observed.Authentication = externalSchemaObserved(options, "AUTHENTICATION", data.Authentication)
-	if !observed.Authentication.IsNull() {
-		observed.Authentication = types.StringValue(strings.ToLower(observed.Authentication.ValueString()))
+	if authentication, ok := options["AUTHENTICATION"]; ok && authentication != "" {
+		observed.Authentication = keywordValue(data.Authentication, strings.ToUpper(authentication))
 	}
 	observed.Port = data.Port
 	if port, ok := options["PORT"]; ok && port != "" {

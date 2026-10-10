@@ -1,1 +1,1 @@
--- error: invalid MSK external schema: authentication_arn and secret_arn apply only to AUTHENTICATION mtls
+-- error: invalid MSK external schema: authentication_arn and secret_arn apply only to AUTHENTICATION MTLS

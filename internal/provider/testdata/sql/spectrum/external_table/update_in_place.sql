@@ -7,7 +7,7 @@ SELECT columnname, external_type, columnnum, part_key FROM svv_external_columns 
 -- params: {"database":"admin","schema":"example_external","table":"events"}
 
 -- database: admin
-ALTER TABLE "example_external"."events" ADD COLUMN "amount" decimal(8, 2);
+ALTER TABLE "example_external"."events" ADD COLUMN "amount" DECIMAL(8, 2);
 -- params: {}
 
 -- database: admin

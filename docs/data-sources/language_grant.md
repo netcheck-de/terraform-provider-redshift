@@ -35,7 +35,7 @@ data "redshift_language_grant" "developers_plpgsql" {
 - `database_name` (String) Local database whose language privileges are managed; language privileges are per database.
 - `grantee` (String) Receiving identity name; use `public` for `PUBLIC`.
 - `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`.
-- `language_name` (String) `sql` (SQL user-defined functions) or `plpgsql` (stored procedures).
+- `language_name` (String) `SQL` (SQL user-defined functions) or `PLPGSQL` (stored procedures), in any case; another case of the same language is recorded in place.
 
 ### Read-Only
 

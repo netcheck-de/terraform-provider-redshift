@@ -76,16 +76,16 @@ func TestObjectGrantSQL(t *testing.T) {
 	})
 }
 
-// TestObjectGrantSignature canonicalizes aliases, case, spacing, and modifiers into the catalog spelling, and keeps
+// TestObjectGrantSignature canonicalizes aliases, case, spacing, and modifiers into the uppercase catalog spelling, and keeps
 // commas inside a type's parentheses.
 func TestObjectGrantSignature(t *testing.T) {
 	for arguments, expected := range map[string]sqlclient.Keyword{
 		"":                                    "",
 		"  ":                                  "",
-		"int":                                 "integer",
-		"INT4,  VarChar(10)":                  "integer, character varying",
-		"numeric(10,2), decimal , float8":     "numeric, numeric, double precision",
-		"timestamptz,bool, character varying": "timestamp with time zone, boolean, character varying",
+		"int":                                 "INTEGER",
+		"INT4,  VarChar(10)":                  "INTEGER, CHARACTER VARYING",
+		"numeric(10,2), decimal , float8":     "NUMERIC, NUMERIC, DOUBLE PRECISION",
+		"timestamptz,bool, character varying": "TIMESTAMP WITH TIME ZONE, BOOLEAN, CHARACTER VARYING",
 	} {
 		signature, err := objectGrantSignature(arguments)
 		require.NoError(t, err, arguments)

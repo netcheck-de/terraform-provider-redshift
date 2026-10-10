@@ -1,1 +1,1 @@
-CREATE FUNCTION "public"."f_example"(integer) RETURNS integer VOLATILE AS $$SELECT $1 + 1$$ LANGUAGE sql;
+CREATE FUNCTION "public"."f_example"(INTEGER) RETURNS INTEGER VOLATILE AS $$SELECT $1 + 1$$ LANGUAGE SQL;

@@ -1,5 +1,5 @@
 -- database: admin
-ALTER FUNCTION "public"."f_example"(integer) OWNER TO "etl";
+ALTER FUNCTION "public"."f_example"(INTEGER) OWNER TO "etl";
 -- params: {}
 
 -- database: admin

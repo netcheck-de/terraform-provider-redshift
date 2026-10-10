@@ -42,7 +42,7 @@ data "redshift_databases" "acc" {
 }
 data "redshift_schemas" "acc" {
   database = redshift_database.local.name
-  schema_type = "local"
+  schema_type = "LOCAL"
 }
 data "redshift_tables" "views" {
   database = redshift_database.local.name
@@ -121,9 +121,9 @@ data "redshift_comment" "key" {
 				},
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("data.redshift_databases.acc", "databases.#", "1"),
-					resource.TestCheckResourceAttr("data.redshift_databases.acc", "databases.0.database_type", "local"),
+					resource.TestCheckResourceAttr("data.redshift_databases.acc", "databases.0.database_type", "LOCAL"),
 					resource.TestCheckResourceAttrSet("data.redshift_databases.acc", "databases.0.owner"),
-					resource.TestCheckTypeSetElemNestedAttrs("data.redshift_schemas.acc", "schemas.*", map[string]string{"name": "public", "schema_type": "local"}),
+					resource.TestCheckTypeSetElemNestedAttrs("data.redshift_schemas.acc", "schemas.*", map[string]string{"name": "public", "schema_type": "LOCAL"}),
 					resource.TestCheckResourceAttr("data.redshift_tables.views", "tables.#", "1"),
 					resource.TestCheckResourceAttr("data.redshift_tables.views", "tables.0.name", "order_labels"),
 					resource.TestCheckResourceAttr("data.redshift_tables.materialized", "tables.#", "1"),

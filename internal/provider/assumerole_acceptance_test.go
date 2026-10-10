@@ -25,7 +25,7 @@ provider "redshift" {
 }
 resource "redshift_role" "reader" { name = %q }
 resource "redshift_assumerole_grant" "reader" {
-  iam_role_arn = "default"
+  iam_role_arn = "DEFAULT"
   grantee = redshift_role.reader.name
   grantee_type = "ROLE"
   privileges = [%q]

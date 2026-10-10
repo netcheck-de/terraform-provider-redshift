@@ -58,7 +58,7 @@ Read-Only:
 Read-Only:
 
 - `name` (String) Column name in the attached relations.
-- `type` (String) Redshift data type in the catalog's canonical form, such as `character varying(64)`.
+- `type` (String) Redshift data type in the catalog's canonical form, in uppercase, such as `CHARACTER VARYING(64)`.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 Items are sorted by name; an empty database yields an empty list. Regular users see only their own policies.

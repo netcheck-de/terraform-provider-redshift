@@ -50,7 +50,7 @@ resource "redshift_object_grant" "report" {
 
 ### Optional
 
-- `arguments` (String) Comma-separated argument types of a `FUNCTION` or `PROCEDURE`, such as `integer, varchar`, which select one overload; omit it for a routine without arguments. Types are canonicalized and lengths dropped, because Redshift identifies overloads by type names only. Changing it replaces the grant.
+- `arguments` (String) Comma-separated argument types of a `FUNCTION` or `PROCEDURE`, such as `INTEGER, VARCHAR`, which select one overload; omit it for a routine without arguments. Types are canonicalized and lengths dropped, because Redshift identifies overloads by type names only. Changing it replaces the grant.
 - `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
 - `object_name` (String) Table, view, function, or procedure name; required for `TABLE`, `FUNCTION`, and `PROCEDURE` only. Changing it replaces the grant.
 - `schema_name` (String) Schema containing the object, or whose objects an `ALL …` snapshot covers; required for every type except `DATABASE`. Changing it replaces the grant.

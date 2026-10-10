@@ -1,1 +1,1 @@
--- error: iam_role must be default or comma-separated IAM role ARNs without spaces, got "arn:aws:iam::123456789012:role/a' IAM_ROLE 'b"
+-- error: iam_role must be DEFAULT or comma-separated IAM role ARNs without spaces, got "arn:aws:iam::123456789012:role/a' IAM_ROLE 'b"

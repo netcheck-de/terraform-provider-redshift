@@ -16,7 +16,7 @@ func TestColumnsDataSource(t *testing.T) {
 	assert.Equal(t, []string{"id", "label"}, discoveryNames(items, "name"))
 	id, label := items[0], items[1]
 	assert.Equal(t, types.Int64Value(1), id["ordinal_position"])
-	assert.Equal(t, types.StringValue("integer"), id["data_type"])
+	assert.Equal(t, types.StringValue("INTEGER"), id["data_type"])
 	assert.Equal(t, types.Int64Value(32), id["numeric_precision"])
 	assert.Equal(t, types.Int64Value(0), id["numeric_scale"])
 	assert.True(t, id["character_maximum_length"].IsNull())

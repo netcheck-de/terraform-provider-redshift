@@ -127,7 +127,7 @@ func TestDatabaseCreationErrorsRetainKnownMetadata(t *testing.T) {
 			assert.True(t, response.State.Raw.IsFullyKnown(), "%v", response.State.Raw)
 			var observed databaseResourceModel
 			require.False(t, response.State.Get(context.Background(), &observed).HasError())
-			assert.Equal(t, "shared", observed.DatabaseType.ValueString())
+			assert.Equal(t, "SHARED", observed.DatabaseType.ValueString())
 			assert.Equal(t, "123456789012", observed.ProducerAccount.ValueString())
 			assert.Equal(t, mode != "permission mismatch", observed.WithPermissions.ValueBool())
 		})

@@ -82,9 +82,10 @@ func maskingPolicyValidate(data maskingPolicyModel) error {
 
 // maskingPolicyRoutineTypes are pseudo-types that ColumnType accepts for routine signatures. No column has them, and
 // the input types must match the masked columns' types, so a policy declaring one could never be attached.
-var maskingPolicyRoutineTypes = []sqlclient.Keyword{"anyelement", "refcursor"}
+var maskingPolicyRoutineTypes = []sqlclient.Keyword{"ANYELEMENT", "REFCURSOR"}
 
-// maskingPolicyInputType validates an input column type and returns the spelling the catalog reports for it.
+// maskingPolicyInputType validates an input column type and returns the uppercase form of the spelling the catalog
+// reports for it.
 func maskingPolicyInputType(value string) (sqlclient.Keyword, error) {
 	columnType, err := sqlclient.ColumnType(value)
 	if err == nil && slices.Contains(maskingPolicyRoutineTypes, columnType) {
@@ -179,7 +180,7 @@ func listMaskingPoliciesQuery(database string) sqlclient.Query {
 }
 
 // maskingPolicyParseColumns parses the input_columns catalog text, a JSON list of {"colname", "type"} objects as
-// SVV_RLS_POLICY and SHOW MASKING POLICIES document it.
+// SVV_RLS_POLICY and SHOW MASKING POLICIES document it, and reports the types in their canonical uppercase spelling.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_POLICIES.html
 func maskingPolicyParseColumns(text string) ([]maskingPolicyColumn, error) {
 	var parsed []struct {
@@ -191,7 +192,7 @@ func maskingPolicyParseColumns(text string) ([]maskingPolicyColumn, error) {
 	}
 	columns := make([]maskingPolicyColumn, 0, len(parsed))
 	for _, column := range parsed {
-		columns = append(columns, maskingPolicyColumn(column))
+		columns = append(columns, maskingPolicyColumn{Name: column.Name, Type: sqlclient.CatalogType(column.Type)})
 	}
 	return columns, nil
 }
@@ -217,12 +218,12 @@ func maskingPolicyExpressionText(text string) string {
 }
 
 // maskingPolicyCanonicalType returns the type the catalog would report for a column type, so equivalent spellings
-// such as TEXT and character varying(256) compare equal; an unparsable type compares by its lowercased text.
+// such as TEXT and CHARACTER VARYING(256) compare equal; an unparsable type compares by its uppercased text.
 func maskingPolicyCanonicalType(columnType string) string {
 	if canonical, err := sqlclient.ColumnType(columnType); err == nil {
 		return string(canonical)
 	}
-	return strings.ToLower(strings.Join(strings.Fields(columnType), " "))
+	return strings.ToUpper(strings.Join(strings.Fields(columnType), " "))
 }
 
 // maskingPolicyColumnsMatch reports whether configured columns describe the catalog columns. Names compare without

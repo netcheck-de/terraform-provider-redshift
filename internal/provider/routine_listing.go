@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -26,8 +27,8 @@ func routineListingElement(nameAttribute, noun string) map[string]schema.Attribu
 		"database":    schema.StringAttribute{Computed: true, MarkdownDescription: "Database containing the " + noun + "."},
 		"schema":      schema.StringAttribute{Computed: true, MarkdownDescription: "Schema containing the " + noun + "."},
 		nameAttribute: schema.StringAttribute{Computed: true, MarkdownDescription: "Name of the " + noun + "."},
-		"arguments":   schema.ListAttribute{ElementType: types.StringType, Computed: true, MarkdownDescription: "Input argument types in order, as the catalog spells them without length or precision; with the name they identify the overload."},
-		"language":    schema.StringAttribute{Computed: true, MarkdownDescription: "Implementation language, such as `sql`, `plpythonu`, `plpgsql`, or `exfunc` for Lambda UDFs."},
+		"arguments":   schema.ListAttribute{ElementType: types.StringType, Computed: true, MarkdownDescription: "Input argument types in order, as the catalog reports them without length or precision but in uppercase, such as `INTEGER` or `CHARACTER VARYING`; with the name they identify the overload."},
+		"language":    schema.StringAttribute{Computed: true, MarkdownDescription: "Implementation language in uppercase, such as `SQL`, `PLPYTHONU`, `PLPGSQL`, or `EXFUNC` for Lambda UDFs."},
 		"owner":       schema.StringAttribute{Computed: true, MarkdownDescription: "SQL user owning the " + noun + "; empty when the catalog no longer resolves the owner."},
 	}
 }
@@ -53,8 +54,8 @@ func routineListingItem(database, nameAttribute string, row sqlclient.Row) map[s
 		"database":    types.StringValue(database),
 		"schema":      types.StringValue(row["schema_name"]),
 		nameAttribute: types.StringValue(row["routine_name"]),
-		"arguments":   externalFunctionTypeValues(externalFunctionSignatureTypes(row["arguments"])),
-		"language":    types.StringValue(row["language"]),
+		"arguments":   externalFunctionTypeValues(externalFunctionSignatureTypes(routineCatalogSignature(row["arguments"]))),
+		"language":    types.StringValue(strings.ToUpper(row["language"])),
 		"owner":       types.StringValue(row["owner"]),
 	}
 }

@@ -102,7 +102,7 @@ data "redshift_object_grant" "schema" {
 }
 data "redshift_system_grant" "reader" { role = redshift_system_grant.reader.role }
 data "redshift_assumerole_grant" "reader" {
-  iam_role_arn = "default"
+  iam_role_arn = "DEFAULT"
   grantee = redshift_role.reader.name
   grantee_type = "ROLE"
 }

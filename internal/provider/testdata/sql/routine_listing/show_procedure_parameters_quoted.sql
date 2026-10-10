@@ -1,1 +1,1 @@
-SHOW PARAMETERS OF PROCEDURE "Odd""Db"."Odd""Schema"."Sp""Refresh"(integer);
+SHOW PARAMETERS OF PROCEDURE "Odd""Db"."Odd""Schema"."Sp""Refresh"(INTEGER);

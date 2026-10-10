@@ -81,12 +81,12 @@ func (f *externalFunctionFake) query(_ *catalog, _ dataapi.Connection, sql strin
 			return []dataapi.Row{f.functionRow()}, true, nil
 		}
 		return nil, true, nil
-	case strings.HasPrefix(sql, "SHOW PARAMETERS OF FUNCTION") && strings.HasSuffix(sql, `."`+fakeExternalFunctionName+`"(character varying)`):
+	case strings.HasPrefix(sql, "SHOW PARAMETERS OF FUNCTION") && strings.HasSuffix(sql, `."`+fakeExternalFunctionName+`"(CHARACTER VARYING)`):
 		return []dataapi.Row{
 			{"parameter_name": "", "ordinal_position": "0", "parameter_type": "RETURN", "data_type": "character varying"},
 			{"parameter_name": "", "ordinal_position": "1", "parameter_type": "IN", "data_type": "character varying"},
 		}, true, nil
-	case strings.HasPrefix(sql, "SHOW PARAMETERS OF PROCEDURE") && strings.HasSuffix(sql, `."`+fakeProcedureName+`"(integer)`):
+	case strings.HasPrefix(sql, "SHOW PARAMETERS OF PROCEDURE") && strings.HasSuffix(sql, `."`+fakeProcedureName+`"(INTEGER)`):
 		return []dataapi.Row{
 			{"parameter_name": "batch", "ordinal_position": "1", "parameter_type": "IN", "data_type": "integer"},
 			{"parameter_name": "refreshed", "ordinal_position": "2", "parameter_type": "OUT", "data_type": "bigint"},

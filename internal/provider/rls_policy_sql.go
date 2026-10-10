@@ -50,7 +50,7 @@ func rlsPolicyColumns(value types.List) ([]rlsPolicyColumn, error) {
 type rlsPolicyCatalogColumn struct {
 	// Name is the WITH column name.
 	Name string `json:"colname"`
-	// Type is the format_type() spelling of the WITH column type.
+	// Type is the WITH column type, in the uppercase canonical spelling of what format_type() reports.
 	Type string `json:"type"`
 }
 
@@ -62,6 +62,9 @@ func parseRlsPolicyColumns(polatts string) ([]rlsPolicyCatalogColumn, error) {
 	var columns []rlsPolicyCatalogColumn
 	if err := json.Unmarshal([]byte(polatts), &columns); err != nil {
 		return nil, fmt.Errorf("decode RLS policy attributes %q: %w", polatts, err)
+	}
+	for i := range columns {
+		columns[i].Type = sqlclient.CatalogType(columns[i].Type)
 	}
 	return columns, nil
 }
@@ -96,7 +99,7 @@ func rlsPolicyCatalogColumnsOf(value types.List) []rlsPolicyCatalogColumn {
 
 // rlsPolicyColumnsMatch reports whether configured columns describe the catalog columns. Names compare without
 // case because Redshift folds identifiers by default, and types compare in canonical form, so varchar(64) in
-// configuration matches character varying(64) in the catalog.
+// configuration matches CHARACTER VARYING(64) from the catalog.
 func rlsPolicyColumnsMatch(configured []rlsPolicyColumn, catalog []rlsPolicyCatalogColumn) bool {
 	if len(configured) != len(catalog) {
 		return false

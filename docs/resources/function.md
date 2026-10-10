@@ -49,8 +49,8 @@ resource "redshift_function" "greater" {
 
 ### Optional
 
-- `arguments` (List of String) Ordered input argument data types, at most 32, referenced in `body` as `$1`, `$2`, and so on. SQL UDF arguments have no names. Omit for a function without arguments. The types identify the overload; another spelling of the same types, such as `int` for `integer`, is no change, and a modifier such as `varchar(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the function.
-- `language` (String) Function language; only `sql`, in lowercase, is accepted. `plpythonu` is rejected because AWS ends Python UDF support after June 30, 2026. Changing it replaces the function.
+- `arguments` (List of String) Ordered input argument data types, at most 32, referenced in `body` as `$1`, `$2`, and so on. SQL UDF arguments have no names. Omit for a function without arguments. The types identify the overload; another spelling of the same types, such as `INT` for `INTEGER`, is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the function.
+- `language` (String) Function language; only `SQL`, in any case, is accepted, and another spelling of it is recorded in place. `PLPYTHONU` is rejected because AWS ends Python UDF support after June 30, 2026. Changing it replaces the function.
 - `owner` (String) SQL user owning the function. When set, applied with `ALTER FUNCTION ... OWNER TO`, which requires a superuser; when omitted, the catalog owner is reported.
 - `volatility` (String) Optimizer volatility: `VOLATILE` (default), `STABLE`, or `IMMUTABLE`. Changed in place with `CREATE OR REPLACE FUNCTION`.
 
@@ -58,7 +58,7 @@ resource "redshift_function" "greater" {
 
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
 - `id` (String) JSON import identity; independent of Data API execution history.
-- `signature` (String) Canonical input argument types without modifiers, as `ALTER FUNCTION`, `DROP FUNCTION`, and `GRANT ... ON FUNCTION` identify the overload, for example `integer, character varying`.
+- `signature` (String) Canonical input argument types without modifiers, as `ALTER FUNCTION`, `DROP FUNCTION`, and `GRANT ... ON FUNCTION` identify the overload, for example `INTEGER, CHARACTER VARYING`.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 ## Lifecycle and Ownership

@@ -159,7 +159,7 @@ func TestRlsPolicyReadAdoptsCatalogShape(t *testing.T) {
 	data.Column, data.Alias = rlsPolicyColumnsValue("region", "integer"), types.StringNull()
 	_, _, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
-	assert.Equal(t, rlsPolicyColumnsValue("region", "character varying(64)"), data.Column, "differing columns surface the catalog")
+	assert.Equal(t, rlsPolicyColumnsValue("region", "CHARACTER VARYING(64)"), data.Column, "differing columns surface the catalog in uppercase")
 	assert.Equal(t, types.StringValue("t"), data.Alias)
 
 	for _, rows := range [][]sqlclient.Row{
@@ -251,7 +251,7 @@ func TestRlsPolicyImport(t *testing.T) {
 	var data rlsPolicyModel
 	require.False(t, resp.State.Get(ctx, &data).HasError())
 	assert.Equal(t, rlsFakePredicate, data.Predicate.ValueString())
-	assert.Equal(t, rlsPolicyColumnsValue("region", "character varying(64)"), data.Column)
+	assert.Equal(t, rlsPolicyColumnsValue("region", "CHARACTER VARYING(64)"), data.Column)
 	assert.True(t, data.Alias.IsNull())
 	assert.Equal(t, definitionFingerprint(rlsFakePredicate), data.DefinitionFingerprint.ValueString())
 	assert.Empty(t, c.writes)

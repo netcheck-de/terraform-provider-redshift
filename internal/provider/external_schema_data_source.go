@@ -78,7 +78,7 @@ func (d *externalSchemaDataSource) Schema(_ context.Context, _ datasource.Schema
 			"uri":                recorded("Hive metastore URI, federated hostname, or Kafka bootstrap URI."),
 			"port":               schema.Int64Attribute{Computed: true, MarkdownDescription: "Hive metastore or federated database port. Null when the catalog does not record it."},
 			"secret_arn":         recorded("Secrets Manager ARN of the federated credentials or mTLS certificate."),
-			"authentication":     recorded("Streaming authentication mode `none`, `iam`, or `mtls`."),
+			"authentication":     recorded("Streaming authentication mode `NONE`, `IAM`, or `MTLS`."),
 			"authentication_arn": recorded("ACM certificate ARN used for mTLS."),
 			"owner":              schema.StringAttribute{Computed: true, MarkdownDescription: "SQL user owning the external schema."},
 		},

@@ -50,7 +50,7 @@ output "required_columns" {
 Read-Only:
 
 - `character_maximum_length` (Number) Maximum length of a character column; null for other types.
-- `data_type` (String) Data type name as the catalog reports it, such as `integer` or `character varying`, without length or precision.
+- `data_type` (String) Data type name as the catalog reports it but in uppercase, such as `INTEGER` or `CHARACTER VARYING`, without length or precision.
 - `database` (String) Database containing the relation.
 - `default` (String) Default expression; null when the column has none.
 - `name` (String) Column name.

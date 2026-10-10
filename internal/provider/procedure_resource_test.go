@@ -114,7 +114,7 @@ func TestProcedureReadReconcilesArguments(t *testing.T) {
 	assert.Equal(t, "MIN_ID", arguments[0].Name.ValueString())
 	assert.Equal(t, "int8", arguments[1].Type.ValueString())
 	assert.Equal(t, "DEFINER", data.Security.ValueString())
-	assert.Equal(t, "integer", data.Signature.ValueString())
+	assert.Equal(t, "INTEGER", data.Signature.ValueString())
 
 	parameters[1]["parameter_type"] = "INOUT"
 	found, err = (&procedureResource{procedureRowClient(row, parameters, nil)}).read(context.Background(), &data)
@@ -123,7 +123,7 @@ func TestProcedureReadReconcilesArguments(t *testing.T) {
 	arguments = procedureArguments(data.Arguments)
 	require.Len(t, arguments, 2)
 	assert.Equal(t, "INOUT", arguments[0].Mode.ValueString())
-	assert.Equal(t, "integer", arguments[0].Type.ValueString())
+	assert.Equal(t, "INTEGER", arguments[0].Type.ValueString())
 	assert.True(t, arguments[1].Name.IsNull())
 	assert.Equal(t, "OUT", arguments[1].Mode.ValueString())
 }
@@ -194,7 +194,7 @@ func TestProcedureCreateKeepsStateWhenVerificationFails(t *testing.T) {
 			require.True(t, resp.Diagnostics.HasError())
 			var observed procedureModel
 			require.False(t, resp.State.Get(context.Background(), &observed).HasError())
-			assertLookupIdentity(t, observed.ID, "admin", map[string]string{"schema": "public", "name": "sp_example", "arguments": "integer"})
+			assertLookupIdentity(t, observed.ID, "admin", map[string]string{"schema": "public", "name": "sp_example", "arguments": "INTEGER"})
 			assert.True(t, resp.State.Raw.IsFullyKnown())
 		})
 	}
@@ -225,7 +225,7 @@ func TestProcedureImportIdentity(t *testing.T) {
 	require.False(t, resp.State.GetAttribute(context.Background(), path.Root("argument"), &arguments).HasError())
 	imported := procedureArguments(arguments)
 	require.Len(t, imported, 2)
-	assert.Equal(t, "character varying", imported[1].Type.ValueString())
+	assert.Equal(t, "CHARACTER VARYING", imported[1].Type.ValueString())
 	assert.True(t, imported[1].Mode.IsNull())
 	for _, id := range []string{`{"workgroup_name":"w","database":"d","schema":"s","name":"p"}`, `not json`} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
@@ -313,7 +313,7 @@ resource "redshift_procedure" "scale" {
   argument {
     name = "amount"
     mode = "INOUT"
-    type = "bigint"
+    type = "BIGINT"
   }
   argument {
     name = "label"
@@ -339,27 +339,27 @@ data "redshift_procedure" "scale" {
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: fullCatalog()})},
 		Steps: []testresource.TestStep{
 			{Config: configuration("factor", "int"), Check: testresource.ComposeAggregateTestCheckFunc(
-				testresource.TestCheckResourceAttr("redshift_procedure.scale", "signature", "integer, bigint"),
+				testresource.TestCheckResourceAttr("redshift_procedure.scale", "signature", "INTEGER, BIGINT"),
 				testresource.TestCheckResourceAttr("redshift_procedure.scale", "argument.#", "3"),
 				testresource.TestCheckResourceAttr("redshift_procedure.scale", "argument.0.type", "int"),
 				testresource.TestCheckResourceAttr("redshift_procedure.refresh", "argument.#", "0"),
 				testresource.TestCheckResourceAttr("data.redshift_procedure.scale", "arguments.#", "2"),
 				testresource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.#", "3"),
-				testresource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.0.type", "integer"),
+				testresource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.0.type", "INTEGER"),
 				testresource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.2.mode", "OUT"),
-				testresource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.2.type", "character varying"),
+				testresource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.2.type", "CHARACTER VARYING"),
 			)},
 			{Config: configuration("factor", "int"), PlanOnly: true},
-			{Config: configuration("FACTOR", "integer"), ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+			{Config: configuration("FACTOR", "INTEGER"), ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
 				plancheck.ExpectResourceAction("redshift_procedure.scale", plancheck.ResourceActionUpdate),
 				plancheck.ExpectResourceAction("redshift_procedure.refresh", plancheck.ResourceActionNoop),
 			}}},
-			{Config: configuration("FACTOR", "integer"), PlanOnly: true},
+			{Config: configuration("FACTOR", "INTEGER"), PlanOnly: true},
 			// The catalog keeps the folded name and the type without its length.
 			{ResourceName: "redshift_procedure.scale", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"argument.0.name", "argument.2.type"}},
 			{Config: configuration("factor", "bigint"), ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
 				plancheck.ExpectResourceAction("redshift_procedure.scale", plancheck.ResourceActionDestroyBeforeCreate),
-			}}, Check: testresource.TestCheckResourceAttr("data.redshift_procedure.scale", "signature", "bigint, bigint")},
+			}}, Check: testresource.TestCheckResourceAttr("data.redshift_procedure.scale", "signature", "BIGINT, BIGINT")},
 			{Config: configuration("factor", "bigint"), PlanOnly: true},
 		},
 	})

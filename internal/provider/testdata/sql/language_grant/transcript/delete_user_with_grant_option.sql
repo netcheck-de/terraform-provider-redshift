@@ -23,7 +23,7 @@ SELECT privilege_type, admin_option FROM svv_language_privileges WHERE language_
 -- params: {"grantee":"Odd\"O'Reilly\\User","identity_type":"user","language":"sql"}
 
 -- database: warehouse
-REVOKE USAGE ON LANGUAGE sql FROM "Odd""O'Reilly\User";
+REVOKE USAGE ON LANGUAGE SQL FROM "Odd""O'Reilly\User";
 -- params: {}
 
 -- database: admin

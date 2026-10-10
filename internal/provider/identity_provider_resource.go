@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -102,7 +103,7 @@ func identityProviderGroupFilter(keyword, other string) schema.StringAttribute {
 // Schema defines the provider type, its type-specific binding, role creation, and enabled state.
 func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages a SQL identity provider: an AWS IAM Identity Center (`awsidc`) or Microsoft Entra ID (`azure`) integration. AWS applications, IAM roles, and directory groups are managed separately.",
+		MarkdownDescription: "Manages a SQL identity provider: an AWS IAM Identity Center (`AWSIDC`) or Microsoft Entra ID (`AZURE`) integration. AWS applications, IAM roles, and directory groups are managed separately.",
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"name": schema.StringAttribute{
@@ -111,43 +112,43 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 			"type": schema.StringAttribute{
 				Optional: true, Computed: true, Default: stringdefault.StaticString(identityProviderAWSIDC),
-				MarkdownDescription: "Identity provider type: `awsidc` (AWS IAM Identity Center) or `azure` (Microsoft Entra ID, native IdP federation). Defaults to `awsidc`. Changing it replaces the identity provider.",
-				Validators:          []validator.String{stringvalidator.OneOf(identityProviderAWSIDC, identityProviderAzure)},
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				MarkdownDescription: "Identity provider type: `AWSIDC` (AWS IAM Identity Center) or `AZURE` (Microsoft Entra ID, native IdP federation). Defaults to `AWSIDC`. Accepted in any case; another case of the same type is recorded in place. Changing it replaces the identity provider.",
+				Validators:          []validator.String{stringvalidator.OneOfCaseInsensitive(identityProviderAWSIDC, identityProviderAzure)},
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplaceIf(keywordChanged, "Changing the type replaces the identity provider.", "Changing the type replaces the identity provider.")},
 			},
 			"namespace": schema.StringAttribute{
 				Required: true, MarkdownDescription: "Prefix of federated users and group roles (`namespace:name`). Updated in place with `ALTER IDENTITY PROVIDER ... NAMESPACE`; existing users and roles keep their names, so the change is refused while federated users with the previous prefix exist. Rename or remove them first.",
 				Validators: []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"application_arn": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Identity Center managed application ARN. Required for `awsidc`; not allowed for `azure`. Changing it replaces the identity provider.",
+				Optional: true, MarkdownDescription: "Identity Center managed application ARN. Required for `AWSIDC`; not allowed for `AZURE`. Changing it replaces the identity provider.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"iam_role_arn": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "IAM role attached to the Redshift namespace for the Identity Center connection. Required for `awsidc`; not allowed for `azure`. Updated in place and reapplied on every update.",
+				Optional: true, MarkdownDescription: "IAM role attached to the Redshift namespace for the Identity Center connection. Required for `AWSIDC`; not allowed for `AZURE`. Updated in place and reapplied on every update.",
 			},
 			"issuer": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Token issuer URL of the Microsoft Entra ID tenant (`issuer` in `PARAMETERS`). Required for `azure`; not allowed for `awsidc`. Updated in place together with `client_secret_wo`.",
+				Optional: true, MarkdownDescription: "Token issuer URL of the Microsoft Entra ID tenant (`issuer` in `PARAMETERS`). Required for `AZURE`; not allowed for `AWSIDC`. Updated in place together with `client_secret_wo`.",
 			},
 			"client_id": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Application (client) ID of the Redshift application registered in Microsoft Entra ID (`client_id` in `PARAMETERS`). Required for `azure`; not allowed for `awsidc`. Updated in place together with `client_secret_wo`.",
+				Optional: true, MarkdownDescription: "Application (client) ID of the Redshift application registered in Microsoft Entra ID (`client_id` in `PARAMETERS`). Required for `AZURE`; not allowed for `AWSIDC`. Updated in place together with `client_secret_wo`.",
 			},
 			"audience": schema.SetAttribute{
 				Optional: true, ElementType: types.StringType,
-				MarkdownDescription: "Accepted token audiences (`audience` in `PARAMETERS`), for example the Power BI connector. Only for `azure`. Updated in place together with `client_secret_wo`.",
+				MarkdownDescription: "Accepted token audiences (`audience` in `PARAMETERS`), for example the Power BI connector. Only for `AZURE`. Updated in place together with `client_secret_wo`.",
 				Validators:          []validator.Set{setvalidator.SizeAtLeast(1)},
 			},
 			"client_secret_wo": schema.StringAttribute{
 				Optional: true, WriteOnly: true, Sensitive: true,
-				MarkdownDescription: "Write-only client secret of the Microsoft Entra ID application (requires Terraform 1.11 or later); not allowed for `awsidc`. Required to create an `azure` provider and whenever `issuer`, `client_id`, `audience`, or `client_secret_wo_version` change, because `ALTER IDENTITY PROVIDER ... PARAMETERS` replaces every parameter. Never stored in plan or state, and the catalog never returns it.",
+				MarkdownDescription: "Write-only client secret of the Microsoft Entra ID application (requires Terraform 1.11 or later); not allowed for `AWSIDC`. Required to create an `AZURE` provider and whenever `issuer`, `client_id`, `audience`, or `client_secret_wo_version` change, because `ALTER IDENTITY PROVIDER ... PARAMETERS` replaces every parameter. Never stored in plan or state, and the catalog never returns it.",
 			},
 			"client_secret_wo_version": schema.Int64Attribute{
 				Optional:            true,
-				MarkdownDescription: "Secret rotation trigger. Required for `azure`; not allowed for `awsidc`. Change it to send `client_secret_wo` again. An imported provider has no version in state, so setting it for the first time after an import does not send the secret.",
+				MarkdownDescription: "Secret rotation trigger. Required for `AZURE`; not allowed for `AWSIDC`. Change it to send `client_secret_wo` again. An imported provider has no version in state, so setting it for the first time after an import does not send the secret.",
 			},
 			"auto_create_roles": schema.BoolAttribute{
 				Optional:            true,
-				MarkdownDescription: "Whether Redshift creates roles for the provider's groups automatically (`AUTO_CREATE_ROLES`). Unset keeps the type default, `false` for `awsidc` and `true` for `azure`, and removing the attribute restores that default. The catalog does not report this setting, so Terraform keeps the configured value, changes made outside Terraform are not detected, and imports and lookups report null. Updated in place.",
+				MarkdownDescription: "Whether Redshift creates roles for the provider's groups automatically (`AUTO_CREATE_ROLES`). Unset keeps the type default, `false` for `AWSIDC` and `true` for `AZURE`, and removing the attribute restores that default. The catalog does not report this setting, so Terraform keeps the configured value, changes made outside Terraform are not detected, and imports and lookups report null. Updated in place.",
 			},
 			"auto_create_roles_include_groups": identityProviderGroupFilter("INCLUDE", "auto_create_roles_exclude_groups"),
 			"auto_create_roles_exclude_groups": identityProviderGroupFilter("EXCLUDE", "auto_create_roles_include_groups"),
@@ -160,17 +161,17 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
 			"instance_id": schema.StringAttribute{
-				Computed: true, PlanModifiers: []planmodifier.String{identityProviderInstanceModifier{}}, MarkdownDescription: "Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `awsidc` and the tenant ID for `azure`.",
+				Computed: true, PlanModifiers: []planmodifier.String{identityProviderInstanceModifier{}}, MarkdownDescription: "Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `AWSIDC` and the tenant ID for `AZURE`.",
 			},
 			"identity_center_instance_arn": schema.StringAttribute{
-				Computed: true, PlanModifiers: []planmodifier.String{identityProviderInstanceModifier{}}, MarkdownDescription: "IAM Identity Center instance ARN of an `awsidc` provider (`instance_arn` in the catalog parameters); null for `azure`.",
+				Computed: true, PlanModifiers: []planmodifier.String{identityProviderInstanceModifier{}}, MarkdownDescription: "IAM Identity Center instance ARN of an `AWSIDC` provider (`instance_arn` in the catalog parameters); null for `AZURE`.",
 			},
 		},
 	}
 }
 
-// identityProviderInstanceModifier keeps the catalog instance identifiers through updates. For awsidc they follow the
-// application ARN, which replaces the provider; for azure the instance ID is the tenant of the issuer, so an issuer
+// identityProviderInstanceModifier keeps the catalog instance identifiers through updates. For AWSIDC they follow the
+// application ARN, which replaces the provider; for AZURE the instance ID is the tenant of the issuer, so an issuer
 // change leaves them unknown.
 type identityProviderInstanceModifier struct{}
 
@@ -254,7 +255,8 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 	}
 	data.ApplicationARN, data.IAMRoleARN, data.IdentityCenterInstanceARN = types.StringNull(), types.StringNull(), types.StringNull()
 	data.Issuer, data.ClientID, data.Audience = types.StringNull(), types.StringNull(), nil
-	switch row["type"] {
+	kind := strings.ToUpper(row["type"])
+	switch kind {
 	case identityProviderAWSIDC:
 		if row["instanceid"] == "" {
 			return false, fmt.Errorf("identity provider %q has incomplete or ambiguous catalog metadata", data.Name.ValueString())
@@ -285,7 +287,7 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 		data.ProviderID = types.Int64Value(id)
 	}
 	data.Name = types.StringValue(row["name"])
-	data.Type = types.StringValue(row["type"])
+	data.Type = keywordValue(data.Type, kind)
 	data.Namespace = types.StringValue(row["namespc"])
 	data.InstanceID = identityProviderOptional(row["instanceid"])
 	data.Enabled = types.BoolValue(enabled)

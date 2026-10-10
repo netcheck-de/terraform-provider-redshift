@@ -34,7 +34,7 @@ output "analytics_databases" {
 
 ### Optional
 
-- `database_type` (String) Only databases of this type: `local`, or `shared` for databases created from a datashare.
+- `database_type` (String) Only databases of this type, in any case: `LOCAL`, or `SHARED` for databases created from a datashare.
 - `name_like` (String) Only databases whose name matches this case-sensitive SQL `LIKE` pattern, where `%` matches any sequence and `_` any single character.
 
 ### Read-Only
@@ -47,8 +47,8 @@ output "analytics_databases" {
 
 Read-Only:
 
-- `database_type` (String) `local` or `shared`.
-- `isolation_level` (String) Isolation level as the catalog reports it, such as `Snapshot Isolation` or `Serializable`; null when unknown.
+- `database_type` (String) `LOCAL` or `SHARED`.
+- `isolation_level` (String) `SNAPSHOT` or `SERIALIZABLE`, the keyword of the isolation level the catalog reports; null when unknown.
 - `name` (String) Database name.
 - `owner` (String) SQL user owning the database; null when the owner is not a local user.
 <!-- markdownlint-enable MD013 MD022 MD033 -->

@@ -130,7 +130,7 @@ func TestMaskingPolicyReadReconcilesDefinition(t *testing.T) {
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 	var observed maskingPolicyModel
 	require.False(t, resp.State.Get(context.Background(), &observed).HasError())
-	assert.Equal(t, []maskingPolicyColumn{{Name: "email", Type: "integer"}}, maskingPolicyColumns(observed.InputColumn), "changed inputs surface to plan a replacement")
+	assert.Equal(t, []maskingPolicyColumn{{Name: "email", Type: "INTEGER"}}, maskingPolicyColumns(observed.InputColumn), "changed inputs surface to plan a replacement")
 }
 
 // TestMaskingPolicyCatalogFailures reports unreadable, ambiguous, or diverging catalog rows instead of guessing.
@@ -221,7 +221,7 @@ func TestMaskingPolicyInputsReplacement(t *testing.T) {
 	require.False(t, refreshed.Diagnostics.HasError(), "%v", refreshed.Diagnostics)
 	var state maskingPolicyModel
 	require.False(t, refreshed.State.Get(ctx, &state).HasError())
-	require.Equal(t, []maskingPolicyColumn{{Name: "email", Type: "character varying(256)"}}, maskingPolicyColumns(state.InputColumn))
+	require.Equal(t, []maskingPolicyColumn{{Name: "email", Type: "CHARACTER VARYING(256)"}}, maskingPolicyColumns(state.InputColumn))
 
 	var response resource.SchemaResponse
 	r.Schema(ctx, resource.SchemaRequest{}, &response)

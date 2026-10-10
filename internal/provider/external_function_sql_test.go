@@ -190,8 +190,8 @@ func TestExternalFunctionTypes(t *testing.T) {
 	}
 	signature, err := externalFunctionSignature([]string{"int", "varchar(10)", "decimal(10,2)"})
 	require.NoError(t, err)
-	assert.Equal(t, "integer, character varying, numeric", string(signature))
-	assert.Equal(t, []string{"integer", "character varying", "numeric"}, externalFunctionSignatureTypes(string(signature)))
+	assert.Equal(t, "INTEGER, CHARACTER VARYING, NUMERIC", string(signature))
+	assert.Equal(t, []string{"INTEGER", "CHARACTER VARYING", "NUMERIC"}, externalFunctionSignatureTypes(string(signature)))
 	assert.Empty(t, externalFunctionSignatureTypes(""))
 	for code, keyword := range map[string]string{"v": "VOLATILE", "s": "STABLE", "i": "IMMUTABLE"} {
 		volatility, err := externalFunctionVolatility(code)

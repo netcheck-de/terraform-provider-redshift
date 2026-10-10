@@ -15,8 +15,8 @@ import (
 // reach them through sqlclient.TypeName.
 // https://docs.aws.amazon.com/redshift/latest/dg/udf-creating-a-lambda-sql-udf.html
 var externalFunctionTypes = []string{
-	"smallint", "integer", "bigint", "numeric", "real", "double precision", "character", "character varying",
-	"boolean", "date", "timestamp without time zone",
+	"SMALLINT", "INTEGER", "BIGINT", "NUMERIC", "REAL", "DOUBLE PRECISION", "CHARACTER", "CHARACTER VARYING",
+	"BOOLEAN", "DATE", "TIMESTAMP WITHOUT TIME ZONE",
 }
 
 // externalFunctionVolatilities are the documented categories; IMMUTABLE is not supported for Lambda UDFs.
@@ -36,8 +36,8 @@ const (
 // externalFunctionRolePattern matches one IAM role ARN of an IAM_ROLE value, which may chain several with commas.
 var externalFunctionRolePattern = regexp.MustCompile(`^arn:aws[a-z-]*:iam::\d{12}:role/[\w+=,.@/-]+$`)
 
-// externalFunctionType validates a Lambda UDF argument or result type and returns the spelling format_type()
-// reports, keeping any length or precision as configured.
+// externalFunctionType validates a Lambda UDF argument or result type and returns its canonical spelling, the
+// uppercase one of format_type(), keeping any length or precision as configured.
 func externalFunctionType(value string) (sqlclient.Keyword, error) {
 	name, err := sqlclient.TypeName(value)
 	if err != nil {
@@ -93,7 +93,7 @@ func externalFunctionDeclaredTypes(argumentTypes []string) (sqlclient.Keyword, e
 	return sqlclient.Signature(argumentTypes...)
 }
 
-// externalFunctionSignature returns the canonical argument types without modifiers, the form
+// externalFunctionSignature returns the canonical argument types without modifiers, the uppercase form of what
 // oidvectortypes() reports and the one that identifies the overload in ALTER, DROP, and import identities.
 func externalFunctionSignature(argumentTypes []string) (sqlclient.Keyword, error) {
 	if _, err := externalFunctionDeclaredTypes(argumentTypes); err != nil {
@@ -116,14 +116,15 @@ func externalFunctionSignatureTypes(signature string) []string {
 	return strings.Split(signature, ", ")
 }
 
-// externalFunctionIAMRole renders IAM_ROLE default or the role ARNs as a literal, after checking each chained ARN.
+// externalFunctionIAMRole renders IAM_ROLE DEFAULT, accepted in any case, or the role ARNs as a literal, after
+// checking each chained ARN.
 func externalFunctionIAMRole(role string) (sqlclient.Statement, error) {
-	if strings.EqualFold(role, "default") {
-		return sqlclient.Kw("default"), nil
+	if strings.EqualFold(role, "DEFAULT") {
+		return sqlclient.Kw("DEFAULT"), nil
 	}
 	for arn := range strings.SplitSeq(role, ",") {
 		if !externalFunctionRolePattern.MatchString(arn) {
-			return sqlclient.Statement{}, fmt.Errorf("iam_role must be default or comma-separated IAM role ARNs without spaces, got %q", role)
+			return sqlclient.Statement{}, fmt.Errorf("iam_role must be DEFAULT or comma-separated IAM role ARNs without spaces, got %q", role)
 		}
 	}
 	return sqlclient.Lit(role), nil
@@ -333,7 +334,7 @@ func readExternalFunctionQuery(data externalFunctionModel) (sqlclient.Query, err
 	return sqlclient.Select(externalFunctionColumns...).From("pg_proc p JOIN "+externalFunctionSource).
 		Where("n.nspname = :schema", sqlclient.Bind("schema", data.Schema.ValueString())).
 		Where("p.proname = :name", sqlclient.Bind("name", data.Name.ValueString())).
-		WhereEither(signature == "", "p.pronargs = 0", "oidvectortypes(p.proargtypes) = :arguments", sqlclient.Bind("arguments", string(signature))), nil
+		WhereEither(signature == "", "p.pronargs = 0", "oidvectortypes(p.proargtypes) = :arguments", sqlclient.Bind("arguments", routineCatalogArguments(signature))), nil
 }
 
 // externalFunctionVolatility maps pg_proc.provolatile to its SQL keyword.

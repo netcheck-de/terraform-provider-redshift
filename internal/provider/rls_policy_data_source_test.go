@@ -24,7 +24,7 @@ var (
 // TestRlsPolicyLookup observes the catalog definition, absence, and failures without writing.
 func TestRlsPolicyLookup(t *testing.T) {
 	exerciseCatalogLookup(t, newRlsPolicyDataSource, map[string]string{"database": "admin", "name": "region_filter"}, map[string]attr.Value{
-		"column":                 rlsPolicyColumnsValue("region", "character varying(64)"),
+		"column":                 rlsPolicyColumnsValue("region", "CHARACTER VARYING(64)"),
 		"alias":                  types.StringNull(),
 		"predicate":              types.StringValue(rlsFakePredicate),
 		"definition_fingerprint": types.StringValue(definitionFingerprint(rlsFakePredicate)),
@@ -99,7 +99,7 @@ func TestRlsPoliciesListing(t *testing.T) {
 	assert.Equal(t, types.StringValue("open"), open["name"])
 	assert.True(t, open["column"].IsNull())
 	assert.True(t, open["alias"].IsNull())
-	assert.Equal(t, rlsPolicyColumnsValue("region", "character varying(64)"), filtered["column"])
+	assert.Equal(t, rlsPolicyColumnsValue("region", "CHARACTER VARYING(64)"), filtered["column"])
 	assert.Equal(t, types.StringValue("t"), filtered["alias"])
 	assert.Equal(t, types.StringValue(definitionFingerprint(`"t"."region" = current_user`)), filtered["definition_fingerprint"])
 

@@ -117,13 +117,13 @@ data "redshift_procedure" "scale" {
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
 			{Config: configuration("SELECT $2 || '-' || $1::varchar", "IMMUTABLE", "INVOKER"), Check: resource.ComposeAggregateTestCheckFunc(
-				resource.TestCheckResourceAttr("redshift_function.label", "signature", "integer, character varying"),
-				resource.TestCheckResourceAttr("data.redshift_function.label", "return_type", "character varying"),
-				resource.TestCheckResourceAttr("redshift_procedure.scale", "signature", "integer, bigint"),
+				resource.TestCheckResourceAttr("redshift_function.label", "signature", "INTEGER, CHARACTER VARYING"),
+				resource.TestCheckResourceAttr("data.redshift_function.label", "return_type", "CHARACTER VARYING"),
+				resource.TestCheckResourceAttr("redshift_procedure.scale", "signature", "INTEGER, BIGINT"),
 				resource.TestCheckResourceAttr("data.redshift_procedure.scale", "security", "INVOKER"),
 				resource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.#", "3"),
 				resource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.2.mode", "OUT"),
-				resource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.2.type", "character varying"),
+				resource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.2.type", "CHARACTER VARYING"),
 			)},
 			{Config: configuration("SELECT $2 || '-' || $1::varchar", "IMMUTABLE", "INVOKER"), PlanOnly: true},
 			// Imports report canonical catalog spellings and the catalog body, and cannot observe nonatomic or SET.

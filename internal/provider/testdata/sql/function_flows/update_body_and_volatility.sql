@@ -1,5 +1,5 @@
 -- database: admin
-CREATE OR REPLACE FUNCTION "public"."f_example"(integer) RETURNS integer STABLE AS $$SELECT $1 * 2$$ LANGUAGE sql;
+CREATE OR REPLACE FUNCTION "public"."f_example"(INTEGER) RETURNS INTEGER STABLE AS $$SELECT $1 * 2$$ LANGUAGE SQL;
 -- params: {}
 
 -- database: admin

@@ -15,7 +15,7 @@ import (
 func discoveryFilter(description string, choices ...string) schema.StringAttribute {
 	validators := []validator.String{stringvalidator.LengthAtLeast(1)}
 	if len(choices) != 0 {
-		validators = append(validators, stringvalidator.OneOf(choices...))
+		validators = append(validators, stringvalidator.OneOfCaseInsensitive(choices...))
 	}
 	return schema.StringAttribute{Optional: true, MarkdownDescription: description, Validators: validators}
 }

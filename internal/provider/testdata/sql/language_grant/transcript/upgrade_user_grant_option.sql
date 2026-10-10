@@ -11,7 +11,7 @@ SELECT privilege_type, admin_option FROM svv_language_privileges WHERE language_
 -- params: {"grantee":"Odd\"O'Reilly\\User","identity_type":"user","language":"sql"}
 
 -- database: warehouse
-GRANT USAGE ON LANGUAGE sql TO "Odd""O'Reilly\User" WITH GRANT OPTION;
+GRANT USAGE ON LANGUAGE SQL TO "Odd""O'Reilly\User" WITH GRANT OPTION;
 -- params: {}
 
 -- database: admin

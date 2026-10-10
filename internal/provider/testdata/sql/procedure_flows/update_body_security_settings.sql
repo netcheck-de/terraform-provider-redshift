@@ -1,5 +1,5 @@
 -- database: admin
-CREATE OR REPLACE PROCEDURE "public"."sp_example"("min_id" IN integer, "total" OUT bigint) AS $$BEGIN total := min_id; END;$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public';
+CREATE OR REPLACE PROCEDURE "public"."sp_example"("min_id" IN INTEGER, "total" OUT BIGINT) AS $$BEGIN total := min_id; END;$$ LANGUAGE PLPGSQL SECURITY DEFINER SET search_path TO 'public';
 -- params: {}
 
 -- database: admin
@@ -7,5 +7,5 @@ SELECT p.proname AS procedure_name, u.usename AS owner, p.prosecdef AS security_
 -- params: {"arguments":"integer","name":"sp_example","schema":"public"}
 
 -- database: admin
-SHOW PARAMETERS OF PROCEDURE "public"."sp_example"(integer);
+SHOW PARAMETERS OF PROCEDURE "public"."sp_example"(INTEGER);
 -- params: {}

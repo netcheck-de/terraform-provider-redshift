@@ -53,8 +53,8 @@ func TestFunctionsListing(t *testing.T) {
 	assert.Equal(t, map[string]string{"workgroup_name": "warehouse", "database": "admin"}, identity)
 	require.Len(t, items, 1)
 	assert.Equal(t, map[string]any{
-		"database": "admin", "schema": "serving", "name": fakeExternalFunctionName, "arguments": []string{"character varying"},
-		"return_type": "character varying", "volatility": "STABLE", "language": "exfunc", "owner": "admin",
+		"database": "admin", "schema": "serving", "name": fakeExternalFunctionName, "arguments": []string{"CHARACTER VARYING"},
+		"return_type": "CHARACTER VARYING", "volatility": "STABLE", "language": "EXFUNC", "owner": "admin",
 	}, items[0])
 	identity, items = routineListingRead(t, newFunctionsDataSource(), map[string]string{"database": "warehouse", "schema": "serving", "name": "other"}, fullCatalog())
 	assert.Equal(t, map[string]string{"workgroup_name": "warehouse", "database": "warehouse", "schema": "serving", "name": "other"}, identity)
@@ -66,8 +66,8 @@ func TestProceduresListing(t *testing.T) {
 	_, items := routineListingRead(t, newProceduresDataSource(), map[string]string{"schema": "serving"}, fullCatalog())
 	require.Len(t, items, 1)
 	assert.Equal(t, map[string]any{
-		"database": "admin", "schema": "serving", "name": fakeProcedureName, "arguments": []string{"integer"},
-		"security": "DEFINER", "language": "plpgsql", "owner": "etl",
+		"database": "admin", "schema": "serving", "name": fakeProcedureName, "arguments": []string{"INTEGER"},
+		"security": "DEFINER", "language": "PLPGSQL", "owner": "etl",
 	}, items[0])
 }
 
@@ -77,11 +77,11 @@ func TestRoutineParametersListing(t *testing.T) {
 	require.Len(t, items, 4)
 	assert.Equal(t, map[string]any{
 		"database": "admin", "schema": "serving", "routine_name": fakeExternalFunctionName, "routine_type": "FUNCTION",
-		"arguments": []string{"character varying"}, "parameter_name": "", "ordinal_position": int64(0), "mode": "RETURN", "data_type": "character varying",
+		"arguments": []string{"CHARACTER VARYING"}, "parameter_name": "", "ordinal_position": int64(0), "mode": "RETURN", "data_type": "CHARACTER VARYING",
 	}, items[0])
 	assert.Equal(t, map[string]any{
 		"database": "admin", "schema": "serving", "routine_name": fakeProcedureName, "routine_type": "PROCEDURE",
-		"arguments": []string{"integer"}, "parameter_name": "refreshed", "ordinal_position": int64(2), "mode": "OUT", "data_type": "bigint",
+		"arguments": []string{"INTEGER"}, "parameter_name": "refreshed", "ordinal_position": int64(2), "mode": "OUT", "data_type": "BIGINT",
 	}, items[3])
 	identity, items := routineListingRead(t, newRoutineParametersDataSource(), map[string]string{"routine_type": "PROCEDURE"}, fullCatalog())
 	assert.Equal(t, "PROCEDURE", identity["routine_type"])

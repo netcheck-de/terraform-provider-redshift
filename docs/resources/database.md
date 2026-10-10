@@ -63,7 +63,7 @@ resource "redshift_database" "local" {
 
 ### Read-Only
 
-- `database_type` (String) `local` or `shared`.
+- `database_type` (String) `LOCAL` or `SHARED`.
 - `id` (String) JSON import identity; independent of Data API execution history.
 - `producer_account` (String) Producer account ID; null for local databases.
 - `producer_namespace` (String) Producer namespace ID; null for local databases.

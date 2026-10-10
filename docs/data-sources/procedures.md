@@ -48,9 +48,9 @@ output "definer_procedures" {
 
 Read-Only:
 
-- `arguments` (List of String) Input argument types in order, as the catalog spells them without length or precision; with the name they identify the overload.
+- `arguments` (List of String) Input argument types in order, as the catalog reports them without length or precision but in uppercase, such as `INTEGER` or `CHARACTER VARYING`; with the name they identify the overload.
 - `database` (String) Database containing the procedure.
-- `language` (String) Implementation language, such as `sql`, `plpythonu`, `plpgsql`, or `exfunc` for Lambda UDFs.
+- `language` (String) Implementation language in uppercase, such as `SQL`, `PLPYTHONU`, `PLPGSQL`, or `EXFUNC` for Lambda UDFs.
 - `name` (String) Name of the procedure.
 - `owner` (String) SQL user owning the procedure; empty when the catalog no longer resolves the owner.
 - `schema` (String) Schema containing the procedure.

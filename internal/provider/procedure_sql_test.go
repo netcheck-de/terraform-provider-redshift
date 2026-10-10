@@ -155,7 +155,7 @@ func TestProcedureSignatureUsesInputArguments(t *testing.T) {
 		procedureTestArgument("a", "OUT", "bigint"), procedureTestArgument("b", "INOUT", "varchar(10)"), procedureTestArgument("c", "", "int"),
 	).Arguments))
 	require.NoError(t, err)
-	assert.Equal(t, "character varying, integer", string(signature))
+	assert.Equal(t, "CHARACTER VARYING, INTEGER", string(signature))
 	signature, err = procedureSignature(nil)
 	require.NoError(t, err)
 	assert.Empty(t, signature)

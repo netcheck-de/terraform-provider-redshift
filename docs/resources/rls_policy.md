@@ -62,7 +62,7 @@ resource "redshift_rls_policy" "tenant" {
 ### Optional
 
 - `alias` (String) Relation alias of the `WITH` clause (`AS alias`), which the predicate may use to qualify columns; requires a `column` block. All policies attached to one relation must use the same alias. It compares without case, as Redshift folds identifiers. Removing it from configuration keeps the current alias. Like `column`, a change needs `replace_triggered_by` on the attachments. Changing it replaces the policy.
-- `column` (Block List) Ordered `WITH` columns the predicate reads from each attached relation, which must have all of them. Omit the blocks only when the predicate references no relation column. Names compare without case and types in canonical form, so respelling `VARCHAR(64)` as the catalog's `character varying(64)`, or importing the policy, plans no change. `ALTER RLS POLICY` cannot change the `WITH` clause, and `DROP RLS POLICY` refuses a policy that is still attached, so give each attachment `replace_triggered_by` on `column` and `alias`. Changing it replaces the policy. (see [below for nested schema](#nestedblock--column))
+- `column` (Block List) Ordered `WITH` columns the predicate reads from each attached relation, which must have all of them. Omit the blocks only when the predicate references no relation column. Names compare without case and types in canonical form, so respelling `VARCHAR(64)` as the catalog's `CHARACTER VARYING(64)`, or importing the policy, plans no change. `ALTER RLS POLICY` cannot change the `WITH` clause, and `DROP RLS POLICY` refuses a policy that is still attached, so give each attachment `replace_triggered_by` on `column` and `alias`. Changing it replaces the policy. (see [below for nested schema](#nestedblock--column))
 
 ### Read-Only
 

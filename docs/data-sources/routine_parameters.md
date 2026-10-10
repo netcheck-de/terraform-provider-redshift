@@ -54,8 +54,8 @@ output "upper_inputs" {
 
 Read-Only:
 
-- `arguments` (List of String) Input argument types that identify the routine's overload, as the catalog spells them.
-- `data_type` (String) Parameter data type, as `SHOW PARAMETERS` reports it.
+- `arguments` (List of String) Input argument types that identify the routine's overload, as the catalog reports them but in uppercase, such as `INTEGER`.
+- `data_type` (String) Parameter data type, as `SHOW PARAMETERS` reports it but in uppercase, such as `CHARACTER VARYING`.
 - `database` (String) Database containing the routine.
 - `mode` (String) `IN`, `OUT`, `INOUT`, or `RETURN` for a function's result.
 - `ordinal_position` (Number) Position of the parameter, starting at 1; `0` for a function's `RETURN` row.

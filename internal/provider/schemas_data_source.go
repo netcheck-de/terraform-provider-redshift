@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -19,13 +20,13 @@ func newSchemasDataSource() datasource.DataSource {
 		description: "Lists the schemas of one database visible to the provider's SQL identity, from `SVV_ALL_SCHEMAS`: local schemas, including system schemas such as `pg_catalog`, external schemas, and schemas of datashare databases.",
 		filters: map[string]schema.Attribute{
 			"database":    discoveryDatabaseFilter("schemas"),
-			"schema_type": discoveryFilter("Only schemas of this type: `local`, `external`, or `shared`.", "local", "external", "shared"),
+			"schema_type": discoveryFilter("Only schemas of this type, in any case: `LOCAL`, `EXTERNAL`, or `SHARED`.", "LOCAL", "EXTERNAL", "SHARED"),
 		},
 		element: map[string]schema.Attribute{
 			"database":        discoveryComputed("string", "Database containing the schema."),
 			"name":            discoveryComputed("string", "Schema name."),
 			"owner":           discoveryComputed("string", "SQL user owning the schema; null for shared schemas, whose owner belongs to the producer."),
-			"schema_type":     discoveryComputed("string", "`local`, `external`, or `shared`."),
+			"schema_type":     discoveryComputed("string", "`LOCAL`, `EXTERNAL`, or `SHARED`."),
 			"source_database": discoveryComputed("string", "Source database of an external schema, such as its AWS Glue database; null otherwise."),
 		},
 		list: schemasList,
@@ -36,7 +37,7 @@ func newSchemasDataSource() datasource.DataSource {
 // SVV_ALL_SCHEMAS spans databases and datashare databases may not accept connections.
 func schemasList(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
 	database := discoveryDatabase(client, filters)
-	rows, err := client.selectRows(ctx, client.database.ValueString(), readSchemasQuery(database, objectString(filters, "schema_type")))
+	rows, err := client.selectRows(ctx, client.database.ValueString(), readSchemasQuery(database, strings.ToLower(objectString(filters, "schema_type"))))
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +50,7 @@ func schemasList(ctx context.Context, client *resourceClient, filters types.Obje
 			"database":        types.StringValue(database),
 			"name":            types.StringValue(row["schema_name"]),
 			"owner":           discoveryText(row["owner"]),
-			"schema_type":     discoveryText(row["schema_type"]),
+			"schema_type":     discoveryText(strings.ToUpper(row["schema_type"])),
 			"source_database": discoveryText(row["source_database"]),
 		})
 	}

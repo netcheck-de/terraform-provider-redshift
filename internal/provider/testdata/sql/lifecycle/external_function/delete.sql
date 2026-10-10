@@ -3,7 +3,7 @@ SELECT n.nspname AS schema_name, p.proname AS routine_name, oidvectortypes(p.pro
 -- params: {"arguments":"character varying","name":"f_exfunc_upper","schema":"serving"}
 
 -- database: admin
-DROP FUNCTION "serving"."f_exfunc_upper"(character varying);
+DROP FUNCTION "serving"."f_exfunc_upper"(CHARACTER VARYING);
 -- params: {}
 
 -- database: admin

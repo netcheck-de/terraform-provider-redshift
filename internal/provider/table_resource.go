@@ -287,7 +287,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 						"name": schema.StringAttribute{Required: true, MarkdownDescription: "Column name, in lowercase.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
 						"type": schema.StringAttribute{
 							Required:            true,
-							MarkdownDescription: "Redshift data type, such as `bigint`, `numeric(12,2)`, or `varchar(256)`. Aliases are compared by their canonical form, and a type without a length gets the one Redshift applies, for example `varchar` is `character varying(256)`.",
+							MarkdownDescription: "Redshift data type, such as `BIGINT`, `NUMERIC(12,2)`, or `VARCHAR(256)`. Aliases are compared by their canonical form, and a type without a length gets the one Redshift applies, for example `VARCHAR` is `CHARACTER VARYING(256)`.",
 						},
 						"encoding": schema.StringAttribute{
 							Optional: true, Computed: true,

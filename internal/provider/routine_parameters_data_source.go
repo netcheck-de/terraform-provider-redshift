@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -10,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 var _ = registerDataSource(newRoutineParametersDataSource)
@@ -28,11 +30,11 @@ func newRoutineParametersDataSource() datasource.DataSource {
 		"schema":           schema.StringAttribute{Computed: true, MarkdownDescription: "Schema containing the routine."},
 		"routine_name":     schema.StringAttribute{Computed: true, MarkdownDescription: "Name of the function or procedure."},
 		"routine_type":     schema.StringAttribute{Computed: true, MarkdownDescription: "`FUNCTION` or `PROCEDURE`."},
-		"arguments":        schema.ListAttribute{ElementType: types.StringType, Computed: true, MarkdownDescription: "Input argument types that identify the routine's overload, as the catalog spells them."},
+		"arguments":        schema.ListAttribute{ElementType: types.StringType, Computed: true, MarkdownDescription: "Input argument types that identify the routine's overload, as the catalog reports them but in uppercase, such as `INTEGER`."},
 		"parameter_name":   schema.StringAttribute{Computed: true, MarkdownDescription: "Parameter name; empty for unnamed parameters and the `RETURN` row."},
 		"ordinal_position": schema.Int64Attribute{Computed: true, MarkdownDescription: "Position of the parameter, starting at 1; `0` for a function's `RETURN` row."},
 		"mode":             schema.StringAttribute{Computed: true, MarkdownDescription: "`IN`, `OUT`, `INOUT`, or `RETURN` for a function's result."},
-		"data_type":        schema.StringAttribute{Computed: true, MarkdownDescription: "Parameter data type, as `SHOW PARAMETERS` reports it."},
+		"data_type":        schema.StringAttribute{Computed: true, MarkdownDescription: "Parameter data type, as `SHOW PARAMETERS` reports it but in uppercase, such as `CHARACTER VARYING`."},
 	}
 	return newCollectionDataSource(collectionSpec{
 		name:        "routine_parameters",
@@ -68,11 +70,11 @@ func newRoutineParametersDataSource() datasource.DataSource {
 						"schema":           types.StringValue(routine["schema_name"]),
 						"routine_name":     types.StringValue(routine["routine_name"]),
 						"routine_type":     types.StringValue(string(kind)),
-						"arguments":        externalFunctionTypeValues(externalFunctionSignatureTypes(routine["arguments"])),
+						"arguments":        externalFunctionTypeValues(externalFunctionSignatureTypes(routineCatalogSignature(routine["arguments"]))),
 						"parameter_name":   types.StringValue(parameter["parameter_name"]),
 						"ordinal_position": types.Int64Value(position),
-						"mode":             types.StringValue(parameter["parameter_type"]),
-						"data_type":        types.StringValue(parameter["data_type"]),
+						"mode":             types.StringValue(strings.ToUpper(parameter["parameter_type"])),
+						"data_type":        types.StringValue(sqlclient.CatalogType(parameter["data_type"])),
 					})
 				}
 			}

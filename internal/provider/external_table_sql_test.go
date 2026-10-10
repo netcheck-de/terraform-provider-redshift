@@ -210,9 +210,9 @@ func TestExternalTableAlterCoverage(t *testing.T) {
 // TestExternalTableTypes checks validation, canonical spelling and the Hive translation of catalog types.
 func TestExternalTableTypes(t *testing.T) {
 	for configured, expected := range map[string]string{
-		"int": "integer", "INT4": "integer", "int2": "smallint", "bigint": "bigint", "numeric": "decimal(18,0)",
-		"decimal(8, 2)": "decimal(8,2)", "float4": "real", "float": "double precision", "bool": "boolean",
-		"char": "char(1)", "character varying": "varchar(256)", "varchar(max)": "varchar(65535)", "timestamp": "timestamp", "date": "date",
+		"int": "INTEGER", "INT4": "INTEGER", "int2": "SMALLINT", "bigint": "BIGINT", "numeric": "DECIMAL(18,0)",
+		"decimal(8, 2)": "DECIMAL(8,2)", "float4": "REAL", "float": "DOUBLE PRECISION", "bool": "BOOLEAN",
+		"char": "CHAR(1)", "character varying": "VARCHAR(256)", "varchar(max)": "VARCHAR(65535)", "timestamp": "TIMESTAMP", "date": "DATE",
 	} {
 		parsed, err := parseExternalTableType(configured)
 		require.NoError(t, err, configured)
@@ -223,8 +223,10 @@ func TestExternalTableTypes(t *testing.T) {
 		require.Error(t, err, unsupported)
 	}
 	for catalog, expected := range map[string]string{
-		"int": "integer", "float": "real", "double": "double precision", "decimal(8,2)": "decimal(8,2)", "DECIMAL(8, 2)": "decimal(8,2)",
-		"varchar(64)": "varchar(64)", "char(10)": "char(10)", "boolean": "boolean", "string": "string", "array<int>": "array<int>",
+		"int": "INTEGER", "float": "REAL", "double": "DOUBLE PRECISION", "decimal(8,2)": "DECIMAL(8,2)", "DECIMAL(8, 2)": "DECIMAL(8,2)",
+		"varchar(64)": "VARCHAR(64)", "char(10)": "CHAR(10)", "boolean": "BOOLEAN", "string": "STRING", "array<int>": "ARRAY<INT>",
+		"struct<id:int,tags:array<string>>": "STRUCT<id:INT,tags:ARRAY<STRING>>", "map<string, struct<Key : bigint>>": "MAP<STRING, STRUCT<Key : BIGINT>>",
+		"struct<`a b`:int>": "struct<`a b`:int>",
 	} {
 		assert.Equal(t, expected, externalTableCatalogType(catalog), catalog)
 	}
@@ -413,8 +415,8 @@ func TestExternalTableCatalogDecoding(t *testing.T) {
 		{"columnname": "a", "external_type": "string", "columnnum": "1", "part_key": "0"},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, []externalTableCatalogColumn{{"a", "string", 1}, {"b", "double precision", 2}}, columns)
-	assert.Equal(t, []externalTableCatalogColumn{{"x", "date", 1}, {"y", "integer", 2}}, keys)
+	assert.Equal(t, []externalTableCatalogColumn{{"a", "STRING", 1}, {"b", "DOUBLE PRECISION", 2}}, columns)
+	assert.Equal(t, []externalTableCatalogColumn{{"x", "DATE", 1}, {"y", "INTEGER", 2}}, keys)
 	for _, row := range []sqlclient.Row{
 		{"columnname": "a", "external_type": "int", "columnnum": "x", "part_key": "0"},
 		{"columnname": "a", "external_type": "int", "columnnum": "1", "part_key": ""},

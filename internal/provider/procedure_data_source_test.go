@@ -40,15 +40,15 @@ func TestProcedureLookup(t *testing.T) {
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	attributes := observed.Attributes()
-	for name, expected := range map[string]string{"signature": "integer", "security": "INVOKER", "owner": "admin", "body": "BEGIN total := min_id * 2; END;"} {
+	for name, expected := range map[string]string{"signature": "INTEGER", "security": "INVOKER", "owner": "admin", "body": "BEGIN total := min_id * 2; END;"} {
 		assert.Equal(t, types.StringValue(expected), attributes[name], name)
 	}
 	assert.True(t, attributes["nonatomic"].IsNull())
 	assert.True(t, attributes["configuration"].IsNull())
 	assert.Equal(t, procedureLookupSelector("int"), attributes["arguments"], "the configured selector is kept")
-	assert.Equal(t, []procedureArgumentModel{procedureTestArgument("min_id", "", "integer"), procedureTestArgument("total", "OUT", "bigint")},
+	assert.Equal(t, []procedureArgumentModel{procedureTestArgument("min_id", "", "INTEGER"), procedureTestArgument("total", "OUT", "BIGINT")},
 		procedureArguments(attributes["argument"].(types.List)))
-	assertLookupIdentity(t, attributes["id"].(types.String), "admin", map[string]string{"schema": "public", "name": "sp_example", "arguments": "integer"})
+	assertLookupIdentity(t, attributes["id"].(types.String), "admin", map[string]string{"schema": "public", "name": "sp_example", "arguments": "INTEGER"})
 	assert.Empty(t, c.writes)
 
 	lookupValue(&data, "name", types.StringValue("sp_missing"))

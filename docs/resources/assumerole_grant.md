@@ -39,7 +39,7 @@ resource "redshift_assumerole_grant" "loader" {
 
 - `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`. Changing it replaces the grant.
 - `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.
-- `iam_role_arn` (String) IAM role ARN, `default` for the namespace default IAM role, or `ALL` for every IAM role. Redshift reports grants on `default` and on `ALL` under one catalog entry, so manage a grantee through only one of them. Changing it replaces the grant.
+- `iam_role_arn` (String) IAM role ARN, `DEFAULT` for the namespace default IAM role, or `ALL` for every IAM role. `DEFAULT` and `ALL` are keywords accepted in any case, and another case of the same one is recorded in place; an ARN is case-sensitive and compared exactly. Redshift reports grants on `DEFAULT` and on `ALL` under one catalog entry, so manage a grantee through only one of them. Changing it replaces the grant.
 - `privileges` (Set of String) Exact set of commands the grantee may run with the role: `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, `CREATE MODEL`; all four together are `FOR ALL`. An empty set revokes owned commands. `PUBLIC` holds every command `ON ALL` until revoked, which the `ALL`/`PUBLIC` tuple reports; deleting that tuple revokes what it holds and never grants the default back.
 
 ### Read-Only
@@ -139,11 +139,11 @@ SELECT command_type AS privilege_type FROM svv_iam_privileges WHERE iam_arn = :a
 -- params: {"arn":"default-aws-iam-role","grantee":"readers","kind":"ROLE"}
 
 -- database: admin
-REVOKE ASSUMEROLE ON default FROM ROLE "readers" FOR COPY;
+REVOKE ASSUMEROLE ON DEFAULT FROM ROLE "readers" FOR COPY;
 -- params: {}
 
 -- database: admin
-GRANT ASSUMEROLE ON default TO ROLE "readers" FOR UNLOAD;
+GRANT ASSUMEROLE ON DEFAULT TO ROLE "readers" FOR UNLOAD;
 -- params: {}
 
 -- database: admin

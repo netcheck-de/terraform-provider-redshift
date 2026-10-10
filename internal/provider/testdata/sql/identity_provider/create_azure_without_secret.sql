@@ -1,1 +1,1 @@
--- error: client_secret_wo is required to create an azure identity provider and whenever issuer, client_id, audience, or client_secret_wo_version change, because PARAMETERS replaces every parameter
+-- error: client_secret_wo is required to create an AZURE identity provider and whenever issuer, client_id, audience, or client_secret_wo_version change, because PARAMETERS replaces every parameter

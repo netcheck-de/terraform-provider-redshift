@@ -6,7 +6,7 @@ import (
 )
 
 // languageGrantBaseFields is a role tuple on plpgsql in the fixture database.
-var languageGrantBaseFields = map[string]string{"database_name": "warehouse", "language_name": "plpgsql", "grantee": "example:readers", "grantee_type": "ROLE"}
+var languageGrantBaseFields = map[string]string{"database_name": "warehouse", "language_name": "PLPGSQL", "grantee": "example:readers", "grantee_type": "ROLE"}
 
 // TestLanguageGrantSQL pins the checks, catalog read, and GRANT/REVOKE USAGE ON LANGUAGE statements, including the
 // grant option forms a user grantee receives.

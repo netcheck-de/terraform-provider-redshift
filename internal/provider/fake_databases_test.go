@@ -68,7 +68,7 @@ var (
 	fakeQuota      = regexp.MustCompile(`QUOTA (UNLIMITED|(\d+) MB)`)
 	fakeExternalOf = regexp.MustCompile(`FROM (DATA CATALOG|HIVE METASTORE|POSTGRES|MYSQL|REDSHIFT|KINESIS|MSK) `)
 	fakePort       = regexp.MustCompile(` PORT (\d+)`)
-	fakeAuth       = regexp.MustCompile(` AUTHENTICATION (none|iam|mtls)`)
+	fakeAuth       = regexp.MustCompile(` AUTHENTICATION (NONE|IAM|MTLS)`)
 )
 
 // fakeIdentifier returns the unquoted identifier the pattern captured, if any.

@@ -1,5 +1,5 @@
 -- database: admin
-CREATE PROCEDURE "public"."sp_refresh"() AS $$BEGIN NULL; END;$$ LANGUAGE plpgsql SECURITY INVOKER;
+CREATE PROCEDURE "public"."sp_refresh"() AS $$BEGIN NULL; END;$$ LANGUAGE PLPGSQL SECURITY INVOKER;
 -- params: {}
 
 -- database: admin

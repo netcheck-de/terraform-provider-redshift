@@ -11,7 +11,8 @@ import (
 
 // fakeRoutineArgument is one declared argument as the fake catalog stores it.
 type fakeRoutineArgument struct {
-	// name, mode, and dataType are the declared values; dataType is canonical without modifiers.
+	// name, mode, and dataType are the declared values; dataType is canonical without modifiers, in the catalog's
+	// lowercase.
 	name, mode, dataType string
 }
 
@@ -216,7 +217,8 @@ func fakeRoutineArguments(items []string) ([]fakeRoutineArgument, error) {
 		if err != nil {
 			return nil, err
 		}
-		argument.dataType = string(routineBaseType(dataType))
+		// The catalog spells types in lowercase; the provider uppercases them.
+		argument.dataType = strings.ToLower(string(routineBaseType(dataType)))
 		arguments[i] = argument
 	}
 	return arguments, nil
@@ -276,7 +278,7 @@ func fakeRoutineDefinition(text string) (string, *fakeRoutine, error) {
 				if err != nil {
 					return "", nil, err
 				}
-				routine.returnType, routine.volatility = string(routineBaseType(canonical)), code
+				routine.returnType, routine.volatility = strings.ToLower(string(routineBaseType(canonical))), code
 			}
 		}
 	}

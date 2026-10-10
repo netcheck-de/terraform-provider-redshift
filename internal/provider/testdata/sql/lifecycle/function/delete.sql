@@ -3,7 +3,7 @@ SELECT p.proname AS function_name, u.usename AS owner, l.lanname AS language, p.
 -- params: {"arguments":"integer","name":"f_example","schema":"public"}
 
 -- database: admin
-DROP FUNCTION "public"."f_example"(integer);
+DROP FUNCTION "public"."f_example"(INTEGER);
 -- params: {}
 
 -- database: admin

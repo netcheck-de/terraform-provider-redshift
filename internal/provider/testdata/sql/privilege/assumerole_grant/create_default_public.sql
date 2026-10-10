@@ -3,7 +3,7 @@ SELECT command_type AS privilege_type FROM svv_iam_privileges WHERE iam_arn = :a
 -- params: {"arn":"default-aws-iam-role","grantee":"public","kind":"PUBLIC"}
 
 -- database: admin
-GRANT ASSUMEROLE ON default TO PUBLIC FOR EXTERNAL FUNCTION;
+GRANT ASSUMEROLE ON DEFAULT TO PUBLIC FOR EXTERNAL FUNCTION;
 -- params: {}
 
 -- database: admin

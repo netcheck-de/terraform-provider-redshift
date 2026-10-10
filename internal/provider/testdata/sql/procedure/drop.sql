@@ -1,1 +1,1 @@
-DROP PROCEDURE "public"."sp_example"(integer);
+DROP PROCEDURE "public"."sp_example"(INTEGER);

@@ -29,53 +29,53 @@ func TestOneOf(t *testing.T) {
 	require.Error(t, err, "an empty allowlist accepts nothing")
 }
 
-// TestTypeName canonicalizes Redshift aliases to the format_type() spelling.
+// TestTypeName canonicalizes Redshift aliases, in any case, to the uppercase format_type() spelling.
 func TestTypeName(t *testing.T) {
 	for value, expected := range map[string]Keyword{
-		"int2":                            "smallint",
-		"int":                             "integer",
-		"INT4":                            "integer",
-		"int8":                            "bigint",
-		"decimal":                         "numeric",
-		"DECIMAL(10)":                     "numeric(10,0)",
-		"numeric( 18 , 4 )":               "numeric(18,4)",
-		"numeric(38,38)":                  "numeric(38,38)",
-		"float4":                          "real",
-		"float":                           "double precision",
-		"FLOAT8":                          "double precision",
-		"double   precision":              "double precision",
-		"bool":                            "boolean",
-		"char":                            "character",
-		"CHAR(10)":                        "character(10)",
-		"nchar(4096)":                     "character(4096)",
-		"bpchar":                          "character",
-		"bpchar(max)":                     "character(4096)",
-		"varchar":                         "character varying",
-		"VARCHAR(256)":                    "character varying(256)",
-		"varchar(MAX)":                    "character varying(65535)",
-		"nvarchar (12)":                   "character varying(12)",
-		"text":                            "character varying",
-		"Character Varying(5)":            "character varying(5)",
-		"date":                            "date",
-		"timestamp":                       "timestamp without time zone",
-		"timestamp\twithout\ntime zone":   "timestamp without time zone",
-		"timestamptz":                     "timestamp with time zone",
-		"TIMESTAMP WITH TIME ZONE":        "timestamp with time zone",
-		"time":                            "time without time zone",
-		"timetz":                          "time with time zone",
-		"interval year to month":          "interval year to month",
-		"INTERVAL DAY TO SECOND":          "interval day to second",
-		"interval day to second ( 0 )":    "interval day to second(0)",
-		"varbyte(10)":                     "varbyte(10)",
-		"varbinary(max)":                  "varbyte(1024000)",
-		"binary varying(64)":              "varbyte(64)",
-		"GEOMETRY":                        "geometry",
-		"geography":                       "geography",
-		"hllsketch":                       "hllsketch",
-		"super":                           "super",
-		"anyelement":                      "anyelement",
-		"refcursor":                       "refcursor",
-		"  integer  ":                     "integer",
+		"int2":                            "SMALLINT",
+		"int":                             "INTEGER",
+		"INT4":                            "INTEGER",
+		"int8":                            "BIGINT",
+		"decimal":                         "NUMERIC",
+		"DECIMAL(10)":                     "NUMERIC(10,0)",
+		"numeric( 18 , 4 )":               "NUMERIC(18,4)",
+		"numeric(38,38)":                  "NUMERIC(38,38)",
+		"float4":                          "REAL",
+		"float":                           "DOUBLE PRECISION",
+		"FLOAT8":                          "DOUBLE PRECISION",
+		"double   precision":              "DOUBLE PRECISION",
+		"bool":                            "BOOLEAN",
+		"char":                            "CHARACTER",
+		"CHAR(10)":                        "CHARACTER(10)",
+		"nchar(4096)":                     "CHARACTER(4096)",
+		"bpchar":                          "CHARACTER",
+		"bpchar(max)":                     "CHARACTER(4096)",
+		"varchar":                         "CHARACTER VARYING",
+		"VARCHAR(256)":                    "CHARACTER VARYING(256)",
+		"varchar(MAX)":                    "CHARACTER VARYING(65535)",
+		"nvarchar (12)":                   "CHARACTER VARYING(12)",
+		"text":                            "CHARACTER VARYING",
+		"Character Varying(5)":            "CHARACTER VARYING(5)",
+		"date":                            "DATE",
+		"timestamp":                       "TIMESTAMP WITHOUT TIME ZONE",
+		"timestamp\twithout\ntime zone":   "TIMESTAMP WITHOUT TIME ZONE",
+		"timestamptz":                     "TIMESTAMP WITH TIME ZONE",
+		"TIMESTAMP WITH TIME ZONE":        "TIMESTAMP WITH TIME ZONE",
+		"time":                            "TIME WITHOUT TIME ZONE",
+		"timetz":                          "TIME WITH TIME ZONE",
+		"interval year to month":          "INTERVAL YEAR TO MONTH",
+		"INTERVAL DAY TO SECOND":          "INTERVAL DAY TO SECOND",
+		"interval day to second ( 0 )":    "INTERVAL DAY TO SECOND(0)",
+		"varbyte(10)":                     "VARBYTE(10)",
+		"varbinary(max)":                  "VARBYTE(1024000)",
+		"binary varying(64)":              "VARBYTE(64)",
+		"GEOMETRY":                        "GEOMETRY",
+		"geography":                       "GEOGRAPHY",
+		"hllsketch":                       "HLLSKETCH",
+		"super":                           "SUPER",
+		"anyelement":                      "ANYELEMENT",
+		"refcursor":                       "REFCURSOR",
+		"  integer  ":                     "INTEGER",
 		"varchar(00010)":                  "",
 		"varchar(-1)":                     "",
 		"varchar(+1)":                     "",
@@ -125,23 +125,23 @@ func TestTypeName(t *testing.T) {
 // TestColumnType adds the modifier Redshift gives a column declared without one, and keeps explicit modifiers.
 func TestColumnType(t *testing.T) {
 	for value, expected := range map[string]Keyword{
-		"char":              "character(1)",
-		"NCHAR":             "character(1)",
-		"character":         "character(1)",
-		"bpchar":            "character(256)",
-		"varchar":           "character varying(256)",
-		"text":              "character varying(256)",
-		"nvarchar":          "character varying(256)",
-		"character varying": "character varying(256)",
-		"decimal":           "numeric(18,0)",
-		"numeric":           "numeric(18,0)",
-		"varbyte":           "varbyte(64000)",
-		"varbinary":         "varbyte(64000)",
-		"bpchar(10)":        "character(10)",
-		"varchar(MAX)":      "character varying(65535)",
-		"numeric(10)":       "numeric(10,0)",
-		"int4":              "integer",
-		"timestamptz":       "timestamp with time zone",
+		"char":              "CHARACTER(1)",
+		"NCHAR":             "CHARACTER(1)",
+		"character":         "CHARACTER(1)",
+		"bpchar":            "CHARACTER(256)",
+		"varchar":           "CHARACTER VARYING(256)",
+		"text":              "CHARACTER VARYING(256)",
+		"nvarchar":          "CHARACTER VARYING(256)",
+		"character varying": "CHARACTER VARYING(256)",
+		"decimal":           "NUMERIC(18,0)",
+		"numeric":           "NUMERIC(18,0)",
+		"varbyte":           "VARBYTE(64000)",
+		"varbinary":         "VARBYTE(64000)",
+		"bpchar(10)":        "CHARACTER(10)",
+		"varchar(MAX)":      "CHARACTER VARYING(65535)",
+		"numeric(10)":       "NUMERIC(10,0)",
+		"int4":              "INTEGER",
+		"timestamptz":       "TIMESTAMP WITH TIME ZONE",
 		"varchar(0)":        "",
 		"serial":            "",
 	} {
@@ -158,11 +158,26 @@ func TestColumnType(t *testing.T) {
 	}
 }
 
+// TestCatalogType uppercases catalog types, canonicalizing known ones and keeping quoted names byte-exact.
+func TestCatalogType(t *testing.T) {
+	for value, expected := range map[string]string{
+		"character varying(256)": "CHARACTER VARYING(256)",
+		"int4":                   "INTEGER",
+		" numeric(18,0) ":        "NUMERIC(18,0)",
+		"string":                 "STRING",
+		"array<int>":             "ARRAY<INT>",
+		`"char"`:                 `"char"`,
+		"":                       "",
+	} {
+		assert.Equal(t, expected, CatalogType(value), value)
+	}
+}
+
 // TestSignature canonicalizes and joins routine argument types and names the failing argument.
 func TestSignature(t *testing.T) {
 	signature, err := Signature("INT4", "varchar(10)", "timestamptz")
 	require.NoError(t, err)
-	assert.Equal(t, Keyword("integer, character varying(10), timestamp with time zone"), signature)
+	assert.Equal(t, Keyword("INTEGER, CHARACTER VARYING(10), TIMESTAMP WITH TIME ZONE"), signature)
 	signature, err = Signature()
 	require.NoError(t, err)
 	assert.Empty(t, signature)

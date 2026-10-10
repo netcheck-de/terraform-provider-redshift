@@ -106,7 +106,7 @@ func TestFunctionSQL(t *testing.T) {
 		{"drop_invalid_argument", func() (string, error) { return dropFunctionStatement(functionTestModel("money")) }},
 		{"error_python", functionTestCreate(invalid(func(data *functionModel) { data.Language = types.StringValue("plpythonu") }), false)},
 		{"error_language", functionTestCreate(invalid(func(data *functionModel) { data.Language = types.StringValue("plpgsql") }), false)},
-		{"error_language_case", functionTestCreate(invalid(func(data *functionModel) { data.Language = types.StringValue("SQL") }), false)},
+		{"language_any_case", functionTestCreate(invalid(func(data *functionModel) { data.Language = types.StringValue("Sql") }), false)},
 		{"error_anyelement", functionTestCreate(functionTestModel("anyelement"), false)},
 		{"error_refcursor_return", functionTestCreate(invalid(func(data *functionModel) { data.ReturnType = types.StringValue("refcursor") }), false)},
 		{"error_unknown_type", functionTestCreate(functionTestModel("integer", "money"), false)},
@@ -123,9 +123,9 @@ func TestFunctionSQL(t *testing.T) {
 // oidvectortypes reports it.
 func TestFunctionSignatureIgnoresModifiers(t *testing.T) {
 	for expected, arguments := range map[string][]string{
-		"integer, character varying, numeric, character": {"int4", "varchar(10)", "decimal(12,2)", "bpchar"},
+		"INTEGER, CHARACTER VARYING, NUMERIC, CHARACTER": {"int4", "varchar(10)", "decimal(12,2)", "bpchar"},
 		"": nil,
-		"interval day to second, double precision": {"INTERVAL DAY TO SECOND(3)", "float"},
+		"INTERVAL DAY TO SECOND, DOUBLE PRECISION": {"INTERVAL DAY TO SECOND(3)", "float"},
 	} {
 		signature, err := functionSignature(functionTestModel(arguments...))
 		require.NoError(t, err)

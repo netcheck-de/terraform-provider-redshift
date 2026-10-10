@@ -41,9 +41,9 @@ const (
 	fractionModifier
 )
 
-// typeRule maps one spelling to the name format_type() reports.
+// typeRule maps one spelling to the canonical name: the one format_type() reports, in uppercase.
 type typeRule struct {
-	// canonical is the format_type() spelling without modifiers.
+	// canonical is the uppercase format_type() spelling without modifiers.
 	canonical string
 	// modifier selects the accepted parenthesized arguments.
 	modifier typeModifier
@@ -67,39 +67,39 @@ var typeRules = func() map[string]typeRule {
 	rules := map[string]typeRule{}
 	add := func(rule typeRule, spellings ...string) {
 		for _, spelling := range append(spellings, rule.canonical) {
-			rules[spelling] = rule
+			rules[strings.ToLower(spelling)] = rule
 		}
 	}
-	add(typeRule{canonical: "smallint"}, "int2")
-	add(typeRule{canonical: "integer"}, "int", "int4")
-	add(typeRule{canonical: "bigint"}, "int8")
-	add(typeRule{canonical: "numeric", modifier: precisionModifier, columnDefault: "(18,0)"}, "decimal")
-	add(typeRule{canonical: "real"}, "float4")
-	add(typeRule{canonical: "double precision"}, "float8", "float")
-	add(typeRule{canonical: "boolean"}, "bool")
-	character := typeRule{canonical: "character", modifier: lengthModifier, maximum: maxCharLength, columnDefault: "(1)"}
+	add(typeRule{canonical: "SMALLINT"}, "int2")
+	add(typeRule{canonical: "INTEGER"}, "int", "int4")
+	add(typeRule{canonical: "BIGINT"}, "int8")
+	add(typeRule{canonical: "NUMERIC", modifier: precisionModifier, columnDefault: "(18,0)"}, "decimal")
+	add(typeRule{canonical: "REAL"}, "float4")
+	add(typeRule{canonical: "DOUBLE PRECISION"}, "float8", "float")
+	add(typeRule{canonical: "BOOLEAN"}, "bool")
+	character := typeRule{canonical: "CHARACTER", modifier: lengthModifier, maximum: maxCharLength, columnDefault: "(1)"}
 	add(character, "char", "nchar")
 	// BPCHAR is the same type, but a column declared as BPCHAR becomes CHAR(256) rather than CHAR(1).
 	character.columnDefault = "(256)"
 	rules["bpchar"] = character
-	add(typeRule{canonical: "character varying", modifier: lengthModifier, maximum: maxVarcharLength, columnDefault: "(256)"}, "varchar", "nvarchar", "text")
-	add(typeRule{canonical: "date"})
-	add(typeRule{canonical: "timestamp without time zone"}, "timestamp")
-	add(typeRule{canonical: "timestamp with time zone"}, "timestamptz")
-	add(typeRule{canonical: "time without time zone"}, "time")
-	add(typeRule{canonical: "time with time zone"}, "timetz")
-	add(typeRule{canonical: "interval year to month"})
-	add(typeRule{canonical: "interval day to second", modifier: fractionModifier})
-	add(typeRule{canonical: "varbyte", modifier: lengthModifier, maximum: maxVarbyteLength, columnDefault: "(64000)"}, "varbinary", "binary varying")
-	for _, name := range []string{"geometry", "geography", "hllsketch", "super", "anyelement", "refcursor"} {
+	add(typeRule{canonical: "CHARACTER VARYING", modifier: lengthModifier, maximum: maxVarcharLength, columnDefault: "(256)"}, "varchar", "nvarchar", "text")
+	add(typeRule{canonical: "DATE"})
+	add(typeRule{canonical: "TIMESTAMP WITHOUT TIME ZONE"}, "timestamp")
+	add(typeRule{canonical: "TIMESTAMP WITH TIME ZONE"}, "timestamptz")
+	add(typeRule{canonical: "TIME WITHOUT TIME ZONE"}, "time")
+	add(typeRule{canonical: "TIME WITH TIME ZONE"}, "timetz")
+	add(typeRule{canonical: "INTERVAL YEAR TO MONTH"})
+	add(typeRule{canonical: "INTERVAL DAY TO SECOND", modifier: fractionModifier})
+	add(typeRule{canonical: "VARBYTE", modifier: lengthModifier, maximum: maxVarbyteLength, columnDefault: "(64000)"}, "varbinary", "binary varying")
+	for _, name := range []string{"GEOMETRY", "GEOGRAPHY", "HLLSKETCH", "SUPER", "ANYELEMENT", "REFCURSOR"} {
 		add(typeRule{canonical: name})
 	}
 	return rules
 }()
 
-// TypeName validates a Redshift data type and returns the spelling format_type() reports for it,
-// for example int4 → integer and varchar(10) → character varying(10), so configuration compares equal to the catalog.
-// Lengths are kept as written, except that MAX becomes the type's maximum. A type without modifiers stays bare, as
+// TypeName validates a Redshift data type, in any case, and returns the spelling format_type() reports for it in
+// uppercase, for example int4 → INTEGER and varchar(10) → CHARACTER VARYING(10). Catalog types pass through it too, so
+// configuration and catalog compare equal, and the provider writes and reports one spelling. Lengths are kept as written, except that MAX becomes the type's maximum. A type without modifiers stays bare, as
 // routine arguments are reported; column definitions use ColumnType, which adds the server's default modifier.
 func TypeName(value string) (Keyword, error) {
 	normalized := normalizeTypeName(value)
@@ -148,7 +148,7 @@ func TypeName(value string) (Keyword, error) {
 }
 
 // ColumnType is TypeName for column definitions. A type declared without modifiers gets the one Redshift gives the
-// column, for example varchar → character varying(256), char → character(1) and bpchar → character(256), so the
+// column, for example varchar → CHARACTER VARYING(256), char → CHARACTER(1) and bpchar → CHARACTER(256), so the
 // result compares equal to format_type() of the column and never silently narrows it.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_Character_types.html
 func ColumnType(value string) (Keyword, error) {
@@ -160,6 +160,19 @@ func ColumnType(value string) (Keyword, error) {
 		return name + Keyword(rule.columnDefault), nil
 	}
 	return name, nil
+}
+
+// CatalogType returns the canonical spelling of a type the catalog reports, such as format_type() output, for the
+// provider to compare and report. A type TypeName does not know is uppercased as well, so every reported type uses
+// one case, unless it holds a quoted name, whose case is significant; it still surfaces as drift rather than an error.
+func CatalogType(value string) string {
+	if name, err := TypeName(value); err == nil {
+		return string(name)
+	}
+	if strings.Contains(value, `"`) {
+		return strings.TrimSpace(value)
+	}
+	return strings.ToUpper(strings.TrimSpace(value))
 }
 
 // normalizeTypeName lowercases a type and collapses its whitespace, so aliases are looked up by one spelling.

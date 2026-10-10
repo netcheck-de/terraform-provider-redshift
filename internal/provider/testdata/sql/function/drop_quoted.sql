@@ -1,1 +1,1 @@
-DROP FUNCTION "Odd""Schema"."F""Mixed"(integer, character varying, numeric);
+DROP FUNCTION "Odd""Schema"."F""Mixed"(INTEGER, CHARACTER VARYING, NUMERIC);

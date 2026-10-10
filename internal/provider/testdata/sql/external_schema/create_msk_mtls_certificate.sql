@@ -1,1 +1,1 @@
-CREATE EXTERNAL SCHEMA "stream" FROM MSK IAM_ROLE 'arn:aws:iam::123456789012:role/msk' AUTHENTICATION mtls AUTHENTICATION_ARN 'arn:aws:acm:eu-central-1:123456789012:certificate/it''s' URI 'b-1.example.kafka.eu-central-1.amazonaws.com:9098';
+CREATE EXTERNAL SCHEMA "stream" FROM MSK IAM_ROLE 'arn:aws:iam::123456789012:role/msk' AUTHENTICATION MTLS AUTHENTICATION_ARN 'arn:aws:acm:eu-central-1:123456789012:certificate/it''s' URI 'b-1.example.kafka.eu-central-1.amazonaws.com:9098';

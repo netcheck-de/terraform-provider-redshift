@@ -8,6 +8,6 @@ SELECT function_name FROM svv_redshift_functions WHERE database_name = :database
 
 SELECT privilege_type, admin_option FROM svv_function_privileges WHERE namespace_name = :schema AND function_name = :name AND argument_types = :arguments AND identity_name = :grantee AND identity_type = LOWER(:kind);
 
-GRANT EXECUTE ON FUNCTION "Odd""Database"."Odd""Schema"."Odd""Function"(character varying) TO "Odd""User";
+GRANT EXECUTE ON FUNCTION "Odd""Database"."Odd""Schema"."Odd""Function"(CHARACTER VARYING) TO "Odd""User";
 
-REVOKE EXECUTE ON FUNCTION "Odd""Database"."Odd""Schema"."Odd""Function"(character varying) FROM "Odd""User";
+REVOKE EXECUTE ON FUNCTION "Odd""Database"."Odd""Schema"."Odd""Function"(CHARACTER VARYING) FROM "Odd""User";

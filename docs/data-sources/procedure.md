@@ -42,7 +42,7 @@ output "purge_outputs" {
 
 ### Optional
 
-- `arguments` (List of String) Ordered `IN` and `INOUT` argument types selecting the overload, at most 32, as `signature` and the import identity hold them; `OUT` arguments are not part of it. Another spelling of the same type, such as `int` for `integer`, selects the same overload, and modifiers such as `varchar(64)` are ignored. Omit for a procedure without input arguments.
+- `arguments` (List of String) Ordered `IN` and `INOUT` argument types selecting the overload, at most 32, as `signature` and the import identity hold them; `OUT` arguments are not part of it. Another spelling of the same type, such as `INT` for `INTEGER`, selects the same overload, and modifiers such as `VARCHAR(64)` are ignored. Omit for a procedure without input arguments.
 
 ### Read-Only
 
@@ -54,7 +54,7 @@ output "purge_outputs" {
 - `nonatomic` (Boolean) Creates the procedure in `NONATOMIC` transaction mode, which commits each statement automatically. Redshift does not report the mode in its catalog, so drift is not detected and an import leaves it `null`. Changed in place with `CREATE OR REPLACE PROCEDURE`.
 - `owner` (String) SQL user owning the procedure. When set, applied with `ALTER PROCEDURE ... OWNER TO`, which requires a superuser; when omitted, the catalog owner is reported.
 - `security` (String) `INVOKER` (default) runs with the caller's privileges, `DEFINER` with the owner's. `DEFINER` is not supported with `nonatomic`. Changed in place with `CREATE OR REPLACE PROCEDURE`.
-- `signature` (String) Canonical `IN` and `INOUT` argument types without modifiers, as `ALTER PROCEDURE`, `DROP PROCEDURE`, and `GRANT ... ON PROCEDURE` identify the procedure, for example `integer, character varying`.
+- `signature` (String) Canonical `IN` and `INOUT` argument types without modifiers, as `ALTER PROCEDURE`, `DROP PROCEDURE`, and `GRANT ... ON PROCEDURE` identify the procedure, for example `INTEGER, CHARACTER VARYING`.
 
 <a id="nestedatt--argument"></a>
 ### Nested Schema for `argument`
@@ -63,7 +63,7 @@ Read-Only:
 
 - `mode` (String) `OUT` or `INOUT`, or `null` for an `IN` argument. `OUT` arguments are returned by `CALL` and are not part of the signature.
 - `name` (String) Argument name; `null` when the catalog does not keep it, as for an unnamed argument.
-- `type` (String) Argument data type without length or precision, such as `integer` or `character varying`.
+- `type` (String) Argument data type without length or precision, such as `INTEGER` or `CHARACTER VARYING`.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `arguments` selects the overload by its `IN` and `INOUT` types, as the `arguments` key of the paired resource's import

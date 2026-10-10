@@ -7,11 +7,11 @@ SELECT command_type AS privilege_type FROM svv_iam_privileges WHERE iam_arn = :a
 -- params: {"arn":"default-aws-iam-role","grantee":"readers","kind":"ROLE"}
 
 -- database: admin
-REVOKE ASSUMEROLE ON default FROM ROLE "readers" FOR COPY;
+REVOKE ASSUMEROLE ON DEFAULT FROM ROLE "readers" FOR COPY;
 -- params: {}
 
 -- database: admin
-GRANT ASSUMEROLE ON default TO ROLE "readers" FOR UNLOAD;
+GRANT ASSUMEROLE ON DEFAULT TO ROLE "readers" FOR UNLOAD;
 -- params: {}
 
 -- database: admin

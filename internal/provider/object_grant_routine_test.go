@@ -27,10 +27,10 @@ func TestObjectGrantRoutineLifecycle(t *testing.T) {
 	r.resourceClient = testResourceClient(c)
 	executeOnly := []string{"EXECUTE"}
 	require.NoError(t, r.reconcile(context.Background(), withGrantOptions(privilegeObject(t, r, fields, executeOnly...), executeOnly)))
-	assert.Equal(t, []string{`GRANT EXECUTE ON FUNCTION "warehouse"."serving"."f_score"(integer, character varying) TO "analyst" WITH GRANT OPTION`}, c.writes)
+	assert.Equal(t, []string{`GRANT EXECUTE ON FUNCTION "warehouse"."serving"."f_score"(INTEGER, CHARACTER VARYING) TO "analyst" WITH GRANT OPTION`}, c.writes)
 	require.NoError(t, r.reconcile(context.Background(), withGrantOptions(privilegeObject(t, r, fields), nil)))
 	require.Len(t, c.writes, 2)
-	assert.Equal(t, `REVOKE EXECUTE ON FUNCTION "warehouse"."serving"."f_score"(integer, character varying) FROM "analyst"`, c.writes[1])
+	assert.Equal(t, `REVOKE EXECUTE ON FUNCTION "warehouse"."serving"."f_score"(INTEGER, CHARACTER VARYING) FROM "analyst"`, c.writes[1])
 	resp := resource.ImportStateResponse{State: testState(t, r, privilegeObject(t, r, fields))}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: r.identity("admin", fields).ValueString()}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)

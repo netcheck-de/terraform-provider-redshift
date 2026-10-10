@@ -7,7 +7,7 @@ SELECT command_type AS privilege_type FROM svv_iam_privileges WHERE iam_arn = :a
 -- params: {"arn":"default-aws-iam-role","grantee":"readers","kind":"GROUP"}
 
 -- database: admin
-GRANT ASSUMEROLE ON default TO GROUP "readers" FOR CREATE MODEL;
+GRANT ASSUMEROLE ON DEFAULT TO GROUP "readers" FOR CREATE MODEL;
 -- params: {}
 
 -- database: admin

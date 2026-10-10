@@ -1,1 +1,1 @@
-CREATE MASKING POLICY "mask_defaults" WITH ("note" character varying(256), "amount" numeric(18,0), "code" character(1)) USING (NULL::VARCHAR(256));
+CREATE MASKING POLICY "mask_defaults" WITH ("note" CHARACTER VARYING(256), "amount" NUMERIC(18,0), "code" CHARACTER(1)) USING (NULL::VARCHAR(256));

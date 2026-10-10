@@ -11,8 +11,8 @@ import (
 )
 
 // errFunctionPython rejects Python UDFs, which AWS stops supporting; the provider never deploys new ones.
-var errFunctionPython = errors.New("language plpythonu is not supported: Amazon Redshift ends support for Python UDFs after June 30, 2026; " +
-	"rewrite the function as a SQL UDF (LANGUAGE sql) or a Lambda UDF")
+var errFunctionPython = errors.New("language PLPYTHONU is not supported: Amazon Redshift ends support for Python UDFs after June 30, 2026; " +
+	"rewrite the function as a SQL UDF (LANGUAGE SQL) or a Lambda UDF")
 
 // functionSpec is the validated definition of a SQL UDF, rendered by the function statements.
 type functionSpec struct {
@@ -35,16 +35,18 @@ func functionSignature(data functionModel) (sqlclient.Keyword, error) {
 	return routineSignature(routineStrings(data.Arguments))
 }
 
+// functionLanguageSQL is the canonical spelling of the only supported language; configuration may use any case.
+const functionLanguageSQL = "SQL"
+
 // functionLanguage checks the language before anything else, so a Python UDF gets the end-of-support explanation
-// rather than a type error. sql must be lowercase: state reports pg_language.lanname, and another spelling would
-// make every apply inconsistent with the plan and every import replace the function.
+// rather than a type error.
 func functionLanguage(data functionModel) error {
 	language := knownString(data.Language)
 	if strings.EqualFold(language, "plpythonu") {
 		return errFunctionPython
 	}
-	if language != "" && language != "sql" {
-		return fmt.Errorf("language %q is not supported; only sql, in lowercase, is", language)
+	if language != "" && !strings.EqualFold(language, functionLanguageSQL) {
+		return fmt.Errorf("language %q is not supported; only SQL is", language)
 	}
 	return nil
 }
@@ -110,7 +112,7 @@ func functionArguments(argumentTypes []sqlclient.Keyword) []sqlclient.Statement 
 func createFunctionStatement(spec functionSpec, replace bool) string {
 	return sqlclient.Stmt("CREATE").If(replace, "OR REPLACE").Kw("FUNCTION").Qualified(spec.schema, spec.name).
 		Args(functionArguments(spec.arguments)...).Kw("RETURNS").Kw(spec.returns).Kw(spec.volatility).
-		Kw("AS").Body(spec.body).Kw("LANGUAGE sql").String()
+		Kw("AS").Body(spec.body).Kw("LANGUAGE", functionLanguageSQL).String()
 }
 
 // functionTarget renders the function and its input types, as ALTER FUNCTION and DROP FUNCTION require.
@@ -176,5 +178,5 @@ func readFunctionQuery(schema, name string, signature sqlclient.Keyword) sqlclie
 		Where("n.nspname = :schema", sqlclient.Bind("schema", schema)).
 		Where("p.proname = :name", sqlclient.Bind("name", name)).
 		Where("p.prokind = 'f'").
-		WhereEither(signature == "", "p.pronargs = 0", "oidvectortypes(p.proargtypes) = :arguments", sqlclient.Bind("arguments", string(signature)))
+		WhereEither(signature == "", "p.pronargs = 0", "oidvectortypes(p.proargtypes) = :arguments", sqlclient.Bind("arguments", routineCatalogArguments(signature)))
 }

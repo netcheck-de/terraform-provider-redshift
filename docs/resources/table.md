@@ -138,7 +138,7 @@ resource "redshift_table" "events" {
 Required:
 
 - `name` (String) Column name, in lowercase.
-- `type` (String) Redshift data type, such as `bigint`, `numeric(12,2)`, or `varchar(256)`. Aliases are compared by their canonical form, and a type without a length gets the one Redshift applies, for example `varchar` is `character varying(256)`.
+- `type` (String) Redshift data type, such as `BIGINT`, `NUMERIC(12,2)`, or `VARCHAR(256)`. Aliases are compared by their canonical form, and a type without a length gets the one Redshift applies, for example `VARCHAR` is `CHARACTER VARYING(256)`.
 
 Optional:
 
@@ -440,7 +440,7 @@ column {
 ```
 
 ```sql
-ALTER TABLE "serving"."events" ADD COLUMN "note" character varying(32) ENCODE LZO;
+ALTER TABLE "serving"."events" ADD COLUMN "note" CHARACTER VARYING(32) ENCODE LZO;
 ```
 
 ### Reordering Columns
@@ -482,7 +482,7 @@ column {
 ```
 
 ```sql
-ALTER TABLE "serving"."events" ALTER COLUMN "note" TYPE character varying(65535);
+ALTER TABLE "serving"."events" ALTER COLUMN "note" TYPE CHARACTER VARYING(65535);
 
 ALTER TABLE "serving"."events" ALTER COLUMN "note" ENCODE ZSTD;
 ```
@@ -570,7 +570,7 @@ primary_key {
 ```sql
 ALTER TABLE "serving"."events" DROP CONSTRAINT "events_pkey";
 
-ALTER TABLE "serving"."events" ADD COLUMN "code" character(2) DEFAULT 'xx' NOT NULL;
+ALTER TABLE "serving"."events" ADD COLUMN "code" CHARACTER(2) DEFAULT 'xx' NOT NULL;
 
 ALTER TABLE "serving"."events" DROP COLUMN "note";
 

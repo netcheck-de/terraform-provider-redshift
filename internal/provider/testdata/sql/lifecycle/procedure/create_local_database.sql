@@ -1,9 +1,9 @@
 -- database: warehouse
-CREATE PROCEDURE "public"."sp_example"("min_id" IN integer, "total" OUT bigint) AS $$BEGIN total := min_id * 2; END;$$ LANGUAGE plpgsql SECURITY INVOKER;
+CREATE PROCEDURE "public"."sp_example"("min_id" IN INTEGER, "total" OUT BIGINT) AS $$BEGIN total := min_id * 2; END;$$ LANGUAGE PLPGSQL SECURITY INVOKER;
 -- params: {}
 
 -- database: warehouse
-ALTER PROCEDURE "public"."sp_example"(integer) OWNER TO "admin";
+ALTER PROCEDURE "public"."sp_example"(INTEGER) OWNER TO "admin";
 -- params: {}
 
 -- database: admin
@@ -15,5 +15,5 @@ SELECT p.proname AS procedure_name, u.usename AS owner, p.prosecdef AS security_
 -- params: {"arguments":"integer","name":"sp_example","schema":"public"}
 
 -- database: warehouse
-SHOW PARAMETERS OF PROCEDURE "public"."sp_example"(integer);
+SHOW PARAMETERS OF PROCEDURE "public"."sp_example"(INTEGER);
 -- params: {}

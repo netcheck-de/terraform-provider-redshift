@@ -188,7 +188,7 @@ func TestValidateExternalSchemaRules(t *testing.T) {
 			d.Authentication = types.StringValue("mtls")
 			d.SecretARN = types.StringUnknown()
 		})},
-		"msk iam secret": {data: with("MSK", func(d *externalSchemaModel) { d.SecretARN = types.StringValue("x") }), problem: "apply only to AUTHENTICATION mtls"},
+		"msk iam secret": {data: with("MSK", func(d *externalSchemaModel) { d.SecretARN = types.StringValue("x") }), problem: "apply only to AUTHENTICATION MTLS"},
 		"msk unknown auth": {data: with("MSK", func(d *externalSchemaModel) {
 			d.Authentication = types.StringUnknown()
 			d.IAMRoleARN = types.StringNull()
@@ -250,6 +250,26 @@ func TestExternalSchemaKeepsUnrecordedOptions(t *testing.T) {
 	assert.Equal(t, "orders", imported.SourceDatabase.ValueString())
 	assert.True(t, imported.URI.IsNull())
 	assert.True(t, imported.SourceSchema.IsNull())
+}
+
+// TestExternalSchemaAuthenticationCase reports the streaming authentication in uppercase after an import, keeps a
+// configured spelling in another case, and alters nothing for a change of case only.
+func TestExternalSchemaAuthenticationCase(t *testing.T) {
+	r := &externalSchemaResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+		return []sqlclient.Row{{"schemaname": "stream", "eskind": "10", "owner": "admin", "esoptions": `{"IAM_ROLE":"arn:aws:iam::123456789012:role/msk","URI":"b-1.example.kafka.eu-central-1.amazonaws.com:9098","AUTHENTICATION":"iam"}`}}, nil
+	}))}
+	configured := externalSchemaMSK("iam")
+	found, err := r.read(context.Background(), &configured)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, "iam", configured.Authentication.ValueString())
+	imported := externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("stream"), Port: types.Int64Unknown(), SourceSchema: types.StringUnknown()}
+	_, err = r.read(context.Background(), &imported)
+	require.NoError(t, err)
+	assert.Equal(t, "IAM", imported.Authentication.ValueString())
+	statements, err := alterExternalSchemaStatements(externalSchemaMSK("IAM"), externalSchemaMSK("iam"))
+	require.NoError(t, err)
+	assert.Empty(t, statements)
 }
 
 // TestExternalSchemaUpdateFailures rejects changes ALTER EXTERNAL SCHEMA cannot make and unconverged changes.

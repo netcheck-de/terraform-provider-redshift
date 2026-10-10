@@ -96,7 +96,7 @@ func (r *procedureResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"signature": schema.StringAttribute{
-				Computed: true, MarkdownDescription: "Canonical `IN` and `INOUT` argument types without modifiers, as `ALTER PROCEDURE`, `DROP PROCEDURE`, and `GRANT ... ON PROCEDURE` identify the procedure, for example `integer, character varying`.",
+				Computed: true, MarkdownDescription: "Canonical `IN` and `INOUT` argument types without modifiers, as `ALTER PROCEDURE`, `DROP PROCEDURE`, and `GRANT ... ON PROCEDURE` identify the procedure, for example `INTEGER, CHARACTER VARYING`.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"body": schema.StringAttribute{
@@ -125,7 +125,7 @@ func (r *procedureResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Blocks: map[string]schema.Block{
 			"argument": schema.ListNestedBlock{
 				MarkdownDescription: "One block per argument, in order: at most 32 input (`IN`, `INOUT`) and 32 output (`OUT`, `INOUT`) arguments. Omit for a procedure without arguments. The input types identify the procedure; another spelling of the same types, " +
-					"a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `varchar(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the procedure.",
+					"a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the procedure.",
 				PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplaceIf(procedureArgumentsChanged, "Changing the arguments replaces the procedure.", "Changing the arguments replaces the procedure.")},
 				Validators:    []validator.List{listvalidator.SizeAtMost(2 * routineMaxArguments)},
 				NestedObject: schema.NestedBlockObject{Attributes: map[string]schema.Attribute{
@@ -134,7 +134,7 @@ func (r *procedureResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 						Optional: true, MarkdownDescription: "`IN` (when omitted), `OUT`, or `INOUT`. `OUT` arguments are returned by `CALL` and are not part of the signature.",
 						Validators: []validator.String{stringvalidator.OneOf("IN", "OUT", "INOUT")},
 					},
-					"type": schema.StringAttribute{Required: true, MarkdownDescription: "Argument data type, such as `integer`, `varchar(256)`, or `refcursor`."},
+					"type": schema.StringAttribute{Required: true, MarkdownDescription: "Argument data type, such as `INTEGER`, `VARCHAR(256)`, or `REFCURSOR`."},
 				}},
 			},
 		},
@@ -229,7 +229,7 @@ func (r *procedureResource) observe(ctx context.Context, data procedureModel) (p
 	if err != nil {
 		return procedureRow{}, false, err
 	}
-	return procedureRow{signature: rows[0]["arguments"], owner: rows[0]["owner"], body: rows[0]["body"], definer: definer, arguments: arguments}, true, nil
+	return procedureRow{signature: routineCatalogSignature(rows[0]["arguments"]), owner: rows[0]["owner"], body: rows[0]["body"], definer: definer, arguments: arguments}, true, nil
 }
 
 // procedureCatalogArguments keeps the configured arguments the catalog confirms and otherwise reports the

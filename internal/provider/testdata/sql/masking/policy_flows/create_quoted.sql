@@ -1,5 +1,5 @@
 -- database: admin
-CREATE MASKING POLICY "Odd""Policy" WITH ("email" character varying(256)) USING ('it''s \ masked'::VARCHAR(256));
+CREATE MASKING POLICY "Odd""Policy" WITH ("email" CHARACTER VARYING(256)) USING ('it''s \ masked'::VARCHAR(256));
 -- params: {}
 
 -- database: admin

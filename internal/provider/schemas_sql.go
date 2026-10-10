@@ -7,7 +7,7 @@ import "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 const schemasSource sqlclient.Keyword = "svv_all_schemas s LEFT JOIN pg_user u ON u.usesysid = s.schema_owner AND LOWER(s.schema_type) <> 'shared'"
 
 // readSchemasQuery lists the schemas of one database. SVV_ALL_SCHEMAS documents lower-case types while SHOW
-// SCHEMAS prints EXTERNAL in upper case, so the type is compared and reported in lower case.
+// SCHEMAS prints EXTERNAL in upper case, so the type is compared in lower case; callers report it in upper case.
 func readSchemasQuery(database, schemaType string) sqlclient.Query {
 	return sqlclient.Select("s.schema_name", "u.usename AS owner", "LOWER(s.schema_type) AS schema_type", "s.source_database").
 		From(schemasSource).

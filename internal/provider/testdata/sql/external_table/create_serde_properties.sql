@@ -1,1 +1,1 @@
-CREATE EXTERNAL TABLE "example_external"."events" ("id" integer, "label" varchar(64)) ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe' WITH SERDEPROPERTIES ('case.insensitive' = 'false', 'strip.outer.array' = 'true') STORED AS TEXTFILE LOCATION 's3://example-bucket/events/';
+CREATE EXTERNAL TABLE "example_external"."events" ("id" INTEGER, "label" VARCHAR(64)) ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe' WITH SERDEPROPERTIES ('case.insensitive' = 'false', 'strip.outer.array' = 'true') STORED AS TEXTFILE LOCATION 's3://example-bucket/events/';

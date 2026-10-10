@@ -7,7 +7,7 @@ ALTER EXTERNAL SCHEMA "example_external" URI 'b-1.example.kafka.eu-central-1.ama
 -- params: {}
 
 -- database: admin
-ALTER EXTERNAL SCHEMA "example_external" AUTHENTICATION mtls AUTHENTICATION_ARN 'arn:aws:acm:eu-central-1:123456789012:certificate/example';
+ALTER EXTERNAL SCHEMA "example_external" AUTHENTICATION MTLS AUTHENTICATION_ARN 'arn:aws:acm:eu-central-1:123456789012:certificate/example';
 -- params: {}
 
 -- database: admin

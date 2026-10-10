@@ -1,1 +1,1 @@
-ALTER FUNCTION "Odd""Schema"."F""Mixed"(integer, character varying, numeric) OWNER TO "etl";
+ALTER FUNCTION "Odd""Schema"."F""Mixed"(INTEGER, CHARACTER VARYING, NUMERIC) OWNER TO "etl";

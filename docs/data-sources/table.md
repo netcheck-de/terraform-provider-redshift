@@ -70,7 +70,7 @@ Read-Only:
 - `identity` (Attributes) Makes an INTEGER or BIGINT column an `IDENTITY(seed, step)` column, which is always NOT NULL. (see [below for nested schema](#nestedatt--column--identity))
 - `name` (String) Column name, in lowercase.
 - `nullable` (Boolean) Whether the column accepts NULL. Omitted, it is `false` for identity and primary key columns, and otherwise `true` for a new column while an existing column keeps its nullability.
-- `type` (String) Redshift data type, such as `bigint`, `numeric(12,2)`, or `varchar(256)`. Aliases are compared by their canonical form, and a type without a length gets the one Redshift applies, for example `varchar` is `character varying(256)`.
+- `type` (String) Redshift data type, such as `BIGINT`, `NUMERIC(12,2)`, or `VARCHAR(256)`. Aliases are compared by their canonical form, and a type without a length gets the one Redshift applies, for example `VARCHAR` is `CHARACTER VARYING(256)`.
 
 <a id="nestedatt--column--identity"></a>
 ### Nested Schema for `column.identity`

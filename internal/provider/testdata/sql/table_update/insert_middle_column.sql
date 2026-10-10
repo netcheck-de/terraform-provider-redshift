@@ -19,7 +19,7 @@ SELECT sortkey1 FROM svv_table_info WHERE "schema" = :schema AND "table" = :name
 -- params: {"name":"events","schema":"serving"}
 
 -- database: admin
-ALTER TABLE "serving"."events" ADD COLUMN "note" character varying(32) ENCODE LZO;
+ALTER TABLE "serving"."events" ADD COLUMN "note" CHARACTER VARYING(32) ENCODE LZO;
 -- params: {}
 
 -- database: admin

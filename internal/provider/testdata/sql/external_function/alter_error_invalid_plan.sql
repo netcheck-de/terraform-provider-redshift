@@ -1,1 +1,1 @@
--- error: iam_role must be default or comma-separated IAM role ARNs without spaces, got "role"
+-- error: iam_role must be DEFAULT or comma-separated IAM role ARNs without spaces, got "role"

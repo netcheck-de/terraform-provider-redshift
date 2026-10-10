@@ -138,7 +138,7 @@ resource "redshift_external_table" "clicks" {
 Required:
 
 - `name` (String) Column name. The external catalog stores names in lowercase, so names differing only in case are the same column.
-- `type` (String) Data type: `smallint`, `integer`, `bigint`, `decimal(p,s)`, `real`, `double precision`, `boolean`, `char(n)`, `varchar(n)`, `date`, or `timestamp`, including their aliases such as `int4` or `numeric`. Spellings of the same type, such as `int` and `integer`, are equivalent.
+- `type` (String) Data type: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `REAL`, `DOUBLE PRECISION`, `BOOLEAN`, `CHAR(n)`, `VARCHAR(n)`, `DATE`, or `TIMESTAMP`, including their aliases such as `INT4` or `NUMERIC`, in any case. Spellings of the same type, such as `INT` and `INTEGER`, are equivalent. A refresh or import reports the uppercase name, and Glue types the provider cannot declare, such as `STRING`, with uppercase type names.
 
 
 <a id="nestedblock--partition_key"></a>
@@ -147,7 +147,7 @@ Required:
 Required:
 
 - `name` (String) Column name. The external catalog stores names in lowercase, so names differing only in case are the same column.
-- `type` (String) Data type: `smallint`, `integer`, `bigint`, `decimal(p,s)`, `real`, `double precision`, `boolean`, `char(n)`, `varchar(n)`, `date`, or `timestamp`, including their aliases such as `int4` or `numeric`. Spellings of the same type, such as `int` and `integer`, are equivalent.
+- `type` (String) Data type: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `REAL`, `DOUBLE PRECISION`, `BOOLEAN`, `CHAR(n)`, `VARCHAR(n)`, `DATE`, or `TIMESTAMP`, including their aliases such as `INT4` or `NUMERIC`, in any case. Spellings of the same type, such as `INT` and `INTEGER`, are equivalent. A refresh or import reports the uppercase name, and Glue types the provider cannot declare, such as `STRING`, with uppercase type names.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 ## Lifecycle and Ownership
@@ -274,7 +274,7 @@ column {
 ```
 
 ```sql
-ALTER TABLE "example_external"."events" ADD COLUMN "note" varchar(256);
+ALTER TABLE "example_external"."events" ADD COLUMN "note" VARCHAR(256);
 
 ALTER TABLE "example_external"."events" DROP COLUMN "id";
 ```
@@ -343,7 +343,7 @@ stored_as = "ORC"
 ```
 
 ```sql
-ALTER TABLE "example_external"."events" ADD COLUMN "amount" decimal(8, 2);
+ALTER TABLE "example_external"."events" ADD COLUMN "amount" DECIMAL(8, 2);
 ```
 
 Swapping the `id` and `label` blocks of the `ORC` table before `amount` was added runs no statement:

@@ -35,21 +35,21 @@ data "redshift_identity_provider" "this" {
 
 ### Read-Only
 
-- `application_arn` (String) Identity Center managed application ARN; null for `azure`.
-- `audience` (Set of String) Accepted Microsoft Entra ID token audiences; null for `awsidc` or when none are set.
+- `application_arn` (String) Identity Center managed application ARN; null for `AZURE`.
+- `audience` (Set of String) Accepted Microsoft Entra ID token audiences; null for `AWSIDC` or when none are set.
 - `auto_create_roles` (Boolean) Always null: the catalog does not report automatic role creation.
 - `auto_create_roles_exclude_groups` (String) Always null: the catalog does not report the group filter.
 - `auto_create_roles_include_groups` (String) Always null: the catalog does not report the group filter.
-- `client_id` (String) Microsoft Entra ID application (client) ID; null for `awsidc`.
+- `client_id` (String) Microsoft Entra ID application (client) ID; null for `AWSIDC`.
 - `enabled` (Boolean) Whether the provider is enabled.
-- `iam_role_arn` (String) Identity Center integration IAM role ARN; null for `azure`.
+- `iam_role_arn` (String) Identity Center integration IAM role ARN; null for `AZURE`.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
-- `identity_center_instance_arn` (String) IAM Identity Center instance ARN of an `awsidc` provider; null for `azure`.
-- `instance_id` (String) Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `awsidc` and the tenant ID for `azure`.
-- `issuer` (String) Microsoft Entra ID token issuer URL; null for `awsidc`.
+- `identity_center_instance_arn` (String) IAM Identity Center instance ARN of an `AWSIDC` provider; null for `AZURE`.
+- `instance_id` (String) Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `AWSIDC` and the tenant ID for `AZURE`.
+- `issuer` (String) Microsoft Entra ID token issuer URL; null for `AWSIDC`.
 - `namespace` (String) Prefix of federated users and group roles.
 - `provider_id` (Number) Catalog ID of the identity provider (`svv_identity_providers.uid`).
-- `type` (String) Identity provider type: `awsidc` or `azure`.
+- `type` (String) Identity provider type: `AWSIDC` or `AZURE`.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the observed identity provider's JSON identity, using the same warehouse, provider database,

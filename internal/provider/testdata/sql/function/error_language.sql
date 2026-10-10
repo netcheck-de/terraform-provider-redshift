@@ -1,1 +1,1 @@
--- error: language "plpgsql" is not supported; only sql, in lowercase, is
+-- error: language "plpgsql" is not supported; only SQL is

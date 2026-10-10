@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -44,7 +45,7 @@ type functionModel struct {
 	ReturnType types.String `tfsdk:"return_type"`
 	// Volatility is VOLATILE, STABLE, or IMMUTABLE.
 	Volatility types.String `tfsdk:"volatility"`
-	// Language is always sql.
+	// Language is always SQL, in any case.
 	Language types.String `tfsdk:"language"`
 	// Body is the configured SELECT clause.
 	Body types.String `tfsdk:"body"`
@@ -93,7 +94,7 @@ func functionReturnTypeChanged(_ context.Context, req planmodifier.StringRequest
 // Schema defines the function overload, its definition, and its owner.
 func (r *functionResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages one scalar SQL user-defined function (`LANGUAGE sql`) overload. Python UDFs are rejected because AWS ends their support after June 30, 2026.",
+		MarkdownDescription: "Manages one scalar SQL user-defined function (`LANGUAGE SQL`) overload. Python UDFs are rejected because AWS ends their support after June 30, 2026.",
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
@@ -113,12 +114,12 @@ func (r *functionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"arguments": schema.ListAttribute{
 				ElementType: types.StringType, Optional: true,
-				MarkdownDescription: "Ordered input argument data types, at most 32, referenced in `body` as `$1`, `$2`, and so on. SQL UDF arguments have no names. Omit for a function without arguments. The types identify the overload; another spelling of the same types, such as `int` for `integer`, is no change, and a modifier such as `varchar(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the function.",
+				MarkdownDescription: "Ordered input argument data types, at most 32, referenced in `body` as `$1`, `$2`, and so on. SQL UDF arguments have no names. Omit for a function without arguments. The types identify the overload; another spelling of the same types, such as `INT` for `INTEGER`, is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the function.",
 				PlanModifiers:       []planmodifier.List{listplanmodifier.RequiresReplaceIf(functionArgumentsChanged, "Changing the argument types replaces the function.", "Changing the argument types replaces the function.")},
 				Validators:          []validator.List{listvalidator.SizeAtMost(routineMaxArguments)},
 			},
 			"signature": schema.StringAttribute{
-				Computed: true, MarkdownDescription: "Canonical input argument types without modifiers, as `ALTER FUNCTION`, `DROP FUNCTION`, and `GRANT ... ON FUNCTION` identify the overload, for example `integer, character varying`.",
+				Computed: true, MarkdownDescription: "Canonical input argument types without modifiers, as `ALTER FUNCTION`, `DROP FUNCTION`, and `GRANT ... ON FUNCTION` identify the overload, for example `INTEGER, CHARACTER VARYING`.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"return_type": schema.StringAttribute{
@@ -131,9 +132,9 @@ func (r *functionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Validators:          []validator.String{stringvalidator.OneOf("VOLATILE", "STABLE", "IMMUTABLE")},
 			},
 			"language": schema.StringAttribute{
-				Optional: true, Computed: true, Default: stringdefault.StaticString("sql"),
-				MarkdownDescription: "Function language; only `sql`, in lowercase, is accepted. `plpythonu` is rejected because AWS ends Python UDF support after June 30, 2026. Changing it replaces the function.",
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				Optional: true, Computed: true, Default: stringdefault.StaticString(functionLanguageSQL),
+				MarkdownDescription: "Function language; only `SQL`, in any case, is accepted, and another spelling of it is recorded in place. `PLPYTHONU` is rejected because AWS ends Python UDF support after June 30, 2026. Changing it replaces the function.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplaceIf(keywordChanged, "Changing the language replaces the function.", "Changing the language replaces the function.")},
 			},
 			"body": schema.StringAttribute{
 				Required: true, MarkdownDescription: "SQL `SELECT` clause without `FROM`, `INTO`, `WHERE`, `GROUP BY`, `ORDER BY`, or `LIMIT`, sent dollar-quoted and verbatim. Changed in place with `CREATE OR REPLACE FUNCTION`. A body changed outside Terraform appears here as the catalog text.",
@@ -170,7 +171,8 @@ func (r *functionResource) ValidateConfig(ctx context.Context, req resource.Vali
 
 // functionRow is one pg_proc_info row of a function overload.
 type functionRow struct {
-	// arguments, returnType, volatility, language, owner, and body are the catalog values.
+	// arguments, returnType, volatility, language, owner, and body are the catalog values; types and the language
+	// in their canonical uppercase spelling.
 	arguments, returnType, volatility, language, owner, body string
 }
 
@@ -198,7 +200,10 @@ func (r *functionResource) observe(ctx context.Context, data functionModel) (fun
 		return functionRow{}, false, err
 	}
 	row := rows[0]
-	return functionRow{arguments: row["arguments"], returnType: row["return_type"], volatility: volatility, language: row["language"], owner: row["owner"], body: row["body"]}, true, nil
+	return functionRow{
+		arguments: routineCatalogSignature(row["arguments"]), returnType: sqlclient.CatalogType(row["return_type"]), volatility: volatility,
+		language: strings.ToUpper(row["language"]), owner: row["owner"], body: row["body"],
+	}, true, nil
 }
 
 // functionCatalogArguments keeps the configured spelling of input types the catalog confirms, and otherwise
@@ -230,7 +235,7 @@ func (row functionRow) apply(data *functionModel, applied bool) {
 	if data.ReturnType.IsNull() || data.ReturnType.IsUnknown() || !routineCatalogTypeMatches(data.ReturnType.ValueString(), row.returnType) {
 		data.ReturnType = types.StringValue(routineCatalogType(row.returnType))
 	}
-	data.Volatility, data.Language = types.StringValue(row.volatility), types.StringValue(row.language)
+	data.Volatility, data.Language = types.StringValue(row.volatility), keywordValue(data.Language, row.language)
 	data.Owner = routineOwner(data.Owner, row.owner)
 	if applied {
 		data.Body, data.DefinitionFingerprint = recordDefinition(data.Body, row.body)

@@ -270,6 +270,8 @@ func externalTableFakeColumnOf(tokens []externalTableFakeToken) (externalTableFa
 			dataType += token.text
 		}
 	}
+	// Glue stores Hive types in lowercase.
+	dataType = strings.ToLower(dataType)
 	if hive, ok := externalTableFakeHiveTypes[dataType]; ok {
 		dataType = hive
 	}

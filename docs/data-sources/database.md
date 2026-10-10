@@ -39,7 +39,7 @@ data "redshift_database" "analytics" {
 
 - `collation` (String) `CASE_SENSITIVE` or `CASE_INSENSITIVE` for a local database, read with `DB_COLLATION()` in a session inside it; null for shared databases, or with a warning when that session is refused, for example by the database's connection limit.
 - `connection_limit` (Number) Maximum concurrent connections to a local database; `-1` means `UNLIMITED`. Null for shared databases.
-- `database_type` (String) `local` or `shared`.
+- `database_type` (String) `LOCAL` or `SHARED`.
 - `datashare_arn` (String) Backing producer datashare ARN; null for local databases. Shared lookups require redshift:DescribeDataShares.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `isolation_level` (String) `SERIALIZABLE` or `SNAPSHOT` for a local database; null for shared databases.

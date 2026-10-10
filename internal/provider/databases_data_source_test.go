@@ -15,11 +15,11 @@ var _ = registerParity(parityCase{source: newDatabasesDataSource, collection: tr
 func TestDatabasesDataSource(t *testing.T) {
 	items := discoveryTranscript(t, "discovery/databases", "all", newDatabasesDataSource, nil)
 	assert.Equal(t, []string{"admin", "analytics", "consumer_db"}, discoveryNames(items, "name"))
-	assert.Equal(t, types.StringValue("Serializable"), items[1]["isolation_level"])
+	assert.Equal(t, types.StringValue("SERIALIZABLE"), items[1]["isolation_level"])
 	assert.Equal(t, types.StringValue("admin"), items[1]["owner"])
 	assert.True(t, items[2]["owner"].IsNull(), "a missing owner is null, not empty")
 	assert.True(t, items[2]["isolation_level"].IsNull())
-	assert.Equal(t, types.StringValue("shared"), items[2]["database_type"])
+	assert.Equal(t, types.StringValue("SHARED"), items[2]["database_type"])
 
 	items = discoveryTranscript(t, "discovery/databases", "filtered", newDatabasesDataSource, map[string]string{"database_type": "local", "name_like": "ana%"})
 	assert.Equal(t, []string{"analytics"}, discoveryNames(items, "name"))

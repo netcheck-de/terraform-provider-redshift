@@ -1,1 +1,1 @@
-ALTER TABLE "serving"."events" ADD COLUMN "note" character varying(32) ENCODE LZO;
+ALTER TABLE "serving"."events" ADD COLUMN "note" CHARACTER VARYING(32) ENCODE LZO;

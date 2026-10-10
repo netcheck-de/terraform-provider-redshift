@@ -1,9 +1,9 @@
 -- database: admin
-CREATE FUNCTION "public"."f_example"(integer) RETURNS integer IMMUTABLE AS $$SELECT $1 + 1$$ LANGUAGE sql;
+CREATE FUNCTION "public"."f_example"(INTEGER) RETURNS INTEGER IMMUTABLE AS $$SELECT $1 + 1$$ LANGUAGE SQL;
 -- params: {}
 
 -- database: admin
-ALTER FUNCTION "public"."f_example"(integer) OWNER TO "admin";
+ALTER FUNCTION "public"."f_example"(INTEGER) OWNER TO "admin";
 -- params: {}
 
 -- database: admin

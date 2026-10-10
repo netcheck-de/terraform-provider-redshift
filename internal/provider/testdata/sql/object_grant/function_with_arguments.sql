@@ -8,6 +8,6 @@ SELECT function_name FROM svv_redshift_functions WHERE database_name = :database
 
 SELECT privilege_type, admin_option FROM svv_function_privileges WHERE namespace_name = :schema AND function_name = :name AND argument_types = :arguments AND identity_name = :grantee AND identity_type = LOWER(:kind);
 
-GRANT EXECUTE ON FUNCTION "warehouse"."serving"."f_score"(integer, character varying, numeric) TO "analyst";
+GRANT EXECUTE ON FUNCTION "warehouse"."serving"."f_score"(INTEGER, CHARACTER VARYING, NUMERIC) TO "analyst";
 
-REVOKE EXECUTE ON FUNCTION "warehouse"."serving"."f_score"(integer, character varying, numeric) FROM "analyst";
+REVOKE EXECUTE ON FUNCTION "warehouse"."serving"."f_score"(INTEGER, CHARACTER VARYING, NUMERIC) FROM "analyst";

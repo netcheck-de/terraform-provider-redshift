@@ -1,1 +1,1 @@
-CREATE TABLE "serving"."staging" ("payload" super) DISTSTYLE AUTO SORTKEY AUTO;
+CREATE TABLE "serving"."staging" ("payload" SUPER) DISTSTYLE AUTO SORTKEY AUTO;

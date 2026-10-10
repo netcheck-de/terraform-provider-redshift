@@ -94,7 +94,7 @@ func TestMaskingPolicySQL(t *testing.T) {
 func TestMaskingPolicyCatalogParsing(t *testing.T) {
 	columns, err := maskingPolicyParseColumns(`[{"colname":"credit_card","type":"character varying(256)"},{"colname":"flag","type":"boolean"}]`)
 	require.NoError(t, err)
-	assert.Equal(t, []maskingPolicyColumn{{Name: "credit_card", Type: "character varying(256)"}, {Name: "flag", Type: "boolean"}}, columns)
+	assert.Equal(t, []maskingPolicyColumn{{Name: "credit_card", Type: "CHARACTER VARYING(256)"}, {Name: "flag", Type: "BOOLEAN"}}, columns)
 	_, err = maskingPolicyParseColumns("not json")
 	require.Error(t, err)
 
@@ -113,5 +113,5 @@ func TestMaskingPolicyCatalogParsing(t *testing.T) {
 	assert.True(t, maskingPolicyColumnsMatch(configured, []maskingPolicyColumn{{Name: "email", Type: "character varying(256)"}, {Name: "amount", Type: "numeric(10,2)"}}))
 	assert.False(t, maskingPolicyColumnsMatch(configured, []maskingPolicyColumn{{Name: "email", Type: "character varying(64)"}, {Name: "amount", Type: "numeric(10,2)"}}))
 	assert.False(t, maskingPolicyColumnsMatch(configured, configured[:1]))
-	assert.Equal(t, "some future type", maskingPolicyCanonicalType("Some  Future TYPE"))
+	assert.Equal(t, "SOME FUTURE TYPE", maskingPolicyCanonicalType("Some  Future TYPE"))
 }

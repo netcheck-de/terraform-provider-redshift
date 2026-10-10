@@ -46,7 +46,7 @@ data "redshift_masking_policy" "email" {
 Read-Only:
 
 - `name` (String) Input column name used in `expression`; it does not have to match the masked column's name.
-- `type` (String) Data type as the catalog reports it, such as `character varying(256)` for a configured `VARCHAR(256)`.
+- `type` (String) Data type in the canonical form the catalog reports, in uppercase, such as `CHARACTER VARYING(256)` for a configured `VARCHAR(256)`.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the policy's JSON identity, using the paired resource's warehouse, `database`, and `name`

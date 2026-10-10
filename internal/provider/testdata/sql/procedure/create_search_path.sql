@@ -1,1 +1,1 @@
-CREATE PROCEDURE "public"."sp_example"("min_id" IN integer, "total" OUT bigint) AS $$BEGIN total := min_id * 2; END;$$ LANGUAGE plpgsql SECURITY INVOKER SET search_path TO '$user', 'Analytics', 'O''Re\\illy';
+CREATE PROCEDURE "public"."sp_example"("min_id" IN INTEGER, "total" OUT BIGINT) AS $$BEGIN total := min_id * 2; END;$$ LANGUAGE PLPGSQL SECURITY INVOKER SET search_path TO '$user', 'Analytics', 'O''Re\\illy';

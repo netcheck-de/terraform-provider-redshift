@@ -61,7 +61,7 @@ func (f *identityProviderFakeFamily) query(c *catalog, _ dataapi.Connection, sql
 		if err != nil {
 			return nil, true, err
 		}
-		f.namespace, f.azure, f.autoCreate = commentUnescaper.Replace(namespace), strings.Contains(sql, " TYPE azure "), ""
+		f.namespace, f.azure, f.autoCreate = commentUnescaper.Replace(namespace), strings.Contains(sql, " TYPE AZURE "), ""
 		if f.azure {
 			if err := f.setParameters(sql); err != nil {
 				return nil, true, err

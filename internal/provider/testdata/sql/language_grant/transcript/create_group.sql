@@ -11,7 +11,7 @@ SELECT privilege_type, admin_option FROM svv_language_privileges WHERE language_
 -- params: {"grantee":"readers","identity_type":"group","language":"plpgsql"}
 
 -- database: warehouse
-GRANT USAGE ON LANGUAGE plpgsql TO GROUP "readers";
+GRANT USAGE ON LANGUAGE PLPGSQL TO GROUP "readers";
 -- params: {}
 
 -- database: admin

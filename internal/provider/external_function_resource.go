@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
@@ -17,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // externalFunctionResource manages a scalar Lambda UDF created with CREATE EXTERNAL FUNCTION.
@@ -97,7 +99,7 @@ func externalFunctionReturnChange(_ context.Context, req planmodifier.StringRequ
 
 // Schema defines the function identity, its Lambda invocation options, and its owner.
 func (r *externalFunctionResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
-	argumentsNote := "Changing the canonical argument types replaces the function; a different spelling of the same types, such as `int` for `integer`, is recorded in place."
+	argumentsNote := "Changing the canonical argument types replaces the function; a different spelling of the same types, such as `INT` for `INTEGER`, is recorded in place."
 	returnNote := "Changing the base type replaces the function; a new length or precision is applied in place with `CREATE OR REPLACE`."
 	configurationOnly := " Redshift does not expose it in a documented catalog view, so changes made outside Terraform are not detected and import leaves it unset until the next apply restates the function."
 	resp.Schema = schema.Schema{
@@ -139,7 +141,7 @@ func (r *externalFunctionResource) Schema(_ context.Context, _ resource.SchemaRe
 				Validators: []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"iam_role": schema.StringAttribute{
-				Required: true, MarkdownDescription: "`default` for the warehouse's default IAM role, or the ARN of an associated IAM role allowed to invoke the Lambda function; chain roles with commas and no spaces. Applied in place with `CREATE OR REPLACE`." + configurationOnly,
+				Required: true, MarkdownDescription: "`DEFAULT`, in any case, for the warehouse's default IAM role, or the ARN of an associated IAM role allowed to invoke the Lambda function; chain roles with commas and no spaces. Applied in place with `CREATE OR REPLACE`." + configurationOnly,
 				Validators: []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"retry_timeout": schema.Int64Attribute{
@@ -218,16 +220,18 @@ func (r *externalFunctionResource) read(ctx context.Context, data *externalFunct
 	if len(rows) != 1 || row["owner"] == "" || row["return_type"] == "" {
 		return false, fmt.Errorf("external function %s.%s has incomplete or ambiguous catalog metadata", data.Schema.ValueString(), data.Name.ValueString())
 	}
-	if row["language"] != "exfunc" {
-		return false, fmt.Errorf("function %s.%s(%s) exists but is a %s function, not an external function", data.Schema.ValueString(), data.Name.ValueString(), row["arguments"], row["language"])
+	if !strings.EqualFold(row["language"], "EXFUNC") {
+		return false, fmt.Errorf("function %s.%s(%s) exists but is a %s function, not an external function", data.Schema.ValueString(), data.Name.ValueString(),
+			routineCatalogSignature(row["arguments"]), strings.ToUpper(row["language"]))
 	}
 	volatility, err := externalFunctionVolatility(row["volatility"])
 	if err != nil {
 		return false, err
 	}
 	// Keep the configured spelling while it names the catalog's base type; otherwise surface the drift.
-	if configured, err := externalFunctionType(data.ReturnType.ValueString()); err != nil || externalFunctionBaseType(configured) != row["return_type"] {
-		data.ReturnType = types.StringValue(row["return_type"])
+	returnType := sqlclient.CatalogType(row["return_type"])
+	if configured, err := externalFunctionType(data.ReturnType.ValueString()); err != nil || externalFunctionBaseType(configured) != returnType {
+		data.ReturnType = types.StringValue(returnType)
 	}
 	data.Volatility, data.Owner = types.StringValue(volatility), types.StringValue(row["owner"])
 	return true, nil
@@ -384,7 +388,7 @@ func (r *externalFunctionResource) ImportState(ctx context.Context, req resource
 	}
 	argumentTypes := externalFunctionSignatureTypes(signature)
 	if canonical, err := externalFunctionSignature(argumentTypes); err != nil || string(canonical) != signature {
-		resp.Diagnostics.AddError("Invalid import identity", fmt.Sprintf("arguments must be the canonical signature that Create records, such as \"integer, character varying\"; got %q.", signature))
+		resp.Diagnostics.AddError("Invalid import identity", fmt.Sprintf("arguments must be the canonical signature that Create records, such as \"INTEGER, CHARACTER VARYING\"; got %q.", signature))
 		return
 	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("arguments"), externalFunctionTypeValues(argumentTypes))...)

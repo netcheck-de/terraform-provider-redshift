@@ -35,7 +35,7 @@ func (d *databaseDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 			"id":                 dataSourceIDAttribute(),
 			"name":               schema.StringAttribute{Required: true, MarkdownDescription: "Database name."},
 			"datashare_arn":      schema.StringAttribute{Computed: true, MarkdownDescription: "Backing producer datashare ARN; null for local databases. Shared lookups require redshift:DescribeDataShares."},
-			"database_type":      schema.StringAttribute{Computed: true, MarkdownDescription: "`local` or `shared`."},
+			"database_type":      schema.StringAttribute{Computed: true, MarkdownDescription: "`LOCAL` or `SHARED`."},
 			"with_permissions":   schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether the shared database requires object grants."},
 			"share_name":         schema.StringAttribute{Computed: true, MarkdownDescription: "Producer share name; null for local databases."},
 			"producer_account":   schema.StringAttribute{Computed: true, MarkdownDescription: "Producer account ID; null for local databases."},
@@ -67,7 +67,7 @@ func (d *databaseDataSource) Read(ctx context.Context, req datasource.ReadReques
 	data = observed
 	d.databaseReadCollation(ctx, &data, &resp.Diagnostics)
 	identity := map[string]string{"name": data.Name.ValueString()}
-	if data.DatabaseType.ValueString() == "shared" {
+	if data.DatabaseType.ValueString() == databaseTypeShared {
 		if d.datashareARN == nil {
 			resp.Diagnostics.AddError("Discover datashare ARN", "The provider has no datashare metadata discovery client.")
 			return

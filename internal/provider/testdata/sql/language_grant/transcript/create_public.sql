@@ -7,7 +7,7 @@ SELECT privilege_type, admin_option FROM svv_language_privileges WHERE language_
 -- params: {"grantee":"public","identity_type":"public","language":"sql"}
 
 -- database: warehouse
-GRANT USAGE ON LANGUAGE sql TO PUBLIC;
+GRANT USAGE ON LANGUAGE SQL TO PUBLIC;
 -- params: {}
 
 -- database: admin

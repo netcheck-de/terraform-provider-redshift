@@ -28,8 +28,8 @@ func externalTableLookupState(t *testing.T, c *catalog, name string) (externalTa
 func TestExternalTableLookup(t *testing.T) {
 	data, ok := externalTableLookupState(t, fullCatalog(), "Events")
 	require.True(t, ok)
-	assert.Equal(t, externalTableTestColumns("id", "integer", "label", "varchar(64)"), data.Columns)
-	assert.Equal(t, externalTableTestColumns("event_date", "date"), data.PartitionKeys)
+	assert.Equal(t, externalTableTestColumns("id", "INTEGER", "label", "VARCHAR(64)"), data.Columns)
+	assert.Equal(t, externalTableTestColumns("event_date", "DATE"), data.PartitionKeys)
 	assert.Equal(t, "TEXTFILE", data.StoredAs.ValueString())
 	assert.Equal(t, ",", data.FieldDelimiter.ValueString())
 	assert.Equal(t, externalTableTestMap("EXTERNAL", "TRUE", "skip.header.line.count", "1", "transient_lastDdlTime", "1700000000"), data.TableProperties)

@@ -79,7 +79,7 @@ func externalTableColumnsBlock(description string, validators []validator.List, 
 		PlanModifiers: []planmodifier.List{modifier},
 		NestedObject: schema.NestedBlockObject{Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{Required: true, MarkdownDescription: "Column name. The external catalog stores names in lowercase, so names differing only in case are the same column."},
-			"type": schema.StringAttribute{Required: true, MarkdownDescription: "Data type: `smallint`, `integer`, `bigint`, `decimal(p,s)`, `real`, `double precision`, `boolean`, `char(n)`, `varchar(n)`, `date`, or `timestamp`, including their aliases such as `int4` or `numeric`. Spellings of the same type, such as `int` and `integer`, are equivalent."},
+			"type": schema.StringAttribute{Required: true, MarkdownDescription: "Data type: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `REAL`, `DOUBLE PRECISION`, `BOOLEAN`, `CHAR(n)`, `VARCHAR(n)`, `DATE`, or `TIMESTAMP`, including their aliases such as `INT4` or `NUMERIC`, in any case. Spellings of the same type, such as `INT` and `INTEGER`, are equivalent. A refresh or import reports the uppercase name, and Glue types the provider cannot declare, such as `STRING`, with uppercase type names."},
 		}},
 	}
 }

@@ -1,1 +1,1 @@
-ALTER PROCEDURE "Odd""Schema"."SP""Mixed"(character varying, integer) OWNER TO "etl";
+ALTER PROCEDURE "Odd""Schema"."SP""Mixed"(CHARACTER VARYING, INTEGER) OWNER TO "etl";

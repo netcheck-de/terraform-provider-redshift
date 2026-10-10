@@ -75,10 +75,10 @@ resource "redshift_external_schema" "clicks" {
 
 ### Optional
 
-- `authentication` (String) Streaming authentication of an `MSK` schema, which requires it: `none`, `iam`, or `mtls`. `mtls` requires exactly one of `authentication_arn` and `secret_arn`. Updated in place with `ALTER EXTERNAL SCHEMA ... AUTHENTICATION`.
-- `authentication_arn` (String) AWS Certificate Manager certificate ARN for `mtls` authentication of an `MSK` schema. Updated in place together with `authentication`.
+- `authentication` (String) Streaming authentication of an `MSK` schema, which requires it: `NONE`, `IAM`, or `MTLS`, in any case; another case of the same mode is recorded in place without a statement. `MTLS` requires exactly one of `authentication_arn` and `secret_arn`. Updated in place with `ALTER EXTERNAL SCHEMA ... AUTHENTICATION`.
+- `authentication_arn` (String) AWS Certificate Manager certificate ARN for `MTLS` authentication of an `MSK` schema. Updated in place together with `authentication`.
 - `glue_database` (String) AWS Glue database referenced by a `DATA_CATALOG` schema, which requires it. Changing it replaces the external schema.
-- `iam_role_arn` (String) IAM role attached to the namespace, or a comma-separated role chain, used to reach the source. Required by every form except `REDSHIFT`, which rejects it, and `MSK`, where it is optional unless `authentication` is `iam`. Updated in place with `ALTER EXTERNAL SCHEMA ... IAM_ROLE` for `DATA_CATALOG` and `MSK`; changing it replaces other external schemas.
+- `iam_role_arn` (String) IAM role attached to the namespace, or a comma-separated role chain, used to reach the source. Required by every form except `REDSHIFT`, which rejects it, and `MSK`, where it is optional unless `authentication` is `IAM`. Updated in place with `ALTER EXTERNAL SCHEMA ... IAM_ROLE` for `DATA_CATALOG` and `MSK`; changing it replaces other external schemas.
 - `owner` (String) SQL user owning the external schema, changed after creation and in place with `ALTER SCHEMA ... OWNER TO`. Omit it to keep and report the current owner, which defaults to the creating user. `SVV_EXTERNAL_SCHEMAS` shows a regular user only their own schemas, so managing an external schema owned by another user, including handing it to one, requires a superuser connection.
 - `port` (Number) Port of a `HIVE_METASTORE` (default 9083), `POSTGRES` (default 5432), or `MYSQL` (default 3306) source. Changing it replaces the external schema.
 - `refresh_revision` (String) Bump to recreate the external schema after a source catalog change; deletion is restrictive. Changing it replaces the external schema.
@@ -192,7 +192,7 @@ ALTER EXTERNAL SCHEMA "example_external" URI 'b-1.example.kafka.eu-central-1.ama
 -- params: {}
 
 -- database: admin
-ALTER EXTERNAL SCHEMA "example_external" AUTHENTICATION mtls AUTHENTICATION_ARN 'arn:aws:acm:eu-central-1:123456789012:certificate/example';
+ALTER EXTERNAL SCHEMA "example_external" AUTHENTICATION MTLS AUTHENTICATION_ARN 'arn:aws:acm:eu-central-1:123456789012:certificate/example';
 -- params: {}
 
 -- database: admin

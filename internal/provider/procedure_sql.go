@@ -244,7 +244,7 @@ func createProcedureStatement(spec procedureSpec, replace bool) string {
 		arguments[i] = item.Kw(argument.mode).Kw(argument.dataType)
 	}
 	statement := sqlclient.Stmt("CREATE").If(replace, "OR REPLACE").Kw("PROCEDURE").Qualified(spec.schema, spec.name).
-		Args(arguments...).If(spec.nonatomic, "NONATOMIC").Kw("AS").Body(spec.body).Kw("LANGUAGE plpgsql").
+		Args(arguments...).If(spec.nonatomic, "NONATOMIC").Kw("AS").Body(spec.body).Kw("LANGUAGE PLPGSQL").
 		When(!spec.nonatomic, func(s sqlclient.Statement) sqlclient.Statement { return s.Kw("SECURITY").Kw(spec.security) })
 	for _, setting := range spec.settings {
 		values := make([]sqlclient.Statement, len(setting.values))
@@ -315,7 +315,7 @@ func readProcedureQuery(schema, name string, signature sqlclient.Keyword) sqlcli
 		Where("n.nspname = :schema", sqlclient.Bind("schema", schema)).
 		Where("p.proname = :name", sqlclient.Bind("name", name)).
 		Where("p.prokind = 'p'").
-		WhereEither(signature == "", "p.pronargs = 0", "oidvectortypes(p.proargtypes) = :arguments", sqlclient.Bind("arguments", string(signature)))
+		WhereEither(signature == "", "p.pronargs = 0", "oidvectortypes(p.proargtypes) = :arguments", sqlclient.Bind("arguments", routineCatalogArguments(signature)))
 }
 
 // showProcedureParametersStatement lists every argument with its name, position, and mode, including the OUT

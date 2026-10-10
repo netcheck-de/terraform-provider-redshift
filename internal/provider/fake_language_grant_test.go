@@ -9,7 +9,7 @@ import (
 )
 
 // languageGrantStatement parses GRANT/REVOKE [GRANT OPTION FOR] USAGE ON LANGUAGE statements.
-var languageGrantStatement = regexp.MustCompile(`^(GRANT|REVOKE)( GRANT OPTION FOR)? USAGE ON LANGUAGE (sql|plpgsql) (?:TO|FROM) (.+?)( WITH GRANT OPTION)?$`)
+var languageGrantStatement = regexp.MustCompile(`^(GRANT|REVOKE)( GRANT OPTION FOR)? USAGE ON LANGUAGE (SQL|PLPGSQL) (?:TO|FROM) (.+?)( WITH GRANT OPTION)?$`)
 
 // languageGrantFakeKey identifies one language/grantee tuple by the catalog identity.
 type languageGrantFakeKey struct {
@@ -48,7 +48,8 @@ func (f *languageGrantFake) query(_ *catalog, _ dataapi.Connection, sql string, 
 		return nil, false, nil
 	}
 	name, kind := columnGrantFakeIdentity(match[4])
-	key := languageGrantFakeKey{match[3], name, kind}
+	// SVV_LANGUAGE_PRIVILEGES names languages in lowercase.
+	key := languageGrantFakeKey{strings.ToLower(match[3]), name, kind}
 	switch {
 	case match[1] == "GRANT":
 		f.usage[key] = f.usage[key] || match[5] != ""

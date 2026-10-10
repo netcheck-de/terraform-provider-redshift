@@ -63,7 +63,7 @@ resource "redshift_procedure" "purge" {
 
 ### Optional
 
-- `argument` (Block List) One block per argument, in order: at most 32 input (`IN`, `INOUT`) and 32 output (`OUT`, `INOUT`) arguments. Omit for a procedure without arguments. The input types identify the procedure; another spelling of the same types, a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `varchar(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the procedure. (see [below for nested schema](#nestedblock--argument))
+- `argument` (Block List) One block per argument, in order: at most 32 input (`IN`, `INOUT`) and 32 output (`OUT`, `INOUT`) arguments. Omit for a procedure without arguments. The input types identify the procedure; another spelling of the same types, a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the procedure. (see [below for nested schema](#nestedblock--argument))
 - `configuration` (Map of String) One configuration parameter set while the procedure runs, rendered as `SET <name> TO '<value>'`, for example `{ search_path = "analytics, public" }`. A `search_path` value is a comma-separated list of schema names, each rendered as its own literal, such as `SET search_path TO 'analytics', 'public'`; any other value is one literal. Not supported with `nonatomic`. Redshift does not report it in its catalog, so drift is not detected and an import leaves it `null`. Changed in place with `CREATE OR REPLACE PROCEDURE`.
 - `nonatomic` (Boolean) Creates the procedure in `NONATOMIC` transaction mode, which commits each statement automatically. Redshift does not report the mode in its catalog, so drift is not detected and an import leaves it `null`. Changed in place with `CREATE OR REPLACE PROCEDURE`.
 - `owner` (String) SQL user owning the procedure. When set, applied with `ALTER PROCEDURE ... OWNER TO`, which requires a superuser; when omitted, the catalog owner is reported.
@@ -73,14 +73,14 @@ resource "redshift_procedure" "purge" {
 
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
 - `id` (String) JSON import identity; independent of Data API execution history.
-- `signature` (String) Canonical `IN` and `INOUT` argument types without modifiers, as `ALTER PROCEDURE`, `DROP PROCEDURE`, and `GRANT ... ON PROCEDURE` identify the procedure, for example `integer, character varying`.
+- `signature` (String) Canonical `IN` and `INOUT` argument types without modifiers, as `ALTER PROCEDURE`, `DROP PROCEDURE`, and `GRANT ... ON PROCEDURE` identify the procedure, for example `INTEGER, CHARACTER VARYING`.
 
 <a id="nestedblock--argument"></a>
 ### Nested Schema for `argument`
 
 Required:
 
-- `type` (String) Argument data type, such as `integer`, `varchar(256)`, or `refcursor`.
+- `type` (String) Argument data type, such as `INTEGER`, `VARCHAR(256)`, or `REFCURSOR`.
 
 Optional:
 

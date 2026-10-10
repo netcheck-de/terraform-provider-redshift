@@ -15,7 +15,7 @@ SELECT privilege_type, admin_option FROM svv_language_privileges WHERE language_
 -- params: {"grantee":"public","identity_type":"public","language":"sql"}
 
 -- database: warehouse
-REVOKE USAGE ON LANGUAGE sql FROM PUBLIC;
+REVOKE USAGE ON LANGUAGE SQL FROM PUBLIC;
 -- params: {}
 
 -- database: admin

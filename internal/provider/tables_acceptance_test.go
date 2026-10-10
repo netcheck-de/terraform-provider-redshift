@@ -133,8 +133,8 @@ data "redshift_table" "events" {
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("acc")())},
 		Steps: []resource.TestStep{
 			{Config: configuration(base, keys), Check: resource.ComposeTestCheckFunc(
-				resource.TestCheckResourceAttr("data.redshift_table.events", "column.0.type", "bigint"),
-				resource.TestCheckResourceAttr("data.redshift_table.events", "column.2.type", "character varying(256)"),
+				resource.TestCheckResourceAttr("data.redshift_table.events", "column.0.type", "BIGINT"),
+				resource.TestCheckResourceAttr("data.redshift_table.events", "column.2.type", "CHARACTER VARYING(256)"),
 				resource.TestCheckResourceAttr("data.redshift_table.events", "distribution.style", "KEY"),
 				resource.TestCheckResourceAttr("redshift_table.events", "effective_distribution.key", "account_id"),
 				resource.TestCheckResourceAttr("redshift_table.events", "effective_sort_key.auto", "false"),

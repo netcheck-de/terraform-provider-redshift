@@ -1,1 +1,1 @@
-CREATE EXTERNAL TABLE "example_external"."events" ("id" integer, "label" varchar(64)) PARTITIONED BY ("event_date" date) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' STORED AS TEXTFILE LOCATION 's3://example-bucket/events/' TABLE PROPERTIES ('skip.header.line.count' = '1');
+CREATE EXTERNAL TABLE "example_external"."events" ("id" INTEGER, "label" VARCHAR(64)) PARTITIONED BY ("event_date" DATE) ROW FORMAT DELIMITED FIELDS TERMINATED BY ',' STORED AS TEXTFILE LOCATION 's3://example-bucket/events/' TABLE PROPERTIES ('skip.header.line.count' = '1');

@@ -1,1 +1,1 @@
-CREATE EXTERNAL TABLE "Lake""Schema"."Odd""Table" ("Mixed""Case" integer) PARTITIONED BY ("Part""Key" varchar(10)) ROW FORMAT DELIMITED FIELDS TERMINATED BY '''' LINES TERMINATED BY '\\' STORED AS TEXTFILE LOCATION 's3://bucket/it''s \\data/' TABLE PROPERTIES ('it''s' = 'C:\\path');
+CREATE EXTERNAL TABLE "Lake""Schema"."Odd""Table" ("Mixed""Case" INTEGER) PARTITIONED BY ("Part""Key" VARCHAR(10)) ROW FORMAT DELIMITED FIELDS TERMINATED BY '''' LINES TERMINATED BY '\\' STORED AS TEXTFILE LOCATION 's3://bucket/it''s \\data/' TABLE PROPERTIES ('it''s' = 'C:\\path');

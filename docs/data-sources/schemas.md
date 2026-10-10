@@ -35,7 +35,7 @@ output "external_schema_sources" {
 ### Optional
 
 - `database` (String) Database whose schemas are listed; defaults to the provider's `database`.
-- `schema_type` (String) Only schemas of this type: `local`, `external`, or `shared`.
+- `schema_type` (String) Only schemas of this type, in any case: `LOCAL`, `EXTERNAL`, or `SHARED`.
 
 ### Read-Only
 
@@ -50,7 +50,7 @@ Read-Only:
 - `database` (String) Database containing the schema.
 - `name` (String) Schema name.
 - `owner` (String) SQL user owning the schema; null for shared schemas, whose owner belongs to the producer.
-- `schema_type` (String) `local`, `external`, or `shared`.
+- `schema_type` (String) `LOCAL`, `EXTERNAL`, or `SHARED`.
 - `source_database` (String) Source database of an external schema, such as its AWS Glue database; null otherwise.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
