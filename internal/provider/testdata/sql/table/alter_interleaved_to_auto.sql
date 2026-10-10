@@ -1,0 +1,3 @@
+ALTER TABLE "serving"."events" ALTER SORTKEY NONE;
+
+ALTER TABLE "serving"."events" ALTER SORTKEY AUTO;

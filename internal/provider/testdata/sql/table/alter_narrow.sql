@@ -1,0 +1,1 @@
+-- error: the change requires replacing the table: columns: Redshift can only widen VARCHAR and VARBYTE columns in place, not change "note" from character varying(32) to character varying(16)

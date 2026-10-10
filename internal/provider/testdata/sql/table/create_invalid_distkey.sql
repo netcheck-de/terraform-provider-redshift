@@ -1,0 +1,1 @@
+-- error: distkey names column "missing", which the table does not declare

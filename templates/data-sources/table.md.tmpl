@@ -1,0 +1,31 @@
+---
+subcategory: Tables and Views
+page_title: redshift_table Data Source - terraform-provider-redshift
+description: Looks up the definition of a local Redshift table.
+---
+
+# redshift_table (Data Source)
+
+Reads the definition of an existing local table without managing it, with the same catalog reads as the
+`redshift_table` resource. See AWS [CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html).
+
+```sql
+SELECT ... FROM pg_class WHERE relname = 'name';
+SELECT ... FROM svv_redshift_columns WHERE schema_name = 'schema' AND table_name = 'name';
+SELECT ... FROM pg_constraint WHERE ...;
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_table/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the table's JSON identity, using the same warehouse, database, schema, and name keys as the
+paired resource.
+
+Values use catalog spellings: types as `format_type()` reports them, such as `character varying(256)`, and defaults
+with their casts. `backup` is always null because it is not observable, and a sort key that Redshift chose under
+`SORTKEY AUTO` is reported as a `COMPOUND` key. A missing table is an error.

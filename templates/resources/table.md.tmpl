@@ -1,0 +1,104 @@
+---
+subcategory: Tables and Views
+page_title: redshift_table Resource - terraform-provider-redshift
+description: Manages the definition of a local Redshift table.
+---
+
+# redshift_table (Resource)
+
+Manages the definition of one local table: ordered columns with types, encodings, nullability, defaults, and identity,
+primary key, unique, and foreign key constraints, distribution style and key, sort key, backup, and owner. See AWS
+[CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html),
+[ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html), and
+[DROP TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_TABLE.html).
+
+```sql
+CREATE TABLE schema.name (columns ...) ...;
+ALTER TABLE schema.name ...;
+DROP TABLE schema.name;
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_table/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## In-Place Changes and Replacement
+
+Terraform owns the table definition, never its rows. Changes that `ALTER TABLE` supports are applied in place, one
+statement per change, and the catalog is read again to verify the result:
+
+- appending columns at the end (`ADD COLUMN`; not identity columns, and a NOT NULL column, including a new primary key
+  column, only with a default, because existing rows would be null) and dropping columns (`DROP COLUMN`, never
+  `CASCADE`, so a view that uses the column blocks the change);
+- `ALTER COLUMN ... ENCODE`, except with an interleaved sort key;
+- widening a VARCHAR or VARBYTE column that has no default, belongs to no constraint, and is not encoded with
+  `BYTEDICT`, `RUNLENGTH`, `TEXT255`, or `TEXT32K` (`ALTER COLUMN ... TYPE`);
+- `ALTER DISTSTYLE`, `ALTER DISTKEY`, `ALTER [COMPOUND] SORTKEY`, and `ALTER SORTKEY AUTO`, unless the table keeps or
+  gets an interleaved sort key. `ALTER SORTKEY AUTO` and `ALTER DISTSTYLE AUTO` keep the current key, so a move to
+  `AUTO` from an interleaved sort key or off a column the change drops first runs `ALTER SORTKEY NONE` or
+  `ALTER DISTSTYLE EVEN` and sets `AUTO` after the column is dropped;
+- adding and dropping primary key, unique, and foreign key constraints (`ADD` and `DROP CONSTRAINT`, using the
+  constraint names the catalog reports); a new primary key on an existing nullable column is not possible in place;
+- `OWNER TO`.
+
+`ALTER [COMPOUND] SORTKEY` can re-encode columns of the old and new sort key, for example to `RAW`. Omitted encodings of
+those columns are therefore known after apply, and an update re-reads the catalog after the sort key change and
+applies configured encodings again with `ALTER COLUMN ... ENCODE`.
+
+Every other change replaces the table, which **drops all of its rows**: renaming the table or a column, reordering
+columns, inserting a column before existing ones, and changing a column's type (other than widening), nullability,
+default, or identity, the backup setting, or an interleaved sort key. Protect tables that hold data:
+
+```terraform
+lifecycle {
+  prevent_destroy = true
+}
+```
+
+`DROP TABLE` runs without `CASCADE`: views, foreign keys of other tables, and other dependent objects keep the table,
+and the deletion fails until they are removed.
+
+## Catalog Reads
+
+The definition is read from `pg_class` (owner and distribution style), `pg_attribute` (column order, `format_type()`
+types, and nullability), `SVV_REDSHIFT_COLUMNS` (defaults, encodings, and key membership), and `pg_constraint` with
+`pg_get_constraintdef()` (constraints). `SVV_TABLE_INFO` is consulted only when a table configured with
+`sortkey_style = "AUTO"` reports sort key columns, which Redshift chose itself or kept from `ALTER SORTKEY AUTO`; it
+needs superuser or a `SELECT` grant on the view. The view lists only tables with rows, so the sort key of an empty table
+stays `AUTO` until the view reports an explicit key.
+
+- `diststyle = "AUTO"` covers `AUTO(ALL)`, `AUTO(EVEN)`, and `AUTO(KEY(column))`, so Redshift's automatic changes
+  never show as drift.
+- A table without sort key columns is reported as `sortkey_style = "AUTO"`; `ALTER SORTKEY NONE` made outside
+  Terraform is therefore not detected.
+- Types are compared by their canonical form (`int8` equals `bigint`), and a configured default is kept while the
+  column has one, because Redshift stores defaults with casts such as `'n/a'::character varying`.
+- `backup` is not observable in a catalog every deployment exposes; the configured value is recorded.
+
+Schema, table, column, owner, and referenced names must be lowercase: Redshift folds ASCII letters of standard and
+quoted identifiers to lowercase unless `enable_case_sensitive_identifier` is set, so a mixed-case name would never
+match the catalog. Distribution and sort key columns must have a type that
+[CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html) allows for keys.
+
+The resource never reads or changes comments, row-level security, masking, grants, or datashare membership of the
+table; use `redshift_comment`, the permission resources, and the datashare resources for those.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_table/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_table/import.sh" }}
+
+After import, configure the columns in catalog order. State then holds the catalog spellings, so the first plan
+shows an in-place update that records configured type aliases, differently spelled defaults, and `backup`, and runs no
+DDL. Because `SVV_TABLE_INFO` is consulted only for a configured `AUTO` sort key, a key Redshift chose under
+`SORTKEY AUTO` is imported, and reported by the data source, as `COMPOUND`; with `sortkey_style = "AUTO"` configured,
+the first update runs `ALTER SORTKEY AUTO`, which keeps the key.

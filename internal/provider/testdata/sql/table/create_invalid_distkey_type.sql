@@ -1,0 +1,1 @@
+-- error: distkey column "payload" has type super, which Redshift does not allow in a key

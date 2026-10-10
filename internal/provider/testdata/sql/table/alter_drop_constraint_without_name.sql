@@ -1,0 +1,1 @@
+-- error: the catalog reports no name for a constraint the update must drop

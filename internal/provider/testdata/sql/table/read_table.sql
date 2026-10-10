@@ -1,0 +1,1 @@
+SELECT c.relname AS table_name, u.usename AS owner, c.reldiststyle AS diststyle FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_user u ON u.usesysid = c.relowner WHERE n.nspname = :schema AND c.relname = :name AND c.relkind = 'r';

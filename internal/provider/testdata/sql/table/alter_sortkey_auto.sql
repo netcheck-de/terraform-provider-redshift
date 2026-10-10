@@ -1,0 +1,1 @@
+ALTER TABLE "serving"."events" ALTER SORTKEY AUTO;

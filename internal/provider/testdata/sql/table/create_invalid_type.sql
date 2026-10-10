@@ -1,0 +1,1 @@
+-- error: columns[0]: column "id": unsupported Redshift data type "serial"
