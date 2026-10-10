@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -34,8 +35,8 @@ var _ = registerReplacementPolicy("redshift_external_table", map[string]replaceR
 	"database":         replaceAlways,
 	"schema":           replaceAlways,
 	"name":             replaceAlways,
-	"columns":          replaceConditional("TestExternalTableColumnsReplacement"),
-	"partition_keys":   replaceConditional("TestExternalTablePartitionKeysReplacement"),
+	"column":           replaceConditional("TestExternalTableColumnsReplacement"),
+	"partition_key":    replaceConditional("TestExternalTablePartitionKeysReplacement"),
 	"field_delimiter":  replaceAlways,
 	"line_delimiter":   replaceAlways,
 	"serde":            replaceAlways,
@@ -297,6 +298,20 @@ func TestExternalTableFailurePaths(t *testing.T) {
 		_, err := externalTableState(t, c, "update", model, model)
 		require.ErrorContains(t, err, "disappeared")
 	})
+	t.Run("update judges columns by the catalog mapping", func(t *testing.T) {
+		// A plan made before orc.schema.resolution changed outside Terraform still maps the blocks by name.
+		c := fullCatalog()
+		table := externalTableFakeOf(c)
+		table.inputFormat, table.serde = externalTableFileFormats["ORC"], externalTableImpliedSerdes["ORC"]
+		table.parameters["orc.schema.resolution"] = "position"
+		prior := model
+		prior.StoredAs, prior.FieldDelimiter = types.StringValue("ORC"), types.StringNull()
+		plan := prior
+		plan.Columns = externalTableTestColumns("label", "varchar(64)", "id", "integer")
+		_, err := externalTableState(t, c, "update", prior, plan)
+		require.ErrorContains(t, err, "replace the table")
+		assert.Empty(t, c.writes)
+	})
 	t.Run("update rejects changes plans would replace", func(t *testing.T) {
 		plan := model
 		plan.StoredAs = types.StringValue("ORC")
@@ -325,31 +340,51 @@ func externalTableModifierRequests(t *testing.T, prior, plan externalTableModel)
 // TestExternalTableColumnsReplacement covers both branches of the conditional columns policy.
 func TestExternalTableColumnsReplacement(t *testing.T) {
 	base := externalTableTestModel()
+	insert := []string{"id", "integer", "extra", "date", "label", "varchar(64)"}
+	reorder := []string{"label", "varchar(64)", "id", "integer"}
+	// prior and plan are the configured orc.schema.resolution; empty leaves it unset.
 	for name, test := range map[string]struct {
-		storedAs string
-		columns  []string
-		replace  bool
+		storedAs    string
+		columns     []string
+		prior, plan string
+		replace     bool
 	}{
-		"append":        {"TEXTFILE", []string{"id", "integer", "label", "varchar(64)", "extra", "date"}, false},
-		"drop":          {"TEXTFILE", []string{"label", "varchar(64)"}, false},
-		"respell":       {"TEXTFILE", []string{"ID", "int4", "label", "varchar(64)"}, false},
-		"reorder":       {"TEXTFILE", []string{"label", "varchar(64)", "id", "integer"}, true},
-		"retype":        {"TEXTFILE", []string{"id", "bigint", "label", "varchar(64)"}, true},
-		"avro append":   {"AVRO", []string{"id", "integer", "label", "varchar(64)", "extra", "date"}, true},
-		"avro respell":  {"AVRO", []string{"ID", "int4", "label", "varchar(64)"}, false},
-		"unknown value": {"TEXTFILE", nil, true},
+		"append":                      {storedAs: "TEXTFILE", columns: []string{"id", "integer", "label", "varchar(64)", "extra", "date"}},
+		"drop":                        {storedAs: "TEXTFILE", columns: []string{"label", "varchar(64)"}},
+		"respell":                     {storedAs: "TEXTFILE", columns: []string{"ID", "int4", "label", "varchar(64)"}},
+		"reorder":                     {storedAs: "TEXTFILE", columns: reorder, replace: true},
+		"insert":                      {storedAs: "PARQUET", columns: insert, replace: true},
+		"retype":                      {storedAs: "TEXTFILE", columns: []string{"id", "bigint", "label", "varchar(64)"}, replace: true},
+		"avro append":                 {storedAs: "AVRO", columns: []string{"id", "integer", "label", "varchar(64)", "extra", "date"}, replace: true},
+		"avro respell":                {storedAs: "AVRO", columns: []string{"ID", "int4", "label", "varchar(64)"}},
+		"orc insert":                  {storedAs: "ORC", columns: insert},
+		"orc reorder":                 {storedAs: "ORC", columns: reorder},
+		"orc drop first":              {storedAs: "ORC", columns: []string{"label", "varchar(64)", "extra", "date"}},
+		"orc retype":                  {storedAs: "ORC", columns: []string{"label", "varchar(64)", "id", "bigint"}, replace: true},
+		"orc by position insert":      {storedAs: "ORC", columns: insert, prior: "position", plan: "position", replace: true},
+		"orc switching to position":   {storedAs: "ORC", columns: reorder, plan: "position", replace: true},
+		"orc switching from position": {storedAs: "ORC", columns: reorder, prior: "position", plan: "name"},
+		"unknown value":               {storedAs: "TEXTFILE", replace: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			prior := base
 			prior.StoredAs = types.StringValue(test.storedAs)
+			resolution := func(value string) types.Map {
+				if value == "" {
+					return types.MapNull(types.StringType)
+				}
+				return externalTableTestMap("orc.schema.resolution", value)
+			}
+			prior.TableProperties = resolution(test.prior)
 			plan := prior
 			plan.Columns = externalTableTestColumns(test.columns...)
+			plan.TableProperties = resolution(test.plan)
 			if test.columns == nil {
 				plan.Columns = types.ListUnknown(externalTableColumnType)
 			}
 			state, planned := externalTableModifierRequests(t, prior, plan)
 			resp := listplanmodifier.RequiresReplaceIfFuncResponse{}
-			externalTableColumnsReplace(context.Background(), planmodifier.ListRequest{Path: path.Root("columns"), State: state, Plan: planned, StateValue: prior.Columns, PlanValue: plan.Columns}, &resp)
+			externalTableColumnsReplace(context.Background(), planmodifier.ListRequest{Path: path.Root("column"), State: state, Plan: planned, StateValue: prior.Columns, PlanValue: plan.Columns}, &resp)
 			assert.Equal(t, test.replace, resp.RequiresReplace)
 		})
 	}
@@ -396,24 +431,42 @@ func TestExternalTableStoredAsReplacement(t *testing.T) {
 	}
 }
 
-// TestExternalTablePropertiesReplacement keeps settable additions in place and replaces removals and others.
+// TestExternalTablePropertiesReplacement keeps settable additions in place and replaces removals and others,
+// including a switch to position mapping whose column order no layout confirms.
 func TestExternalTablePropertiesReplacement(t *testing.T) {
+	unknown := func(key string) types.Map {
+		return types.MapValueMust(types.StringType, map[string]attr.Value{"numRows": types.StringValue("1"), key: types.StringUnknown()})
+	}
 	for name, test := range map[string]struct {
+		storedAs    string
 		prior, plan types.Map
 		replace     bool
 	}{
-		"set numRows":                      {externalTableTestMap("numRows", "1"), externalTableTestMap("numRows", "2"), false},
-		"add header":                       {externalTableTestMap("numRows", "1"), externalTableTestMap("numRows", "1", "skip.header.line.count", "1"), false},
-		"remove":                           {externalTableTestMap("numRows", "1"), externalTableTestMap(), true},
-		"remove all":                       {externalTableTestMap("numRows", "1"), types.MapNull(types.StringType), true},
-		"change compression":               {externalTableTestMap("compression_type", "gzip"), externalTableTestMap("compression_type", "none"), true},
-		"created without, add compression": {types.MapNull(types.StringType), externalTableTestMap("compression_type", "gzip"), true},
-		"created without, add numRows":     {types.MapNull(types.StringType), externalTableTestMap("numRows", "1"), false},
-		"unknown":                          {externalTableTestMap("numRows", "1"), types.MapUnknown(types.StringType), true},
+		"set numRows":                      {"", externalTableTestMap("numRows", "1"), externalTableTestMap("numRows", "2"), false},
+		"add header":                       {"", externalTableTestMap("numRows", "1"), externalTableTestMap("numRows", "1", "skip.header.line.count", "1"), false},
+		"remove":                           {"", externalTableTestMap("numRows", "1"), externalTableTestMap(), true},
+		"remove all":                       {"", externalTableTestMap("numRows", "1"), types.MapNull(types.StringType), true},
+		"change compression":               {"", externalTableTestMap("compression_type", "gzip"), externalTableTestMap("compression_type", "none"), true},
+		"created without, add compression": {"", types.MapNull(types.StringType), externalTableTestMap("compression_type", "gzip"), true},
+		"created without, add numRows":     {"", types.MapNull(types.StringType), externalTableTestMap("numRows", "1"), false},
+		"unknown":                          {"", externalTableTestMap("numRows", "1"), types.MapUnknown(types.StringType), true},
+		"unknown settable value":           {"", externalTableTestMap("numRows", "1"), unknown("skip.header.line.count"), false},
+		"unknown create-only value":        {"", externalTableTestMap("numRows", "1"), unknown("compression_type"), true},
+		"orc switching to position":        {"ORC", types.MapNull(types.StringType), externalTableTestMap("orc.schema.resolution", "position"), true},
+		"orc switching to unknown":         {"ORC", externalTableTestMap("numRows", "1"), unknown("orc.schema.resolution"), true},
+		"orc switching to name":            {"ORC", externalTableTestMap("orc.schema.resolution", "position"), externalTableTestMap("orc.schema.resolution", "name"), false},
 	} {
 		t.Run(name, func(t *testing.T) {
+			prior := externalTableTestModel()
+			if test.storedAs != "" {
+				prior.StoredAs, prior.FieldDelimiter = types.StringValue(test.storedAs), types.StringNull()
+			}
+			prior.TableProperties = test.prior
+			plan := prior
+			plan.TableProperties = test.plan
+			state, planned := externalTableModifierRequests(t, prior, plan)
 			resp := mapplanmodifier.RequiresReplaceIfFuncResponse{}
-			externalTablePropertiesReplace(context.Background(), planmodifier.MapRequest{StateValue: test.prior, PlanValue: test.plan}, &resp)
+			externalTablePropertiesReplace(context.Background(), planmodifier.MapRequest{Path: path.Root("table_properties"), State: state, Plan: planned, StateValue: test.prior, PlanValue: test.plan}, &resp)
 			assert.Equal(t, test.replace, resp.RequiresReplace)
 		})
 	}
@@ -444,8 +497,8 @@ func TestExternalTableTranscripts(t *testing.T) {
 	})
 }
 
-// TestExternalTablePriorProperties starts a null state from nothing after Create and from the configured keys'
-// catalog values after import.
+// TestExternalTablePriorProperties starts a null state from the configured keys' catalog values, and from nothing
+// without a recorded catalog.
 func TestExternalTablePriorProperties(t *testing.T) {
 	catalog := map[string]string{"EXTERNAL": "TRUE", "compression_type": "gzip"}
 	plan := externalTableTestMap("compression_type", "gzip", "numRows", "3")
@@ -477,18 +530,29 @@ resource "redshift_external_table" "events" {
   database        = "admin"
   schema          = "example_external"
   name            = "events"
-  columns         = [{ name = "id", type = "integer" }, { name = "label", type = "varchar(64)" }]
-  partition_keys  = [{ name = "event_date", type = "date" }]
   field_delimiter = ","
   stored_as       = "TEXTFILE"
   location        = "s3://example-bucket/events/"
   %s
+
+  column {
+    name = "id"
+    type = "integer"
+  }
+  column {
+    name = "label"
+    type = "varchar(64)"
+  }
+  partition_key {
+    name = "event_date"
+    type = "date"
+  }
 }`, properties)
 }
 
-// TestExternalTablePropertiesPlan runs Terraform so the plan sees the private state that tells a table created
-// without properties from an imported one: adding a create-only property must plan a replacement, not an update
-// that fails, while an imported table keeps the catalog's matching properties in place.
+// TestExternalTablePropertiesPlan runs Terraform so the plan sees the catalog properties recorded in private state:
+// adding a create-only property the catalog lacks must plan a replacement, not an update that fails, while an
+// imported table keeps the catalog's matching properties in place.
 func TestExternalTablePropertiesPlan(t *testing.T) {
 	const address = "redshift_external_table.events"
 	gzip := `table_properties = { compression_type = "gzip" }`
@@ -546,4 +610,214 @@ func TestExternalTablePropertiesPlan(t *testing.T) {
 			})
 		})
 	}
+}
+
+// externalTableOrderConfig renders an unpartitioned table with optional table_properties and one column block per
+// name/type pair.
+func externalTableOrderConfig(storedAs, properties string, pairs ...string) string {
+	var columns strings.Builder
+	for i := 0; i+1 < len(pairs); i += 2 {
+		fmt.Fprintf(&columns, "\n  column {\n    name = %q\n    type = %q\n  }", pairs[i], pairs[i+1])
+	}
+	return fmt.Sprintf(`
+provider "redshift" {
+  region         = "eu-central-1"
+  workgroup_name = "warehouse"
+  database       = "admin"
+}
+resource "redshift_external_table" "events" {
+  database  = "admin"
+  schema    = "example_external"
+  name      = "events"
+  stored_as = %q
+  location  = "s3://example-bucket/events/"
+  %s
+%s
+}`, storedAs, properties, columns.String())
+}
+
+// TestExternalTableColumnOrderPlan runs Terraform over block edits: an ORC table that maps columns by name adds and
+// drops columns anywhere in place and keeps the configured order in state although the catalog appends, while a
+// positional table, including an ORC table whose catalog says position, replaces for the same edits. Switching to
+// position mapping stays in place only while the blocks follow the catalog order.
+func TestExternalTableColumnOrderPlan(t *testing.T) {
+	const address = "redshift_external_table.events"
+	providers := func(c *catalog) map[string]func() (tfprotov6.ProviderServer, error) {
+		return map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})}
+	}
+	expect := func(action plancheck.ResourceActionType) testresource.ConfigPlanChecks {
+		return testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, action)}}
+	}
+	// catalogColumns checks the physical column order and the statements since the previous check.
+	catalogColumns := func(c *catalog, writes []string, names ...string) testresource.TestCheckFunc {
+		return func(*terraform.State) error {
+			table := externalTableFakeOf(c)
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			var physical []string
+			for _, column := range table.columns {
+				physical = append(physical, column.name)
+			}
+			assert.Equal(t, names, physical)
+			assert.Equal(t, writes, c.writes)
+			c.writes = nil
+			return nil
+		}
+	}
+	empty := func() *catalog {
+		c := fullCatalog()
+		delete(fakeState[*externalTableFamily](c, "external_table").tables, "events")
+		return c
+	}
+	alter := `ALTER TABLE "example_external"."events" `
+	t.Run("orc maps by name", func(t *testing.T) {
+		c := empty()
+		created := externalTableOrderConfig("ORC", "", "id", "integer", "label", "varchar(64)")
+		inserted := externalTableOrderConfig("ORC", "", "id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)")
+		reordered := externalTableOrderConfig("ORC", "", "label", "varchar(64)", "amount", "decimal(8,2)", "id", "integer")
+		dropped := externalTableOrderConfig("ORC", "", "label", "varchar(64)", "id", "integer")
+		testresource.UnitTest(t, testresource.TestCase{
+			ProtoV6ProviderFactories: providers(c),
+			Steps: []testresource.TestStep{
+				{Config: created, Check: catalogColumns(c, []string{`CREATE EXTERNAL TABLE "example_external"."events" ("id" integer, "label" varchar(64)) STORED AS ORC LOCATION 's3://example-bucket/events/'`}, "id", "label")},
+				{Config: created, PlanOnly: true},
+				{Config: inserted, ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: testresource.ComposeTestCheckFunc(
+					catalogColumns(c, []string{alter + `ADD COLUMN "amount" decimal(8, 2)`}, "id", "label", "amount"),
+					testresource.TestCheckResourceAttr(address, "column.1.name", "amount"),
+				)},
+				{Config: inserted, PlanOnly: true},
+				{Config: reordered, ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: testresource.ComposeTestCheckFunc(
+					catalogColumns(c, nil, "id", "label", "amount"),
+					testresource.TestCheckResourceAttr(address, "column.0.name", "label"),
+				)},
+				{Config: reordered, PlanOnly: true},
+				{Config: dropped, ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: catalogColumns(c, []string{alter + `DROP COLUMN "amount"`}, "id", "label")},
+				{Config: dropped, PlanOnly: true},
+			},
+		})
+	})
+	t.Run("textfile maps by position", func(t *testing.T) {
+		inserted := externalTableOrderConfig("TEXTFILE", "", "id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)")
+		testresource.UnitTest(t, testresource.TestCase{
+			ProtoV6ProviderFactories: providers(empty()),
+			Steps: []testresource.TestStep{
+				{Config: externalTableOrderConfig("TEXTFILE", "", "id", "integer", "label", "varchar(64)")},
+				{Config: inserted, ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
+				{Config: inserted, PlanOnly: true},
+			},
+		})
+	})
+	t.Run("imported orc by position", func(t *testing.T) {
+		c := fullCatalog()
+		table := externalTableFakeOf(c)
+		table.inputFormat, table.serde, table.partitionKeys, table.partitions = externalTableFileFormats["ORC"], externalTableImpliedSerdes["ORC"], nil, nil
+		table.serdeParameters, table.parameters = map[string]string{}, map[string]string{"EXTERNAL": "TRUE", "orc.schema.resolution": "position"}
+		imported := externalTableOrderConfig("ORC", "", "id", "integer", "label", "varchar(64)")
+		testresource.UnitTest(t, testresource.TestCase{
+			ProtoV6ProviderFactories: providers(c),
+			Steps: []testresource.TestStep{
+				{
+					Config: imported, ResourceName: address, ImportState: true, ImportStatePersist: true,
+					ImportStateId: `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","name":"events"}`,
+				},
+				{Config: imported, PlanOnly: true},
+				{Config: externalTableOrderConfig("ORC", "", "label", "varchar(64)", "id", "integer"), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
+			},
+		})
+	})
+	position := `table_properties = { "orc.schema.resolution" = "position" }`
+	create := `CREATE EXTERNAL TABLE "example_external"."events" ("id" integer, "label" varchar(64)) STORED AS ORC LOCATION 's3://example-bucket/events/'`
+	t.Run("orc switching to position out of catalog order", func(t *testing.T) {
+		c := empty()
+		switched := externalTableOrderConfig("ORC", position, "id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)")
+		testresource.UnitTest(t, testresource.TestCase{
+			ProtoV6ProviderFactories: providers(c),
+			Steps: []testresource.TestStep{
+				{Config: externalTableOrderConfig("ORC", "", "id", "integer", "label", "varchar(64)"), Check: catalogColumns(c, []string{create}, "id", "label")},
+				{Config: externalTableOrderConfig("ORC", "", "id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)"), Check: catalogColumns(c, []string{alter + `ADD COLUMN "amount" decimal(8, 2)`}, "id", "label", "amount")},
+				{Config: switched, ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate), Check: catalogColumns(c, []string{
+					`DROP TABLE "example_external"."events"`,
+					`CREATE EXTERNAL TABLE "example_external"."events" ("id" integer, "amount" decimal(8, 2), "label" varchar(64)) STORED AS ORC LOCATION 's3://example-bucket/events/' TABLE PROPERTIES ('orc.schema.resolution' = 'position')`,
+				}, "id", "amount", "label")},
+				{Config: switched, PlanOnly: true},
+			},
+		})
+	})
+	t.Run("orc switching to position in catalog order", func(t *testing.T) {
+		c := empty()
+		switched := externalTableOrderConfig("ORC", position, "id", "integer", "label", "varchar(64)", "amount", "decimal(8,2)")
+		testresource.UnitTest(t, testresource.TestCase{
+			ProtoV6ProviderFactories: providers(c),
+			Steps: []testresource.TestStep{
+				{Config: externalTableOrderConfig("ORC", "", "id", "integer", "label", "varchar(64)"), Check: catalogColumns(c, []string{create}, "id", "label")},
+				{Config: externalTableOrderConfig("ORC", "", "id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)"), Check: catalogColumns(c, []string{alter + `ADD COLUMN "amount" decimal(8, 2)`}, "id", "label", "amount")},
+				{Config: switched, ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: catalogColumns(c, []string{alter + `SET TABLE PROPERTIES ('orc.schema.resolution' = 'position')`}, "id", "label", "amount")},
+				{Config: switched, PlanOnly: true},
+			},
+		})
+	})
+	// The catalog's mapping still decides once table_properties is configured without orc.schema.resolution.
+	for name, edited := range map[string][]string{
+		"reorder": {"label", "varchar(64)", "id", "integer"},
+		"insert":  {"id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)"},
+	} {
+		t.Run("imported orc by position with managed properties, "+name, func(t *testing.T) {
+			c := fullCatalog()
+			table := externalTableFakeOf(c)
+			table.inputFormat, table.serde, table.partitionKeys, table.partitions = externalTableFileFormats["ORC"], externalTableImpliedSerdes["ORC"], nil, nil
+			table.serdeParameters, table.parameters = map[string]string{}, map[string]string{"EXTERNAL": "TRUE", "orc.schema.resolution": "position"}
+			managed := `table_properties = { numRows = "7" }`
+			testresource.UnitTest(t, testresource.TestCase{
+				ProtoV6ProviderFactories: providers(c),
+				Steps: []testresource.TestStep{
+					{
+						Config: externalTableOrderConfig("ORC", "", "id", "integer", "label", "varchar(64)"), ResourceName: address, ImportState: true, ImportStatePersist: true,
+						ImportStateId: `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","name":"events"}`,
+					},
+					{Config: externalTableOrderConfig("ORC", managed, "id", "integer", "label", "varchar(64)"), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate)},
+					{Config: externalTableOrderConfig("ORC", managed, edited...), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
+				},
+			})
+		})
+	}
+	t.Run("orc set to position outside terraform", func(t *testing.T) {
+		c := empty()
+		testresource.UnitTest(t, testresource.TestCase{
+			ProtoV6ProviderFactories: providers(c),
+			Steps: []testresource.TestStep{
+				{Config: externalTableOrderConfig("ORC", "", "id", "integer", "label", "varchar(64)")},
+				{
+					PreConfig: func() {
+						table := externalTableFakeOf(c)
+						c.mu.Lock()
+						defer c.mu.Unlock()
+						table.parameters["orc.schema.resolution"] = "position"
+					},
+					Config: externalTableOrderConfig("ORC", "", "label", "varchar(64)", "id", "integer"), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate),
+				},
+			},
+		})
+	})
+}
+
+// TestExternalTableObservedColumnOrder keeps the prior block order for tables that map columns by name, appending
+// columns the prior blocks do not declare, and reports the catalog order otherwise.
+func TestExternalTableObservedColumnOrder(t *testing.T) {
+	catalog := &externalTableCatalog{
+		table:      dataapi.Row{"tablename": "events", "location": "s3://bucket/events/", "input_format": externalTableFileFormats["ORC"]},
+		columns:    []externalTableCatalogColumn{{"id", "integer", 1}, {"label", "varchar(64)", 2}, {"amount", "decimal(8,2)", 3}, {"extra", "date", 4}},
+		parameters: map[string]string{},
+	}
+	prior := externalTableTestModel()
+	prior.StoredAs, prior.FieldDelimiter, prior.TableProperties = types.StringValue("ORC"), types.StringNull(), types.MapNull(types.StringType)
+	prior.Columns = externalTableTestColumns("Amount", "numeric(8,2)", "id", "int4", "gone", "date", "label", "varchar(64)")
+	observed := observeExternalTable(catalog, prior, externalTableRefresh)
+	assert.Equal(t, externalTableTestColumns("Amount", "numeric(8,2)", "id", "int4", "label", "varchar(64)", "extra", "date"), observed.Columns)
+	catalog.parameters["orc.schema.resolution"] = "position"
+	observed = observeExternalTable(catalog, prior, externalTableRefresh)
+	assert.Equal(t, externalTableTestColumns("id", "int4", "label", "varchar(64)", "Amount", "numeric(8,2)", "extra", "date"), observed.Columns)
+	catalog.table["input_format"] = externalTableFileFormats["PARQUET"]
+	delete(catalog.parameters, "orc.schema.resolution")
+	observed = observeExternalTable(catalog, prior, externalTableRefresh)
+	assert.Equal(t, externalTableTestColumns("id", "int4", "label", "varchar(64)", "Amount", "numeric(8,2)", "extra", "date"), observed.Columns, "Parquet maps by position")
 }

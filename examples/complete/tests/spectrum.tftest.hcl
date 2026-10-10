@@ -48,8 +48,8 @@ run "spectrum_apply" {
       redshift_external_table.events.database == redshift_external_schema.glue.database &&
       redshift_external_table.events.schema == redshift_external_schema.glue.name &&
       redshift_external_table.events.name == "events" &&
-      [for column in redshift_external_table.events.columns : column.name] == ["id", "label"] &&
-      redshift_external_table.events.partition_keys[0].name == "event_date" &&
+      [for column in redshift_external_table.events.column : column.name] == ["id", "label"] &&
+      redshift_external_table.events.partition_key[0].name == "event_date" &&
       redshift_external_table.events.stored_as == "TEXTFILE" && redshift_external_table.events.field_delimiter == "," &&
       redshift_external_table.events.location == "s3://${module.fixture_bucket.s3_bucket_id}/spectrum/events/" &&
       redshift_external_table.events.table_properties["skip.header.line.count"] == "1"
@@ -76,8 +76,8 @@ run "spectrum_apply" {
   }
   assert {
     condition = (
-      length(output.spectrum_table.columns) == length(data.redshift_external_table.events.columns) &&
-      length(output.spectrum_table.partition_keys) == length(data.redshift_external_table.events.partition_keys) &&
+      length(output.spectrum_table.columns) == length(data.redshift_external_table.events.column) &&
+      length(output.spectrum_table.partition_keys) == length(data.redshift_external_table.events.partition_key) &&
       output.spectrum_table.location == "s3://mock-fixture/spectrum/events/" &&
       output.spectrum_table.input_format == "org.apache.hadoop.mapred.TextInputFormat" &&
       output.spectrum_table.first_partition == "s3://mock-fixture/spectrum/events/event_date=2024-01-01" &&

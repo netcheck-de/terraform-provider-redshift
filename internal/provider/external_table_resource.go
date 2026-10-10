@@ -8,15 +8,16 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
@@ -37,10 +38,10 @@ type externalTableModel struct {
 	Schema types.String `tfsdk:"schema"`
 	// Name identifies the table.
 	Name types.String `tfsdk:"name"`
-	// Columns are the ordered data columns.
-	Columns types.List `tfsdk:"columns"`
-	// PartitionKeys are the ordered partition columns.
-	PartitionKeys types.List `tfsdk:"partition_keys"`
+	// Columns are the ordered column blocks.
+	Columns types.List `tfsdk:"column"`
+	// PartitionKeys are the ordered partition_key blocks.
+	PartitionKeys types.List `tfsdk:"partition_key"`
 	// FieldDelimiter is the ROW FORMAT DELIMITED field terminator.
 	FieldDelimiter types.String `tfsdk:"field_delimiter"`
 	// LineDelimiter is the ROW FORMAT DELIMITED line terminator.
@@ -71,36 +72,27 @@ func (r *externalTableResource) Metadata(_ context.Context, req resource.Metadat
 	resp.TypeName = req.ProviderTypeName + "_external_table"
 }
 
-// externalTableColumnsAttribute defines columns and partition_keys, which differ only in how changes plan.
-func externalTableColumnsAttribute(required bool, description string, modifier planmodifier.List) schema.ListNestedAttribute {
-	return schema.ListNestedAttribute{
-		Required: required, Optional: !required, MarkdownDescription: description,
+// externalTableColumnsBlock defines the column and partition_key blocks, which differ only in how changes plan.
+func externalTableColumnsBlock(description string, validators []validator.List, modifier planmodifier.List) schema.ListNestedBlock {
+	return schema.ListNestedBlock{
+		MarkdownDescription: description, Validators: validators,
 		PlanModifiers: []planmodifier.List{modifier},
-		NestedObject: schema.NestedAttributeObject{Attributes: map[string]schema.Attribute{
+		NestedObject: schema.NestedBlockObject{Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{Required: true, MarkdownDescription: "Column name. The external catalog stores names in lowercase, so names differing only in case are the same column."},
 			"type": schema.StringAttribute{Required: true, MarkdownDescription: "Data type: `smallint`, `integer`, `bigint`, `decimal(p,s)`, `real`, `double precision`, `boolean`, `char(n)`, `varchar(n)`, `date`, or `timestamp`, including their aliases such as `int4` or `numeric`. Spellings of the same type, such as `int` and `integer`, are equivalent."},
 		}},
 	}
 }
 
-// externalTableColumnsReplace replaces the table unless the column change is an append or a drop that ALTER TABLE
-// supports for the table's format.
+// externalTableColumnsReplace replaces the table unless ALTER TABLE can add and drop the changed columns for the
+// table's format and column mapping.
 func externalTableColumnsReplace(ctx context.Context, req planmodifier.ListRequest, resp *listplanmodifier.RequiresReplaceIfFuncResponse) {
-	before, beforeKnown := externalTableColumns(req.StateValue)
-	after, afterKnown := externalTableColumns(req.PlanValue)
-	if !beforeKnown || !afterKnown {
-		resp.RequiresReplace = true
-		return
-	}
-	var priorFormat, planFormat, priorInput, planInput types.String
-	// Missing siblings leave the values null; diagnostics are irrelevant to a replacement decision.
-	_ = req.State.GetAttribute(ctx, path.Root("stored_as"), &priorFormat)
-	_ = req.Plan.GetAttribute(ctx, path.Root("stored_as"), &planFormat)
-	_ = req.State.GetAttribute(ctx, path.Root("input_format"), &priorInput)
-	_ = req.Plan.GetAttribute(ctx, path.Root("input_format"), &planInput)
-	avro := externalTableAvro(priorFormat, priorInput) || externalTableAvro(planFormat, planInput)
-	_, _, inPlace := externalTableColumnChanges(before, after, avro)
-	resp.RequiresReplace = !inPlace
+	var prior, plan externalTableModel
+	// Unknown siblings stay unknown and count as unset; diagnostics are irrelevant to a replacement decision.
+	_ = req.State.Get(ctx, &prior)
+	_ = req.Plan.Get(ctx, &plan)
+	prior.Columns, plan.Columns = req.StateValue, req.PlanValue
+	resp.RequiresReplace = !externalTableColumnsAlterable(prior, plan, externalTableRecordedLayout(ctx, req.Private))
 }
 
 // externalTablePartitionKeysReplace replaces the table unless the keys differ only in spelling; partition keys
@@ -121,10 +113,9 @@ func externalTableStoredAsReplace(_ context.Context, req planmodifier.StringRequ
 	resp.RequiresReplace = req.PlanValue.IsUnknown() || !externalTableStoredAsInPlace(knownString(req.StateValue), knownString(req.PlanValue))
 }
 
-// externalTableUnmanagedPropertiesKey names the private state that holds the catalog's table properties while an
-// imported table's table_properties is still null. Only import leaves them unmanaged; a table created without
-// properties has none, so the marker is what tells the two null states apart.
-const externalTableUnmanagedPropertiesKey = "unmanaged_table_properties"
+// externalTableLayoutKey names the private state that holds the catalog layout of the last read or apply, so plans
+// judge column changes by the mapping and column order Spectrum applies rather than by what state shows.
+const externalTableLayoutKey = "catalog_layout"
 
 // externalTablePrivateState is the framework's private state, whose type is internal to the framework.
 type externalTablePrivateState interface {
@@ -132,30 +123,38 @@ type externalTablePrivateState interface {
 	SetKey(ctx context.Context, key string, value []byte) diag.Diagnostics
 }
 
-// externalTableUnmanagedProperties returns the catalog's properties recorded after import, and whether a marker
-// exists. A nil private state, as in direct unit calls, has no marker.
-func externalTableUnmanagedProperties(ctx context.Context, private externalTablePrivateState) (map[string]string, bool) {
-	raw, diagnostics := private.GetKey(ctx, externalTableUnmanagedPropertiesKey)
-	properties := map[string]string{}
-	if diagnostics.HasError() || len(raw) == 0 || json.Unmarshal(raw, &properties) != nil {
-		return nil, false
+// externalTableRecordedLayout returns the recorded catalog layout, or nil without one. A nil private state, as in
+// direct unit calls, has none.
+func externalTableRecordedLayout(ctx context.Context, private externalTablePrivateState) *externalTableLayout {
+	raw, diagnostics := private.GetKey(ctx, externalTableLayoutKey)
+	layout := &externalTableLayout{}
+	if diagnostics.HasError() || len(raw) == 0 || json.Unmarshal(raw, layout) != nil {
+		return nil
 	}
-	return properties, true
+	return layout
 }
 
-// recordExternalTableUnmanagedProperties keeps the marker current while properties stay unmanaged and removes it
-// once table_properties is configured.
-func recordExternalTableUnmanagedProperties(ctx context.Context, private externalTablePrivateState, unmanaged bool, catalog map[string]string) diag.Diagnostics {
-	var raw []byte
-	if unmanaged {
-		raw, _ = json.Marshal(catalog) // String maps are always JSON-serializable.
+// layout extracts what the plan modifiers need from the catalog.
+func (c *externalTableCatalog) layout() *externalTableLayout {
+	layout := &externalTableLayout{Parameters: c.parameters, Columns: make([]string, len(c.columns))}
+	for i, column := range c.columns {
+		layout.Columns[i] = column.name
 	}
-	return private.SetKey(ctx, externalTableUnmanagedPropertiesKey, raw)
+	return layout
 }
 
-// externalTablePriorProperties is what the planned properties change from. A null state means no properties for a
-// created table, and the catalog's values of the configured keys for an imported one, so properties the catalog
-// does not hold count as additions; unconfigured catalog properties are not removals.
+// recordExternalTableLayout keeps the layout of a catalog read for the next plan; a failed read leaves the last one.
+func recordExternalTableLayout(ctx context.Context, private externalTablePrivateState, catalog *externalTableCatalog) diag.Diagnostics {
+	if catalog == nil {
+		return nil
+	}
+	raw, _ := json.Marshal(catalog.layout()) // String maps and slices are always JSON-serializable.
+	return private.SetKey(ctx, externalTableLayoutKey, raw)
+}
+
+// externalTablePriorProperties is what the planned properties change from. A null state, as after import or a
+// create without properties, means the catalog's values of the configured keys, so properties the catalog does not
+// hold count as additions; unconfigured catalog properties are not removals.
 func externalTablePriorProperties(state, plan types.Map, catalog map[string]string) map[string]string {
 	if !state.IsNull() {
 		return knownMap(state)
@@ -170,15 +169,32 @@ func externalTablePriorProperties(state, plan types.Map, catalog map[string]stri
 }
 
 // externalTablePropertiesReplace replaces the table when a property is removed or one that SET TABLE PROPERTIES
-// cannot change is added or changed, so the plan shows the replacement the apply would otherwise fail on.
+// cannot change is added or changed, so the plan shows the replacement the apply would otherwise fail on. It also
+// replaces a table whose new orc.schema.resolution would map unchanged column blocks by position while they differ
+// from the catalog order, because the column modifier runs only for changed blocks.
 func externalTablePropertiesReplace(ctx context.Context, req planmodifier.MapRequest, resp *mapplanmodifier.RequiresReplaceIfFuncResponse) {
 	if req.PlanValue.IsUnknown() {
 		resp.RequiresReplace = true
 		return
 	}
-	catalog, _ := externalTableUnmanagedProperties(ctx, req.Private)
-	_, err := externalTablePropertyChanges(externalTablePriorProperties(req.StateValue, req.PlanValue, catalog), knownMap(req.PlanValue))
-	resp.RequiresReplace = err != nil
+	for key, value := range req.PlanValue.Elements() {
+		// A value known only after apply is a change, which only the settable properties allow in place.
+		if value.IsUnknown() && !slices.Contains(externalTableSettableProperties, key) {
+			resp.RequiresReplace = true
+			return
+		}
+	}
+	layout := externalTableRecordedLayout(ctx, req.Private)
+	_, err := externalTablePropertyChanges(externalTablePriorProperties(req.StateValue, req.PlanValue, layout.parameters()), knownMap(req.PlanValue))
+	var prior, plan externalTableModel
+	// Unknown siblings stay unknown and count as unset; diagnostics are irrelevant to a replacement decision.
+	_ = req.State.Get(ctx, &prior)
+	_ = req.Plan.Get(ctx, &plan)
+	prior.TableProperties, plan.TableProperties = req.StateValue, req.PlanValue
+	// Blocks that are not known yet are the column modifier's decision.
+	_, priorKnown := externalTableColumns(prior.Columns)
+	_, planKnown := externalTableColumns(plan.Columns)
+	resp.RequiresReplace = err != nil || priorKnown && planKnown && !externalTableColumnsAlterable(prior, plan, layout)
 }
 
 // Schema defines the external table definition and the in-place changes ALTER TABLE supports.
@@ -187,14 +203,10 @@ func (r *externalTableResource) Schema(_ context.Context, _ resource.SchemaReque
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages one Redshift Spectrum external table, created with `CREATE EXTERNAL TABLE` in an external schema. Partitions are managed separately with `redshift_external_partition`.",
 		Attributes: map[string]schema.Attribute{
-			"id":       idAttribute(),
-			"database": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local Redshift database holding the external schema. Changing it replaces the table."},
-			"schema":   schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "External schema that maps the external catalog database, for example a `redshift_external_schema`. Changing it replaces the table."},
-			"name":     schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Table name; the external catalog stores it in lowercase. Changing it replaces the table."},
-			"columns": externalTableColumnsAttribute(true, "Ordered data columns. Appending columns and dropping columns change the table in place with `ALTER TABLE ... ADD COLUMN` and `DROP COLUMN`, except for AVRO tables; reordering, retyping, or inserting columns replaces the table.",
-				listplanmodifier.RequiresReplaceIf(externalTableColumnsReplace, "Changing columns other than by appending or dropping replaces the table.", "Changing columns other than by appending or dropping replaces the table.")),
-			"partition_keys": externalTableColumnsAttribute(false, "Ordered `PARTITIONED BY` columns; their names must differ from the data columns. Spelling a name in another case or a type with an alias stays in place; any other change replaces the table.",
-				listplanmodifier.RequiresReplaceIf(externalTablePartitionKeysReplace, "Changing partition keys replaces the table.", "Changing partition keys replaces the table.")),
+			"id":              idAttribute(),
+			"database":        schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local Redshift database holding the external schema. Changing it replaces the table."},
+			"schema":          schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "External schema that maps the external catalog database, for example a `redshift_external_schema`. Changing it replaces the table."},
+			"name":            schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Table name; the external catalog stores it in lowercase. Changing it replaces the table."},
 			"field_delimiter": schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "`ROW FORMAT DELIMITED FIELDS TERMINATED BY` character: one ASCII character; write control characters as HCL escapes such as `\"\\t\"` or `\"\\u0007\"`. Conflicts with `serde`. Changing it replaces the table."},
 			"line_delimiter":  schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "`ROW FORMAT DELIMITED LINES TERMINATED BY` character, usually `\"\\n\"`. Conflicts with `serde`. Changing it replaces the table."},
 			"serde":           schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "`ROW FORMAT SERDE` class, such as `org.openx.data.jsonserde.JsonSerDe` or `org.apache.hadoop.hive.serde2.OpenCSVSerde`. Conflicts with the delimiters. Changing it replaces the table."},
@@ -217,9 +229,16 @@ func (r *externalTableResource) Schema(_ context.Context, _ resource.SchemaReque
 			"location": schema.StringAttribute{Required: true, MarkdownDescription: "`s3://` folder (ending in `/`) or manifest file holding the data, in the warehouse's AWS Region. Changes run `ALTER TABLE ... SET LOCATION`."},
 			"table_properties": schema.MapAttribute{
 				ElementType: types.StringType, Optional: true,
-				PlanModifiers:       []planmodifier.Map{mapplanmodifier.RequiresReplaceIf(externalTablePropertiesReplace, "Removing a property, or changing one SET TABLE PROPERTIES does not support, replaces the table.", "Removing a property, or changing one `SET TABLE PROPERTIES` does not support, replaces the table.")},
-				MarkdownDescription: "`TABLE PROPERTIES` pairs; names are case-sensitive. Only the configured properties are managed. Adding or changing `numRows`, `skip.header.line.count`, or `orc.schema.resolution` runs `ALTER TABLE ... SET TABLE PROPERTIES`; removing a property, or adding or changing any other property, replaces the table.",
+				PlanModifiers:       []planmodifier.Map{mapplanmodifier.RequiresReplaceIf(externalTablePropertiesReplace, "Removing a property, changing one SET TABLE PROPERTIES does not support, or switching to position mapping out of catalog column order replaces the table.", "Removing a property, changing one `SET TABLE PROPERTIES` does not support, or switching to position mapping out of catalog column order replaces the table.")},
+				MarkdownDescription: "`TABLE PROPERTIES` pairs; names are case-sensitive. Only the configured properties are managed. Adding or changing `numRows`, `skip.header.line.count`, or `orc.schema.resolution` runs `ALTER TABLE ... SET TABLE PROPERTIES`; removing a property, or adding or changing any other property, replaces the table. Switching an `ORC` table to position mapping also replaces it unless the `column` blocks follow the catalog order, to which `ADD COLUMN` appends.",
 			},
+		},
+		Blocks: map[string]schema.Block{
+			"column": externalTableColumnsBlock("At least one `column` block is required. Data columns in file order. Dropping columns and appending them at the end run `ALTER TABLE ... DROP COLUMN` and `ADD COLUMN`; reordering, inserting, or retyping columns replaces the table, because Spectrum matches columns to the file by position. `ORC` tables map columns by name unless their `orc.schema.resolution` table property, configured or in the catalog, is anything but `name`: they add and drop columns anywhere in place, and reordering their blocks runs no statement. Any column change of an `AVRO` table except a respelling replaces it.",
+				[]validator.List{listvalidator.IsRequired(), listvalidator.SizeAtLeast(1)},
+				listplanmodifier.RequiresReplaceIf(externalTableColumnsReplace, "Changing columns other than by adding or dropping them where the format allows replaces the table.", "Changing columns other than by adding or dropping them where the format allows replaces the table.")),
+			"partition_key": externalTableColumnsBlock("Ordered `PARTITIONED BY` columns; their names must differ from the data columns. Spelling a name in another case or a type with an alias stays in place; any other change replaces the table.", nil,
+				listplanmodifier.RequiresReplaceIf(externalTablePartitionKeysReplace, "Changing partition keys replaces the table.", "Changing partition keys replaces the table.")),
 		},
 	}
 }
@@ -297,10 +316,35 @@ const (
 	externalTableLookup
 )
 
+// externalTableColumnsInOrder orders catalog columns like the prior blocks, appending columns prior does not
+// declare in catalog order. ADD COLUMN appends, so for a table that maps columns by name the catalog order is an
+// accident of history that must not show up as a reordering.
+func externalTableColumnsInOrder(prior []externalTableColumnValue, catalog []externalTableCatalogColumn) []externalTableCatalogColumn {
+	ordered := make([]externalTableCatalogColumn, 0, len(catalog))
+	placed := make([]bool, len(catalog))
+	for _, known := range prior {
+		for i, column := range catalog {
+			if !placed[i] && strings.EqualFold(known.Name.ValueString(), column.name) {
+				ordered, placed[i] = append(ordered, column), true
+				break
+			}
+		}
+	}
+	for i, column := range catalog {
+		if !placed[i] {
+			ordered = append(ordered, column)
+		}
+	}
+	return ordered
+}
+
 // observeExternalTableColumns reports catalog columns, keeping a prior name and type spelling that declares the
-// same column.
-func observeExternalTableColumns(prior types.List, catalog []externalTableCatalogColumn) types.List {
+// same column, and the prior order when the table maps columns by name.
+func observeExternalTableColumns(prior types.List, catalog []externalTableCatalogColumn, byName bool) types.List {
 	previous, _ := externalTableColumns(prior)
+	if byName {
+		catalog = externalTableColumnsInOrder(previous, catalog)
+	}
 	columns := make([]externalTableColumnValue, len(catalog))
 	for i, column := range catalog {
 		columns[i] = externalTableColumnValue{Name: types.StringValue(column.name), Type: types.StringValue(column.dataType)}
@@ -378,8 +422,11 @@ func observeExternalTable(catalog *externalTableCatalog, prior externalTableMode
 	if !strings.EqualFold(prior.Name.ValueString(), row["tablename"]) {
 		data.Name = types.StringValue(row["tablename"])
 	}
-	data.Columns = observeExternalTableColumns(prior.Columns, catalog.columns)
-	data.PartitionKeys = observeExternalTableColumns(prior.PartitionKeys, catalog.partitionKeys)
+	// The catalog decides the mapping, because it is what Spectrum applies to the current columns.
+	byName := externalTableMapsByName(externalTableSpec{storedAs: externalTableFormat(row["input_format"]), inputFormat: row["input_format"], tableProperties: catalog.parameters})
+	data.Columns = observeExternalTableColumns(prior.Columns, catalog.columns, byName)
+	// Partition keys cannot change, so their catalog order is always the declared one.
+	data.PartitionKeys = observeExternalTableColumns(prior.PartitionKeys, catalog.partitionKeys, false)
 	if len(catalog.partitionKeys) == 0 && (prior.PartitionKeys.IsNull() || prior.PartitionKeys.IsUnknown()) {
 		data.PartitionKeys = types.ListNull(externalTableColumnType)
 	}
@@ -435,8 +482,8 @@ func observeExternalTable(catalog *externalTableCatalog, prior externalTableMode
 func externalTableDivergence(plan, observed externalTableModel) []string {
 	var differing []string
 	for name, values := range map[string][2]attr.Value{
-		"columns":          {plan.Columns, observed.Columns},
-		"partition_keys":   {plan.PartitionKeys, observed.PartitionKeys},
+		"column":           {plan.Columns, observed.Columns},
+		"partition_key":    {plan.PartitionKeys, observed.PartitionKeys},
 		"field_delimiter":  {plan.FieldDelimiter, observed.FieldDelimiter},
 		"line_delimiter":   {plan.LineDelimiter, observed.LineDelimiter},
 		"serde":            {plan.Serde, observed.Serde},
@@ -506,7 +553,10 @@ func (r *externalTableResource) Create(ctx context.Context, req resource.CreateR
 		data.OutputFormat = types.StringNull()
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-	observed, _, err := r.verify(ctx, planned)
+	observed, verified, err := r.verify(ctx, planned)
+	if resp.Private != nil {
+		resp.Diagnostics.Append(recordExternalTableLayout(ctx, resp.Private, verified)...)
+	}
 	if err != nil {
 		resp.Diagnostics.AddError("Verify external table", err.Error())
 		return
@@ -537,9 +587,7 @@ func (r *externalTableResource) Read(ctx context.Context, req resource.ReadReque
 		resp.Diagnostics.Append(resp.State.Set(ctx, &observed)...)
 		// The framework always provides private state; direct unit calls do not.
 		if resp.Private != nil {
-			_, imported := externalTableUnmanagedProperties(ctx, req.Private)
-			unmanaged := (imported || mode == externalTableAdopt) && observed.TableProperties.IsNull()
-			resp.Diagnostics.Append(recordExternalTableUnmanagedProperties(ctx, resp.Private, unmanaged, catalog.parameters)...)
+			resp.Diagnostics.Append(recordExternalTableLayout(ctx, resp.Private, catalog)...)
 		}
 	}
 }
@@ -562,11 +610,11 @@ func (r *externalTableResource) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 	if prior.TableProperties.IsNull() {
-		// Comparing with the catalog rather than the marker keeps a plan made without refresh from repeating
-		// properties that are already set.
+		// Comparing with the current catalog rather than the recorded layout keeps a plan made without refresh from
+		// repeating properties that are already set.
 		prior.TableProperties = externalTableStringMap(externalTablePriorProperties(prior.TableProperties, plan.TableProperties, catalog.parameters))
 	}
-	statements, err := alterExternalTableStatements(prior, plan)
+	statements, err := alterExternalTableStatements(prior, plan, catalog.layout())
 	if err == nil {
 		err = r.exec(ctx, plan.Database.ValueString(), statements...)
 	}
@@ -575,15 +623,14 @@ func (r *externalTableResource) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 	observed, verified, err := r.verify(ctx, plan)
+	if resp.Private != nil {
+		resp.Diagnostics.Append(recordExternalTableLayout(ctx, resp.Private, verified)...)
+	}
 	if err != nil {
 		resp.Diagnostics.AddError("Verify external table", err.Error())
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &observed)...)
-	if resp.Private != nil {
-		_, imported := externalTableUnmanagedProperties(ctx, req.Private)
-		resp.Diagnostics.Append(recordExternalTableUnmanagedProperties(ctx, resp.Private, imported && observed.TableProperties.IsNull(), verified.parameters)...)
-	}
 }
 
 // Delete drops the table restrictively and verifies its removal; the S3 data is not touched.

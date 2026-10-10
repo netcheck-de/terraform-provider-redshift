@@ -26,14 +26,22 @@ resource "redshift_external_table" "sales" {
   schema   = redshift_external_schema.raw.name
   name     = "sales"
 
-  columns = [
-    { name = "sales_id", type = "integer" },
-    { name = "price_paid", type = "decimal(8,2)" },
-    { name = "sale_time", type = "timestamp" },
-  ]
-  partition_keys = [
-    { name = "sale_date", type = "date" },
-  ]
+  column {
+    name = "sales_id"
+    type = "integer"
+  }
+  column {
+    name = "price_paid"
+    type = "decimal(8,2)"
+  }
+  column {
+    name = "sale_time"
+    type = "timestamp"
+  }
+  partition_key {
+    name = "sale_date"
+    type = "date"
+  }
 
   field_delimiter = "\t"
   stored_as       = "TEXTFILE"
@@ -49,15 +57,42 @@ resource "redshift_external_table" "events" {
   schema   = redshift_external_schema.raw.name
   name     = "events"
 
-  columns = [
-    { name = "id", type = "bigint" },
-    { name = "payload", type = "varchar(65535)" },
-  ]
+  column {
+    name = "id"
+    type = "bigint"
+  }
+  column {
+    name = "payload"
+    type = "varchar(65535)"
+  }
 
   serde            = "org.openx.data.jsonserde.JsonSerDe"
   serde_properties = { "strip.outer.array" = "true" }
   stored_as        = "TEXTFILE"
   location         = "s3://example-bucket/events/"
+}
+
+# ORC maps columns by name, so a column block can be added or removed anywhere without replacing the table.
+resource "redshift_external_table" "clicks" {
+  database = redshift_external_schema.raw.database
+  schema   = redshift_external_schema.raw.name
+  name     = "clicks"
+
+  column {
+    name = "click_id"
+    type = "bigint"
+  }
+  column {
+    name = "page"
+    type = "varchar(1024)"
+  }
+  column {
+    name = "clicked_at"
+    type = "timestamp"
+  }
+
+  stored_as = "ORC"
+  location  = "s3://example-bucket/clicks/"
 }
 ```
 
@@ -67,7 +102,6 @@ resource "redshift_external_table" "events" {
 
 ### Required
 
-- `columns` (Attributes List) Ordered data columns. Appending columns and dropping columns change the table in place with `ALTER TABLE ... ADD COLUMN` and `DROP COLUMN`, except for AVRO tables; reordering, retyping, or inserting columns replaces the table. (see [below for nested schema](#nestedatt--columns))
 - `database` (String) Local Redshift database holding the external schema. Changing it replaces the table.
 - `location` (String) `s3://` folder (ending in `/`) or manifest file holding the data, in the warehouse's AWS Region. Changes run `ALTER TABLE ... SET LOCATION`.
 - `name` (String) Table name; the external catalog stores it in lowercase. Changing it replaces the table.
@@ -75,22 +109,23 @@ resource "redshift_external_table" "events" {
 
 ### Optional
 
+- `column` (Block List) At least one `column` block is required. Data columns in file order. Dropping columns and appending them at the end run `ALTER TABLE ... DROP COLUMN` and `ADD COLUMN`; reordering, inserting, or retyping columns replaces the table, because Spectrum matches columns to the file by position. `ORC` tables map columns by name unless their `orc.schema.resolution` table property, configured or in the catalog, is anything but `name`: they add and drop columns anywhere in place, and reordering their blocks runs no statement. Any column change of an `AVRO` table except a respelling replaces it. (see [below for nested schema](#nestedblock--column))
 - `field_delimiter` (String) `ROW FORMAT DELIMITED FIELDS TERMINATED BY` character: one ASCII character; write control characters as HCL escapes such as `"\t"` or `"\u0007"`. Conflicts with `serde`. Changing it replaces the table.
 - `input_format` (String) `STORED AS INPUTFORMAT` class, for formats such as Hudi or Delta Lake manifests; requires `output_format`. Without it, the class the catalog records for `stored_as` is reported. Changing it replaces the table.
 - `line_delimiter` (String) `ROW FORMAT DELIMITED LINES TERMINATED BY` character, usually `"\n"`. Conflicts with `serde`. Changing it replaces the table.
 - `output_format` (String) `OUTPUTFORMAT` class paired with `input_format`. Without it, the class the catalog records for `stored_as` is reported. Changing it replaces the table.
-- `partition_keys` (Attributes List) Ordered `PARTITIONED BY` columns; their names must differ from the data columns. Spelling a name in another case or a type with an alias stays in place; any other change replaces the table. (see [below for nested schema](#nestedatt--partition_keys))
+- `partition_key` (Block List) Ordered `PARTITIONED BY` columns; their names must differ from the data columns. Spelling a name in another case or a type with an alias stays in place; any other change replaces the table. (see [below for nested schema](#nestedblock--partition_key))
 - `serde` (String) `ROW FORMAT SERDE` class, such as `org.openx.data.jsonserde.JsonSerDe` or `org.apache.hadoop.hive.serde2.OpenCSVSerde`. Conflicts with the delimiters. Changing it replaces the table.
 - `serde_properties` (Map of String) `WITH SERDEPROPERTIES` pairs for `serde`, such as `{ "strip.outer.array" = "true" }`. Changing it replaces the table.
 - `stored_as` (String) File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; other changes replace the table.
-- `table_properties` (Map of String) `TABLE PROPERTIES` pairs; names are case-sensitive. Only the configured properties are managed. Adding or changing `numRows`, `skip.header.line.count`, or `orc.schema.resolution` runs `ALTER TABLE ... SET TABLE PROPERTIES`; removing a property, or adding or changing any other property, replaces the table.
+- `table_properties` (Map of String) `TABLE PROPERTIES` pairs; names are case-sensitive. Only the configured properties are managed. Adding or changing `numRows`, `skip.header.line.count`, or `orc.schema.resolution` runs `ALTER TABLE ... SET TABLE PROPERTIES`; removing a property, or adding or changing any other property, replaces the table. Switching an `ORC` table to position mapping also replaces it unless the `column` blocks follow the catalog order, to which `ADD COLUMN` appends.
 
 ### Read-Only
 
 - `id` (String) JSON import identity; independent of Data API execution history.
 
-<a id="nestedatt--columns"></a>
-### Nested Schema for `columns`
+<a id="nestedblock--column"></a>
+### Nested Schema for `column`
 
 Required:
 
@@ -98,8 +133,8 @@ Required:
 - `type` (String) Data type: `smallint`, `integer`, `bigint`, `decimal(p,s)`, `real`, `double precision`, `boolean`, `char(n)`, `varchar(n)`, `date`, or `timestamp`, including their aliases such as `int4` or `numeric`. Spellings of the same type, such as `int` and `integer`, are equivalent.
 
 
-<a id="nestedatt--partition_keys"></a>
-### Nested Schema for `partition_keys`
+<a id="nestedblock--partition_key"></a>
+### Nested Schema for `partition_key`
 
 Required:
 
@@ -115,12 +150,22 @@ external catalog records no SQL owner, so this resource has no `owner` attribute
 
 Changes run `ALTER TABLE` where Redshift supports them for external tables: `SET LOCATION`, `SET FILE FORMAT` between
 `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE`, `SET TABLE PROPERTIES` for `numRows`,
-`skip.header.line.count`, and `orc.schema.resolution`, and `ADD COLUMN`/`DROP COLUMN` for appended or removed columns
-(not for `AVRO` tables). Everything else replaces the table. Replacing or deleting runs `DROP TABLE` **without
+`skip.header.line.count`, and `orc.schema.resolution`, and `ADD COLUMN`/`DROP COLUMN` for added or removed `column`
+blocks (not for `AVRO` tables). Everything else replaces the table. Replacing or deleting runs `DROP TABLE` **without
 `CASCADE`**. Views over an external table must be late-binding (`WITH NO SCHEMA BINDING`), so they never block the drop;
 they fail at query time until the table exists again. The S3 data is never touched, but the catalog drops the table's
 partitions with it. `redshift_external_partition` resources then disappear on the next refresh and are added again by
 the following apply.
+
+How `column` blocks may change depends on how Spectrum matches them to the files. Most formats match by position, so
+the block order must follow the files: removing a block or appending one at the end stays in place, while inserting or
+reordering blocks replaces the table. `ORC` tables match by name unless `orc.schema.resolution` is set to anything
+but `name`, so a block can be added or removed anywhere in place, and reordering blocks runs no statement. When
+`table_properties` leaves `orc.schema.resolution` out, the catalog's value decides. `ADD COLUMN` always appends, so the
+catalog order of such a table can differ from the configuration; refresh keeps the configured order and appends
+columns that only the catalog has. Switching a table to position mapping therefore stays in place only while the
+blocks follow the catalog order, and replaces the table otherwise. Retyping a column, and changing `partition_key`
+blocks other than by respelling them, always replaces the table.
 
 Refresh reads `svv_external_tables` and `svv_external_columns`, filtered by `redshift_database_name`. The catalog stores
 names in lowercase and Hive type names (for example `int` for `integer`), so equivalent spellings in configuration are

@@ -34,12 +34,22 @@ external catalog records no SQL owner, so this resource has no `owner` attribute
 
 Changes run `ALTER TABLE` where Redshift supports them for external tables: `SET LOCATION`, `SET FILE FORMAT` between
 `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE`, `SET TABLE PROPERTIES` for `numRows`,
-`skip.header.line.count`, and `orc.schema.resolution`, and `ADD COLUMN`/`DROP COLUMN` for appended or removed columns
-(not for `AVRO` tables). Everything else replaces the table. Replacing or deleting runs `DROP TABLE` **without
+`skip.header.line.count`, and `orc.schema.resolution`, and `ADD COLUMN`/`DROP COLUMN` for added or removed `column`
+blocks (not for `AVRO` tables). Everything else replaces the table. Replacing or deleting runs `DROP TABLE` **without
 `CASCADE`**. Views over an external table must be late-binding (`WITH NO SCHEMA BINDING`), so they never block the drop;
 they fail at query time until the table exists again. The S3 data is never touched, but the catalog drops the table's
 partitions with it. `redshift_external_partition` resources then disappear on the next refresh and are added again by
 the following apply.
+
+How `column` blocks may change depends on how Spectrum matches them to the files. Most formats match by position, so
+the block order must follow the files: removing a block or appending one at the end stays in place, while inserting or
+reordering blocks replaces the table. `ORC` tables match by name unless `orc.schema.resolution` is set to anything
+but `name`, so a block can be added or removed anywhere in place, and reordering blocks runs no statement. When
+`table_properties` leaves `orc.schema.resolution` out, the catalog's value decides. `ADD COLUMN` always appends, so the
+catalog order of such a table can differ from the configuration; refresh keeps the configured order and appends
+columns that only the catalog has. Switching a table to position mapping therefore stays in place only while the
+blocks follow the catalog order, and replaces the table otherwise. Retyping a column, and changing `partition_key`
+blocks other than by respelling them, always replaces the table.
 
 Refresh reads `svv_external_tables` and `svv_external_columns`, filtered by `redshift_database_name`. The catalog stores
 names in lowercase and Hive type names (for example `int` for `integer`), so equivalent spellings in configuration are

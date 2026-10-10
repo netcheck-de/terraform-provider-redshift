@@ -82,7 +82,11 @@ func TestExternalTableSQL(t *testing.T) {
 		return func() (string, error) { return createExternalTableStatement(data) }
 	}
 	alter := func(prev, plan externalTableModel) func() ([]string, error) {
-		return func() ([]string, error) { return alterExternalTableStatements(prev, plan) }
+		return func() ([]string, error) { return alterExternalTableStatements(prev, plan, nil) }
+	}
+	// alterIn renders against the catalog layout Update reads first.
+	alterIn := func(layout *externalTableLayout, prev, plan externalTableModel) func() ([]string, error) {
+		return func() ([]string, error) { return alterExternalTableStatements(prev, plan, layout) }
 	}
 	moved := plain
 	moved.Location = types.StringValue("s3://example-bucket/events-v2/")
@@ -104,6 +108,27 @@ func TestExternalTableSQL(t *testing.T) {
 	reordered.Columns = externalTableTestColumns("label", "varchar(64)", "id", "integer")
 	retyped := plain
 	retyped.Columns = externalTableTestColumns("id", "bigint", "label", "varchar(64)")
+	inserted := plain
+	inserted.Columns = externalTableTestColumns("id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)")
+	// ORC tables map columns by name unless orc.schema.resolution says position.
+	byName := plain
+	byName.StoredAs, byName.FieldDelimiter, byName.TableProperties = types.StringValue("ORC"), types.StringNull(), types.MapNull(types.StringType)
+	byNameInserted := byName
+	byNameInserted.Columns = inserted.Columns
+	byNameReordered := byName
+	byNameReordered.Columns = reordered.Columns
+	byNameReplaced := byName
+	byNameReplaced.Columns = externalTableTestColumns("note", "varchar(16)", "label", "varchar(64)")
+	byNameRetyped := byName
+	byNameRetyped.Columns = externalTableTestColumns("label", "varchar(64)", "id", "bigint")
+	byPosition := byName
+	byPosition.TableProperties = externalTableTestMap("orc.schema.resolution", "position")
+	byPositionInserted := byPosition
+	byPositionInserted.Columns = inserted.Columns
+	// ADD COLUMN appended amount, so the catalog order differs from byNameInserted's blocks.
+	appended := &externalTableLayout{Columns: []string{"id", "label", "amount"}}
+	byNameInsertedToPosition := byNameInserted
+	byNameInsertedToPosition.TableProperties = byPosition.TableProperties
 	avro := plain
 	avro.StoredAs = types.StringValue("AVRO")
 	avroWidened := widened
@@ -146,6 +171,15 @@ func TestExternalTableSQL(t *testing.T) {
 		{"alter_add_columns", alter(plain, widened)},
 		{"alter_drop_and_add_columns", alter(plain, narrowed)},
 		{"alter_quoted", alter(quoted, quotedMoved)},
+		{"alter_orc_insert_column", alter(byName, byNameInserted)},
+		{"alter_orc_reorder_columns", alter(byName, byNameReordered)},
+		{"alter_orc_drop_first_and_add_columns", alter(byName, byNameReplaced)},
+		{"alter_error_orc_retype_column", alter(byName, byNameRetyped)},
+		{"alter_error_orc_position_insert_column", alter(byPosition, byPositionInserted)},
+		{"alter_orc_position_in_catalog_order", alterIn(&externalTableLayout{Columns: []string{"id", "label"}}, byName, byPosition)},
+		{"alter_error_orc_position_out_of_catalog_order", alterIn(appended, byNameInserted, byNameInsertedToPosition)},
+		{"alter_error_orc_position_by_catalog", alterIn(&externalTableLayout{Parameters: map[string]string{"orc.schema.resolution": "position"}, Columns: []string{"id", "label"}}, byName, byNameReordered)},
+		{"alter_error_insert_column", alter(plain, inserted)},
 		{"alter_error_reorder_columns", alter(plain, reordered)},
 		{"alter_error_retype_column", alter(plain, retyped)},
 		{"alter_error_avro_columns", alter(avro, avroWidened)},
@@ -170,7 +204,7 @@ func TestExternalTableSQL(t *testing.T) {
 // TestExternalTableAlterCoverage keeps an alter step for every in-place attribute; partition keys stay in place
 // only for equivalent spellings, which need no statement.
 func TestExternalTableAlterCoverage(t *testing.T) {
-	assertAlterCoverage(t, newExternalTableResource(), externalTableAlterSteps, "partition_keys")
+	assertAlterCoverage(t, newExternalTableResource(), externalTableAlterSteps, "partition_key")
 }
 
 // TestExternalTableTypes checks validation, canonical spelling and the Hive translation of catalog types.
@@ -214,7 +248,7 @@ func TestExternalTableLocationsMatch(t *testing.T) {
 	require.NoError(t, externalLocation("s3://bucket/manifest.json"))
 }
 
-// TestExternalTableColumnChanges pins which column edits ALTER TABLE can make.
+// TestExternalTableColumnChanges pins which column edits ALTER TABLE can make for each column mapping.
 func TestExternalTableColumnChanges(t *testing.T) {
 	columns := func(pairs ...string) []externalTableColumnValue {
 		values, known := externalTableColumns(externalTableTestColumns(pairs...))
@@ -222,28 +256,99 @@ func TestExternalTableColumnChanges(t *testing.T) {
 		return values
 	}
 	prev := columns("a", "integer", "b", "date", "c", "varchar(10)")
-	added, dropped, ok := externalTableColumnChanges(prev, columns("A", "int", "c", "varchar(10)", "d", "bigint"), false)
-	require.True(t, ok)
+	added, dropped, retyped := externalTableColumnDiff(prev, columns("x", "date", "A", "int", "c", "varchar(10)", "d", "bigint"))
 	assert.Equal(t, []string{"b"}, dropped)
-	require.Len(t, added, 1)
-	assert.Equal(t, "d", added[0].Name.ValueString())
-	for name, plan := range map[string][]externalTableColumnValue{
-		"reorder":         columns("b", "date", "a", "integer", "c", "varchar(10)"),
-		"insert":          columns("a", "integer", "x", "date", "b", "date", "c", "varchar(10)"),
-		"retype":          columns("a", "integer", "b", "timestamp", "c", "varchar(10)"),
-		"empty":           nil,
-		"widen":           columns("a", "integer", "b", "date", "c", "varchar(20)"),
-		"drop_then_after": columns("x", "integer", "a", "integer"),
+	assert.Equal(t, columns("x", "date", "d", "bigint"), added, "added columns keep the plan order")
+	assert.False(t, retyped)
+	for name, test := range map[string]struct {
+		plan               []externalTableColumnValue
+		byPosition, byName bool
+	}{
+		"append and drop": {columns("A", "int", "c", "varchar(10)", "d", "bigint"), true, true},
+		"respell":         {columns("A", "int4", "b", "date", "c", "varchar(10)"), true, true},
+		"reorder":         {columns("b", "date", "a", "integer", "c", "varchar(10)"), false, true},
+		"insert":          {columns("a", "integer", "x", "date", "b", "date", "c", "varchar(10)"), false, true},
+		"drop_then_after": {columns("x", "integer", "a", "integer"), false, true},
+		"retype":          {columns("a", "integer", "b", "timestamp", "c", "varchar(10)"), false, false},
+		"widen":           {columns("c", "varchar(20)", "a", "integer", "b", "date"), false, false},
+		"empty":           {nil, false, false},
 	} {
-		_, _, ok := externalTableColumnChanges(prev, plan, false)
-		assert.False(t, ok, name)
+		assert.Equal(t, test.byPosition, externalTableColumnsInPlace(prev, test.plan, false, false), "%s by position", name)
+		assert.Equal(t, test.byName, externalTableColumnsInPlace(prev, test.plan, true, false), "%s by name", name)
 	}
-	_, _, ok = externalTableColumnChanges(prev, columns("a", "int4", "b", "date", "c", "varchar(10)"), true)
-	assert.True(t, ok, "AVRO tables accept spelling changes")
-	_, _, ok = externalTableColumnChanges(prev, columns("a", "integer"), true)
-	assert.False(t, ok, "AVRO tables cannot drop columns")
+	assert.True(t, externalTableColumnsInPlace(prev, columns("a", "int4", "b", "date", "c", "varchar(10)"), false, true), "AVRO tables accept spelling changes")
+	assert.False(t, externalTableColumnsInPlace(prev, columns("a", "integer"), true, true), "AVRO tables cannot drop columns")
 	assert.True(t, externalTableColumnsEquivalent(nil, columns()))
 	assert.False(t, externalTableColumnsEquivalent(prev, columns("a", "integer")))
+}
+
+// TestExternalTableMapsByName follows the documented ORC default and orc.schema.resolution.
+func TestExternalTableMapsByName(t *testing.T) {
+	for name, test := range map[string]struct {
+		storedAs, inputFormat string
+		properties            types.Map
+		catalog               map[string]string
+		byName                bool
+	}{
+		"orc":                         {storedAs: "orc", properties: types.MapNull(types.StringType), byName: true},
+		"orc by name":                 {storedAs: "ORC", properties: externalTableTestMap("orc.schema.resolution", "name"), byName: true},
+		"orc by another spelling":     {storedAs: "ORC", properties: externalTableTestMap("orc.schema.resolution", "NAME")},
+		"orc by unknown resolution":   {storedAs: "ORC", properties: types.MapValueMust(types.StringType, map[string]attr.Value{"orc.schema.resolution": types.StringUnknown()})},
+		"orc by unknown properties":   {storedAs: "ORC", properties: types.MapUnknown(types.StringType)},
+		"orc by position":             {storedAs: "ORC", properties: externalTableTestMap("orc.schema.resolution", "position")},
+		"orc input format":            {inputFormat: externalTableFileFormats["ORC"], properties: types.MapNull(types.StringType), byName: true},
+		"imported orc by position":    {storedAs: "ORC", properties: types.MapNull(types.StringType), catalog: map[string]string{"orc.schema.resolution": "position"}},
+		"configuration over catalog":  {storedAs: "ORC", properties: externalTableTestMap("orc.schema.resolution", "name"), catalog: map[string]string{"orc.schema.resolution": "position"}, byName: true},
+		"managed orc by catalog":      {storedAs: "ORC", properties: externalTableTestMap("numRows", "7"), catalog: map[string]string{"orc.schema.resolution": "position"}},
+		"parquet":                     {storedAs: "PARQUET", properties: types.MapNull(types.StringType)},
+		"textfile":                    {storedAs: "TEXTFILE", properties: types.MapNull(types.StringType)},
+		"unknown format":              {storedAs: "JSON", properties: types.MapNull(types.StringType)},
+		"parquet with orc input name": {storedAs: "PARQUET", inputFormat: externalTableFileFormats["ORC"], properties: types.MapNull(types.StringType)},
+	} {
+		model := externalTableTestModel()
+		model.StoredAs, model.InputFormat, model.TableProperties = types.StringValue(test.storedAs), types.StringValue(test.inputFormat), test.properties
+		if test.storedAs == "" {
+			model.StoredAs = types.StringNull()
+		}
+		assert.Equal(t, test.byName, externalTableMapsByName(externalTableMappingSpec(model, test.catalog)), name)
+	}
+}
+
+// TestExternalTableColumnsAlterable judges column changes from the catalog order and mapping when a layout is known,
+// and refuses a switch away from name mapping without one, because state then may not hold the catalog order.
+func TestExternalTableColumnsAlterable(t *testing.T) {
+	orc := externalTableTestModel()
+	orc.StoredAs, orc.FieldDelimiter, orc.TableProperties = types.StringValue("ORC"), types.StringNull(), types.MapNull(types.StringType)
+	orc.Columns = externalTableTestColumns("id", "integer", "amount", "decimal(8,2)", "label", "varchar(64)")
+	positional := orc
+	positional.TableProperties = externalTableTestMap("orc.schema.resolution", "position")
+	reordered := orc
+	reordered.Columns = externalTableTestColumns("label", "varchar(64)", "amount", "decimal(8,2)", "id", "integer")
+	appended := &externalTableLayout{Columns: []string{"id", "label", "amount"}}
+	declared := &externalTableLayout{Columns: []string{"ID", "Amount", "label"}}
+	for name, test := range map[string]struct {
+		prev, plan externalTableModel
+		layout     *externalTableLayout
+		alterable  bool
+	}{
+		"by name, any catalog order":         {orc, reordered, appended, true},
+		"switch out of catalog order":        {orc, positional, appended, false},
+		"switch in catalog order":            {orc, positional, declared, true},
+		"switch without layout":              {orc, positional, nil, false},
+		"switch with a stale layout":         {orc, positional, &externalTableLayout{Columns: []string{"id", "label"}}, false},
+		"switch back to name":                {positional, reordered, declared, true},
+		"switch back to name without layout": {positional, reordered, nil, true},
+		"catalog position, unmanaged":        {orc, reordered, &externalTableLayout{Parameters: map[string]string{"orc.schema.resolution": "position"}, Columns: []string{"id", "amount", "label"}}, false},
+		"catalog position, configuration wins": {orc, func() externalTableModel {
+			m := reordered
+			m.TableProperties = externalTableTestMap("orc.schema.resolution", "name")
+			return m
+		}(), &externalTableLayout{Parameters: map[string]string{"orc.schema.resolution": "position"}, Columns: []string{"id", "amount", "label"}}, true},
+		"unknown columns":                      {orc, func() externalTableModel { m := orc; m.Columns = types.ListUnknown(externalTableColumnType); return m }(), appended, false},
+		"positional follows the catalog order": {positional, positional, &externalTableLayout{Columns: []string{"id", "label", "amount"}}, false},
+	} {
+		assert.Equal(t, test.alterable, externalTableColumnsAlterable(test.prev, test.plan, test.layout), name)
+	}
 }
 
 // TestExternalTableStoredAsInPlace follows the SET FILE FORMAT list.
@@ -285,7 +390,7 @@ func TestExternalTableUnknownAndIncompleteValues(t *testing.T) {
 		change(&model)
 		_, err := createExternalTableStatement(model)
 		require.Error(t, err, name)
-		_, err = alterExternalTableStatements(externalTableTestModel(), model)
+		_, err = alterExternalTableStatements(externalTableTestModel(), model, nil)
 		require.Error(t, err, name)
 	}
 	require.EqualError(t, externalTableDiagnosticsError(diag.Diagnostics{diag.NewErrorDiagnostic("summary", "detail")}), "summary: detail")

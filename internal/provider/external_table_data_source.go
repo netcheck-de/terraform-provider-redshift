@@ -13,11 +13,12 @@ import (
 var _ = registerDataSource(newExternalTableDataSource)
 
 // newExternalTableDataSource reads an external table's definition, including tables this provider did not create.
+// The column descriptions are replaced because the resource's explain how changes plan, which a lookup never does.
 func newExternalTableDataSource() datasource.DataSource {
-	return newCatalogDataSource(catalogSpec{
+	return lookupDescriptions(newCatalogDataSource(catalogSpec{
 		name: "external_table", factory: newExternalTableResource,
 		computed: []string{
-			"columns", "partition_keys", "field_delimiter", "line_delimiter", "serde", "serde_properties",
+			"field_delimiter", "line_delimiter", "serde", "serde_properties",
 			"stored_as", "input_format", "output_format", "location", "table_properties",
 		},
 		identityFields: []string{"schema", "name"}, identityDatabase: "database",
@@ -39,6 +40,9 @@ func newExternalTableDataSource() datasource.DataSource {
 			*data = value
 			return true, nil
 		},
+	}), map[string]string{
+		"column":        "Data columns in catalog order.",
+		"partition_key": "`PARTITIONED BY` columns in key order; null for an unpartitioned table.",
 	})
 }
 

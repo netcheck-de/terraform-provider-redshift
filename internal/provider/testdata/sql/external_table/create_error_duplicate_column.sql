@@ -1,1 +1,1 @@
--- error: columns name "ID" repeats "id"
+-- error: column name "ID" repeats "id"

@@ -212,7 +212,7 @@ type externalTableColumnValue struct {
 	Type types.String `tfsdk:"type"`
 }
 
-// externalTableColumnType is the element type of columns and partition_keys.
+// externalTableColumnType is the element type of the column and partition_key blocks.
 var externalTableColumnType = types.ObjectType{AttrTypes: map[string]attr.Type{"name": types.StringType, "type": types.StringType}}
 
 // externalTableColumns returns the known elements of a column list; known is false for a null or unknown list or
@@ -246,17 +246,18 @@ func externalTableColumnList(columns []externalTableColumnValue) types.List {
 	return types.ListValueMust(externalTableColumnType, elements)
 }
 
-// parseExternalTableColumns validates a column list, rejecting duplicate names, which Redshift compares without case.
+// parseExternalTableColumns validates the blocks of kind, rejecting duplicate names, which Redshift compares without
+// case.
 func parseExternalTableColumns(kind string, list types.List, seen map[string]string) ([]externalTableColumn, error) {
 	values, known := externalTableColumns(list)
 	if !known && !list.IsNull() {
-		return nil, fmt.Errorf("%s must be known", kind)
+		return nil, fmt.Errorf("%s blocks must be known", kind)
 	}
 	columns := make([]externalTableColumn, 0, len(values))
 	for _, value := range values {
 		name := value.Name.ValueString()
 		if strings.TrimSpace(name) == "" {
-			return nil, fmt.Errorf("%s need nonempty names", kind)
+			return nil, fmt.Errorf("%s blocks need nonempty names", kind)
 		}
 		if slices.Contains(externalTablePseudoColumns, strings.ToLower(name)) {
 			return nil, fmt.Errorf("%s cannot use the pseudocolumn name %q", kind, name)
@@ -337,14 +338,14 @@ func externalTableSpecFrom(data externalTableModel) (externalTableSpec, error) {
 	}
 	seen := map[string]string{}
 	var err error
-	if spec.columns, err = parseExternalTableColumns("columns", data.Columns, seen); err != nil {
+	if spec.columns, err = parseExternalTableColumns("column", data.Columns, seen); err != nil {
 		return spec, err
 	}
 	if len(spec.columns) == 0 {
-		return spec, fmt.Errorf("external table requires at least one column")
+		return spec, fmt.Errorf("external table requires at least one column block")
 	}
 	// Partition keys share the name space with columns: CREATE EXTERNAL TABLE rejects a partition key named like a column.
-	if spec.partitionKeys, err = parseExternalTableColumns("partition_keys", data.PartitionKeys, seen); err != nil {
+	if spec.partitionKeys, err = parseExternalTableColumns("partition_key", data.PartitionKeys, seen); err != nil {
 		return spec, err
 	}
 	spec.fieldDelimiter, spec.lineDelimiter, spec.serde = knownString(data.FieldDelimiter), knownString(data.LineDelimiter), knownString(data.Serde)
@@ -462,39 +463,148 @@ func externalTableAvro(storedAs, inputFormat types.String) bool {
 	return strings.EqualFold(knownString(storedAs), "AVRO") || strings.Contains(strings.ToLower(knownString(inputFormat)), "avro")
 }
 
-// externalTableColumnChanges returns the columns to add and drop to move prev to plan in place, and false when the
-// change needs a new table: ADD COLUMN appends, so kept columns must stay in their order ahead of added ones and
-// keep their type, and AVRO tables cannot change columns at all.
-// https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html
-func externalTableColumnChanges(prev, plan []externalTableColumnValue, avro bool) (added []externalTableColumnValue, dropped []string, ok bool) {
-	if len(plan) == 0 {
-		return nil, nil, false
+// externalTableMapsByName reports whether Spectrum matches the table's columns to the file's columns by name, so
+// the catalog's column order carries no meaning. AWS documents name mapping only for ORC, where it is the default
+// unless orc.schema.resolution is set; any value but name maps by position, so another spelling such as NAME counts
+// as position, which never skips a replacement. Every other format maps by position.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_TABLE.html
+func externalTableMapsByName(spec externalTableSpec) bool {
+	orc := spec.storedAs == "ORC" || spec.storedAs == "" && spec.inputFormat == externalTableFileFormats["ORC"]
+	resolution, set := spec.tableProperties["orc.schema.resolution"]
+	return orc && (!set || resolution == "name")
+}
+
+// externalTableMappingSpec holds what externalTableMapsByName needs from a model, which may not validate as a whole
+// while planning. Configured table properties override catalog, the properties the catalog last reported, so a key
+// configuration leaves out still decides as it does for Spectrum.
+func externalTableMappingSpec(data externalTableModel, catalog map[string]string) externalTableSpec {
+	properties := maps.Clone(catalog)
+	if properties == nil {
+		properties = map[string]string{}
 	}
+	maps.Copy(properties, knownMap(data.TableProperties))
+	// A resolution known only after apply may be anything, so it counts as position, the answer that never skips a
+	// replacement; knownMap leaves it out, which would otherwise read as the name default.
+	if resolution, ok := data.TableProperties.Elements()["orc.schema.resolution"]; data.TableProperties.IsUnknown() || ok && resolution.IsUnknown() {
+		properties["orc.schema.resolution"] = "position"
+	}
+	// An unrecognized or unknown format leaves storedAs empty and maps by position, for the same reason.
+	storedAs, _ := sqlclient.OneOf(knownString(data.StoredAs), slices.Sorted(maps.Keys(externalTableFileFormats))...)
+	return externalTableSpec{storedAs: storedAs, inputFormat: knownString(data.InputFormat), tableProperties: properties}
+}
+
+// externalTableLayout is what judging a column change needs from the catalog but state does not hold: the table
+// properties, which configuration may leave unmanaged, and the physical column order, which state replaces with the
+// configured order for a table that maps columns by name. Its exported fields are its private state encoding.
+type externalTableLayout struct {
+	// Parameters are the catalog's table properties.
+	Parameters map[string]string `json:"parameters"`
+	// Columns are the data column names in catalog order.
+	Columns []string `json:"columns"`
+}
+
+// parameters returns the catalog's table properties; a missing layout has none.
+func (l *externalTableLayout) parameters() map[string]string {
+	if l == nil {
+		return nil
+	}
+	return l.Parameters
+}
+
+// physical returns columns in the layout's catalog order. It reports false without a layout or when the names
+// differ, as after an out-of-band change no refresh has seen, because the order is then unknown.
+func (l *externalTableLayout) physical(columns []externalTableColumnValue) ([]externalTableColumnValue, bool) {
+	if l == nil || len(l.Columns) != len(columns) {
+		return nil, false
+	}
+	ordered := make([]externalTableColumnValue, 0, len(columns))
+	for _, name := range l.Columns {
+		i := slices.IndexFunc(columns, func(column externalTableColumnValue) bool { return strings.EqualFold(column.Name.ValueString(), name) })
+		if i < 0 {
+			return nil, false
+		}
+		ordered = append(ordered, columns[i])
+	}
+	return ordered, true
+}
+
+// externalTableColumnsAlterable reports whether ALTER TABLE can bring the columns from prev to plan. ADD COLUMN
+// appends to the catalog order, and a table that maps by position after the change matches that order to the files,
+// so the check starts from the catalog order. That holds even when the blocks do not change, because switching
+// orc.schema.resolution to position makes the order of a name-mapped table matter. State holds the catalog order
+// only for a table that maps by position, so without a layout a switch away from name mapping is refused.
+func externalTableColumnsAlterable(prev, plan externalTableModel, layout *externalTableLayout) bool {
+	before, beforeKnown := externalTableColumns(prev.Columns)
+	after, afterKnown := externalTableColumns(plan.Columns)
+	if !beforeKnown || !afterKnown {
+		return false
+	}
+	byName := externalTableMapsByName(externalTableMappingSpec(plan, layout.parameters()))
+	physical, ok := layout.physical(before)
+	if !ok {
+		if !byName && externalTableMapsByName(externalTableMappingSpec(prev, layout.parameters())) {
+			return false
+		}
+		physical = before
+	}
+	avro := externalTableAvro(prev.StoredAs, prev.InputFormat) || externalTableAvro(plan.StoredAs, plan.InputFormat)
+	return externalTableColumnsInPlace(physical, after, byName, avro)
+}
+
+// externalTableColumnIndex maps lowercase column names to their position, because Redshift compares them without case.
+func externalTableColumnIndex(columns []externalTableColumnValue) map[string]int {
 	index := map[string]int{}
-	for i, column := range prev {
+	for i, column := range columns {
 		index[strings.ToLower(column.Name.ValueString())] = i
 	}
-	kept, last := map[int]bool{}, -1
+	return index
+}
+
+// externalTableColumnDiff returns the columns to add, in plan order, and the columns to drop, and whether a column in
+// both declares another type. The statements do not depend on how the table maps columns, because ADD COLUMN always
+// appends; externalTableColumnsInPlace decides whether that is what the plan asks for.
+func externalTableColumnDiff(prev, plan []externalTableColumnValue) (added []externalTableColumnValue, dropped []string, retyped bool) {
+	index := externalTableColumnIndex(prev)
+	kept := map[int]bool{}
 	for _, column := range plan {
 		position, found := index[strings.ToLower(column.Name.ValueString())]
 		if !found {
 			added = append(added, column)
 			continue
 		}
-		if len(added) > 0 || position < last || !externalTableTypesEqual(prev[position].Type.ValueString(), column.Type.ValueString()) {
-			return nil, nil, false
-		}
-		kept[position], last = true, position
+		kept[position] = true
+		retyped = retyped || !externalTableTypesEqual(prev[position].Type.ValueString(), column.Type.ValueString())
 	}
 	for i, column := range prev {
 		if !kept[i] {
 			dropped = append(dropped, column.Name.ValueString())
 		}
 	}
-	if avro && (len(added) > 0 || len(dropped) > 0) {
-		return nil, nil, false
+	return added, dropped, retyped
+}
+
+// externalTableColumnsInPlace reports whether ALTER TABLE can move prev, in catalog order, to plan. Columns keep
+// their type, and AVRO tables cannot add or drop columns at all. A table that maps columns by name accepts additions
+// and drops anywhere and any order; a positional table must keep its remaining columns in order ahead of the
+// appended ones, because the catalog order is what Spectrum matches to the file.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html
+func externalTableColumnsInPlace(prev, plan []externalTableColumnValue, byName, avro bool) bool {
+	added, dropped, retyped := externalTableColumnDiff(prev, plan)
+	if len(plan) == 0 || retyped || avro && (len(added) > 0 || len(dropped) > 0) {
+		return false
 	}
-	return added, dropped, true
+	if byName {
+		return true
+	}
+	index, last := externalTableColumnIndex(prev), -1
+	for _, column := range plan[:len(plan)-len(added)] {
+		position, found := index[strings.ToLower(column.Name.ValueString())]
+		if !found || position < last {
+			return false
+		}
+		last = position
+	}
+	return true
 }
 
 // externalTableColumnsEquivalent reports lists that differ at most in name case and type spelling.
@@ -538,16 +648,16 @@ func externalTablePropertyChanges(prev, plan map[string]string) (map[string]stri
 }
 
 // externalTableAlterSteps change one aspect of the table per step; alterExternalTableStatements validates the plan
-// first, so the renderers can rely on it. partition_keys has no step: it stays in place only for spellings that
+// first, so the renderers can rely on it. partition_key has no step: it stays in place only for spellings that
 // declare the same keys, which needs no statement.
 var externalTableAlterSteps = []alterStep[externalTableModel]{
 	{
-		attribute: "columns",
+		attribute: "column",
 		value:     func(data externalTableModel) attr.Value { return data.Columns },
 		render: func(prev, plan externalTableModel) []string {
 			before, _ := externalTableColumns(prev.Columns)
 			after, _ := externalTableColumns(plan.Columns)
-			added, dropped, _ := externalTableColumnChanges(before, after, false)
+			added, dropped, _ := externalTableColumnDiff(before, after)
 			var statements []string
 			// Adding first keeps at least one column, because a table cannot lose its last one.
 			for _, column := range added {
@@ -592,18 +702,15 @@ var externalTableAlterSteps = []alterStep[externalTableModel]{
 	},
 }
 
-// alterExternalTableStatements renders the in-place changes from prev to plan. It rejects changes that the plan
-// modifiers would have turned into a replacement, as a guard for prior state the modifiers could not judge.
-func alterExternalTableStatements(prev, plan externalTableModel) ([]string, error) {
+// alterExternalTableStatements renders the in-place changes from prev to plan, given the catalog layout read just
+// before, or nil when it is unknown. It rejects changes that the plan modifiers would have turned into a
+// replacement, as a guard for prior state the modifiers could not judge, such as a catalog changed since planning.
+func alterExternalTableStatements(prev, plan externalTableModel, layout *externalTableLayout) ([]string, error) {
 	if _, err := externalTableSpecFrom(plan); err != nil {
 		return nil, err
 	}
-	if !prev.Columns.Equal(plan.Columns) {
-		before, _ := externalTableColumns(prev.Columns)
-		after, _ := externalTableColumns(plan.Columns)
-		if _, _, ok := externalTableColumnChanges(before, after, externalTableAvro(plan.StoredAs, plan.InputFormat) || externalTableAvro(prev.StoredAs, prev.InputFormat)); !ok {
-			return nil, fmt.Errorf("columns can only be appended or dropped in place, and not for AVRO tables; replace the table")
-		}
+	if !externalTableColumnsAlterable(prev, plan, layout) {
+		return nil, fmt.Errorf("column blocks change in place only by adding or dropping columns, at the end unless an ORC table maps columns by name, and never retype a column or change an AVRO table's columns; replace the table")
 	}
 	if !prev.StoredAs.Equal(plan.StoredAs) && !externalTableStoredAsInPlace(knownString(prev.StoredAs), knownString(plan.StoredAs)) {
 		return nil, fmt.Errorf("stored_as can change in place only between %s; replace the table", strings.Join(stringsOf(externalTableSetFileFormats), ", "))

@@ -1,1 +1,1 @@
--- error: columns can only be appended or dropped in place, and not for AVRO tables; replace the table
+-- error: column blocks change in place only by adding or dropping columns, at the end unless an ORC table maps columns by name, and never retype a column or change an AVRO table's columns; replace the table

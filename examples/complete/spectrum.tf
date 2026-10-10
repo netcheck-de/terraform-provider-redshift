@@ -131,13 +131,18 @@ resource "redshift_external_table" "events" {
   schema   = redshift_external_schema.glue.name
   name     = local.spectrum_table_name
 
-  columns = [
-    { name = "id", type = "integer" },
-    { name = "label", type = "varchar(64)" },
-  ]
-  partition_keys = [
-    { name = "event_date", type = "date" },
-  ]
+  column {
+    name = "id"
+    type = "integer"
+  }
+  column {
+    name = "label"
+    type = "varchar(64)"
+  }
+  partition_key {
+    name = "event_date"
+    type = "date"
+  }
 
   field_delimiter  = ","
   stored_as        = "TEXTFILE"

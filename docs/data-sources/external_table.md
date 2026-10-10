@@ -37,21 +37,21 @@ data "redshift_external_table" "sales" {
 
 ### Read-Only
 
-- `columns` (Attributes List) Ordered data columns. Appending columns and dropping columns change the table in place with `ALTER TABLE ... ADD COLUMN` and `DROP COLUMN`, except for AVRO tables; reordering, retyping, or inserting columns replaces the table. (see [below for nested schema](#nestedatt--columns))
+- `column` (Attributes List) Data columns in catalog order. (see [below for nested schema](#nestedatt--column))
 - `field_delimiter` (String) `ROW FORMAT DELIMITED FIELDS TERMINATED BY` character: one ASCII character; write control characters as HCL escapes such as `"\t"` or `"\u0007"`. Conflicts with `serde`.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `input_format` (String) `STORED AS INPUTFORMAT` class, for formats such as Hudi or Delta Lake manifests; requires `output_format`. Without it, the class the catalog records for `stored_as` is reported.
 - `line_delimiter` (String) `ROW FORMAT DELIMITED LINES TERMINATED BY` character, usually `"\n"`. Conflicts with `serde`.
 - `location` (String) `s3://` folder (ending in `/`) or manifest file holding the data, in the warehouse's AWS Region. Changes run `ALTER TABLE ... SET LOCATION`.
 - `output_format` (String) `OUTPUTFORMAT` class paired with `input_format`. Without it, the class the catalog records for `stored_as` is reported.
-- `partition_keys` (Attributes List) Ordered `PARTITIONED BY` columns; their names must differ from the data columns. Spelling a name in another case or a type with an alias stays in place; any other change replaces the table. (see [below for nested schema](#nestedatt--partition_keys))
+- `partition_key` (Attributes List) `PARTITIONED BY` columns in key order; null for an unpartitioned table. (see [below for nested schema](#nestedatt--partition_key))
 - `serde` (String) `ROW FORMAT SERDE` class, such as `org.openx.data.jsonserde.JsonSerDe` or `org.apache.hadoop.hive.serde2.OpenCSVSerde`. Conflicts with the delimiters.
 - `serde_properties` (Map of String) `WITH SERDEPROPERTIES` pairs for `serde`, such as `{ "strip.outer.array" = "true" }`.
 - `stored_as` (String) File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; other changes replace the table.
-- `table_properties` (Map of String) `TABLE PROPERTIES` pairs; names are case-sensitive. Only the configured properties are managed. Adding or changing `numRows`, `skip.header.line.count`, or `orc.schema.resolution` runs `ALTER TABLE ... SET TABLE PROPERTIES`; removing a property, or adding or changing any other property, replaces the table.
+- `table_properties` (Map of String) `TABLE PROPERTIES` pairs; names are case-sensitive. Only the configured properties are managed. Adding or changing `numRows`, `skip.header.line.count`, or `orc.schema.resolution` runs `ALTER TABLE ... SET TABLE PROPERTIES`; removing a property, or adding or changing any other property, replaces the table. Switching an `ORC` table to position mapping also replaces it unless the `column` blocks follow the catalog order, to which `ADD COLUMN` appends.
 
-<a id="nestedatt--columns"></a>
-### Nested Schema for `columns`
+<a id="nestedatt--column"></a>
+### Nested Schema for `column`
 
 Read-Only:
 
@@ -59,8 +59,8 @@ Read-Only:
 - `type` (String) Data type: `smallint`, `integer`, `bigint`, `decimal(p,s)`, `real`, `double precision`, `boolean`, `char(n)`, `varchar(n)`, `date`, or `timestamp`, including their aliases such as `int4` or `numeric`. Spellings of the same type, such as `int` and `integer`, are equivalent.
 
 
-<a id="nestedatt--partition_keys"></a>
-### Nested Schema for `partition_keys`
+<a id="nestedatt--partition_key"></a>
+### Nested Schema for `partition_key`
 
 Read-Only:
 
@@ -71,7 +71,8 @@ Read-Only:
 `id` (String, computed) is the observed table's JSON identity, using the same warehouse, database, schema, and name keys
 as the paired resource.
 
-Types use Redshift names (for example `integer` for the catalog's `int`); types Redshift cannot declare, such as Glue's
-`string`, keep the catalog spelling. `table_properties` reports every catalog property, including bookkeeping entries
-such as `EXTERNAL`. `stored_as` is null when the input format class belongs to no named format, and `serde` is null when
-it is the format's default SerDe. A missing table is an error.
+`column` lists the data columns in catalog order, which for `ORC` tables can differ from the resource's configured order
+because `ADD COLUMN` appends. Types use Redshift names (for example `integer` for the catalog's `int`); types Redshift
+cannot declare, such as Glue's `string`, keep the catalog spelling. `table_properties` reports every catalog property,
+including bookkeeping entries such as `EXTERNAL`. `stored_as` is null when the input format class belongs to no named
+format, and `serde` is null when it is the format's default SerDe. A missing table is an error.

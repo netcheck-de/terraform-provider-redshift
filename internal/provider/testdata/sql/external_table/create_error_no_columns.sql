@@ -1,1 +1,1 @@
--- error: external table requires at least one column
+-- error: external table requires at least one column block
