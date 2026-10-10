@@ -1,0 +1,1 @@
+-- error: diststyle KEY requires distkey

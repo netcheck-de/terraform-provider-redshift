@@ -1,0 +1,1 @@
+-- error: distkey requires diststyle KEY or no diststyle, not EVEN

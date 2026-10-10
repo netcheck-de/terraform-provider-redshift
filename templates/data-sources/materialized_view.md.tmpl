@@ -1,0 +1,31 @@
+---
+subcategory: Tables and Views
+page_title: redshift_materialized_view Data Source - terraform-provider-redshift
+description: Reads a materialized view's definition, refresh setting, and owner.
+---
+
+# redshift_materialized_view (Data Source)
+
+Reads an existing materialized view without managing it. See AWS
+[SVV_MV_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MV_INFO.html).
+
+```sql
+SELECT ... FROM pg_views WHERE schemaname = '...' AND viewname = '...';
+SELECT autorefresh FROM svv_mv_info WHERE ...;
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_materialized_view/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the observed view's JSON identity, using the same warehouse, database, schema, and name keys
+as the paired resource.
+
+`query` is the catalog's complete `CREATE MATERIALIZED VIEW` statement. `backup`, `diststyle`, `distkey`, and `sortkey`
+are always null: no catalog view reports `BACKUP`, and `SVV_TABLE_INFO` is visible only to superusers and omits
+materialized views without rows. `auto_refresh` is null when `SVV_MV_INFO`, which shows regular users only their own
+materialized views, hides the view. A missing view, a missing database, or an ordinary view is an error.

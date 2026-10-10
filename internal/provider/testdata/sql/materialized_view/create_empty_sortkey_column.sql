@@ -1,0 +1,1 @@
+-- error: sortkey columns must be nonempty

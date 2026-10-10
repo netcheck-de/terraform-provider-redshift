@@ -1,0 +1,1 @@
+-- error: a view requires a nonempty schema and name

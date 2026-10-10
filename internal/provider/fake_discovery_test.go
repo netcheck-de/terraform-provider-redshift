@@ -23,8 +23,10 @@ var _ = registerFakeFamily("discovery", func() fakeFamily { return &discoveryFam
 type discoveryListing struct {
 	// name keys the listing's rows.
 	name string
-	// source recognizes the listing's SQL by its FROM clause, which no other type's read shares.
+	// source recognizes the listing's SQL by its FROM clause.
 	source string
+	// selects, when set, must open the SELECT list, for sources another type's read shares.
+	selects string
 	// equal maps a bound parameter to the row column it must equal.
 	equal map[string]string
 	// like maps a bound LIKE pattern to the row column it must match.
@@ -38,7 +40,7 @@ var discoveryListings = []discoveryListing{
 	{name: "databases", source: string(databasesSource), equal: map[string]string{"database_type": "database_type"}, like: map[string]string{"name_like": "database_name"}},
 	{name: "schemas", source: string(schemasSource), equal: map[string]string{"database": "database_name", "schema_type": "schema_type"}},
 	{name: "tables", source: string(tablesSource), equal: map[string]string{"database": "database_name", "schema": "schema_name", "table_type": "table_type"}},
-	{name: "materialized", source: "svv_mv_info", equal: map[string]string{"database": "database_name", "schema": "schema_name"}},
+	{name: "materialized", source: "svv_mv_info", selects: "TRIM(schema_name) AS schema_name", equal: map[string]string{"database": "database_name", "schema": "schema_name"}},
 	{name: "columns", source: "svv_all_columns", equal: map[string]string{"database": "database_name", "schema": "schema_name", "table": "table_name"}},
 	{name: "constraints", source: string(constraintsSource), equal: map[string]string{"schema": "schema_name", "table": "table_name", "contype": "contype"}, connected: true},
 }
@@ -68,7 +70,7 @@ func discoveryLike(pattern string) *regexp.Regexp {
 // query answers the discovery listings with the rows matching their bound filters.
 func (f *discoveryFamily) query(_ *catalog, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
 	for _, listing := range discoveryListings {
-		if !strings.HasPrefix(sql, "SELECT ") || !strings.Contains(sql, " FROM "+listing.source+" ") {
+		if !strings.HasPrefix(sql, "SELECT "+listing.selects) || !strings.Contains(sql, " FROM "+listing.source+" ") {
 			continue
 		}
 		var matched []dataapi.Row

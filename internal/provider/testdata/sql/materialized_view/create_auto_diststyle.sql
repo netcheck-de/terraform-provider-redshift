@@ -1,0 +1,1 @@
+-- error: diststyle: "AUTO" is not one of EVEN, ALL, KEY

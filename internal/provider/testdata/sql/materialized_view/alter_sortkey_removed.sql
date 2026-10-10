@@ -1,0 +1,1 @@
+ALTER MATERIALIZED VIEW "serving"."sales_summary" ALTER SORTKEY NONE;
