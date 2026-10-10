@@ -1,0 +1,1 @@
+-- error: stored_as can change in place only between AVRO, PARQUET, RCFILE, SEQUENCEFILE, TEXTFILE; replace the table

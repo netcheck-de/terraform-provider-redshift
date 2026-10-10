@@ -1,0 +1,1 @@
+-- error: stored_as: "JSON" is not one of AVRO, ORC, PARQUET, RCFILE, SEQUENCEFILE, TEXTFILE

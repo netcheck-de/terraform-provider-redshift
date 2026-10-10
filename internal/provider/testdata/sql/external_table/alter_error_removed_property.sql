@@ -1,0 +1,1 @@
+-- error: table property "skip.header.line.count" cannot be removed in place; replace the table

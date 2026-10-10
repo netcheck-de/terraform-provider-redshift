@@ -1,0 +1,1 @@
+-- error: values keys "EVENT_DATE" and "event_date" name the same partition key

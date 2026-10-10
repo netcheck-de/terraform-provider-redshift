@@ -1,0 +1,1 @@
+-- error: external table requires stored_as, or both input_format and output_format

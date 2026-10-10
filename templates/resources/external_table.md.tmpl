@@ -1,0 +1,67 @@
+---
+subcategory: Databases and Schemas
+page_title: redshift_external_table Resource - terraform-provider-redshift
+description: Manages a Redshift Spectrum external table in an external schema.
+---
+
+# redshift_external_table (Resource)
+
+Manages one Redshift Spectrum external table, whose definition lives in the external catalog (usually the AWS Glue Data
+Catalog) of an [external schema](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/external_schema)
+and whose data stays in Amazon S3. See AWS
+[CREATE EXTERNAL TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_TABLE.html) and
+[ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html).
+
+```sql
+CREATE EXTERNAL TABLE schema.name (...) ... STORED AS ... LOCATION ...;
+ALTER TABLE schema.name ...;
+DROP TABLE schema.name;
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_external_table/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+Creation runs `CREATE EXTERNAL TABLE`; the creating user must own the external schema or be a superuser. Access to the
+table follows `USAGE` on the external schema, because Redshift cannot grant privileges on an external table, and the
+external catalog records no SQL owner, so this resource has no `owner` attribute.
+
+Changes run `ALTER TABLE` where Redshift supports them for external tables: `SET LOCATION`, `SET FILE FORMAT` between
+`AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE`, `SET TABLE PROPERTIES` for `numRows`,
+`skip.header.line.count`, and `orc.schema.resolution`, and `ADD COLUMN`/`DROP COLUMN` for appended or removed columns
+(not for `AVRO` tables). Everything else replaces the table. Replacing or deleting runs `DROP TABLE` **without
+`CASCADE`**. Views over an external table must be late-binding (`WITH NO SCHEMA BINDING`), so they never block the drop;
+they fail at query time until the table exists again. The S3 data is never touched, but the catalog drops the table's
+partitions with it. `redshift_external_partition` resources then disappear on the next refresh and are added again by
+the following apply.
+
+Refresh reads `svv_external_tables` and `svv_external_columns`, filtered by `redshift_database_name`. The catalog stores
+names in lowercase and Hive type names (for example `int` for `integer`), so equivalent spellings in configuration are
+not drift. Only the configured table and SerDe properties are tracked; a property or delimiter that the catalog does not
+report is assumed unchanged. Partitions are never read; manage them with `redshift_external_partition`.
+
+Do not manage the same table with `aws_glue_catalog_table` as well: both would own one catalog entry, and each would
+revert the other's changes. Iceberg tables (`CREATE EXTERNAL TABLE ... USING ICEBERG`), `CREATE EXTERNAL TABLE AS`,
+nested types, and `VARBYTE` columns are not supported.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_external_table/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_external_table/import.sh" }}
+
+Import derives the columns, partition keys, location, format, SerDe, SerDe properties, and delimiters from the catalog.
+`stored_as` is derived only when the catalog's input format class belongs to a named format. Table properties are not
+imported, because the catalog adds its own. Until `table_properties` is configured, plans compare the configured
+properties with the catalog values the last refresh read: matching ones need no change, `SET TABLE PROPERTIES` sets the
+ones it supports, and any other difference replaces the table.

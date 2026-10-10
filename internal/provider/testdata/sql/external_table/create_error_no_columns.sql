@@ -1,0 +1,1 @@
+-- error: external table requires at least one column

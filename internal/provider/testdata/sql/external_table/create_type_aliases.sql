@@ -1,0 +1,1 @@
+CREATE EXTERNAL TABLE "example_external"."events" ("a" smallint, "b" integer, "c" bigint, "d" decimal(18, 0), "e" decimal(8, 2), "f" real, "g" double precision, "h" boolean, "i" char(1), "j" varchar(256), "k" date, "l" timestamp, "m" varchar(65535)) STORED AS PARQUET LOCATION 's3://example-bucket/events/';

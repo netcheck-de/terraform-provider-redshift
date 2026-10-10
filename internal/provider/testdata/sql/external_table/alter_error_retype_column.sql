@@ -1,0 +1,1 @@
+-- error: columns can only be appended or dropped in place, and not for AVRO tables; replace the table

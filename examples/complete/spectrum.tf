@@ -87,3 +87,86 @@ resource "aws_glue_resource_policy" "fixture" {
     }]
   })
 }
+
+# Redshift writes table and partition definitions through the external schema's role, so the role needs catalog write
+# access for the table this example manages in SQL; the Glue fixture table above stays read-only.
+resource "aws_iam_role_policy" "producer_spectrum_tables" {
+  provider = aws.producer
+  name     = "spectrum-tables"
+  role     = aws_iam_role.producer.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "glue:CreateTable", "glue:UpdateTable", "glue:DeleteTable", "glue:GetTable",
+          "glue:CreatePartition", "glue:BatchCreatePartition", "glue:UpdatePartition", "glue:DeletePartition",
+          "glue:BatchDeletePartition", "glue:GetPartition", "glue:GetPartitions", "glue:BatchGetPartition",
+        ]
+        Resource = [
+          local.glue_catalog_arn,
+          aws_glue_catalog_database.fixture.arn,
+          "${replace(aws_glue_catalog_database.fixture.arn, ":database/", ":table/")}/${local.spectrum_table_name}",
+        ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${module.fixture_bucket.s3_bucket_arn}/spectrum/*"
+      },
+    ]
+  })
+}
+
+locals {
+  spectrum_table_name = "events"
+  spectrum_location   = "s3://${module.fixture_bucket.s3_bucket_id}/spectrum/${local.spectrum_table_name}/"
+}
+
+# A Spectrum table defined in SQL; Terraform owns its catalog entry, so no aws_glue_catalog_table may manage it too.
+resource "redshift_external_table" "events" {
+  provider = redshift.producer
+  database = redshift_external_schema.glue.database
+  schema   = redshift_external_schema.glue.name
+  name     = local.spectrum_table_name
+
+  columns = [
+    { name = "id", type = "integer" },
+    { name = "label", type = "varchar(64)" },
+  ]
+  partition_keys = [
+    { name = "event_date", type = "date" },
+  ]
+
+  field_delimiter  = ","
+  stored_as        = "TEXTFILE"
+  location         = local.spectrum_location
+  table_properties = { "skip.header.line.count" = "1" }
+
+  depends_on = [aws_iam_role_policy.producer_spectrum_tables]
+}
+
+resource "redshift_external_partition" "events_first_day" {
+  provider = redshift.producer
+  database = redshift_external_table.events.database
+  schema   = redshift_external_table.events.schema
+  table    = redshift_external_table.events.name
+  values   = { event_date = "2024-01-01" }
+  location = "${local.spectrum_location}event_date=2024-01-01/"
+}
+
+data "redshift_external_table" "events" {
+  provider = redshift.producer
+  database = redshift_external_table.events.database
+  schema   = redshift_external_table.events.schema
+  name     = redshift_external_table.events.name
+}
+
+data "redshift_external_partition" "events_first_day" {
+  provider = redshift.producer
+  database = redshift_external_partition.events_first_day.database
+  schema   = redshift_external_partition.events_first_day.schema
+  table    = redshift_external_partition.events_first_day.table
+  values   = redshift_external_partition.events_first_day.values
+}

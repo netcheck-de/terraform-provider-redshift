@@ -1,0 +1,1 @@
+CREATE EXTERNAL TABLE "Lake""Schema"."Odd""Table" ("id" integer, "label" varchar(64)) ROW FORMAT SERDE 'com.example.It''sSerDe\\x' WITH SERDEPROPERTIES ('key''s' = 'value\\''s') STORED AS TEXTFILE LOCATION 's3://example-bucket/events/';

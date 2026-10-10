@@ -1,0 +1,51 @@
+---
+subcategory: Databases and Schemas
+page_title: redshift_external_partition Resource - terraform-provider-redshift
+description: Manages one partition of a Redshift Spectrum external table.
+---
+
+# redshift_external_partition (Resource)
+
+Manages one partition of a partitioned
+[external table](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/external_table).
+See AWS [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html) and
+[Partitioning Redshift Spectrum external tables](https://docs.aws.amazon.com/redshift/latest/dg/c-spectrum-external-tables.html#c-spectrum-external-tables-partitioning).
+
+```sql
+ALTER TABLE schema.table ADD PARTITION (values...) LOCATION ...;
+ALTER TABLE schema.table PARTITION (values...) SET LOCATION ...;
+ALTER TABLE schema.table DROP PARTITION (values...);
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_external_partition/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+Creation reads the table's partition keys from `svv_external_columns`, requires `values` to set each of them exactly
+once (names compare without case), and runs `ADD PARTITION` without `IF NOT EXISTS`, so an existing partition is an
+error rather than silently adopted. Statements list the keys in the table's partition-key order. A changed `location`
+runs `PARTITION (...) SET LOCATION`; any other change replaces the partition. Deletion runs `DROP PARTITION`, which
+removes only catalog metadata; the S3 data stays.
+
+Refresh reads `svv_external_partitions`. The view drops a folder's trailing slash and truncates locations to 128
+characters, so those forms of the configured location are not drift. A partition whose table, external schema, or
+database is gone, or whose table no longer has the configured partition keys, is removed from state.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity. The `values` field holds the partition values as
+a JSON-encoded string, because identity fields are strings:
+
+{{ tffile "examples/resources/redshift_external_partition/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_external_partition/import.sh" }}
+
+The location is read from the catalog on refresh.

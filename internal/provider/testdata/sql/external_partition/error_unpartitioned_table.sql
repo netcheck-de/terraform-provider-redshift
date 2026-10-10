@@ -1,0 +1,1 @@
+-- error: external table "events" has no partition keys

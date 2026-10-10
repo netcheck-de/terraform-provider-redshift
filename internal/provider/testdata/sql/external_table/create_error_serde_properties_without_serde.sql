@@ -1,0 +1,1 @@
+-- error: serde_properties require serde

@@ -1,0 +1,1 @@
+-- error: columns cannot use the pseudocolumn name "$path"

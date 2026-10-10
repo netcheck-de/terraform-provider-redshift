@@ -1,0 +1,1 @@
+-- error: values must name at least one partition key
