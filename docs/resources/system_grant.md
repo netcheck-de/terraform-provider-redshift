@@ -14,8 +14,7 @@ GRANT privilege TO ROLE role;
 REVOKE privilege FROM ROLE role;
 ```
 
-Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
-revokes the privileges it owns.
+Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
 
 ## Example Usage
 
@@ -40,21 +39,76 @@ resource "redshift_system_grant" "operators" {
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-Changing `role` replaces the grant; an empty `privileges` set revokes explicit privileges. Supported privileges cover
-user/schema/table/role/datashare administration; function, external-function, procedure, view, model and library
-creation/deletion; `ALTER DEFAULT PRIVILEGES`, `ACCESS CATALOG`, `ACCESS SYSTEM TABLE`, `TRUNCATE TABLE`, `VACUUM`,
-`ANALYZE`, `CANCEL`, `IGNORE RLS`, `EXPLAIN RLS`, and `EXPLAIN MASKING`. Use full SQL names such as
-`CREATE OR REPLACE FUNCTION`. The accepted names are exactly the system permissions of the GRANT role syntax and the
-[RBAC system permissions](https://docs.aws.amazon.com/redshift/latest/dg/r_roles-system-privileges.html) table. `ALL`
-is deliberately not accepted; declare explicit privileges.
+Supported privileges cover user/schema/table/role/datashare administration; function, external-function, procedure,
+view, model and library creation/deletion; `ALTER DEFAULT PRIVILEGES`, `ACCESS CATALOG`, `ACCESS SYSTEM TABLE`,
+`TRUNCATE TABLE`, `VACUUM`, `ANALYZE`, `CANCEL`, `IGNORE RLS`, `EXPLAIN RLS`, and `EXPLAIN MASKING`. Use full SQL
+names such as `CREATE OR REPLACE FUNCTION`. The accepted names are exactly the system permissions of the GRANT role
+syntax and the [RBAC system permissions](https://docs.aws.amazon.com/redshift/latest/dg/r_roles-system-privileges.html)
+table. `ALL` is deliberately not accepted; declare explicit privileges.
 
 ## Lifecycle and Ownership
 
-Reads `svv_system_privileges`, reconciles extras and missing privileges, and verifies convergence. Inherited permissions
-from role memberships are independent. A missing role removes the grant from state. Use custom roles; this resource does
-not redefine built-in role capabilities.
+Reads `svv_system_privileges` for permissions granted directly to the role. Use custom roles; this resource does not
+redefine built-in role capabilities.
 
-Refresh reads the current explicit system privileges into `privileges`.
+## Reconciliation
+
+Refresh reads the role's explicit system permissions from `SVV_SYSTEM_PRIVILEGES`; an update reads them again, runs one
+`GRANT` or `REVOKE` statement per permission that differs, starting from what the catalog holds, and re-reads the
+catalog to verify the exact set; a change of `role` replaces the grant.
+
+| Change                               | Result                                                                                        |
+|--------------------------------------|-----------------------------------------------------------------------------------------------|
+| `role`                               | replaces the grant: the old role's permissions are revoked and the new role's granted         |
+| permission added to `privileges`     | `GRANT <permission> TO ROLE ...`                                                              |
+| permission removed from `privileges` | `REVOKE <permission> FROM ROLE ...`                                                           |
+| `privileges` set to `[]`             | `REVOKE` for every explicit permission of the role; the resource stays and owns the empty set |
+
+An update revokes before it grants. The statements share no transaction: when one fails, the earlier ones stay applied
+and the next plan shows what is left. A catalog permission outside the supported list fails the refresh.
+
+**Drift.** Refresh compares the role's explicit system permissions with the state, and the next plan restores the
+configuration with the statements above: a permission granted outside Terraform is revoked, and a revoked one is
+granted again. Permissions the role inherits through role memberships are independent. A missing role removes the
+grant from state, and the next plan creates it again.
+
+The following example shows the statements an update runs, each with the database it runs in: the existence
+checks and the catalog read, the changes, and the read that verifies them.
+
+### Replacing a Permission
+
+```terraform
+resource "redshift_system_grant" "operators" {
+  role       = "operators"
+  privileges = ["CREATE ROLE"] # was ["CREATE USER"]
+}
+```
+
+```sql
+-- database: admin
+SELECT role_name FROM svv_roles WHERE role_name = :name;
+-- params: {"name":"operators"}
+
+-- database: admin
+SELECT system_privilege AS privilege_type FROM svv_system_privileges WHERE identity_type = 'role' AND identity_name = :role;
+-- params: {"role":"operators"}
+
+-- database: admin
+REVOKE CREATE USER FROM ROLE "operators";
+-- params: {}
+
+-- database: admin
+GRANT CREATE ROLE TO ROLE "operators";
+-- params: {}
+
+-- database: admin
+SELECT role_name FROM svv_roles WHERE role_name = :name;
+-- params: {"name":"operators"}
+
+-- database: admin
+SELECT system_privilege AS privilege_type FROM svv_system_privileges WHERE identity_type = 'role' AND identity_name = :role;
+-- params: {"role":"operators"}
+```
 
 ## Import
 

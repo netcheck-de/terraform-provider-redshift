@@ -26,12 +26,30 @@ DROP ROLE name;
 
 ## Lifecycle and Ownership
 
-A missing role is planned for creation. `CREATE ROLE` has no owner clause, so a configured `owner` is applied with
-`ALTER ROLE ... OWNER TO` right after creation. `owner` and `external_id` are read from
-[SVV_ROLES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ROLES.html); leaving either unset keeps the catalog value
-instead of resetting it. Deletion does not cascade; dependent grants and memberships must be removed first. Referencing
-the identity provider's namespace orders role creation, but changing that provider under the same namespace requires
-explicit replacement of dependent roles.
+Deletion does not cascade; dependent grants and memberships must be removed first. Referencing the identity provider's
+namespace orders role creation, but changing that provider under the same namespace requires explicit replacement of
+dependent roles.
+
+## Reconciliation
+
+Refresh reads `owner`, `external_id`, and `role_id` from
+[SVV_ROLES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ROLES.html); an update runs one `ALTER ROLE`
+statement per changed option and re-reads the catalog to verify the result; only a new `name` replaces the role.
+`CREATE ROLE` has no owner clause, so creation runs `CREATE ROLE`, with `EXTERNALID` when configured, followed by
+`ALTER ROLE ... OWNER TO` for a configured `owner`.
+
+| Change                       | Result                                                                                             |
+|------------------------------|----------------------------------------------------------------------------------------------------|
+| `name`                       | replaces the role: the provider never renames a role                                               |
+| `owner` set or changed       | `ALTER ROLE ... OWNER TO`, before the external ID                                                  |
+| `owner` removed              | no SQL; the current owner stays and is still reported                                              |
+| `external_id` set or changed | `ALTER ROLE ... EXTERNALID TO`                                                                     |
+| `external_id` removed        | no SQL; the current external ID stays and is still reported, because `ALTER ROLE` cannot remove it |
+
+**Drift.** Refresh compares `SVV_ROLES` with the state, and the next plan sets a configured `owner` or `external_id`
+changed outside Terraform back with the statements above; omitted ones follow the catalog and never plan a change. A
+role dropped outside Terraform is removed from state and planned for creation. Grants to and from the role are never
+read; the grant resources manage them.
 
 ## Import
 

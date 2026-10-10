@@ -30,27 +30,57 @@ DROP PROCEDURE schema.name (arguments);
 
 A procedure is identified by its schema, name, and the types of its `IN` and `INOUT` arguments; `OUT` arguments are
 returned by `CALL` and are not part of the signature. Each argument is one `argument` block, in declaration order.
-Changing an argument's type, mode, or name, or adding, removing, or reordering a block, replaces the procedure, because
-Redshift requires dropping a procedure to change its signature or output types. Another spelling of the same type,
-`null` for an `IN` mode, or a name differing only in case does not.
-`SHOW PARAMETERS` reports types without their length or precision, so an imported procedure holds bare types such as
-`character varying`. A bare type in state matches the same type with a modifier, such as `varchar(64)`, and the next
-apply restates the configured modifiers with `CREATE OR REPLACE PROCEDURE` instead of replacing the procedure.
 
-`body`, `security`, `nonatomic`, and `configuration` change in place with `CREATE OR REPLACE PROCEDURE`, which keeps
-the owner and grants. A `search_path` in `configuration` is a comma-separated list of schema names, each sent as its own
-literal, because Redshift reads one quoted literal as a single schema name; any other parameter value is sent as one
-literal. `NONATOMIC` excludes `SECURITY DEFINER` and `SET`; such combinations fail validation. The body
-is sent dollar-quoted and verbatim; a tag such as `$body$` is chosen when the text contains `$$`.
-
-Reads use `pg_proc_info` for the owner, security mode, and body, and `SHOW PARAMETERS` for argument names and modes.
-Redshift does not report `nonatomic` or `configuration`, so changes made outside Terraform are not detected and an
-import leaves both `null`. State keeps the configured `body` and records `definition_fingerprint`, a hash of the catalog
-text; when the procedure is changed outside Terraform, the next refresh shows the catalog body and the plan restores
-the configuration.
+A `search_path` in `configuration` is a comma-separated list of schema names, each sent as its own literal, because
+Redshift reads one quoted literal as a single schema name; any other parameter value is sent as one literal.
+`NONATOMIC` excludes `SECURITY DEFINER` and `SET`; such combinations fail validation. The body is sent dollar-quoted and
+verbatim; a tag such as `$body$` is chosen when the text contains `$$`.
 
 `owner` is applied with `ALTER PROCEDURE ... OWNER TO`, which requires a superuser. Grant `EXECUTE` separately.
 Running a procedure with `CALL` is not part of its lifecycle.
+
+## Reconciliation
+
+Refresh reads the procedure from `pg_proc_info` and its arguments with `SHOW PARAMETERS`; an update runs at most one
+`CREATE OR REPLACE PROCEDURE` and one `ALTER PROCEDURE ... OWNER TO`, in that order, and re-reads the catalog to verify
+the result; every other change replaces the procedure, because Redshift requires dropping a procedure to change its
+signature or output types. `CREATE OR REPLACE PROCEDURE` restates the whole definition, so several changed arguments
+share one statement, and it keeps the owner and grants. A replacement runs `DROP PROCEDURE` and then `CREATE PROCEDURE`,
+and the new procedure starts without the grants of the old one.
+
+`SHOW PARAMETERS` reports types without their length or precision, so an imported procedure holds bare types such as
+`character varying`; a bare type in state matches the same type with a modifier, such as `varchar(64)`.
+
+| Change                                                                                              | Result                                                                     |
+|-----------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| `database`, `schema`, or `name`                                                                     | replaces the procedure: the provider never moves or renames a procedure    |
+| `argument` block added, removed, or reordered                                                       | replaces the procedure                                                     |
+| `argument.type` respelled with the same canonical type, such as `int4` for `integer`                | no SQL; the state records the configured spelling                          |
+| `argument.type` given a length or precision where the state holds the bare type, as after an import | `CREATE OR REPLACE PROCEDURE`, which restates the declared types           |
+| `argument.type`, any other change, including another length or precision                            | replaces the procedure, also for an `OUT` argument                         |
+| `argument.mode` changed between omitted and `IN`                                                    | no SQL                                                                     |
+| `argument.mode`, any other change                                                                   | replaces the procedure                                                     |
+| `argument.name` changed only in case                                                                | no SQL; the state records the configured spelling                          |
+| `argument.name`, any other change, including a name added or removed                                | replaces the procedure                                                     |
+| `argument` blocks known only during apply                                                           | replaces the procedure: the plan cannot tell whether the signature changes |
+| `body`                                                                                              | `CREATE OR REPLACE PROCEDURE`                                              |
+| `security` changed, or removed while `DEFINER`                                                      | `CREATE OR REPLACE PROCEDURE`; an omitted `security` is `INVOKER`          |
+| `nonatomic` set, changed, or removed                                                                | `CREATE OR REPLACE PROCEDURE`, with or without `NONATOMIC`                 |
+| `configuration` set, changed, or removed                                                            | `CREATE OR REPLACE PROCEDURE` with the new `SET` clause, or none           |
+| `owner` set to a value other than the current owner, or changed                                     | `ALTER PROCEDURE ... OWNER TO`, after any `CREATE OR REPLACE PROCEDURE`    |
+| `owner` removed                                                                                     | no SQL; the current owner stays and is still reported                      |
+
+**Drift.** Refresh compares the catalog owner, security mode, body, and argument names, modes, and types with the
+state. Redshift stores its own copy of the body, so state keeps the configured `body` while the catalog text still
+matches `definition_fingerprint`, a hash recorded at apply time. A body or security mode changed outside Terraform is
+restored with `CREATE OR REPLACE PROCEDURE`. A configured `owner` changed outside Terraform is set back with
+`ALTER PROCEDURE ... OWNER TO`, and an omitted one follows the catalog. When argument names, modes, or output types no
+longer match the catalog, refresh stores the catalog's arguments, and the next plan replaces the procedure; a catalog
+argument without a name matches any configured name, because Redshift may keep an `OUT` argument's name only inside the
+body. A dropped overload, including one re-created outside Terraform with other input types, is removed from state, and
+the next plan creates it again. `nonatomic` and `configuration` are never read back, because Redshift does not report
+them: changes made outside Terraform are not detected, and an import leaves both `null`. Lengths and precisions of
+argument types are not read back either.
 
 ## Import
 

@@ -82,31 +82,107 @@ resource "redshift_role_grant" "grafana_monitor" {
 
 ## Lifecycle and Ownership
 
-Reads discover non-secret properties from `pg_user` and
-[SVV_USER_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_USER_INFO.html); password values cannot be
-refreshed or compared. The provider changes the password only on creation, on a version change, or when
-`password_disabled` changes to `false`. A missing password in those cases is an error. Deletion issues `DROP USER`
-without `CASCADE`; dependencies, including role grants, must be removed first.
-
-Every in-place change runs one `ALTER USER` statement per option. Redshift cannot disable a superuser's password, so
-`superuser` is revoked before `PASSWORD DISABLE` and the password is enabled before `CREATEUSER`; `external_id` needs a
-disabled password and is set last. `password_disabled` is kept from configuration, because the catalog does not
-document where a disabled password is recorded; state without it, from an import or an earlier provider version,
-records `false` on refresh.
-
-Refresh updates `superuser`, `create_database`, `valid_until`, `search_path`, and `session_defaults` from `pg_user`,
-and `connection_limit`, `session_timeout`, `syslog_access`, and `external_id` from `SVV_USER_INFO`. Superusers see
-every row there; a provider identity that is not a superuser sees only its own, so these four keep their configured
-or previous values for other users. `search_path` and `session_defaults` are the stored defaults that apply at the
-user's next login (`pg_user.useconfig`), not the settings of a running session. `session_defaults` accepts only the
-documented session parameters listed above; cluster-wide parameters belong to the parameter group. `valid_until` has
-whole-second precision, because `pg_user.valuntil` is an `abstime`, and a user without an expiration is recorded as
-`infinity`.
+Deletion issues `DROP USER` without `CASCADE`; dependencies, including role grants, must be removed first.
+Superusers see every row of [SVV_USER_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_USER_INFO.html); a
+provider identity that is not a superuser sees only its own. `session_defaults` accepts only the documented session
+parameters listed above; cluster-wide parameters belong to the parameter group.
 
 `password_wo` is a write-only argument and requires Terraform 1.11 or later. Write-only values are absent from
 **this resource's** state. The password source (for example, `random_password`) may
 still keep a value in its own Terraform state, and the Data API executes a SQL statement containing the password.
 Restrict Terraform state, provider logs, and Data API query-history access accordingly.
+
+## Reconciliation
+
+Refresh reads `superuser`, `create_database`, `valid_until`, `search_path`, and `session_defaults` from `pg_user`, and
+`connection_limit`, `session_timeout`, `syslog_access`, and `external_id` from `SVV_USER_INFO`; an update runs one
+`ALTER USER` statement per changed option and re-reads the catalog to verify the result; only a new `name` replaces
+the user. Creation runs `CREATE USER` with the configured options, followed by `ALTER USER ... SET` for `search_path`
+and each `session_defaults` entry, which `CREATE USER` cannot set.
+
+The provider sets a password only on creation without `password_disabled`, on a `password_wo_version` change while
+the password is enabled, or when `password_disabled` changes to `false`, and reads it from `password_wo`; a missing
+password in those cases is an error. Redshift cannot disable a superuser's password, so an update that sets
+`password_disabled = true` runs the `superuser` and `create_database` statements before `PASSWORD DISABLE`; every
+other update sets the password first, so it is enabled before `CREATEUSER`. The remaining options follow in the order
+of the table, so `external_id` is set after the password is disabled.
+
+| Change                                                                           | Result                                                                                                                                                                 |
+|----------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name`                                                                           | replaces the user: the provider never renames a user; the new user needs `password_wo` unless `password_disabled = true`                                               |
+| `password_wo`                                                                    | no plan change and no SQL: write-only values are never compared; change `password_wo_version` to send a new password                                                   |
+| `password_wo_version`                                                            | `ALTER USER ... PASSWORD` with `password_wo`; no SQL while `password_disabled = true`, or when the same update re-enables the password, which sets it already          |
+| `password_disabled` set to `true`                                                | `ALTER USER ... PASSWORD DISABLE`, after the `superuser` and `create_database` statements of the same update; refused while `superuser = true` or `password_wo` is set |
+| `password_disabled` set to `false` or removed                                    | `ALTER USER ... PASSWORD` with `password_wo`, before the `superuser` and `create_database` statements                                                                  |
+| `superuser`                                                                      | `ALTER USER ... CREATEUSER` or `NOCREATEUSER`; removing it sets the default `false`                                                                                    |
+| `create_database`                                                                | `ALTER USER ... CREATEDB` or `NOCREATEDB`; removing it sets the default `false`                                                                                        |
+| `syslog_access` set or changed                                                   | `ALTER USER ... SYSLOG ACCESS`                                                                                                                                         |
+| `valid_until`                                                                    | `ALTER USER ... VALID UNTIL` with the timestamp in UTC; setting `infinity` or removing it, the default, sends `VALID UNTIL 'infinity'`                                 |
+| `connection_limit` set or changed                                                | `ALTER USER ... CONNECTION LIMIT`, or `CONNECTION LIMIT UNLIMITED` for `-1`                                                                                            |
+| `session_timeout` set or changed                                                 | `ALTER USER ... SESSION TIMEOUT`, or `RESET SESSION TIMEOUT` for `0`                                                                                                   |
+| `external_id` set or changed                                                     | `ALTER USER ... EXTERNALID`; requires `password_disabled = true`                                                                                                       |
+| `syslog_access`, `connection_limit`, `session_timeout`, or `external_id` removed | no SQL; the catalog value stays and is still reported; Redshift has no statement that removes an external ID                                                           |
+| `search_path` set, changed, or reordered                                         | `ALTER USER ... SET search_path TO` with the whole list                                                                                                                |
+| `search_path` removed                                                            | `ALTER USER ... RESET search_path`                                                                                                                                     |
+| `session_defaults` entry added or changed                                        | `ALTER USER ... SET parameter TO`, one statement per parameter in name order; unchanged entries run no SQL                                                             |
+| `session_defaults` entry or map removed                                          | `ALTER USER ... RESET parameter` for each removed parameter                                                                                                            |
+
+**Drift.** Refresh compares the catalog with the state, and the next plan restores the configuration with the
+statements above: a `superuser`, `create_database`, or `valid_until` value changed outside Terraform is set back, also
+to the defaults when the argument is omitted, and a stored `search_path` or allowlisted session parameter changed
+outside Terraform is set back, or reset when the configuration does not declare it; other session parameters are never
+read. `search_path` and `session_defaults` are the stored defaults that apply at the user's next login
+(`pg_user.useconfig`), not the settings of a running session. `valid_until` has whole-second precision, because
+`pg_user.valuntil` is an `abstime`, and a user without an expiration is recorded as `infinity`. A changed configured
+`connection_limit`, `session_timeout`, `syslog_access`, or `external_id` is set back while `SVV_USER_INFO` shows the
+user; otherwise these four keep their configured or previous values, and omitted ones follow the catalog and never
+plan a change. A user dropped outside Terraform is removed from state and planned for creation. The password,
+`password_wo_version`, and `password_disabled` are never read back, so a password changed or disabled outside
+Terraform is not detected.
+
+The following examples change the `grafana` user and show the statements the update runs.
+
+### Disabling the Password of a Superuser
+
+The capabilities are revoked first, because Redshift refuses `PASSWORD DISABLE` for a superuser:
+
+```terraform
+resource "redshift_user" "grafana" {
+  name              = "grafana"
+  password_disabled = true  # was false
+  superuser         = false # was true
+  create_database   = false # was true
+}
+```
+
+```sql
+ALTER USER "grafana" NOCREATEUSER;
+
+ALTER USER "grafana" NOCREATEDB;
+
+ALTER USER "grafana" PASSWORD DISABLE;
+```
+
+### Changing Session Defaults
+
+Each added, changed, or removed parameter runs its own statement, in name order; `datestyle` is unchanged:
+
+```terraform
+session_defaults = {
+  datestyle   = "ISO, MDY"
+  query_group = "etl"           # added
+  timezone    = "Europe/Berlin" # was "UTC"
+  # statement_timeout = "1000" removed
+}
+```
+
+```sql
+ALTER USER "grafana" SET query_group TO 'etl';
+
+ALTER USER "grafana" RESET statement_timeout;
+
+ALTER USER "grafana" SET timezone TO 'Europe/Berlin';
+```
 
 ## Import
 

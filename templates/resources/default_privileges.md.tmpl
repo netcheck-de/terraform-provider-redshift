@@ -15,8 +15,8 @@ ALTER DEFAULT PRIVILEGES ... REVOKE ... FROM ...;
 ALTER DEFAULT PRIVILEGES ... REVOKE GRANT OPTION FOR ... FROM ...;
 ```
 
-Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
-revokes the privileges it owns and never grants any, including the implicit `PUBLIC` default described below.
+Deleting the resource revokes the privileges it owns and never grants any, including the implicit `PUBLIC` default
+described below; see [Reconciliation](#reconciliation) for changes.
 
 ## Example Usage
 
@@ -26,9 +26,8 @@ revokes the privileges it owns and never grants any, including the implicit `PUB
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-An empty `privileges` set revokes the owned grants. All identity arguments require replacement. Tables support
-`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, and `TRUNCATE`; functions and procedures support
-`EXECUTE`. Grantees can be a user, `ROLE`, `GROUP`, or `PUBLIC`.
+Tables support `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, and `TRUNCATE`; functions and
+procedures support `EXECUTE`. Grantees can be a user, `ROLE`, `GROUP`, or `PUBLIC`.
 
 ## Owner
 
@@ -41,7 +40,7 @@ user manages that user's defaults instead.
 
 A `USER` grantee can receive the privileges `WITH GRANT OPTION` on every future object. `grant_option_privileges` owns
 which of them carry the option: it must be a subset of `privileges` and defaults to none. Removing a privilege from the
-set revokes only its option with `REVOKE GRANT OPTION FOR`. Groups, roles, and `PUBLIC` cannot hold grant options.
+set revokes only its option. Groups, roles, and `PUBLIC` cannot hold grant options.
 
 ## Implicit PUBLIC EXECUTE on Functions
 
@@ -62,7 +61,55 @@ administration privileges. Schema-specific defaults add to database-wide default
 tuple. Existing tables/views/functions/procedures are unaffected, including on destroy. Scoped permissions are
 different: they cover current and future objects regardless of creator.
 
-Refresh reads the current explicit defaults into `privileges` and `grant_option_privileges`.
+## Reconciliation
+
+Refresh reads the tuple's default privileges and grant options from `SVV_DEFAULT_PRIVILEGES`, and `PG_DEFAULT_ACL`
+for the implicit `PUBLIC` default; an update reads them again, runs one `ALTER DEFAULT PRIVILEGES` statement per
+privilege that differs, starting from what the catalog holds, and re-reads the catalog to verify the exact sets; every
+change to the tuple itself replaces the grant. No statement touches objects that already exist.
+
+| Change                                                                    | Result                                                                                                                                                                                                     |
+|---------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database_name`, `schema_name`, or `object_type`                          | replaces the grant: they select other defaults, so the old tuple's defaults are revoked and the new tuple's granted                                                                                        |
+| `owner` set, changed, or removed                                          | replaces the grant: the owner is part of the tuple, also when the new value names the user the provider connects as                                                                                        |
+| `grantee` or `grantee_type`                                               | replaces the grant: the grantee is part of the tuple                                                                                                                                                       |
+| privilege added to `privileges`                                           | `ALTER DEFAULT PRIVILEGES [FOR USER ...] [IN SCHEMA ...] GRANT ... ON TABLES`, `ON FUNCTIONS`, or `ON PROCEDURES`                                                                                          |
+| privilege removed from `privileges`                                       | `ALTER DEFAULT PRIVILEGES ... REVOKE ... FROM`, which also removes its grant option                                                                                                                        |
+| `privileges` set to `[]`                                                  | `ALTER DEFAULT PRIVILEGES ... REVOKE` for every privilege the tuple holds; for the database-wide `PUBLIC` `FUNCTIONS` tuple this includes the implicit `EXECUTE`, also while the catalog has no row for it |
+| privilege added to `grant_option_privileges`                              | `ALTER DEFAULT PRIVILEGES ... GRANT ... WITH GRANT OPTION`; a privilege added to both sets at once is granted with the option in one statement                                                             |
+| privilege removed from `grant_option_privileges`, or the argument removed | `ALTER DEFAULT PRIVILEGES ... REVOKE GRANT OPTION FOR ...`; the privilege stays                                                                                                                            |
+
+An update revokes before it grants: removed privileges first, then removed grant options, then added privileges, then
+added grant options. The statements share no transaction: when one fails, the earlier ones stay applied and the next
+plan shows what is left. A catalog privilege outside the object type's list fails the refresh. Planning rejects grant
+options for groups, roles, and `PUBLIC`, and options outside `privileges`.
+
+**Drift.** Refresh compares the defaults of the exact owner, schema, object type, and grantee with the state, and the
+next plan restores the configuration with the statements above: a default granted outside Terraform is revoked, and a
+revoked one is granted again. Schema defaults and database-wide defaults are separate tuples, and the privileges of
+existing objects are never read. A missing database, owner, schema, or grantee removes the grant from state, and the
+next plan creates it again.
+
+The following example shows the statements an update runs, each with the database it runs in: the existence
+checks and the catalog read, the changes, and the read that verifies them.
+
+### Replacing a Default Privilege
+
+The role `readers` receives `INSERT` instead of `SELECT` on tables that `loader` creates in `serving` from now on:
+
+```terraform
+resource "redshift_default_privileges" "loader_tables" {
+  database_name = "warehouse"
+  owner         = "loader"
+  schema_name   = "serving"
+  object_type   = "TABLES"
+  grantee_type  = "ROLE"
+  grantee       = "readers"
+  privileges    = ["INSERT"] # was ["SELECT"]
+}
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/privilege/default_privileges/update_replace.sql" }}
 
 ## Import
 

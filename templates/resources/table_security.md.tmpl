@@ -32,14 +32,54 @@ remove the resource from state with a `removed` block instead of destroying it.
 
 Only superusers and `sys:secadmin` holders can change these settings. While RLS is on, a user sees only the rows that an
 attached policy permits and no rows at all when no policy applies to them, so attach the policies before turning RLS on.
-`conjunction_type` and `datashare_row_level_security` change in place; when unset, the resource keeps and reports what
-the relation already has. `ROW LEVEL SECURITY OFF FOR DATASHARES` makes the relation readable over datashares without
-row filtering on the consumer side, while the producer keeps RLS.
+`ROW LEVEL SECURITY OFF FOR DATASHARES` makes the relation readable over datashares without row filtering on the
+consumer side, while the producer keeps RLS.
 
-The resource never creates or drops the relation and never reads its columns, policies, or attachments. Reads use
-`svv_rls_relation`; a relation that view does not list has never been protected and reports RLS off, `AND`, and RLS on
-for datashares. A dropped relation or database removes the resource from state. Deletion only turns RLS off; the
-conjunction type and datashare setting stay as they are.
+The resource never creates or drops the relation. Deletion only turns RLS off; the conjunction type and datashare
+setting stay as they are.
+
+## Reconciliation
+
+Refresh reads the settings from `svv_rls_relation`; an update runs one `ALTER TABLE ... ROW LEVEL SECURITY` statement
+for the switch and conjunction type and one for the datashare setting, as far as they changed, and re-reads the catalog
+to verify the result; a changed `database`, `schema`, or `relation` replaces the table security.
+
+| Change                                 | Result                                                                                                                                                                     |
+|----------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database`, `schema`, or `relation`    | replaces the table security: destroying it turns RLS off on the old relation, and creating it applies the configured settings to the new one                               |
+| `row_level_security`                   | `ALTER TABLE ... ROW LEVEL SECURITY ON` or `OFF`, followed by `CONJUNCTION TYPE` with the planned conjunction type, so the conjunction type never changes as a side effect |
+| `conjunction_type` changed             | `ALTER TABLE ... ROW LEVEL SECURITY ON` or `OFF ... CONJUNCTION TYPE` with the planned switch; together with a `row_level_security` change, one statement covers both      |
+| `conjunction_type` removed             | no SQL; the relation keeps its conjunction type, which is still reported                                                                                                   |
+| `datashare_row_level_security` changed | `ALTER TABLE ... ROW LEVEL SECURITY ON FOR DATASHARES` or `OFF FOR DATASHARES`, after the switch                                                                           |
+| `datashare_row_level_security` removed | no SQL; the relation keeps its datashare setting, which is still reported                                                                                                  |
+
+**Drift.** Refresh compares `svv_rls_relation` with the state. A relation that view does not list has never been
+protected and reports RLS off, `AND`, and RLS on for datashares. A `row_level_security`, or a configured
+`conjunction_type` or `datashare_row_level_security`, changed outside Terraform is set back with the statements above;
+an omitted `conjunction_type` or `datashare_row_level_security` follows the catalog and never plans a change. A dropped
+relation or database removes the resource from state. Policies and their attachments are never read; manage them with
+`redshift_rls_policy` and `redshift_rls_policy_attachment`.
+
+The following examples change the relation `public.events` with RLS on, `AND`, and RLS on for datashares, and show the
+statements the update runs:
+
+```terraform
+conjunction_type = "OR" # was "AND"
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/table_security/alter_conjunction.sql" }}
+
+```terraform
+row_level_security = false # was true
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/table_security/alter_off.sql" }}
+
+```terraform
+datashare_row_level_security = false # was true
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/table_security/alter_datashare.sql" }}
 
 ## Import
 

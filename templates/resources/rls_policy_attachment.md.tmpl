@@ -23,13 +23,6 @@ DETACH RLS POLICY policy ON schema.relation FROM grantee;
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-Changing any argument replaces the attachment.
-
-A change to the policy's `column` blocks or `alias` replaces the policy under the same name, which leaves these
-arguments unchanged. Because `DROP RLS POLICY` refuses an attached policy, add
-`lifecycle { replace_triggered_by = [redshift_rls_policy.<name>.column, redshift_rls_policy.<name>.alias] }`, as in the
-example, so Terraform detaches the policy before the replacement and attaches it again afterwards.
-
 ## Lifecycle and Ownership
 
 Attaching **never turns row-level security on**: the policy filters rows only while `redshift_table_security` has RLS on
@@ -38,7 +31,31 @@ for the relation. Detaching leaves the policy, the relation, and its RLS switch 
 superusers or `sys:secadmin` holders are ignored. Attaching requires a superuser or `sys:secadmin`.
 
 Reads use `svv_rls_attached_policy` in the attachment's database, which only `sys:secadmin` holders and superusers can
-query. A dropped policy, relation, recipient, or database removes the attachment from state.
+query.
+
+## Reconciliation
+
+Refresh checks that the attachment is still listed in `svv_rls_attached_policy`; Redshift has no command that changes an
+attachment, so every change replaces it: `DETACH RLS POLICY` for the old tuple, then `ATTACH RLS POLICY` for the new
+one, and a re-read of the catalog to verify the result. Between the two statements the policy does not apply to the
+recipient: while row-level security is on for the relation, they see only the rows the other applicable policies permit
+under the relation's conjunction type, or no rows when no other policy applies.
+
+| Change                              | Result                  |
+|-------------------------------------|-------------------------|
+| `policy`                            | replaces the attachment |
+| `database`, `schema`, or `relation` | replaces the attachment |
+| `grantee` or `grantee_type`         | replaces the attachment |
+
+A change to the policy's `column` blocks or `alias` replaces the policy under the same name, which leaves these
+arguments unchanged. Because `DROP RLS POLICY` refuses an attached policy, add
+`lifecycle { replace_triggered_by = [redshift_rls_policy.<name>.column, redshift_rls_policy.<name>.alias] }`, as in the
+example, so Terraform detaches the policy before the replacement and attaches it again afterwards. A new predicate
+keeps the policy and its attachments.
+
+**Drift.** The attachment has no settings to compare: refresh only checks that it exists. An attachment detached
+outside Terraform, or one whose policy, relation, recipient, or database was dropped, is removed from state, and the
+next plan creates the attachment again. Other attachments of the policy or the relation are never read.
 
 ## Import
 

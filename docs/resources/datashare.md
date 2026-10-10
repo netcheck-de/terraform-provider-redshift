@@ -52,10 +52,8 @@ resource "redshift_datashare" "analytics" {
 
 ## Lifecycle and Ownership
 
-Reads check that the share is outbound, belongs to the configured database, and is not managed by another service.
-Creation and updates verify the catalog state. Deletion uses `DROP DATASHARE` without cascading into the producer
-database. Schema/table membership, account usage grants, and `ALTER`/`SHARE` permissions for SQL identities are managed
-by separate provider resources.
+Deletion uses `DROP DATASHARE` without cascading into the producer database. Schema/table membership, account usage
+grants, and `ALTER`/`SHARE` permissions for SQL identities are managed by separate provider resources.
 
 `owner`, `share_id`, `producer_account`, `producer_namespace`, and `created_at` are read from
 [SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html), with the owner's name resolved
@@ -63,6 +61,27 @@ through `pg_user`. The owner is the user that ran `CREATE DATASHARE`; it is read
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html) has no `OWNER TO` clause.
 [DESC DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_DESC_DATASHARE.html) lists the share's objects, which
 the membership resources own, so this resource does not read it.
+
+## Reconciliation
+
+Refresh reads the outbound share from `SVV_DATASHARES`; an update runs `ALTER DATASHARE ... SET PUBLICACCESSIBLE`
+with the planned value and re-reads the catalog to verify it; every other change replaces the datashare with
+`DROP DATASHARE` and `CREATE DATASHARE`. What was added to or granted on the old share, including consumer access,
+does not carry over to the new one.
+
+| Change                                                 | Result                                                                             |
+|--------------------------------------------------------|------------------------------------------------------------------------------------|
+| `database`                                             | replaces the datashare: a share belongs to the producer database it was created in |
+| `name`                                                 | replaces the datashare: the provider never renames a share                         |
+| `publicly_accessible` changed, or removed while `true` | `ALTER DATASHARE ... SET PUBLICACCESSIBLE`; an omitted value is `false`            |
+
+`owner`, `share_id`, `producer_account`, `producer_namespace`, and `created_at` are read-only and never plan a change.
+
+**Drift.** Refresh compares `publicly_accessible` with the state and records the read-only attributes. An accessibility
+changed outside Terraform is set back with `ALTER DATASHARE ... SET PUBLICACCESSIBLE`. A share, or its database,
+dropped outside Terraform is removed from state, and the next plan creates the share again. A share that now belongs to
+another database or is managed by another service fails the refresh. The share's members, grants, and consumers are
+never read by this resource.
 
 ## Import
 

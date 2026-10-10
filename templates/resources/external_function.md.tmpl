@@ -33,20 +33,49 @@ The Lambda function, its execution role, and the IAM role that lets the warehous
 provider; associate that role with the cluster or namespace, or use `iam_role = "default"`. Creating the function
 requires superuser or the `CREATE [ OR REPLACE ] EXTERNAL FUNCTION` privilege and `USAGE ON LANGUAGE exfunc`.
 
-`name` and the canonical `arguments` identify the overload. Changing them, the database, the schema, or the base
-type of `return_type` replaces the function. Every other definition option changes in place with
-`CREATE OR REPLACE EXTERNAL FUNCTION`, which redefines the existing overload instead of dropping it but requires a
-superuser. `owner`
-changes with `ALTER FUNCTION ... OWNER TO`, which also requires a superuser.
+`name` and the canonical `arguments`, the argument types without length or precision, identify the overload.
+`CREATE OR REPLACE EXTERNAL FUNCTION` and `ALTER FUNCTION ... OWNER TO` require a superuser. `DROP FUNCTION` does
+**not** cascade; remove dependent views first.
 
-Redshift reports the signature, result type, volatility, language, and owner in `pg_proc`, which refresh reads. No
-documented catalog view reports `lambda_function`, `iam_role`, or the retry and batch options, so Terraform keeps them
-from configuration: changes made outside Terraform are not detected, and an import leaves them unset until the next
-apply restates the definition. `DROP FUNCTION` does **not** cascade; remove dependent views first.
+No documented catalog view reports `lambda_function`, `iam_role`, or the retry and batch options, so there is no
+`redshift_external_function` data source: a lookup could not report the Lambda options. `redshift_functions` lists
+Lambda UDFs with their signature, return type, volatility, language, and owner, and `redshift_routine_parameters` lists
+their parameters.
 
-For the same reason there is no `redshift_external_function` data source: a lookup could not report the Lambda
-options. `redshift_functions` lists Lambda UDFs with their signature, return type, volatility, language, and owner,
-and `redshift_routine_parameters` lists their parameters.
+## Reconciliation
+
+Refresh reads the signature, result type, volatility, language, and owner from `pg_proc`; an update runs at most one
+`CREATE OR REPLACE EXTERNAL FUNCTION`, which redefines the existing overload instead of dropping it, and then one
+`ALTER FUNCTION ... OWNER TO`, and re-reads the catalog to verify the result; every other change replaces the function.
+`CREATE OR REPLACE EXTERNAL FUNCTION` restates the whole definition with every configured option, so several changed
+arguments share one statement, and an option removed from the configuration falls back to the Redshift default.
+
+| Change                                                                                         | Result                                                                                                                                |
+|------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
+| `database`, `schema`, or `name`                                                                | replaces the function: the provider never moves or renames a function                                                                 |
+| `arguments` respelled with the same canonical types, such as `int` for `integer`               | no SQL; the state records the configured spelling                                                                                     |
+| `arguments` element given another length or precision, such as `varchar(20)` for `varchar(10)` | `CREATE OR REPLACE EXTERNAL FUNCTION`                                                                                                 |
+| `arguments` element added, removed, reordered, or changed to another base type                 | replaces the function: the canonical argument types identify the overload                                                             |
+| `arguments` known only during apply                                                            | replaces the function: the plan cannot tell whether the signature changes                                                             |
+| `return_type` respelled with the same canonical type                                           | no SQL; the state records the configured spelling                                                                                     |
+| `return_type` given another length or precision                                                | `CREATE OR REPLACE EXTERNAL FUNCTION`                                                                                                 |
+| `return_type` changed to another base type, or known only during apply                         | replaces the function: `OR REPLACE` requires the same data types                                                                      |
+| `volatility` changed, or removed while `STABLE`                                                | `CREATE OR REPLACE EXTERNAL FUNCTION`; an omitted `volatility` is `VOLATILE`                                                          |
+| `lambda_function` or `iam_role`                                                                | `CREATE OR REPLACE EXTERNAL FUNCTION`                                                                                                 |
+| `retry_timeout`, `max_batch_rows`, `max_batch_size`, or `max_batch_size_unit` set or changed   | `CREATE OR REPLACE EXTERNAL FUNCTION` with the new option                                                                             |
+| `retry_timeout`, `max_batch_rows`, `max_batch_size`, or `max_batch_size_unit` removed          | `CREATE OR REPLACE EXTERNAL FUNCTION` without the option, so the Redshift default applies; without a unit, `max_batch_size` counts KB |
+| `owner` set to a value other than the current owner, or changed                                | `ALTER FUNCTION ... OWNER TO`, after any `CREATE OR REPLACE EXTERNAL FUNCTION`                                                        |
+| `owner` removed                                                                                | no SQL; the current owner stays and is still reported                                                                                 |
+
+**Drift.** Refresh compares the catalog result type, volatility, and owner with the state. A volatility changed outside
+Terraform is restored with `CREATE OR REPLACE EXTERNAL FUNCTION`. A configured `owner` changed outside Terraform is set
+back with `ALTER FUNCTION ... OWNER TO`, and an omitted one follows the catalog. A result type with another base type
+replaces the function; `pg_proc` reports types without length or precision, so a change to those alone is not
+detected. A dropped overload, including one re-created outside Terraform with other argument types, is removed from
+state, and the next plan creates it again. `lambda_function`, `iam_role`, `retry_timeout`, `max_batch_rows`,
+`max_batch_size`, and `max_batch_size_unit` are never read back: Terraform keeps the configured values, so changes made
+outside Terraform are not detected, and an import leaves them unset until the first apply restates the definition with
+`CREATE OR REPLACE EXTERNAL FUNCTION`.
 
 ## Import
 

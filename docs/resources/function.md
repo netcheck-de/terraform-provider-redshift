@@ -66,21 +66,50 @@ Only SQL UDFs are supported. Amazon Redshift ends support for Python UDFs (`plpy
 lowercase `sql` that the catalog reports. SQL UDF arguments have no names: refer to them as `$1`, `$2`, and so on.
 
 A function is identified by its schema, name, and input argument types, so several resources can manage overloads of
-one name. `arguments` and `return_type` compare by their canonical type, so `int` and `integer` are the same; a
-different type or a different length or precision replaces the function. The catalog keeps no length or precision for
-UDF types, so `signature` reports bare types such as `character varying`, and so does the state after an import. A bare
-type in state therefore matches the same type with a modifier, such as `varchar(64)`: the next apply updates the
-function in place and restates the configured modifiers. `body`, `volatility`, and such added modifiers change in place
-with `CREATE OR REPLACE FUNCTION`, which keeps the owner and grants. The body is sent dollar-quoted and verbatim; a tag such as `$body$` is chosen when the
-text contains `$$`.
-
-Redshift stores its own copy of the body. State keeps the configured `body` and records `definition_fingerprint`, a hash
-of the catalog text; when the function is changed outside Terraform, the next refresh shows the catalog body and the
-plan restores the configuration.
+one name. The body is sent dollar-quoted and verbatim; a tag such as `$body$` is chosen when the text contains `$$`.
 
 `owner` is applied with `ALTER FUNCTION ... OWNER TO`, which requires a superuser. `DROP FUNCTION` never cascades, so a
-view that depends on the function blocks deletion. Grant `EXECUTE` separately; Redshift grants it to `PUBLIC` on new
-UDFs by default.
+view that depends on the function blocks deletion and replacement. Grant `EXECUTE` separately; Redshift grants it to
+`PUBLIC` on new UDFs by default.
+
+## Reconciliation
+
+Refresh reads the overload from `pg_proc_info`; an update runs at most one `CREATE OR REPLACE FUNCTION` and one
+`ALTER FUNCTION ... OWNER TO`, in that order, and re-reads the catalog to verify the result; every other change replaces
+the function. `CREATE OR REPLACE FUNCTION` restates the whole definition, so several changed definition arguments share
+one statement, and it keeps the owner and grants. A replacement runs `DROP FUNCTION` and then `CREATE FUNCTION`, so the
+new function starts without the grants of the old one.
+
+`arguments` and `return_type` compare by their canonical type, so `int` and `integer` are the same. The catalog keeps
+no length or precision for UDF types, so `signature` reports bare types such as `character varying`, and so does the
+state after an import; a bare type in state matches the same type with a modifier, such as `varchar(64)`.
+
+| Change                                                                                                                | Result                                                                                                   |
+|-----------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| `database`, `schema`, or `name`                                                                                       | replaces the function: the provider never moves or renames a function                                    |
+| `arguments` respelled with the same canonical types, such as `int` for `integer`                                      | no SQL; the state records the configured spelling                                                        |
+| `arguments` element given a length or precision where the state holds the bare type, as after an import               | `CREATE OR REPLACE FUNCTION`, which restates the declared types                                          |
+| `arguments`, any other change: an element added, removed, reordered, or changed to another type, length, or precision | replaces the function: the input types identify the overload, and `CREATE OR REPLACE` cannot change them |
+| `return_type` respelled with the same canonical type                                                                  | no SQL; the state records the configured spelling                                                        |
+| `return_type` given a length or precision where the state holds the bare type, as after an import                     | `CREATE OR REPLACE FUNCTION`, which restates the declared type                                           |
+| `return_type`, any other change                                                                                       | replaces the function: `CREATE OR REPLACE` must keep the return type                                     |
+| `arguments` or `return_type` known only during apply                                                                  | replaces the function: the plan cannot tell whether the types change                                     |
+| `volatility` changed, or removed while not `VOLATILE`                                                                 | `CREATE OR REPLACE FUNCTION`; an omitted `volatility` is `VOLATILE`                                      |
+| `body`                                                                                                                | `CREATE OR REPLACE FUNCTION`                                                                             |
+| `language` left at `sql`, the default, while the catalog reports `sql`                                                | no SQL; any configured value other than `sql` fails validation                                           |
+| `language` reported by the catalog as another language, such as an imported `plpythonu` UDF                           | replaces the function with the configured SQL UDF                                                        |
+| `owner` set to a value other than the current owner, or changed                                                       | `ALTER FUNCTION ... OWNER TO`, after any `CREATE OR REPLACE FUNCTION`                                    |
+| `owner` removed                                                                                                       | no SQL; the current owner stays and is still reported                                                    |
+
+**Drift.** Refresh compares the catalog types, volatility, language, owner, and body with the state. Redshift stores its
+own copy of the body, so state keeps the configured `body` while the catalog text still matches
+`definition_fingerprint`, a hash recorded at apply time. A body changed outside Terraform appears as the catalog text,
+and the next plan restores the configured body with `CREATE OR REPLACE FUNCTION`; the same statement restores a changed
+`volatility`. A configured `owner` changed outside Terraform is set back with `ALTER FUNCTION ... OWNER TO`, and an
+omitted one follows the catalog. A function whose catalog language is not `sql` is replaced. A return type with another
+base type replaces the function. A dropped overload, including one re-created outside Terraform with other input types,
+is removed from state, and the next plan creates it again. Lengths and precisions of argument and return types are never
+read back, so a change to them alone outside Terraform is not detected.
 
 ## Import
 

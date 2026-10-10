@@ -65,29 +65,44 @@ resource "redshift_view" "all_sales" {
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-## Definition Changes
-
-Changing `query` or `late_binding` runs `CREATE OR REPLACE VIEW`, which keeps the view's owner and grants. Redshift only
-replaces a view whose new query returns the same column names and data types; otherwise the apply reports the Redshift
-error and the view stays unchanged. The provider never drops the view to force such a change, because that would also
-remove dependent views and grants. Rename the view, or remove and re-add the resource, to change its columns.
-
-Redshift stores its own rendering of the query, so the provider compares definitions by `definition_fingerprint`, a
-hash of the catalog text with whitespace collapsed. State keeps the configured `query` while the fingerprint matches.
-When the view is changed outside Terraform, refresh replaces `query` with the catalog text, and the next plan restores
-the configured query. A late-binding view's catalog text is the complete `CREATE VIEW ... WITH NO SCHEMA BINDING`
-statement.
-
-Late-binding views must reference schema-qualified tables; Redshift checks referenced objects only when the view is
-queried. Materialized views are managed by `redshift_materialized_view`; this resource refuses to read one.
-
 ## Lifecycle and Ownership
 
 Creation uses plain `CREATE VIEW`, so an existing view is never adopted silently; import it instead. Without `owner`,
 the provider's SQL identity owns the view and `owner` reports it. With `owner`, the provider transfers ownership with
-`ALTER TABLE ... OWNER TO`, which the ALTER TABLE reference documents for views. Refresh reads `pg_views` and removes the
-view from state when it, or its database, no longer exists. `DROP VIEW` does **not** cascade; remove dependent views
-first. The resource does not manage grants or comments on the view.
+`ALTER TABLE ... OWNER TO`, which the ALTER TABLE reference documents for views. `DROP VIEW` does **not** cascade;
+remove dependent views first. The resource does not manage grants or comments on the view.
+
+Late-binding views must reference schema-qualified tables; Redshift checks referenced objects only when the view is
+queried. Materialized views are managed by `redshift_materialized_view`; this resource refuses to read one.
+
+## Reconciliation
+
+Refresh reads the owner and definition from `pg_views`; an update checks that the view still exists, runs
+`CREATE OR REPLACE VIEW` for a changed definition and `ALTER TABLE ... OWNER TO` for a changed owner, and re-reads the
+catalog to verify the result; a changed `database`, `schema`, or `name` replaces the view.
+
+| Change                          | Result                                                                                                                                                             |
+|---------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database`, `schema`, or `name` | replaces the view: `DROP VIEW` removes its grants and fails while dependent views exist, then `CREATE VIEW`                                                        |
+| `query`                         | `CREATE OR REPLACE VIEW`, which keeps the view's owner and grants; Redshift accepts it only when the new query returns the same column names and data types        |
+| `late_binding`                  | `CREATE OR REPLACE VIEW`, with or without `WITH NO SCHEMA BINDING`; removing the argument means `false`; together with a `query` change, one statement covers both |
+| `owner` set or changed          | `ALTER TABLE ... OWNER TO`, after `CREATE OR REPLACE VIEW`, so a refused definition leaves ownership untouched                                                     |
+| `owner` removed                 | no SQL; the current owner stays and is still reported                                                                                                              |
+
+When Redshift refuses a new query, for example because it returns other columns, the apply reports the Redshift error
+and the view stays unchanged. The provider never drops the view to force such a change, because that would also remove
+dependent views and grants. Rename the view, or remove and re-add the resource, to change its columns. An update fails
+when the view was dropped after the plan, because `CREATE OR REPLACE VIEW` would silently create it again; refresh and
+plan again.
+
+**Drift.** Redshift stores its own rendering of the query, so the provider compares definitions by
+`definition_fingerprint`, a hash of the catalog text with whitespace collapsed. State keeps the configured `query` while
+the fingerprint matches. When the view is changed outside Terraform, refresh replaces `query` with the catalog text, and
+the next plan restores the configured query with `CREATE OR REPLACE VIEW`. A late-binding view's catalog text is the
+complete `CREATE VIEW ... WITH NO SCHEMA BINDING` statement, which also tells refresh the binding mode, so a changed
+`late_binding` is set back the same way. A configured `owner` changed outside Terraform is set back with
+`ALTER TABLE ... OWNER TO`; an omitted `owner` follows the catalog and never plans a change. A view that is gone, or
+whose database is gone, is removed from state, and the next plan creates it again. Grants and comments are never read.
 
 ## Import
 

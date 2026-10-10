@@ -15,8 +15,7 @@ GRANT privilege (column, ...) ON TABLE database_name.schema_name.object_name TO 
 REVOKE privilege (column, ...) ON TABLE database_name.schema_name.object_name FROM ...;
 ```
 
-Columns that are no longer configured are revoked first, then missing columns are granted, with one statement per
-privilege. Deleting the resource revokes the column privileges it owns.
+Deleting the resource revokes the column privileges it owns; see [Reconciliation](#reconciliation) for changes.
 
 ## Example Usage
 
@@ -26,17 +25,14 @@ privilege. Deleting the resource revokes the column privileges it owns.
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-All identity arguments require replacement when changed; `privileges` updates in place. One resource owns all columns
-of one grantee on one relation, because `SVV_COLUMN_PRIVILEGES` reports each column, privilege, and grantee exactly.
-Column names are quoted identifiers, so write them as the catalog stores them (lower case unless case-sensitive
-identifiers are enabled).
+One resource owns all columns of one grantee on one relation, because `SVV_COLUMN_PRIVILEGES` reports each column,
+privilege, and grantee exactly. Column names are quoted identifiers, so write them as the catalog stores them (lower
+case unless case-sensitive identifiers are enabled).
 
 ## Lifecycle and Ownership
 
 The resource checks that the grantee, the local database, and the relation exist, then reads
 [SVV_COLUMN_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_COLUMN_PRIVILEGES.html) in that database.
-It applies the difference and re-reads the catalog to verify convergence. A missing grantee, database, or relation
-removes the resource from state.
 
 Redshift's [column-level usage notes](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT-usage-notes.html#r_GRANT-usage-notes-clp)
 apply:
@@ -47,6 +43,55 @@ apply:
 - A grantee cannot hold the same privilege at table and column level. While a table-level grant (for example from
   `redshift_object_grant`) exists, a column grant has no effect and the resource reports that it did not converge.
   Revoking the privilege at table level also revokes its column grants, which the next refresh shows as drift.
+
+## Reconciliation
+
+Refresh reads the grantee's column privileges on the relation from `SVV_COLUMN_PRIVILEGES`; an update reads them again,
+runs at most one `REVOKE` and one `GRANT` per privilege, each listing every column that changes, starting from what the
+catalog holds, and re-reads the catalog to verify the exact columns; every change to the tuple itself replaces the
+grant.
+
+| Change                                                                       | Result                                                                                                                        |
+|------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
+| `database_name`, `schema_name`, or `object_name`                             | replaces the grant: they name another relation, so the old relation's column privileges are revoked and the new one's granted |
+| `grantee` or `grantee_type`                                                  | replaces the grant: the grantee is part of the tuple                                                                          |
+| column added to the `SELECT` or `UPDATE` set of `privileges`, or a key added | `GRANT SELECT (column, ...) ON TABLE ... TO ...` or `GRANT UPDATE (...)` with the added columns                               |
+| column removed from a set, or a key removed                                  | `REVOKE SELECT (column, ...) ON TABLE ... FROM ...` or `REVOKE UPDATE (...)` with the removed columns                         |
+| `privileges` set to `{}`                                                     | `REVOKE` of every column privilege of the tuple; the resource stays and owns the empty map                                    |
+| a key with an empty set                                                      | rejected during planning: remove the key to revoke the privilege                                                              |
+| columns reordered within a set                                               | no change: the columns form a set                                                                                             |
+
+An update runs every `REVOKE` before any `GRANT`, `SELECT` before `UPDATE`, so a failure part-way never leaves more
+access than either side. The statements share no transaction: when one fails, the earlier ones stay applied and the
+next plan shows what is left. A catalog column privilege other than `SELECT` or `UPDATE` fails the refresh.
+
+**Drift.** Refresh compares the grantee's column privileges on the relation with the state, and the next plan restores
+the configuration with the statements above: a column granted outside Terraform is revoked, and a revoked one is granted
+again. Other grantees and other relations are never read. When the catalog does not match after a create or update,
+for example under a table-level grant or because Redshift folded a column name to lower case, the apply fails and names
+both column sets. A missing grantee, database, or relation removes the grant from state, and the next plan creates it
+again.
+
+### Moving Columns Between Privileges
+
+`id` loses `SELECT`, `label` loses `UPDATE` but keeps `SELECT`, and `note` gains both; the revokes run first:
+
+```terraform
+resource "redshift_column_grant" "readers" {
+  database_name = "warehouse"
+  schema_name   = "serving"
+  object_name   = "events"
+  grantee_type  = "ROLE"
+  grantee       = "example:readers"
+
+  privileges = {
+    SELECT = ["label", "note"] # was ["id", "label"]
+    UPDATE = ["note"]          # was ["label"]
+  }
+}
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/column_grant/revoke_before_grant.sql" }}
 
 ## Import
 

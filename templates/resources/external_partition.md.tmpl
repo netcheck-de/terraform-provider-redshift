@@ -29,13 +29,27 @@ ALTER TABLE schema.table DROP PARTITION (values...);
 
 Creation reads the table's partition keys from `svv_external_columns`, requires `values` to set each of them exactly
 once (names compare without case), and runs `ADD PARTITION` without `IF NOT EXISTS`, so an existing partition is an
-error rather than silently adopted. Statements list the keys in the table's partition-key order. A changed `location`
-runs `PARTITION (...) SET LOCATION`; any other change replaces the partition. Deletion runs `DROP PARTITION`, which
-removes only catalog metadata; the S3 data stays.
+error rather than silently adopted. Statements list the keys in the table's partition-key order. Deletion runs
+`DROP PARTITION`, which removes only catalog metadata; the S3 data stays.
 
-Refresh reads `svv_external_partitions`. The view drops a folder's trailing slash and truncates locations to 128
-characters, so those forms of the configured location are not drift. A partition whose table, external schema, or
-database is gone, or whose table no longer has the configured partition keys, is removed from state.
+## Reconciliation
+
+Refresh reads the partition's location from `svv_external_partitions`; an update reads it again, runs
+`PARTITION (...) SET LOCATION` for a changed `location`, and re-reads the catalog to verify the result; every other
+change replaces the partition, which drops its catalog entry and adds it again without touching the S3 data.
+
+| Change                           | Result                                                                                                   |
+|----------------------------------|----------------------------------------------------------------------------------------------------------|
+| `database`, `schema`, or `table` | replaces the partition: `DROP PARTITION` on the old table and `ADD PARTITION` on the new one             |
+| `values`                         | replaces the partition: the values identify it; a key name spelled in another case also replaces it      |
+| `location`                       | `ALTER TABLE ... PARTITION (...) SET LOCATION`, also when the new value differs only by a trailing slash |
+
+**Drift.** Refresh compares the catalog location with the state. `svv_external_partitions` drops a folder's trailing
+slash and truncates locations to 128 characters, so those forms of the configured location are not drift, and a change
+made outside Terraform beyond the first 128 characters is not detected. Any other location change shows as an update
+that sets the configured location again. A partition that is gone, or whose table, external schema, or database is gone,
+or whose table no longer has the configured partition keys, is removed from state, and the next plan adds it again. An
+update fails when the partition disappeared after the plan; refresh and plan again.
 
 ## Import
 

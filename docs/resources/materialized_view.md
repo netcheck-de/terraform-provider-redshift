@@ -98,37 +98,19 @@ Optional:
 - `update` (String) Maximum time for an in-place update, including the catalog reads before and after the change.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-## Definition and Storage Changes
-
-Redshift cannot alter a materialized view's query or its `BACKUP` setting, so changing `query` or `backup` replaces the
-view: Terraform drops it and creates it again, which recomputes its data and removes its grants. `DROP MATERIALIZED
-VIEW` does not cascade, so a materialized view that other objects depend on cannot be replaced until they are removed.
-
-The `distribution` and `sort_key` blocks, `auto_refresh`, and `owner` change in place with `ALTER MATERIALIZED VIEW`
-and `ALTER TABLE ... OWNER TO`. A `distribution` block sets `style`, `key`, or both; a `key` alone implies `KEY`.
-Removing the `distribution` block runs `ALTER DISTSTYLE EVEN`, the creation default, and removing the `sort_key` block
-runs `ALTER SORTKEY NONE`. An empty block is rejected. Redshift redistributes or re-sorts the stored data for these
-changes, and they fail while a `VACUUM` runs on the view.
-
-The provider compares definitions by `definition_fingerprint`, a hash of the `pg_views` text with whitespace collapsed.
-State keeps the configured `query` while the fingerprint matches; when the view is recreated outside Terraform with a
-different query, refresh replaces `query` with the catalog text and the next plan replaces the view.
-
-`backup`, `distribution`, and `sort_key` are not read back, so the provider cannot detect their drift: no
-catalog view reports `BACKUP`, and `SVV_TABLE_INFO`, which reports the distribution and first sort key column, is
-visible only to superusers and omits materialized views without rows.
-
-Refreshing the data (`REFRESH MATERIALIZED VIEW`) is an action and is not managed. Materialized views stored as Apache
-Iceberg tables (`USING ICEBERG`) and streaming ingestion are not supported.
-
 ## Lifecycle and Ownership
 
 Without `owner`, the provider's SQL identity owns the view and `owner` reports it. With `owner`, the provider transfers
-ownership with `ALTER TABLE ... OWNER TO`, since ALTER MATERIALIZED VIEW has no owner clause. Refresh reads `pg_views`
-for the owner and definition and `SVV_MV_INFO` for `auto_refresh`, and removes the view from state when it, or its
-database, no longer exists. `SVV_MV_INFO` shows regular users only their own materialized views. When a provider SQL
-identity that is not a superuser transfers ownership away, `auto_refresh` keeps its configured value with a warning
-instead of being read back, and changing or dropping the view then needs privileges that the new owner grants.
+ownership with `ALTER TABLE ... OWNER TO`, since ALTER MATERIALIZED VIEW has no owner clause. `SVV_MV_INFO` shows
+regular users only their own materialized views. When a provider SQL identity that is not a superuser transfers
+ownership away, `auto_refresh` keeps its configured value with a warning instead of being read back, and changing or
+dropping the view then needs privileges that the new owner grants.
+
+Deletion and replacement run `DROP MATERIALIZED VIEW` without `CASCADE`, so a materialized view that other objects
+depend on cannot be dropped or replaced until they are removed.
+
+Refreshing the data (`REFRESH MATERIALIZED VIEW`) is an action and is not managed. Materialized views stored as Apache
+Iceberg tables (`USING ICEBERG`) and streaming ingestion are not supported.
 
 ## Timeouts
 
@@ -146,9 +128,126 @@ timeouts {
 }
 ```
 
-Values are durations such as `90s`, `30m`, or `2h`. A change to them alone runs no DDL, but applies as an in-place
-update that reads and verifies the catalog like any other. A `delete` value applies only after an apply has saved it
-to state. Refreshes are bounded only by `query_timeout`.
+Values are durations such as `90s`, `30m`, or `2h`. A `delete` value applies only after an apply has saved it to
+state. Refreshes are bounded only by `query_timeout`. A change to the values alone is an in-place update; see
+[Reconciliation](#reconciliation).
+
+## Reconciliation
+
+Refresh reads the owner and definition from `pg_views` and `auto_refresh` from `SVV_MV_INFO`; an update checks that the
+view still exists, runs `ALTER MATERIALIZED VIEW` or `ALTER TABLE ... OWNER TO` for each changed in-place setting, and
+re-reads the catalog to verify the result; every other change replaces the view, which recomputes its data and removes
+its grants.
+
+| Change                                                                   | Result                                                                                                                                              |
+|--------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database`, `schema`, or `name`                                          | replaces the view: the provider never moves or renames a materialized view                                                                          |
+| `query`                                                                  | replaces the view: Redshift cannot alter a materialized view's definition; the first apply after an import records the configured query without SQL |
+| `backup` set, changed, or removed                                        | replaces the view: `ALTER MATERIALIZED VIEW` has no `BACKUP` clause; the first apply after an import records the configured value without SQL       |
+| `distribution.style` set to `ALL`                                        | `ALTER MATERIALIZED VIEW ... ALTER DISTSTYLE ALL`                                                                                                   |
+| `distribution.style` set to `EVEN`, or the `distribution` block removed  | `ALTER MATERIALIZED VIEW ... ALTER DISTSTYLE EVEN`, the creation default                                                                            |
+| `distribution.key` set or changed                                        | `ALTER MATERIALIZED VIEW ... ALTER DISTSTYLE KEY DISTKEY`                                                                                           |
+| `distribution.style = "KEY"` added or removed next to an unchanged `key` | no SQL: a distribution key implies `KEY`                                                                                                            |
+| `sort_key.columns` set or changed, including their order                 | `ALTER MATERIALIZED VIEW ... ALTER COMPOUND SORTKEY`                                                                                                |
+| `sort_key` block removed                                                 | `ALTER MATERIALIZED VIEW ... ALTER SORTKEY NONE`                                                                                                    |
+| `auto_refresh`                                                           | `ALTER MATERIALIZED VIEW ... AUTO REFRESH YES` or `AUTO REFRESH NO`; removing the argument means `false`                                            |
+| `owner` set or changed                                                   | `ALTER TABLE ... OWNER TO`, the last statement of the update                                                                                        |
+| `owner` removed                                                          | no SQL; the current owner stays and is still reported                                                                                               |
+| `timeouts.create`, `timeouts.update`, or `timeouts.delete`               | no SQL besides the catalog reads: an in-place update that checks and verifies the view                                                              |
+
+An empty `distribution` or `sort_key` block is rejected, and so are `distribution.key` with a style other than `KEY`
+and `style = "KEY"` without a key. Redshift redistributes or re-sorts the stored data for distribution and sort key
+changes, and they fail while a `VACUUM` runs on the view. An update runs its statements one at a time, in this order:
+distribution, sort key, automatic refresh, and owner. The ownership transfer comes last, because a provider SQL identity
+that is not a superuser can no longer alter the view once it does not own it. The statements share no transaction:
+when one fails, the earlier ones stay applied and the next plan shows what is left.
+
+**Drift.** The provider compares definitions by `definition_fingerprint`, a hash of the `pg_views` text with whitespace
+collapsed. State keeps the configured `query` while the fingerprint matches; when the view is recreated outside
+Terraform with a different query, refresh replaces `query` with the catalog text and the next plan replaces the view.
+A configured `owner`, or an `auto_refresh` that `SVV_MV_INFO` shows, changed outside Terraform is set back with the
+statements above; an omitted `owner` follows the catalog and never plans a change. `backup`, `distribution`, and
+`sort_key` are never read back, so the provider cannot detect their drift: no catalog view reports `BACKUP`, and
+`SVV_TABLE_INFO`, which reports the distribution and first sort key column, is visible only to superusers and omits
+materialized views without rows. A view that is gone, or whose database is gone, is removed from state; an ordinary
+view of the same name is an error.
+
+The following examples change this materialized view and show the statements the update runs:
+
+```terraform
+resource "redshift_materialized_view" "sales_summary" {
+  database     = "admin"
+  schema       = "serving"
+  name         = "sales_summary"
+  owner        = "analyst"
+  auto_refresh = true
+  query        = "SELECT label, COUNT(*) AS sales FROM serving.sales GROUP BY label"
+}
+```
+
+### Changing Storage, Refresh, and Owner
+
+Adding `distribution` and `sort_key` blocks, turning off automatic refresh, and transferring ownership in one change
+runs four statements, the ownership transfer last:
+
+```terraform
+owner        = "reporter" # was "analyst"
+auto_refresh = false      # was true
+
+distribution {
+  style = "EVEN"
+}
+sort_key {
+  columns = ["label"]
+}
+```
+
+```sql
+ALTER MATERIALIZED VIEW "serving"."sales_summary" ALTER DISTSTYLE EVEN;
+
+ALTER MATERIALIZED VIEW "serving"."sales_summary" ALTER COMPOUND SORTKEY ("label");
+
+ALTER MATERIALIZED VIEW "serving"."sales_summary" AUTO REFRESH NO;
+
+ALTER TABLE "serving"."sales_summary" OWNER TO "reporter";
+```
+
+### Removing the Distribution and Sort Key
+
+Removing a `distribution` block that set `style = "KEY"` and `key = "label"` returns the view to `EVEN`:
+
+```sql
+ALTER MATERIALIZED VIEW "serving"."sales_summary" ALTER DISTSTYLE EVEN;
+```
+
+Removing a `sort_key` block that listed `label` removes the sort key:
+
+```sql
+ALTER MATERIALIZED VIEW "serving"."sales_summary" ALTER SORTKEY NONE;
+```
+
+Adding `style = "KEY"` next to `key = "label"` declares the same distribution and runs no statement:
+
+```sql
+-- no statements
+```
+
+### Adopting an Imported View
+
+After an import, the first apply records the configured `query` and `backup` without SQL and applies the configured
+storage blocks in place:
+
+```terraform
+backup = false
+
+sort_key {
+  columns = ["label"]
+}
+```
+
+```sql
+ALTER MATERIALIZED VIEW "serving"."sales_summary" ALTER COMPOUND SORTKEY ("label");
+```
 
 ## Import
 

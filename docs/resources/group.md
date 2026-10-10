@@ -41,11 +41,21 @@ resource "redshift_group" "readers" {
 ## Lifecycle and Ownership
 
 Creation requires a SQL superuser. Memberships and privileges are separate resources; this resource does not reconcile
-them. Refresh records the group ID and the current members from `pg_group`, including members added by
-`redshift_group_membership` or outside Terraform, for reference only. Delete does not remove users or revoke unrelated
-grants. Redshift refuses deletion while the group has object privileges. Order managed grants and memberships through
-references; group-name changes propagate into their immutable identity inputs and require replacement through the
-provider's schema.
+them. Delete does not remove users or revoke unrelated grants. Redshift refuses deletion while the group has object
+privileges. Order managed grants and memberships through references.
+
+## Reconciliation
+
+Refresh reads the group from `pg_group`; the group has no setting that changes in place, so every change replaces it.
+Creation runs `CREATE GROUP` without members.
+
+| Change | Result                                                                                                                                                                                                                                                                                                    |
+|--------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name` | replaces the group: the provider never renames a group, so `DROP GROUP` runs for the old name and `CREATE GROUP` for the new one; memberships and privileges are not carried over; `redshift_group_membership` and grant resources that reference `name` are replaced and re-create them on the new group |
+
+**Drift.** Refresh records `group_id` and `members` from `pg_group`, including members added by
+`redshift_group_membership` or outside Terraform; both are computed, so they never plan a change. A group dropped
+outside Terraform is removed from state and planned for creation. Privileges granted to the group are never read.
 
 ## Import
 

@@ -45,19 +45,35 @@ resource "redshift_datashare_schema" "serving" {
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-Changing `database`, `datashare`, or `schema` replaces the membership. `include_new` defaults to `false` and updates
-in place.
-
 ## Lifecycle and Ownership
 
 Uses `ALTER DATASHARE ... ADD/REMOVE SCHEMA` and reads `svv_datashare_objects`. It owns this relationship only. Remove
 shared tables/views before removing their schema membership. Deleting the membership does not drop the producer schema.
-Refresh updates `include_new` from the observed future-object inclusion policy.
-Reference managed datashare and schema names to establish creation order. Changes to those names require membership
-replacement through the provider's schema.
+Reference managed datashare and schema names to establish creation order.
 `include_new` does not add **existing** tables or views; include them with separate `redshift_datashare_table`
 resources. The existing producer provisioner uses a blanket `GRANT SELECT FOR TABLES IN SCHEMA` policy. Its exact
 catalog/drift semantics remain a live migration check; `include_new` alone does not replace existing object membership.
+
+## Reconciliation
+
+Refresh reads the membership and its `include_new` setting from `SVV_DATASHARE_OBJECTS`; an update runs
+`ALTER DATASHARE ... SET INCLUDENEW ... FOR SCHEMA` with the planned value and re-reads the catalog to verify it; every
+other change replaces the membership with `ALTER DATASHARE ... REMOVE SCHEMA` and `ADD SCHEMA`, which leaves the
+schema itself untouched. Like deletion, replacement needs the schema's table and view memberships removed first.
+
+| Change                                         | Result                                                                                                                                                                                  |
+|------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database`                                     | replaces the membership: a share and its members belong to one producer database, so the schema is removed from the share there and added to the share of that name in the new database |
+| `datashare`                                    | replaces the membership: the schema is removed from the old share and added to the new one                                                                                              |
+| `schema`                                       | replaces the membership: the old schema is removed from the share and the new one added                                                                                                 |
+| `include_new` changed, or removed while `true` | `ALTER DATASHARE ... SET INCLUDENEW TRUE FOR SCHEMA` or `SET INCLUDENEW FALSE FOR SCHEMA` with the planned value; an omitted value is `false`                                           |
+
+Creation runs `ADD SCHEMA` and, only for `include_new = true`, `SET INCLUDENEW TRUE FOR SCHEMA`.
+
+**Drift.** Refresh compares `include_new` with the state. A setting changed outside Terraform is set back with
+`SET INCLUDENEW`. A membership removed outside Terraform, for example with its share, schema, or database, is removed
+from state, and the next plan adds the schema again. The tables and views the share holds from the schema, and the
+schema itself, are never read.
 
 ## Import
 

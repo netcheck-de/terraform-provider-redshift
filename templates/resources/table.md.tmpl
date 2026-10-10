@@ -26,69 +26,11 @@ DROP TABLE schema.name;
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-## Columns
-
-`column` blocks are matched to the catalog by name, never by position:
-
-- reordering the blocks runs no SQL;
-- a new block, wherever it appears, runs `ALTER TABLE ADD COLUMN`. Redshift stores the new column after the existing
-  ones, but the state keeps the configured order;
-- a removed block runs `DROP COLUMN`, without `CASCADE`, so a view that uses the column blocks the change and the next
-  plan shows what is left;
-- renaming a column is a removal and an addition: the plan updates the table in place, and the column's data is lost
-  without a replacement that `prevent_destroy` would stop.
-
-New columns are added before removed ones are dropped, so the existing and new columns together must not exceed 1600;
-otherwise the table is replaced. An apply refuses to drop a column that was added to the table after the plan was made,
-because the plan never showed its removal; refresh and plan again.
-
-## In-Place Changes and Replacement
-
-Terraform owns the table definition, never its rows. Changes that `ALTER TABLE` supports are applied in place, one
-statement per change, and the catalog is read again to verify the result:
-
-- adding columns (`ADD COLUMN`; not identity columns, and a NOT NULL column, including a new primary key column, only
-  with a default, because existing rows would be null) and dropping columns (`DROP COLUMN`);
-- `ALTER COLUMN ... ENCODE`, except with an interleaved sort key;
-- widening a VARCHAR or VARBYTE column that has no default, belongs to no constraint, and is not encoded with
-  `BYTEDICT`, `RUNLENGTH`, `TEXT255`, or `TEXT32K` (`ALTER COLUMN ... TYPE`);
-- `ALTER DISTSTYLE`, `ALTER DISTKEY`, `ALTER [COMPOUND] SORTKEY`, `ALTER SORTKEY AUTO`, and `ALTER SORTKEY NONE`, unless
-  the table keeps or gets an interleaved sort key;
-- adding and dropping primary key, unique, and foreign key constraints (`ADD` and `DROP CONSTRAINT`, using the
-  constraint names the catalog reports); a new primary key on an existing nullable column is not possible in place;
-- `OWNER TO`.
-
-`ALTER SORTKEY AUTO` and `ALTER DISTSTYLE AUTO` keep the current key, and `DROP COLUMN` refuses a distribution or sort
-key column, even one Redshift chose itself under `AUTO`. A move to `AUTO` from an interleaved sort key or off a column
-the change drops, and dropping a column that `effective_distribution` or `effective_sort_key` reports as a key Redshift
-chose, therefore first run `ALTER SORTKEY NONE` or `ALTER DISTSTYLE EVEN`, drop the column, and set `AUTO` again. With
-an interleaved sort key, `ALTER DISTSTYLE` is not possible, so dropping the distribution key Redshift chose replaces the
-table.
-
-`ALTER [COMPOUND] SORTKEY` and `ALTER SORTKEY NONE` can re-encode columns of the old and new sort key, for example to
-`RAW`. Omitted encodings of those columns are therefore known after apply, and an update re-reads the catalog after
-the sort key change and applies configured encodings again with `ALTER COLUMN ... ENCODE`.
-
-Every other change replaces the table, which **drops all of its rows**: renaming the table, changing a column's type
-(other than widening), nullability, default, or identity, the backup setting, or an interleaved sort key. Protect
-tables that hold data:
-
-```terraform
-lifecycle {
-  prevent_destroy = true
-}
-```
-
-`DROP TABLE` runs without `CASCADE`: views, foreign keys of other tables, and other dependent objects keep the table,
-and the deletion fails until they are removed.
-
 ## Distribution and Sort Key
 
 Omitting the `distribution` or `sort_key` block leaves the choice to Redshift (`AUTO`). The blocks then stay out of
-the state while the catalog reports `AUTO`; when the layout is changed outside Terraform, the block is filled with what
-the catalog declares, and the next plan sets it back to `AUTO`. A configured block is always reported. A `style`, `key`,
-or `columns` value that is known only during apply replaces the table, because the plan cannot tell whether
-`ALTER TABLE` could make the change.
+the state while the catalog reports `AUTO`, and a configured block is always reported. An omitted block and a block
+with `style = "AUTO"` declare the same layout.
 
 `effective_distribution` and `effective_sort_key` show what Redshift applies, including the style and key it chose under
 `AUTO`. An explicit layout is known during planning. An automatic one keeps its value only while a plan changes nothing
@@ -137,10 +79,256 @@ timeouts {
 }
 ```
 
-Values are durations such as `90s`, `30m`, or `2h`. A change to them alone runs no DDL of its own, but applies as an
-in-place update that reads and verifies the catalog like any other: it restores settings changed outside Terraform
-since the plan, and the plan shows the effective layout of an `AUTO` table as known after apply. A `delete` value
-applies only after an apply has saved it to state. Refreshes are bounded only by `query_timeout`.
+Values are durations such as `90s`, `30m`, or `2h`. A `delete` value applies only after an apply has saved it to
+state. Refreshes are bounded only by `query_timeout`. A change to the values alone is an in-place update; see
+[Reconciliation](#reconciliation).
+
+## Reconciliation
+
+Refresh reads the table definition from the catalog; an update reads it again, runs one `ALTER TABLE` statement per
+change starting from what the catalog holds, and re-reads the catalog to verify the result; every other change
+replaces the table, which **drops all of its rows**. Terraform owns the table definition, never its rows. Protect
+tables that hold data:
+
+```terraform
+lifecycle {
+  prevent_destroy = true
+}
+```
+
+Replacement and deletion run `DROP TABLE` without `CASCADE`: views, foreign keys of other tables, and other dependent
+objects keep the table, and the deletion fails until they are removed.
+
+| Change                                                                                                                                                                       | Result                                                                                                                                                                                                                                                                               |
+|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database`, `schema`, or `name`                                                                                                                                              | replaces the table: the provider never moves or renames a table, so its rows are lost                                                                                                                                                                                                |
+| `owner` set or changed                                                                                                                                                       | `ALTER TABLE ... OWNER TO`, the last statement of the update                                                                                                                                                                                                                         |
+| `owner` removed                                                                                                                                                              | no SQL; the current owner stays and is still reported                                                                                                                                                                                                                                |
+| `column` block added, anywhere in the list                                                                                                                                   | `ALTER TABLE ... ADD COLUMN`; Redshift stores the column after the existing ones, and the state keeps the configured order                                                                                                                                                           |
+| `column` block added with `identity`, or NOT NULL without `default`                                                                                                          | replaces the table: `ADD COLUMN` cannot add an identity column, nor a NOT NULL column (`nullable = false` or listed in `primary_key`) without a default, because existing rows would hold NULL                                                                                       |
+| `column` blocks added while the existing and new columns together exceed 1600                                                                                                | replaces the table: new columns are added before removed ones are dropped                                                                                                                                                                                                            |
+| `column` block removed                                                                                                                                                       | `ALTER TABLE ... DROP COLUMN`, without `CASCADE`; a key column only after the sort key and distribution moved off it, as the examples show; while the planned sort key is interleaved, dropping the distribution key Redshift chose replaces the table                               |
+| `column` blocks reordered                                                                                                                                                    | no SQL; the state records the configured order                                                                                                                                                                                                                                       |
+| `column.name`                                                                                                                                                                | `ADD COLUMN` for the new name and `DROP COLUMN` for the old one: an in-place update that loses the column's data, which `prevent_destroy` does not stop; a renamed identity or NOT NULL column without `default` replaces the table, as when it is added                             |
+| `column.type` respelled with the same canonical form, such as `int8` for `bigint`                                                                                            | no SQL; the state records the configured spelling                                                                                                                                                                                                                                    |
+| `column.type` widened to a longer VARCHAR or VARBYTE                                                                                                                         | `ALTER TABLE ... ALTER COLUMN ... TYPE` when the column has no `default`, belongs to no `primary_key`, `unique`, or `foreign_key`, and is not encoded with `BYTEDICT`, `RUNLENGTH`, `TEXT255`, or `TEXT32K`; otherwise replaces the table                                            |
+| `column.type`, any other change                                                                                                                                              | replaces the table: Redshift widens only VARCHAR and VARBYTE columns in place                                                                                                                                                                                                        |
+| `column.encoding` changed                                                                                                                                                    | `ALTER TABLE ... ALTER COLUMN ... ENCODE`; replaces the table when the planned sort key is interleaved                                                                                                                                                                               |
+| `column.encoding` removed                                                                                                                                                    | no SQL; the column keeps the encoding the catalog reports                                                                                                                                                                                                                            |
+| `column.nullable` changed                                                                                                                                                    | replaces the table: Redshift cannot change the nullability of a column                                                                                                                                                                                                               |
+| `column.nullable` removed                                                                                                                                                    | no SQL; the column keeps its nullability                                                                                                                                                                                                                                             |
+| `column.default` added, removed, or changed                                                                                                                                  | replaces the table: Redshift cannot change a column default; a spelling with the same canonical form, such as `'none'::character varying` for `'none'`, runs no SQL                                                                                                                  |
+| `column.identity`, `column.identity.seed`, `column.identity.step`, or `column.identity.generated_by_default` added, removed, or changed                                      | replaces the table: Redshift cannot change the identity of a column                                                                                                                                                                                                                  |
+| `primary_key` added, or `primary_key.columns` changed                                                                                                                        | `ALTER TABLE ... ADD PRIMARY KEY` after the column changes, preceded by `DROP CONSTRAINT` with the catalog name of a previous key; replaces the table when a listed existing column is nullable                                                                                      |
+| `primary_key` removed                                                                                                                                                        | `ALTER TABLE ... DROP CONSTRAINT` with the catalog name                                                                                                                                                                                                                              |
+| `unique` block added or removed, or `unique.columns` changed                                                                                                                 | `ALTER TABLE ... ADD UNIQUE` and `DROP CONSTRAINT`; a changed block is dropped and added again                                                                                                                                                                                       |
+| `foreign_key` block added or removed, or `foreign_key.columns`, `foreign_key.references.schema`, `foreign_key.references.table`, or `foreign_key.references.columns` changed | `ALTER TABLE ... ADD FOREIGN KEY` and `DROP CONSTRAINT`; a changed block is dropped and added again                                                                                                                                                                                  |
+| `distribution.style` set to `EVEN` or `ALL`                                                                                                                                  | `ALTER TABLE ... ALTER DISTSTYLE EVEN` or `ALTER DISTSTYLE ALL`                                                                                                                                                                                                                      |
+| `distribution.key` set or changed                                                                                                                                            | `ALTER TABLE ... ALTER DISTKEY` when the table declares `DISTSTYLE KEY`, otherwise (including `AUTO` with a key Redshift chose) `ALTER DISTSTYLE KEY DISTKEY`                                                                                                                        |
+| `distribution` block removed, or `distribution.style` set to `AUTO`                                                                                                          | `ALTER TABLE ... ALTER DISTSTYLE AUTO`; when the update drops the current key column, `ALTER DISTSTYLE EVEN` before `DROP COLUMN` and `ALTER DISTSTYLE AUTO` after it; an omitted block and `style = "AUTO"` are the same, so switching between them runs no SQL                     |
+| `distribution` changed while the planned sort key is interleaved                                                                                                             | replaces the table: `ALTER DISTSTYLE` and `ALTER DISTKEY` do not work on a table with an interleaved sort key                                                                                                                                                                        |
+| `sort_key.columns` set or changed for a compound key                                                                                                                         | `ALTER TABLE ... ALTER COMPOUND SORTKEY`, also when the table leaves an interleaved sort key                                                                                                                                                                                         |
+| `sort_key.style` set to `NONE`                                                                                                                                               | `ALTER TABLE ... ALTER SORTKEY NONE`                                                                                                                                                                                                                                                 |
+| `sort_key` block removed, or `sort_key.style` set to `AUTO`                                                                                                                  | `ALTER TABLE ... ALTER SORTKEY AUTO`; from an interleaved key, or when the update drops a current key column, `ALTER SORTKEY NONE` before `DROP COLUMN` and `ALTER SORTKEY AUTO` after it; an omitted block and `style = "AUTO"` are the same, so switching between them runs no SQL |
+| `sort_key.style` set to `INTERLEAVED`, or the columns of an interleaved key changed                                                                                          | replaces the table: `ALTER TABLE` cannot create an interleaved sort key                                                                                                                                                                                                              |
+| a `column`, `primary_key`, `unique`, `foreign_key`, `distribution`, or `sort_key` value known only during apply, other than `column.encoding` and `column.nullable`          | replaces the table, for a `unique` or `foreign_key` value only when `column`, `primary_key`, `distribution`, `sort_key`, or `backup` also changes: the plan cannot tell whether `ALTER TABLE` could make the change                                                                  |
+| `backup`                                                                                                                                                                     | replaces the table: Redshift has no `ALTER TABLE` form for it; after import, when no value is recorded yet, the configured value is recorded without SQL                                                                                                                             |
+| `timeouts.create`, `timeouts.update`, or `timeouts.delete`                                                                                                                   | no DDL of its own, but an in-place update that re-reads and verifies the catalog: it restores settings changed outside Terraform since the plan, and the plan shows the effective layout of an `AUTO` table as known after apply                                                     |
+
+`column` blocks are matched to the catalog by name, never by position. An update runs its statements one at a time, in
+this order: dropped constraints (foreign keys first), added columns, the sort key and then the distribution,
+`ALTER COLUMN ... TYPE` and `ENCODE`, dropped columns, the return to `AUTO` after a detour, added constraints (the
+primary key first, foreign keys last), and `OWNER TO`. The statements share no transaction: when one fails, for example
+a `DROP COLUMN` that a view depends on, the earlier ones stay applied and the next plan shows what is left.
+
+A sort key change can re-encode columns of the old and new sort key, for example to `RAW`. The plan therefore shows
+omitted encodings of those columns as known after apply, and of every column when the previous sort key was `AUTO`;
+the same holds for the sort key columns Redshift chose under `AUTO` when the update drops one of them. After
+`ALTER [COMPOUND] SORTKEY` or `ALTER SORTKEY NONE`, an update re-reads the catalog and applies configured encodings
+again with `ALTER COLUMN ... ENCODE`.
+
+**Drift.** Refresh compares the catalog with the state, matching columns by name, and the next plan restores the
+configuration with the statements above: a column or constraint added outside Terraform is dropped, a dropped one is
+added again (or the table is replaced when `ADD COLUMN` cannot add it, as for an identity column), a changed configured
+encoding, `owner`, distribution, or sort key is set back, and a layout changed away from `AUTO` while its block is
+omitted fills the block with what the catalog declares and is set back to `AUTO`. A column widened outside Terraform
+replaces the table, because the configured length would narrow it. Omitted `encoding`, `nullable`, and `owner` values
+follow the catalog and never plan a change. A default changed outside Terraform is not detected while the column still
+has one, because the configured text is kept, and the limits under [Catalog Reads](#catalog-reads) apply. Changes
+Redshift makes on its own under `AUTO` only update `effective_distribution` and `effective_sort_key`. `backup` is never
+read back. An apply refuses to drop a column that was added to the table after the plan was made, because the
+plan never showed its removal; refresh and plan again.
+
+The following examples change this table and show the statements the update runs:
+
+```terraform
+resource "redshift_table" "events" {
+  database = "admin"
+  schema   = "serving"
+  name     = "events"
+
+  column {
+    name     = "id"
+    type     = "bigint"
+    encoding = "AZ64"
+    identity {
+      seed = 1
+      step = 1
+    }
+  }
+  column {
+    name     = "label"
+    type     = "varchar(64)"
+    encoding = "LZO"
+    default  = "'none'"
+  }
+
+  primary_key {
+    columns = ["id"]
+  }
+  distribution {
+    key = "id"
+  }
+  sort_key {
+    columns = ["id"]
+  }
+}
+```
+
+### Inserting a Column
+
+A `note` block declared between `id` and `label` is added in place. Redshift stores it after `label`, but the state
+keeps the configured order:
+
+```terraform
+column {
+  name = "id"
+  # ...
+}
+column {
+  name     = "note"
+  type     = "varchar(32)"
+  encoding = "LZO"
+}
+column {
+  name = "label"
+  # ...
+}
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/table/alter_insert_middle_column.sql" }}
+
+### Reordering Columns
+
+With `note` declared after `label`, moving the blocks to the order `note`, `label`, `id` runs no SQL:
+
+```terraform
+column {
+  name = "note"
+  # ...
+}
+column {
+  name = "label"
+  # ...
+}
+column {
+  name = "id"
+  # ...
+}
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/table/alter_reorder_columns.sql" }}
+
+### Widening and Re-Encoding a Column
+
+The `note` column from the first example has no default, belongs to no constraint, and uses `LZO`, so it can grow in
+place. `varchar(max)` is `character varying(65535)`:
+
+```terraform
+column {
+  name     = "note"
+  type     = "varchar(max)" # was "varchar(32)"
+  encoding = "ZSTD"         # was "LZO"
+}
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/table/alter_widen.sql" }}
+
+Narrowing it to `varchar(16)`, or changing it to another type, replaces the table instead.
+
+### Dropping a Column
+
+Removing the `note` block drops the column and its data:
+
+{{ codefile "sql" "internal/provider/testdata/sql/table/alter_drop_column.sql" }}
+
+### Dropping a Key Column
+
+`DROP COLUMN` refuses a distribution or sort key column. When the configuration moves both keys off `note` and removes
+its block in the same change, the keys move before the column is dropped:
+
+```terraform
+# The note column block is removed.
+distribution {
+  key = "id" # was "note"
+}
+sort_key {
+  columns = ["id"] # was ["note"]
+}
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/table/alter_drop_key_column.sql" }}
+
+### Dropping a Column Redshift Chose as a Key
+
+`DROP COLUMN` also refuses a key column that Redshift chose itself under `AUTO`, and `ALTER SORTKEY AUTO` and
+`ALTER DISTSTYLE AUTO` keep the current key. Without `distribution` and `sort_key` blocks, with `note` as the
+distribution key and the first sort key column Redshift chose, removing the `note` block therefore detours through no
+sort key and `EVEN` distribution, and sets `AUTO` again after the drop:
+
+```terraform
+# No distribution or sort_key block; Redshift chose note:
+#   effective_distribution = { style = "KEY", key = "note", auto = true }
+#   effective_sort_key     = { style = "COMPOUND", columns = ["note", "id"], auto = true }
+# The note column block is removed.
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/table/alter_drop_auto_key_column.sql" }}
+
+### Changing the Primary Key
+
+Starting from the table with `note`, the `note` column is replaced by a new NOT NULL `code` column, which joins `id`
+in the primary key. A new NOT NULL column needs a default, because existing rows would hold NULL; without it, the
+table is replaced:
+
+```terraform
+# The note column block is removed.
+column {
+  name     = "code"
+  type     = "char(2)"
+  nullable = false
+  default  = "'xx'"
+}
+
+primary_key {
+  columns = ["id", "code"] # was ["id"]
+}
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/table/alter_primary_key.sql" }}
+
+### Changing the Distribution
+
+A move from `ALL` to a distribution key sets the style and key in one statement; a move from one key column to
+another runs `ALTER DISTKEY`:
+
+```terraform
+distribution {
+  key = "id" # was style = "ALL"
+}
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/table/alter_diststyle_key.sql" }}
 
 ## Import
 

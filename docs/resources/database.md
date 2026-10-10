@@ -81,7 +81,7 @@ Optional:
 
 `owner`, `connection_limit`, `collation`, and `isolation_level` apply to local databases only; configuring any of them
 together with `datashare_arn` is rejected at plan time, and they are null for shared databases. Omitted options are
-reported from the catalog and left unmanaged, so removing one from configuration keeps its current value.
+reported from the catalog and left unmanaged; see [Reconciliation](#reconciliation) for how changes apply.
 
 | Attribute          | Created with       | Changed with                              | Read from                                   |
 |--------------------|--------------------|-------------------------------------------|---------------------------------------------|
@@ -90,21 +90,14 @@ reported from the catalog and left unmanaged, so removing one from configuration
 | `collation`        | `COLLATE`          | replacement                               | `DB_COLLATION()` inside the database        |
 | `isolation_level`  | `ISOLATION LEVEL`  | `ALTER DATABASE ... ISOLATION LEVEL`      | `SHOW DATABASES` `database_isolation_level` |
 
-`connection_limit = -1` renders `UNLIMITED`; superusers are not limited. Changing the isolation level fails while other
-sessions are connected to the database, and the `dev` database cannot be changed. Changes apply to new sessions.
-`ALTER DATABASE ... COLLATE` exists but is restricted by Redshift, so a collation change replaces the database instead.
-Create and Update re-read every option and fail when the catalog does not hold the planned value.
+`connection_limit = -1` renders `UNLIMITED`; superusers are not limited. The isolation level of the `dev` database
+cannot be changed. Changes apply to new sessions.
 
 ## Lifecycle and Ownership
 
-Catalog reads refresh database metadata and, for shared databases, `with_permissions`. The configured `datashare_arn`
-is verified against the SQL producer binding; for local databases the ARN is null. Incompatible
-existing bindings raise errors. Deletion drops only the matching database, without `CASCADE`; active sessions or grants
-may prevent it. This resource manages no `PUBLIC` grants; assign permissions separately.
-
-Changing `with_permissions` replaces a shared database. For local databases, `with_permissions` retains its configured
-value or default but has no effect and never forces replacement; the data source reports
-the observed local permission mode as `false`. Resource refreshes do not require AWS datashare discovery permissions.
+Deletion drops only the matching database, without `CASCADE`; active sessions or grants may prevent it. This resource
+manages no `PUBLIC` grants; assign permissions separately. The data source reports the permission mode of a local
+database as `false`. Resource refreshes do not require AWS datashare discovery permissions.
 
 ## Timeouts
 
@@ -121,10 +114,54 @@ timeouts {
 }
 ```
 
-Values are durations such as `90s`, `30m`, or `2h`. A change to them alone runs no DDL of its own, but applies as an
-in-place update that reads and verifies the catalog like any other, and so also restores settings changed outside
-Terraform since the plan. A `delete` value applies only after an apply has saved it to state. Refreshes are bounded
-only by `query_timeout`.
+Values are durations such as `90s`, `30m`, or `2h`. A `delete` value applies only after an apply has saved it to
+state. Refreshes are bounded only by `query_timeout`. A change to the values alone is an in-place update; see
+[Reconciliation](#reconciliation).
+
+## Reconciliation
+
+Refresh reads the database from `SHOW DATABASES` and, for a local database, its owner and connection limit from
+`PG_DATABASE_INFO`; an update reads them again, runs one `ALTER DATABASE` statement per changed local option starting
+from what the catalog holds, and re-reads the catalog to verify the result; every other change replaces the database
+with `DROP DATABASE` and `CREATE DATABASE`, which **drops everything stored in a local database**. Protect databases
+that hold data:
+
+```terraform
+lifecycle {
+  prevent_destroy = true
+}
+```
+
+| Change                                                     | Result                                                                                                                                                                 |
+|------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name`                                                     | replaces the database: the provider never renames a database                                                                                                           |
+| `datashare_arn` set, changed, or removed                   | replaces the database: a local database cannot become a consumer database, and a consumer database cannot be bound to another datashare                                |
+| `with_permissions` of a shared database                    | replaces the database: `WITH PERMISSIONS` is part of `CREATE DATABASE ... FROM DATASHARE` only                                                                         |
+| `with_permissions` of a local database                     | no SQL; the configured value is recorded and has no effect                                                                                                             |
+| `owner` set or changed                                     | `ALTER DATABASE ... OWNER TO`, which requires a superuser                                                                                                              |
+| `owner` removed                                            | no SQL; the current owner stays and is still reported                                                                                                                  |
+| `connection_limit` set or changed                          | `ALTER DATABASE ... CONNECTION LIMIT`, with `UNLIMITED` for `-1`                                                                                                       |
+| `connection_limit` removed                                 | no SQL; the current limit stays and is still reported                                                                                                                  |
+| `collation` set to a value other than the one in state     | replaces the database: `ALTER DATABASE ... COLLATE` exists but is restricted by Redshift; setting the value the state holds runs no SQL                                |
+| `collation` set while the state holds none                 | replaces the database even when the value matches its actual collation: the state holds none while every `DB_COLLATION()` read since creation or import was refused    |
+| `collation` removed                                        | no SQL; the database keeps its collation                                                                                                                               |
+| `isolation_level` set or changed                           | `ALTER DATABASE ... ISOLATION LEVEL`, which fails while other sessions are connected to the database                                                                   |
+| `isolation_level` removed                                  | no SQL; the current level stays and is still reported                                                                                                                  |
+| `timeouts.create`, `timeouts.update`, or `timeouts.delete` | no DDL of its own, but an in-place update that re-reads and verifies the catalog: it moves options changed outside Terraform since the plan back to the planned values |
+
+An update runs its statements in the order owner, connection limit, isolation level. They share no transaction: when
+one fails, the earlier ones stay applied and the next plan shows what is left. After them, the update fails when the
+catalog does not hold every configured option, or when a shared database no longer has the planned
+`with_permissions`.
+
+**Drift.** Refresh compares the owner, connection limit, and isolation level of a local database, and `with_permissions`
+of a shared database, with the state. A configured local option changed outside Terraform is set back with the
+statements above; an omitted one follows the catalog and never plans a change. A shared database whose permission mode
+differs from the configuration is replaced. A database dropped outside Terraform is removed from state, and the next
+plan creates it again. A database that changed between local and shared, or is bound to another producer share than
+`datashare_arn` names, fails the refresh instead of planning a change. `collation` is read only at creation, at
+import, and while the state holds no value, so a later change is not detected. Comments, grants, and the objects inside
+the database are never read.
 
 ## Import
 

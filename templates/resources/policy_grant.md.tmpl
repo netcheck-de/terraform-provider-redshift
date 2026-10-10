@@ -26,18 +26,35 @@ REVOKE SELECT ON TABLE ... FROM { RLS | MASKING } POLICY policy_name;
 
 ## Lifecycle and Ownership
 
-All identity arguments require replacement when changed; `privileges` updates in place and accepts only `SELECT`.
-Before each change the resource checks that the database, schema, table, and policy exist (`SVV_RLS_POLICY` or
-`SVV_MASKING_POLICY`); a missing parent removes the resource from state. Deleting the resource revokes the grant.
-Policies cannot hold grant options.
+`privileges` accepts only `SELECT`. Before each change the resource checks that the database, schema, table, and
+policy exist (`SVV_RLS_POLICY` or `SVV_MASKING_POLICY`). Deleting the resource revokes the grant. Policies cannot hold
+grant options.
 
 **Redshift does not report grants to policies.** The AWS reference lists only users, roles, groups, and `PUBLIC` as the
 identities that [SHOW GRANTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_GRANTS.html) and
 [SVV_RELATION_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RELATION_PRIVILEGES.html) return, so
-the provider cannot read the grant back. State records what Terraform granted: Create and Update run `GRANT` or `REVOKE`
-for the difference between the recorded and the configured `privileges`, refresh keeps the recorded value, and Delete
-revokes it. A grant revoked or added outside Terraform is not detected; change `privileges` or replace the resource to
-apply it again. For the same reason there is no `redshift_policy_grant` data source.
+the provider cannot read the grant back, and state records what Terraform granted; see
+[Reconciliation](#reconciliation). For the same reason there is no `redshift_policy_grant` data source.
+
+## Reconciliation
+
+Refresh checks only that the database, schema, lookup table, and policy exist and keeps the recorded `privileges`; an
+update runs `GRANT` or `REVOKE` for the difference between the recorded and the configured `privileges` and cannot
+re-read the result; every change to the tuple itself replaces the grant.
+
+| Change                                           | Result                                                                                                                                                       |
+|--------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database_name`, `schema_name`, or `object_name` | replaces the grant: they name another lookup table, so the recorded privileges on the old table are revoked and the configured ones granted on the new table |
+| `policy_type` or `policy_name`                   | replaces the grant: they name another policy                                                                                                                 |
+| `privileges` set to `["SELECT"]`                 | `GRANT SELECT ON TABLE ... TO RLS POLICY ...` or `TO MASKING POLICY ...`                                                                                     |
+| `privileges` set to `[]`                         | `REVOKE SELECT ON TABLE ... FROM RLS POLICY ...` or `FROM MASKING POLICY ...`                                                                                |
+
+A create grants the configured `privileges` without comparing them with anything, and a deletion revokes the recorded
+ones; see [Import](#import) for imported grants.
+
+**Drift.** The grant itself is never read back: a grant revoked or added outside Terraform is not detected, and the next
+plan shows no change. Change `privileges` or replace the resource to apply it again. A missing database, schema, lookup
+table, or policy removes the grant from state, and the next plan creates it again.
 
 ## Import
 

@@ -49,24 +49,96 @@ resource "redshift_datashare_privilege" "share_admins" {
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-Changing the database, datashare, or grantee replaces the grant; `privileges` is reconciled in place. Use
-`grantee_type = "PUBLIC"` with `grantee = "public"` to grant to every user.
+Use `grantee_type = "PUBLIC"` with `grantee = "public"` to grant to every user.
 
 ## Lifecycle and Ownership
 
 Reads confirm that the outbound share exists in `database_name`
 ([SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html)) and that the grantee exists,
 then read the explicit permissions from
-[SVV_DATASHARE_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARE_PRIVILEGES.html). Extra
-permissions are revoked before missing ones are granted, and the catalog is read again to verify the result. Statements
-run in the producer database. A dropped share or grantee removes the resource from state. Deleting the resource revokes
-only the permissions this grantee holds; other grantees are independent.
+[SVV_DATASHARE_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARE_PRIVILEGES.html).
+Statements run in the producer database. Deleting the resource revokes only the permissions this grantee holds; other
+grantees are independent.
 
 Grant options are not managed. `REVOKE ... ON DATASHARE` documents no `GRANT OPTION FOR` form that removes only the
 option, so a permission held `WITH GRANT OPTION` is reported as an error instead of being silently downgraded. To bring
 such a grantee under Terraform, revoke the permission itself outside Terraform (`REVOKE ALTER ON DATASHARE ... FROM
-user`, which drops the option with it), then apply, which grants the permission again without the option. Superusers and users with `ACCESS SYSTEM TABLE` see every row of `SVV_DATASHARE_PRIVILEGES`;
-other users see only identities they have access to or own, so the provider user needs that visibility.
+user`, which drops the option with it), then apply, which grants the permission again without the option. Superusers
+and users with `ACCESS SYSTEM TABLE` see every row of `SVV_DATASHARE_PRIVILEGES`; other users see only identities they
+have access to or own, so the provider user needs that visibility.
+
+## Reconciliation
+
+Refresh reads the grantee's `ALTER` and `SHARE` permissions on the datashare from `SVV_DATASHARE_PRIVILEGES`; an update
+reads them again, runs one `GRANT` or `REVOKE` statement per permission that differs, starting from what the catalog
+holds, and re-reads the catalog to verify the exact set; every change to the tuple itself replaces the grant.
+
+| Change                               | Result                                                                                                            |
+|--------------------------------------|-------------------------------------------------------------------------------------------------------------------|
+| `database_name` or `datashare_name`  | replaces the grant: they name another share, so the old share's permissions are revoked and the new one's granted |
+| `grantee` or `grantee_type`          | replaces the grant: the grantee is part of the tuple                                                              |
+| permission added to `privileges`     | `GRANT ALTER ON DATASHARE ... TO ...` or `GRANT SHARE ON DATASHARE ... TO ...`                                    |
+| permission removed from `privileges` | `REVOKE ALTER ON DATASHARE ... FROM ...` or `REVOKE SHARE ON DATASHARE ... FROM ...`                              |
+| `privileges` set to `[]`             | `REVOKE` for every permission the grantee holds; the resource stays and owns the empty set                        |
+
+An update revokes before it grants. The statements share no transaction: when one fails, the earlier ones stay applied
+and the next plan shows what is left.
+
+**Drift.** Refresh compares the grantee's explicit permissions on the share with the state, and the next plan restores
+the configuration with the statements above: a permission granted outside Terraform is revoked, and a revoked one is
+granted again. A permission held `WITH GRANT OPTION` fails the refresh instead, as
+[Lifecycle and Ownership](#lifecycle-and-ownership) explains, and so does a catalog permission other than `ALTER` and
+`SHARE`. Other grantees are never read. A dropped share or grantee removes the grant from state, and the next plan
+creates it again.
+
+The following example shows the statements an update runs, each with the database it runs in: the existence
+checks and the catalog read, the changes, and the read that verifies them.
+
+### Replacing a Permission
+
+```terraform
+resource "redshift_datashare_privilege" "readers" {
+  database_name  = "admin"
+  datashare_name = "producer"
+  grantee_type   = "ROLE"
+  grantee        = "example:readers"
+  privileges     = ["SHARE"] # was ["ALTER"]
+}
+```
+
+```sql
+-- database: admin
+SELECT share_name FROM svv_datashares WHERE share_type = 'OUTBOUND' AND share_name = :share AND BTRIM(source_database) = :database;
+-- params: {"database":"admin","share":"producer"}
+
+-- database: admin
+SELECT role_name FROM svv_roles WHERE role_name = :name;
+-- params: {"name":"example:readers"}
+
+-- database: admin
+SELECT privilege_type, admin_option FROM svv_datashare_privileges WHERE datashare_name = :share AND identity_type = :type AND identity_name = :grantee;
+-- params: {"grantee":"example:readers","share":"producer","type":"role"}
+
+-- database: admin
+REVOKE ALTER ON DATASHARE "producer" FROM ROLE "example:readers";
+-- params: {}
+
+-- database: admin
+GRANT SHARE ON DATASHARE "producer" TO ROLE "example:readers";
+-- params: {}
+
+-- database: admin
+SELECT share_name FROM svv_datashares WHERE share_type = 'OUTBOUND' AND share_name = :share AND BTRIM(source_database) = :database;
+-- params: {"database":"admin","share":"producer"}
+
+-- database: admin
+SELECT role_name FROM svv_roles WHERE role_name = :name;
+-- params: {"name":"example:readers"}
+
+-- database: admin
+SELECT privilege_type, admin_option FROM svv_datashare_privileges WHERE datashare_name = :share AND identity_type = :type AND identity_name = :grantee;
+-- params: {"grantee":"example:readers","share":"producer","type":"role"}
+```
 
 ## Import
 

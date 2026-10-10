@@ -82,24 +82,69 @@ same `database`. `columns` lists the masked output columns, one per policy outpu
 to the policy's input columns in order and defaults to `columns`. A recipient cannot hold two policies on one column,
 and two policies on one column cannot share a `priority`, even for different recipients; the highest priority applies.
 
-Attaching a policy masks the columns immediately; it does not depend on any table-level switch. Refresh reads
-`SVV_ATTACHED_MASKING_POLICY` and removes the resource when the attachment, its policy, its relation, or its database is
-gone.
+Attaching a policy masks the columns immediately; it does not depend on any table-level switch.
 
-Redshift documents no command that changes an attachment, so a new `priority` detaches and re-attaches the policy.
+## Reconciliation
+
+Refresh reads the attachment's input columns and priority from `SVV_ATTACHED_MASKING_POLICY`; an update reads them
+again and changes the priority by detaching and re-attaching the policy, starting from what the catalog holds, then
+re-reads the catalog to verify the result; every other change replaces the attachment, which also runs
+`DETACH MASKING POLICY` and then `ATTACH MASKING POLICY`. Redshift documents no command that changes an attachment.
+
 **Between the two statements the recipient sees the columns under the next applicable policy, or unmasked if no other
-policy applies.** Plan priority changes for a maintenance window, or attach a replacement policy at a higher priority
-first. Before it detaches anything, the update reads `SVV_ATTACHED_MASKING_POLICY` and fails if another policy already
+policy applies.** Plan such changes for a maintenance window, or attach a replacement policy at a higher priority first.
+
+| Change                                                                                   | Result                                                                                         |
+|------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
+| `database`, `policy`, `schema`, or `relation`                                            | replaces the attachment                                                                        |
+| `columns`                                                                                | replaces the attachment                                                                        |
+| `input_columns` set to other names than the state holds, or changed                      | replaces the attachment                                                                        |
+| `input_columns` set to the names the state holds, such as `columns` after it was omitted | no change                                                                                      |
+| `input_columns` removed                                                                  | no SQL; the current input columns stay and are still reported                                  |
+| `grantee` or `grantee_type`                                                              | replaces the attachment                                                                        |
+| `priority` changed, or removed while not `0`                                             | `DETACH MASKING POLICY` and `ATTACH MASKING POLICY ... PRIORITY`; an omitted `priority` is `0` |
+
+Before it detaches anything, a priority update reads `SVV_ATTACHED_MASKING_POLICY` and fails if another policy already
 holds the new priority on one of the columns, which `ATTACH` would reject. If the re-attach still fails, the update
 re-attaches the policy with the priority and inputs it had and reports the error; only when that also fails do the
-columns stay unmasked for the recipient until the next apply, and the error says so. Changing any other argument
-replaces the attachment with the same detach-then-attach window. Update compares with the catalog, so it also repairs a
-priority changed outside Terraform.
+columns stay unmasked for the recipient until the next apply, and the error says so.
 
 A change to the policy's `input_column` blocks replaces the policy under the same name, which leaves these arguments
 unchanged. Because Redshift refuses to drop an attached policy, add
 `lifecycle { replace_triggered_by = [redshift_masking_policy.<name>.input_column] }`, as in the example, so Terraform
-detaches the policy before the replacement and attaches it again afterwards, with the same window.
+detaches the policy before the replacement and attaches it again afterwards, with the same window. A new `expression`
+keeps the policy and its attachments.
+
+**Drift.** Refresh compares the catalog input columns and priority with the state. A priority changed outside
+Terraform is set back by the next apply, which detaches and re-attaches the policy; because the update compares with
+the catalog rather than the state, it also repairs a priority changed after the plan. Input columns re-attached outside
+Terraform with another mapping replace the attachment when `input_columns` is configured, and are reported when it is
+omitted. An attachment detached outside Terraform, or one whose policy, relation, or database was dropped, is removed
+from state, and the next plan creates it again.
+
+### Changing the Priority
+
+Raising the priority of an attachment of `mask_email` to the role `example_readers` from `10` to `20` detaches and
+re-attaches the policy:
+
+```terraform
+resource "redshift_masking_policy_attachment" "email" {
+  database     = "admin"
+  policy       = "mask_email"
+  schema       = "public"
+  relation     = "customers"
+  columns      = ["email"]
+  grantee      = "example_readers"
+  grantee_type = "ROLE"
+  priority     = 20 # was 10
+}
+```
+
+```sql
+DETACH MASKING POLICY "mask_email" ON "public"."customers" ("email") FROM ROLE "example_readers";
+
+ATTACH MASKING POLICY "mask_email" ON "public"."customers" ("email") TO ROLE "example_readers" PRIORITY 20;
+```
 
 ## Import
 

@@ -148,33 +148,212 @@ Creation runs `CREATE EXTERNAL TABLE`; the creating user must own the external s
 table follows `USAGE` on the external schema, because Redshift cannot grant privileges on an external table, and the
 external catalog records no SQL owner, so this resource has no `owner` attribute.
 
-Changes run `ALTER TABLE` where Redshift supports them for external tables: `SET LOCATION`, `SET FILE FORMAT` between
-`AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE`, `SET TABLE PROPERTIES` for `numRows`,
-`skip.header.line.count`, and `orc.schema.resolution`, and `ADD COLUMN`/`DROP COLUMN` for added or removed `column`
-blocks (not for `AVRO` tables). Everything else replaces the table. Replacing or deleting runs `DROP TABLE` **without
-`CASCADE`**. Views over an external table must be late-binding (`WITH NO SCHEMA BINDING`), so they never block the drop;
-they fail at query time until the table exists again. The S3 data is never touched, but the catalog drops the table's
-partitions with it. `redshift_external_partition` resources then disappear on the next refresh and are added again by
-the following apply.
-
-How `column` blocks may change depends on how Spectrum matches them to the files. Most formats match by position, so
-the block order must follow the files: removing a block or appending one at the end stays in place, while inserting or
-reordering blocks replaces the table. `ORC` tables match by name unless `orc.schema.resolution` is set to anything
-but `name`, so a block can be added or removed anywhere in place, and reordering blocks runs no statement. When
-`table_properties` leaves `orc.schema.resolution` out, the catalog's value decides. `ADD COLUMN` always appends, so the
-catalog order of such a table can differ from the configuration; refresh keeps the configured order and appends
-columns that only the catalog has. Switching a table to position mapping therefore stays in place only while the
-blocks follow the catalog order, and replaces the table otherwise. Retyping a column, and changing `partition_key`
-blocks other than by respelling them, always replaces the table.
-
-Refresh reads `svv_external_tables` and `svv_external_columns`, filtered by `redshift_database_name`. The catalog stores
-names in lowercase and Hive type names (for example `int` for `integer`), so equivalent spellings in configuration are
-not drift. Only the configured table and SerDe properties are tracked; a property or delimiter that the catalog does not
-report is assumed unchanged. Partitions are never read; manage them with `redshift_external_partition`.
+Replacing or deleting runs `DROP TABLE` **without `CASCADE`**. Views over an external table must be late-binding
+(`WITH NO SCHEMA BINDING`), so they never block the drop; they fail at query time until the table exists again. The S3
+data is never touched, but the catalog drops the table's partitions with it. `redshift_external_partition` resources
+then disappear on the next refresh and are added again by the following apply.
 
 Do not manage the same table with `aws_glue_catalog_table` as well: both would own one catalog entry, and each would
 revert the other's changes. Iceberg tables (`CREATE EXTERNAL TABLE ... USING ICEBERG`), `CREATE EXTERNAL TABLE AS`,
 nested types, and `VARBYTE` columns are not supported.
+
+## Reconciliation
+
+Refresh reads the table from `svv_external_tables` and `svv_external_columns`; an update reads the catalog again, runs
+one `ALTER TABLE` statement per added or dropped column, file format, location, and table property, and re-reads the
+catalog to verify the result; every other change replaces the table, which drops its partitions but never its S3 data.
+
+| Change                                                                                                                | Result                                                                                                                                                                                                                                                                                                                                                                                  |
+|-----------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database`, `schema`, or `name`                                                                                       | replaces the table: the provider never moves or renames a table                                                                                                                                                                                                                                                                                                                         |
+| `column` block removed                                                                                                | `ALTER TABLE ... DROP COLUMN`; replaces an `AVRO` table, whose columns `ALTER TABLE` cannot add or drop                                                                                                                                                                                                                                                                                 |
+| `column` block added after the existing ones                                                                          | `ALTER TABLE ... ADD COLUMN`; replaces an `AVRO` table                                                                                                                                                                                                                                                                                                                                  |
+| `column` block added before an existing one                                                                           | `ALTER TABLE ... ADD COLUMN` when the table maps columns by name; otherwise replaces the table, because `ADD COLUMN` appends and Spectrum matches the columns to the files by position                                                                                                                                                                                                  |
+| `column` blocks reordered                                                                                             | no SQL when the table maps columns by name, and the state records the configured order; otherwise replaces the table                                                                                                                                                                                                                                                                    |
+| `column.name` spelled in another case                                                                                 | no SQL; the catalog stores names in lowercase, and the state records the configured spelling                                                                                                                                                                                                                                                                                            |
+| `column.name`, any other change                                                                                       | `ADD COLUMN` for the new name and `DROP COLUMN` for the old one when the table maps columns by name or the column is the last one; otherwise, and always for an `AVRO` table, replaces the table                                                                                                                                                                                        |
+| `column.type` respelled with the same type, such as `int4` for `integer`                                              | no SQL; the state records the configured spelling                                                                                                                                                                                                                                                                                                                                       |
+| `column.type`, any other change                                                                                       | replaces the table: the provider never retypes a column in place                                                                                                                                                                                                                                                                                                                        |
+| `partition_key.name` spelled in another case, or `partition_key.type` respelled with the same type                    | no SQL; the state records the configured spelling                                                                                                                                                                                                                                                                                                                                       |
+| `partition_key` block added, removed, or reordered, or `partition_key.name` or `partition_key.type` changed otherwise | replaces the table: partition keys cannot be altered                                                                                                                                                                                                                                                                                                                                    |
+| `field_delimiter`, `line_delimiter`, `serde`, or `serde_properties` set, changed, or removed                          | replaces the table: `ALTER TABLE` cannot change the row format                                                                                                                                                                                                                                                                                                                          |
+| `stored_as` changed between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE`                               | `ALTER TABLE ... SET FILE FORMAT`                                                                                                                                                                                                                                                                                                                                                       |
+| `stored_as` spelled in another case                                                                                   | no SQL                                                                                                                                                                                                                                                                                                                                                                                  |
+| `stored_as` changed to or from `ORC`, or switched to or from `input_format` and `output_format`                       | replaces the table: `SET FILE FORMAT` accepts neither `ORC` nor format classes                                                                                                                                                                                                                                                                                                          |
+| `input_format` or `output_format` set or changed                                                                      | replaces the table; when not configured, both report the classes the catalog records and never plan a replacement                                                                                                                                                                                                                                                                       |
+| `location`                                                                                                            | `ALTER TABLE ... SET LOCATION`                                                                                                                                                                                                                                                                                                                                                          |
+| `table_properties`: `numRows`, `skip.header.line.count`, or `orc.schema.resolution` added or changed                  | `ALTER TABLE ... SET TABLE PROPERTIES`, one statement per property in name order; switching an `ORC` table to position mapping replaces it unless the `column` blocks follow the catalog order                                                                                                                                                                                          |
+| `table_properties`: any other property added or changed, or a property removed                                        | replaces the table: `SET TABLE PROPERTIES` supports only those three properties and cannot remove one                                                                                                                                                                                                                                                                                   |
+| `table_properties` configured while the state records none, as after import or a create without them                  | no SQL for the properties whose values the catalog already holds; the others follow the two rows above                                                                                                                                                                                                                                                                                  |
+| a `column`, `partition_key`, `stored_as`, or `table_properties` value known only during apply                         | replaces the table: the plan cannot tell whether `ALTER TABLE` could make the change; only a `numRows`, `skip.header.line.count`, or `orc.schema.resolution` value that the state does not record yet stays in place, and an unknown `orc.schema.resolution` of an `ORC` table counts as position mapping, so it stays in place only while the `column` blocks follow the catalog order |
+
+How `column` blocks may change depends on how Spectrum matches them to the files. Most formats match by position, so
+the remaining blocks must keep the catalog order and new blocks must follow them. `ORC` tables match by name unless
+`orc.schema.resolution` is set to anything but `name`; when `table_properties` leaves it out, the catalog's value
+decides. `ADD COLUMN` always appends, so the catalog order of a table that maps by name can differ from the
+configuration. Switching such a table to position mapping therefore stays in place only while the blocks follow the
+catalog order of the last refresh, and replaces the table otherwise.
+
+An update runs its statements one at a time, in this order: added columns, dropped columns, `SET FILE FORMAT`,
+`SET LOCATION`, and `SET TABLE PROPERTIES`. Columns are added before others are dropped, because a table cannot lose
+its last column. The statements share no transaction: when one fails, the earlier ones stay applied and the next plan
+shows what is left.
+
+**Drift.** Refresh compares the catalog with the state. Columns and partition keys are matched by name without case
+and keep their configured spelling while they declare the same type; the catalog reports Hive type names such as `int`
+for `integer`, so equivalent spellings are not drift. A table that maps columns by name keeps the configured column
+order and appends columns that only the catalog has; other tables show the catalog order. The next plan restores the
+configuration with the statements above: a column added outside Terraform is dropped, a dropped one is added again,
+and a changed `location`, a `stored_as` that `SET FILE FORMAT` can restore, or a configured `numRows`,
+`skip.header.line.count`, or `orc.schema.resolution` is set back. Where `ALTER TABLE` cannot make the change, the table
+is replaced: for a retyped column, a dropped column that position mapping needs ahead of others, any column change of
+an `AVRO` table, a `stored_as` changed to or from `ORC`, a configured table property that `SET TABLE PROPERTIES` cannot
+set, or a changed partition key, SerDe, delimiter, configured SerDe property, or configured `input_format` or
+`output_format`. A delimiter, SerDe, or property that the catalog does not report is assumed unchanged, a format that
+the catalog records only as an input format class without a named format leaves `stored_as` unchanged, table
+properties that are not configured are never compared, and `location` ignores a trailing slash and the catalog's
+truncation to 128 characters. Partitions are never read; manage them with `redshift_external_partition`. A table that
+is gone, or whose external schema or database is gone, is removed from state.
+
+The following examples change this table and show the statements the update runs:
+
+```terraform
+resource "redshift_external_table" "events" {
+  database = "admin"
+  schema   = "example_external"
+  name     = "events"
+
+  column {
+    name = "id"
+    type = "integer"
+  }
+  column {
+    name = "label"
+    type = "varchar(64)"
+  }
+  partition_key {
+    name = "event_date"
+    type = "date"
+  }
+
+  field_delimiter = ","
+  stored_as       = "TEXTFILE"
+  location        = "s3://example-bucket/events/"
+  table_properties = {
+    "skip.header.line.count" = "1"
+  }
+}
+```
+
+### Dropping and Appending Columns
+
+Removing the first block and appending a new one keeps the remaining `label` column ahead of the new one, so the table
+changes in place. `varchar` without a length is `varchar(256)`:
+
+```terraform
+# The id column block is removed.
+column {
+  name = "label"
+  type = "varchar(64)"
+}
+column {
+  name = "note"
+  type = "varchar"
+}
+```
+
+```sql
+ALTER TABLE "example_external"."events" ADD COLUMN "note" varchar(256);
+
+ALTER TABLE "example_external"."events" DROP COLUMN "id";
+```
+
+Declaring a new block between `id` and `label`, or swapping the two blocks, replaces the table instead.
+
+### Changing the Location, Format, and Properties
+
+```terraform
+location = "s3://example-bucket/events-v2/" # was "s3://example-bucket/events/"
+```
+
+```sql
+ALTER TABLE "example_external"."events" SET LOCATION 's3://example-bucket/events-v2/';
+```
+
+```terraform
+stored_as = "PARQUET" # was "TEXTFILE"
+```
+
+```sql
+ALTER TABLE "example_external"."events" SET FILE FORMAT PARQUET;
+```
+
+```terraform
+table_properties = {
+  "skip.header.line.count" = "2" # was "1"
+  "numRows"                = "170000"
+  "orc.schema.resolution"  = "position"
+}
+```
+
+```sql
+ALTER TABLE "example_external"."events" SET TABLE PROPERTIES ('numRows' = '170000');
+
+ALTER TABLE "example_external"."events" SET TABLE PROPERTIES ('orc.schema.resolution' = 'position');
+
+ALTER TABLE "example_external"."events" SET TABLE PROPERTIES ('skip.header.line.count' = '2');
+```
+
+Removing `skip.header.line.count`, or adding a property such as `compression_type`, replaces the table instead.
+
+### Columns of an ORC Table
+
+The same table stored as `ORC`, without `field_delimiter` and `table_properties`, maps columns by name. A block
+declared between `id` and `label` is added in place; the catalog stores it after `label`, but the state keeps the
+configured order:
+
+```terraform
+column {
+  name = "id"
+  type = "integer"
+}
+column {
+  name = "amount"
+  type = "decimal(8,2)"
+}
+column {
+  name = "label"
+  type = "varchar(64)"
+}
+
+stored_as = "ORC"
+```
+
+```sql
+ALTER TABLE "example_external"."events" ADD COLUMN "amount" decimal(8, 2);
+```
+
+Swapping the `id` and `label` blocks of the `ORC` table before `amount` was added runs no statement:
+
+```sql
+-- no statements
+```
+
+Switching that `ORC` table to position mapping stays in place while its blocks follow the catalog order, here `id`
+and `label`:
+
+```terraform
+table_properties = {
+  "orc.schema.resolution" = "position"
+}
+```
+
+```sql
+ALTER TABLE "example_external"."events" SET TABLE PROPERTIES ('orc.schema.resolution' = 'position');
+```
+
+Once the `amount` block above has been added, the catalog order is `id`, `label`, `amount`, so the same switch with the
+blocks in the order `id`, `amount`, `label` replaces the table.
 
 ## Import
 
@@ -201,6 +380,4 @@ terraform import redshift_external_table.sales \
 
 Import derives the columns, partition keys, location, format, SerDe, SerDe properties, and delimiters from the catalog.
 `stored_as` is derived only when the catalog's input format class belongs to a named format. Table properties are not
-imported, because the catalog adds its own. Until `table_properties` is configured, plans compare the configured
-properties with the catalog values the last refresh read: matching ones need no change, `SET TABLE PROPERTIES` sets the
-ones it supports, and any other difference replaces the table.
+imported, because the catalog adds its own; Reconciliation describes how configured properties are compared afterwards.

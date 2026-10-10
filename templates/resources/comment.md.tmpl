@@ -24,8 +24,7 @@ COMMENT ON CONSTRAINT constraint_name ON schema_name.object_name IS 'text' | NUL
 
 For `DATABASE`, `object_name` must equal `database_name`. For `COLUMN`, `object_name` identifies the relation. For
 `CONSTRAINT`, `object_name` is the table and `constraint_name` the primary key, unique, or foreign key constraint on
-it; `redshift_constraints` lists the names. An empty `text` clears the comment using `IS NULL`. All identity
-arguments require replacement; text updates in place.
+it; `redshift_constraints` lists the names. An empty `text` clears the comment using `IS NULL`.
 
 ## Lifecycle and Ownership
 
@@ -34,12 +33,26 @@ catalogs; constraint comments are read from `pg_description` joined to `pg_const
 database being annotated, as required by Redshift. Shared database objects, external table/column comments, and columns
 of late-binding views are not supported.
 
-Creation sets the annotation on an existing object; it does not create the object. Read refreshes edited or removed text
-so Terraform can repair drift; a missing annotation is represented by an empty `text` string. If the underlying object
-disappears, the resource is removed from state. Destroy clears only the comment and leaves the target intact. It does
-not restore any annotation overwritten during adoption. Do not manage the same annotation with another Terraform
-resource or a model/migration tool. References establish creation order and changes to target identity inputs require
-replacement through the provider's schema.
+Creation sets the annotation on an existing object; it does not create the object. Destroy clears only the comment and
+leaves the target intact. It does not restore any annotation overwritten during adoption. Do not manage the same
+annotation with another Terraform resource or a model/migration tool.
+
+## Reconciliation
+
+Refresh reads the comment text from `pg_description`; create and update read it again, run one `COMMENT ON ... IS`
+statement only when the catalog text differs from `text`, and re-read the catalog to verify the result; every other
+change replaces the comment: `COMMENT ON ... IS NULL` clears the old target's comment, and the new target is annotated.
+
+| Change                                                                                            | Result                                                                                                                   |
+|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| `database_name`, `object_type`, `object_name`, `schema_name`, `column_name`, or `constraint_name` | replaces the comment: the old target's comment is cleared, the new target's is set, and neither object changes otherwise |
+| `text` changed to a nonempty value                                                                | `COMMENT ON ... IS 'text'`                                                                                               |
+| `text` changed to `""`                                                                            | `COMMENT ON ... IS NULL`                                                                                                 |
+
+**Drift.** Refresh compares the catalog text with the state, so text edited or removed outside Terraform shows in the
+next plan and is set back with `COMMENT ON`; a missing annotation reads as an empty `text`. A target object or database
+that no longer exists removes the resource from state; the next plan creates it again, and that create fails until the
+object exists.
 
 ## Import
 

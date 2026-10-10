@@ -33,8 +33,8 @@ DROP SCHEMA name;
 
 `source_type` selects the `FROM` form and decides which options are required, optional, or rejected. Plans fail when a
 required option is missing or an option the form does not take is set. In-place options change with
-`ALTER EXTERNAL SCHEMA`, which Redshift supports only for `DATA_CATALOG` and streaming schemas; every other change
-replaces the schema.
+`ALTER EXTERNAL SCHEMA`, which Redshift supports only for `DATA_CATALOG` and `MSK` schemas; see
+[Reconciliation](#reconciliation) for every change.
 
 | `source_type`    | Required                                               | Optional                                                     | In place                                                                    |
 |------------------|--------------------------------------------------------|--------------------------------------------------------------|-----------------------------------------------------------------------------|
@@ -47,20 +47,77 @@ replaces the schema.
 | `MSK`            | `authentication`, `uri`                                | `iam_role_arn`, `region`, `authentication_arn`, `secret_arn` | `iam_role_arn`, `uri`, `authentication`, `authentication_arn`, `secret_arn` |
 
 For `MSK`, `authentication = "iam"` requires `iam_role_arn`, and `authentication = "mtls"` requires exactly one of
-`authentication_arn` and `secret_arn`; the other modes take neither. Authentication changes are sent as one
-`ALTER EXTERNAL SCHEMA ... AUTHENTICATION` statement together with the certificate source. `owner` changes in place for
-every form with `ALTER SCHEMA ... OWNER TO`, because `CREATE EXTERNAL SCHEMA` always makes the creator the owner.
+`authentication_arn` and `secret_arn`; the other modes take neither.
 
 ## Lifecycle and Ownership
 
-Reads `svv_external_schemas`, maps `eskind` back to `source_type`, and refreshes the external database, owner, and the
-options recorded in `esoptions`, so changes made outside Terraform appear as diffs. Options the catalog does not record
-keep their configured value. Creation uses `CREATE EXTERNAL SCHEMA` without `CREATE EXTERNAL DATABASE`; Create and
-Update re-read the schema and fail when it does not hold the planned values. Deletion uses restrictive `DROP SCHEMA`
+Creation uses `CREATE EXTERNAL SCHEMA` without `CREATE EXTERNAL DATABASE`. Deletion uses restrictive `DROP SCHEMA`
 **without `DROP EXTERNAL DATABASE` or `CASCADE`**, so the external database survives; remove or migrate dependent views
-first.
-Bumping `refresh_revision` plans replacement; changes in the external catalog do not automatically appear as Terraform
-diffs.
+first. `CREATE EXTERNAL SCHEMA` has no `AUTHORIZATION` clause and makes the creator the owner, so a configured `owner`
+is set with `ALTER SCHEMA ... OWNER TO` right after creation.
+
+## Reconciliation
+
+Refresh finds the schema and its owner in `PG_NAMESPACE` and reads its source form, external database, and recorded
+options from `SVV_EXTERNAL_SCHEMAS`; an update reads them again, runs `ALTER SCHEMA ... OWNER TO` and one
+`ALTER EXTERNAL SCHEMA` statement per changed option the source form can change in place, starting from what the
+catalog holds, and re-reads the catalog to verify the result; every other change replaces the external schema.
+Replacement runs the same restrictive `DROP SCHEMA` as deletion, so it fails while views depend on the schema, and
+recreates only the mapping: the external data is untouched.
+
+| Change                                                     | Result                                                                                                                                                                                          |
+|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database` or `name`                                       | replaces the external schema: the provider never moves or renames it                                                                                                                            |
+| `source_type`                                              | replaces the external schema: the `FROM` form is fixed at creation; an omitted `source_type` is `DATA_CATALOG`                                                                                  |
+| `glue_database` or `source_database`                       | replaces the external schema: `ALTER EXTERNAL SCHEMA` cannot change the external database                                                                                                       |
+| `source_schema`, `region`, or `port` set or changed        | replaces the external schema: `ALTER EXTERNAL SCHEMA` cannot change them                                                                                                                        |
+| `source_schema`, `region`, or `port` removed               | no SQL; the value the catalog reports, or the last known one, stays                                                                                                                             |
+| `iam_role_arn` set or changed for `DATA_CATALOG` or `MSK`  | `ALTER EXTERNAL SCHEMA ... IAM_ROLE`                                                                                                                                                            |
+| `iam_role_arn` removed, or changed for any other form      | replaces the external schema                                                                                                                                                                    |
+| `uri` changed for `MSK`                                    | `ALTER EXTERNAL SCHEMA ... URI`                                                                                                                                                                 |
+| `uri` changed for `HIVE_METASTORE`, `POSTGRES`, or `MYSQL` | replaces the external schema                                                                                                                                                                    |
+| `authentication` changed (`MSK` only)                      | `ALTER EXTERNAL SCHEMA ... AUTHENTICATION` with the planned `AUTHENTICATION_ARN` or `SECRET_ARN`, one statement however many of `authentication`, `authentication_arn`, and `secret_arn` change |
+| `authentication_arn` set, changed, or removed (`MSK` only) | the same single `ALTER EXTERNAL SCHEMA ... AUTHENTICATION` statement                                                                                                                            |
+| `secret_arn` set, changed, or removed for `MSK`            | the same single `ALTER EXTERNAL SCHEMA ... AUTHENTICATION` statement                                                                                                                            |
+| `secret_arn` changed for `POSTGRES` or `MYSQL`             | replaces the external schema                                                                                                                                                                    |
+| `owner` set or changed                                     | `ALTER SCHEMA ... OWNER TO`, the first statement of the update; handing the schema to another user requires a superuser connection                                                              |
+| `owner` removed                                            | no SQL; the current owner stays and is still reported                                                                                                                                           |
+| `refresh_revision` set, changed, or removed                | replaces the external schema, which rebuilds the mapping after the source changed                                                                                                               |
+
+Options a source form does not take are rejected at plan time, as described under [Source Forms](#source-forms). An
+update runs its statements in the order owner, `IAM_ROLE`, `URI`, `AUTHENTICATION`. They share no transaction: when one
+fails, the earlier ones stay applied and the next plan shows what is left.
+
+**Drift.** Refresh maps `eskind` back to `source_type` and compares it, the external database, the owner, and the
+options recorded in `esoptions` (`IAM_ROLE`, `REGION`, `SCHEMA`, `URI`, `PORT`, `SECRET_ARN`, `AUTHENTICATION`, and
+`AUTHENTICATION_ARN`) with the state. A changed owner, or a changed option the form changes in place, is set back with
+the statements above; any other change replaces the external schema. An omitted `owner`, `region`, `source_schema`, or
+`port` follows the catalog and never plans a change. Options the catalog does not record, such as the `uri` or
+`secret_arn` of a federated schema, keep their configured value, so changes to them are not detected. A schema, or its
+database, dropped outside Terraform is removed from state, and the next plan creates the schema again. A schema that is
+no longer external, has an unsupported source, or is hidden because another user owns it and the connection is not a
+superuser fails the refresh. Tables and other objects in the external catalog are never read; bump `refresh_revision`
+to rebuild the mapping after they change.
+
+### Switching an MSK Schema to mTLS
+
+The following example starts from an `MSK` schema with IAM authentication. Moving it to mTLS with an ACM certificate
+and another bootstrap URI changes it in place; the update reads the catalog, runs one statement for the URI and one for
+all authentication settings, and reads the catalog again:
+
+```terraform
+resource "redshift_external_schema" "stream" {
+  database           = "admin"
+  name               = "example_external"
+  source_type        = "MSK"
+  iam_role_arn       = "arn:aws:iam::123456789012:role/msk"
+  authentication     = "mtls" # was "iam"
+  authentication_arn = "arn:aws:acm:eu-central-1:123456789012:certificate/example"
+  uri                = "b-1.example.kafka.eu-central-1.amazonaws.com:9094" # was the :9098 IAM listener
+}
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/external_schema_sources/update_msk_mtls.sql" }}
 
 ## Import
 

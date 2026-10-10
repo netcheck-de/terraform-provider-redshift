@@ -25,16 +25,33 @@ REVOKE ADMIN OPTION FOR ROLE role FROM ...;
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-Specify exactly one of `to_role` and `to_user`. Changing the role or the recipient replaces the grant; `admin_option`
-changes in place and requires `to_user`, because Redshift documents `WITH ADMIN OPTION` only for user recipients.
-Redshift documents no other recipient for roles: the role syntax lists no `GROUP`, and `PUBLIC`, which the parameter
-text mentions, appears in neither the `GRANT` nor the `REVOKE` syntax and has no catalog view to verify it.
+Specify exactly one of `to_role` and `to_user`. `admin_option = true` requires `to_user`, because Redshift documents
+`WITH ADMIN OPTION` only for user recipients. Redshift documents no other recipient for roles: the role syntax lists no
+`GROUP`, and `PUBLIC`, which the parameter text mentions, appears in neither the `GRANT` nor the `REVOKE` syntax and
+has no catalog view to verify it.
 
 ## Lifecycle and Ownership
 
-Reads check `svv_role_grants` for roles or `svv_user_grants`, including `admin_option`, for users. Disabling the admin
-option keeps the membership. Deletion revokes only this relationship, together with its admin option. A lifecycle
-trigger restores the grant after a same-name recipient replacement.
+Deletion revokes only this relationship, together with its admin option.
+
+## Reconciliation
+
+Refresh reads the grant from `SVV_USER_GRANTS`, including `admin_option`, for a user recipient, or from
+`SVV_ROLE_GRANTS` for a role recipient; an update changes only the admin option and re-reads the catalog to verify the
+result; every other change replaces the grant. Creation runs `GRANT ROLE ... TO`, with `WITH ADMIN OPTION` when
+configured, and deletion runs `REVOKE ROLE ... FROM`.
+
+| Change                                                  | Result                                                                                       |
+|---------------------------------------------------------|----------------------------------------------------------------------------------------------|
+| `role`                                                  | replaces the grant: `REVOKE ROLE` for the old role and `GRANT ROLE` for the new one          |
+| `to_role` or `to_user`, including a switch between them | replaces the grant: `REVOKE ROLE` from the old recipient and `GRANT ROLE` to the new one     |
+| `admin_option` set to `true`                            | `GRANT ROLE ... TO ... WITH ADMIN OPTION`, which keeps the membership; refused for `to_role` |
+| `admin_option` set to `false` or removed                | `REVOKE ADMIN OPTION FOR ROLE ... FROM`, which keeps the membership                          |
+
+**Drift.** A grant revoked outside Terraform, or whose role or recipient was dropped, is removed from state, and the
+next plan grants it again. For a user recipient, an admin option granted or revoked outside Terraform is set back with
+the statements above; the user holds it when any grantor's grant carries it. A role recipient always records `false`.
+Other grants of the role are never read.
 
 ## Import
 

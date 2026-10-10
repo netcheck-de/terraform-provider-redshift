@@ -18,8 +18,7 @@ REVOKE privilege ON ... FROM ...;
 REVOKE GRANT OPTION FOR privilege ON ... FROM ...;
 ```
 
-Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
-revokes the privileges it owns.
+Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
 
 ## Example Usage
 
@@ -28,8 +27,6 @@ revokes the privileges it owns.
 <!-- markdownlint-disable MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD013 MD022 MD033 -->
-
-All identity arguments require replacement when changed; `privileges` and `grant_option_privileges` update in place.
 
 | `object_type`    | Requires                                         | Privileges                                                                        |
 |------------------|--------------------------------------------------|-----------------------------------------------------------------------------------|
@@ -68,18 +65,86 @@ or default privileges instead.
 ## Grant Options
 
 A `USER` grantee can hold privileges `WITH GRANT OPTION`. `grant_option_privileges` owns which of them carry the option:
-it must be a subset of `privileges` and defaults to none, so options granted outside Terraform are revoked with
-`REVOKE GRANT OPTION FOR`, which keeps the privilege itself. Groups, roles, and `PUBLIC` cannot hold grant options.
+it must be a subset of `privileges` and defaults to none, so options granted outside Terraform are revoked while the
+privilege itself stays. Groups, roles, and `PUBLIC` cannot hold grant options.
 
 ## Lifecycle and Ownership
 
 The resource checks object and grantee existence. Databases, schemas, and tables are read with `SHOW GRANTS ON` the
 object, routines with `SVV_FUNCTION_PRIVILEGES`, and snapshots with `SVV_RELATION_PRIVILEGES` or
 `SVV_FUNCTION_PRIVILEGES`, all in the object's local database. Scoped, inherited, and other grantee grants are
-independent. It revokes extras, adds missing privileges, and verifies convergence. Missing parents remove the resource
-from state. Avoid overlapping this resource with `redshift_grant` for the same explicit schema/database tuple, and a
+independent. Avoid overlapping this resource with `redshift_grant` for the same explicit schema/database tuple, and a
 snapshot with single-object grants of the same grantee. Language privileges, column grants, shared database objects,
 and Lake Formation IAM grants are out of scope.
+
+## Reconciliation
+
+Refresh reads the grantee's privileges and grant options on the object from the catalog; an update reads them again,
+runs one `GRANT` or `REVOKE` statement per privilege that differs, starting from what the catalog holds, and re-reads
+the catalog to verify the exact sets; every change to the tuple itself replaces the grant.
+
+| Change                                                                    | Result                                                                                                                                                                                                                          |
+|---------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database_name`, `schema_name`, `object_name`, or `object_type`           | replaces the grant: they name another object, so the old object's privileges are revoked and the new one's granted                                                                                                              |
+| `arguments`                                                               | replaces the grant: it selects another overload; a new spelling of the same types, such as `int4` for `integer`, replaces it too, because the configured spelling is part of the identity                                       |
+| `grantee` or `grantee_type`                                               | replaces the grant: the grantee is part of the tuple                                                                                                                                                                            |
+| privilege added to `privileges`                                           | `GRANT ... ON DATABASE`, `ON SCHEMA`, `ON TABLE`, `ON FUNCTION`, or `ON PROCEDURE`; for a snapshot `GRANT ... ON ALL TABLES IN SCHEMA` (or `ALL FUNCTIONS`, `ALL PROCEDURES`), which covers the objects that exist when it runs |
+| privilege removed from `privileges`                                       | the matching `REVOKE ... FROM`, which also removes its grant option; for a snapshot `REVOKE ... ON ALL ... IN SCHEMA`, which revokes it from every current object, including grants made by single-object tuples                |
+| `privileges` set to `[]`                                                  | `REVOKE` for every privilege the grantee holds on the object; the resource stays and owns the empty set                                                                                                                         |
+| privilege added to `grant_option_privileges`                              | `GRANT ... WITH GRANT OPTION`; a privilege added to both sets at once is granted with the option in one statement                                                                                                               |
+| privilege removed from `grant_option_privileges`, or the argument removed | `REVOKE GRANT OPTION FOR privilege ON ...`; the privilege stays, and Redshift rejects the statement while grants the user made depend on the option                                                                             |
+
+An update revokes before it grants, so a failure part-way never leaves more access than either side: removed
+privileges first, then removed grant options, then added privileges, then added grant options. The statements share no
+transaction: when one fails, the earlier ones stay applied and the next plan shows what is left. A catalog privilege
+outside the object type's list fails the refresh. Planning rejects grant options for groups, roles, and `PUBLIC`, and
+options outside `privileges`.
+
+**Drift.** Refresh compares the grantee's catalog rows for the object with the state, and the next plan restores the
+configuration with the statements above: a privilege or grant option granted outside Terraform is revoked, and a
+revoked one is granted again. Other grantees, scoped permissions, and privileges inherited through roles or groups are
+ignored. A snapshot reports a privilege only when every current object of its type holds it: when configured, a
+privilege that a new object lacks is granted again on all of them, and when not configured, a privilege that only some
+objects hold is never revoked. A missing database, schema, object, routine overload, or grantee removes the grant from
+state, and so does a snapshot whose schema holds no objects of its type; the next plan creates it again.
+
+### Replacing Database Privileges
+
+`CREATE` and `TEMPORARY` are revoked before `USAGE` is granted:
+
+```terraform
+resource "redshift_object_grant" "readers" {
+  database_name = "analytics"
+  object_type   = "DATABASE"
+  grantee_type  = "GROUP"
+  grantee       = "readers"
+  privileges    = ["USAGE"] # was ["CREATE", "TEMPORARY"]
+}
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/privilege_sql/statements/revoke_before_grant.sql" }}
+
+### Changing Privileges and Grant Options Together
+
+For a user, one change can remove a privilege with its option (`DELETE`), keep a privilege but remove its option
+(`SELECT`), add a plain privilege (`TRUNCATE`), add the option to a held privilege (`INSERT`), and add a privilege with
+its option (`UPDATE`). The update runs the statements in that order, between its two catalog reads:
+
+```terraform
+resource "redshift_object_grant" "orders" {
+  database_name = "analytics"
+  schema_name   = "serving"
+  object_name   = "orders"
+  object_type   = "TABLE"
+  grantee_type  = "USER"
+  grantee       = "analyst"
+
+  privileges              = ["INSERT", "SELECT", "TRUNCATE", "UPDATE"] # was ["DELETE", "INSERT", "SELECT"]
+  grant_option_privileges = ["INSERT", "UPDATE"]                       # was ["DELETE", "SELECT"]
+}
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/privilege_sql/option_statements/full_order.sql" }}
 
 ## Import
 

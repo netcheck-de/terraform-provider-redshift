@@ -15,8 +15,8 @@ GRANT ASSUMEROLE ON ... TO ... FOR ...;
 REVOKE ASSUMEROLE ON ... FROM ... FOR ...;
 ```
 
-Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
-revokes the privileges it owns and never grants any.
+Deleting the resource revokes the privileges it owns and never grants any; see [Reconciliation](#reconciliation) for
+changes.
 
 ## Example Usage
 
@@ -46,8 +46,7 @@ resource "redshift_assumerole_grant" "loader" {
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 Supported `privileges` are `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, and `CREATE MODEL`; all four together are what
-`FOR ALL` grants, and the provider issues one statement per command. An empty set revokes the owned grants. Identity
-changes require replacement.
+`FOR ALL` grants, and the provider issues one statement per command.
 
 ## Role Selectors
 
@@ -85,12 +84,74 @@ resource "redshift_assumerole_grant" "loaders_any_role" {
 
 ## Lifecycle and Ownership
 
-Reads `svv_iam_privileges` and reconciles only the selected IAM role and SQL identity. AWS owns IAM policies, trust, and
+Reads `svv_iam_privileges` for the selected IAM role and SQL identity only. AWS owns IAM policies, trust, and
 namespace role attachments. Only a superuser can grant or revoke `ASSUMEROLE`. The opt-in
 `TestAccAssumeroleGrantLifecycle` requires `REDSHIFT_ACC_ASSUMEROLE=1` in addition to the normal acceptance-test
 environment and an attached default IAM role.
 
-Refresh reads the current explicit command permissions into `privileges`.
+## Reconciliation
+
+Refresh reads the commands the grantee may run with the selected IAM role from `SVV_IAM_PRIVILEGES`; an update reads
+them again, runs one `GRANT ASSUMEROLE` or `REVOKE ASSUMEROLE` statement per command that differs, starting from what
+the catalog holds, and re-reads the catalog to verify the exact set; every change to the tuple itself replaces the
+grant.
+
+| Change                            | Result                                                                                                                                          |
+|-----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `iam_role_arn`                    | replaces the grant: it selects another IAM role, so the old selector's commands are revoked and the new one's granted                           |
+| `grantee` or `grantee_type`       | replaces the grant: the grantee is part of the tuple                                                                                            |
+| command added to `privileges`     | `GRANT ASSUMEROLE ON <role> TO ... FOR <command>`, where `<role>` is the quoted ARN, `default`, or `ALL`                                        |
+| command removed from `privileges` | `REVOKE ASSUMEROLE ON <role> FROM ... FOR <command>`                                                                                            |
+| `privileges` set to `[]`          | `REVOKE ASSUMEROLE` for every command the grantee holds; on the `ALL`/`PUBLIC` tuple this turns on [access control](#public-and-access-control) |
+
+An update revokes before it grants. The statements share no transaction: when one fails, the earlier ones stay applied
+and the next plan shows what is left.
+
+**Drift.** Refresh compares the grantee's commands for the selected role with the state, and the next plan restores the
+configuration with the statements above: a command granted outside Terraform is revoked, and a revoked one is granted
+again. Grants on `default` and on `ALL` share one catalog entry, so a command granted through the other selector shows
+up in this tuple. Other IAM roles and other grantees are never read. A missing grantee removes the grant from state,
+and the next plan creates it again.
+
+The following example shows the statements an update runs, each with the database it runs in: the existence
+checks and the catalog read, the changes, and the read that verifies them.
+
+### Replacing a Command
+
+```terraform
+resource "redshift_assumerole_grant" "readers" {
+  iam_role_arn = "default"
+  grantee_type = "ROLE"
+  grantee      = "readers"
+  privileges   = ["UNLOAD"] # was ["COPY"]
+}
+```
+
+```sql
+-- database: admin
+SELECT role_name FROM svv_roles WHERE role_name = :name;
+-- params: {"name":"readers"}
+
+-- database: admin
+SELECT command_type AS privilege_type FROM svv_iam_privileges WHERE iam_arn = :arn AND identity_name = :grantee AND identity_type = LOWER(:kind);
+-- params: {"arn":"default-aws-iam-role","grantee":"readers","kind":"ROLE"}
+
+-- database: admin
+REVOKE ASSUMEROLE ON default FROM ROLE "readers" FOR COPY;
+-- params: {}
+
+-- database: admin
+GRANT ASSUMEROLE ON default TO ROLE "readers" FOR UNLOAD;
+-- params: {}
+
+-- database: admin
+SELECT role_name FROM svv_roles WHERE role_name = :name;
+-- params: {"name":"readers"}
+
+-- database: admin
+SELECT command_type AS privilege_type FROM svv_iam_privileges WHERE iam_arn = :arn AND identity_name = :grantee AND identity_type = LOWER(:kind);
+-- params: {"arn":"default-aws-iam-role","grantee":"readers","kind":"ROLE"}
+```
 
 ## Import
 

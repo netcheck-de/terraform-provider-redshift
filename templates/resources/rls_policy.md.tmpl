@@ -29,23 +29,44 @@ DROP RLS POLICY name;
 
 ## Lifecycle and Ownership
 
-Creating, altering, and dropping policies requires a superuser or the `sys:secadmin` role. Only the predicate changes in
-place: `ALTER RLS POLICY` cannot change the `WITH` clause, so a change to the `column` blocks or `alias` replaces the
-policy. Column names and the alias compare without case, and column types in canonical form, so respelling
-`VARCHAR(64)` as `varchar(64)` or the catalog's `character varying(64)` plans no change. Policies have no SQL owner, so
-the resource has no `owner` attribute.
-
-Redshift stores the predicate in a rewritten form (`svv_rls_policy.polqual`). State keeps the configured text together
-with `definition_fingerprint`, a hash of the catalog text with whitespace collapsed. When the catalog predicate changes
-outside Terraform, refresh reports the catalog text, and the next apply restores the configured predicate.
+Creating, altering, and dropping policies requires a superuser or the `sys:secadmin` role. Policies have no SQL owner,
+so the resource has no `owner` attribute.
 
 Deletion runs `DROP RLS POLICY` without `CASCADE`, so Redshift refuses to drop a policy that is still attached.
-Referencing the policy from its attachments makes Terraform detach them first when everything is destroyed, but a
-replacement keeps the policy name, so those references do not change and the attachments would stay attached. Give
-every attachment `replace_triggered_by` on the policy's `column` and `alias`, as in the
-`redshift_rls_policy_attachment` example: Terraform then detaches the attachments, replaces the policy, and attaches
-them again. Referencing the whole policy instead would also replace the attachments on every predicate change. A
-policy that uses lookup tables also needs `GRANT SELECT ... TO RLS POLICY` on them.
+Referencing the policy from its attachments makes Terraform detach them first when everything is destroyed. A policy
+that uses lookup tables also needs `GRANT SELECT ... TO RLS POLICY` on them.
+
+## Reconciliation
+
+Refresh reads the policy from `svv_rls_policy`; an update runs `ALTER RLS POLICY ... USING` for a new predicate, which
+keeps the policy's attachments, and re-reads the catalog to verify the result; every other change replaces the policy; a
+change to `column` or `alias` replaces it under the same name, because `ALTER RLS POLICY` cannot change the `WITH`
+clause.
+
+| Change                                                                                                                                                          | Result                                                            |
+|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
+| `database` or `name`                                                                                                                                            | replaces the policy: the provider never moves or renames a policy |
+| `column` block added, removed, or reordered                                                                                                                     | replaces the policy                                               |
+| `column.name` changed only in case, or `column.type` respelled with the same canonical type, such as `varchar(64)` or `character varying(64)` for `VARCHAR(64)` | no change; the plan keeps the stored spelling                     |
+| `column.name` or `column.type`, any other change                                                                                                                | replaces the policy                                               |
+| `alias` changed only in case                                                                                                                                    | no change; the plan keeps the stored spelling                     |
+| `alias` set to a value other than the stored alias, ignoring case                                                                                               | replaces the policy                                               |
+| `alias` removed                                                                                                                                                 | no SQL; the current alias stays and is still reported             |
+| `column` or `alias` known only during apply                                                                                                                     | replaces the policy                                               |
+| `predicate`                                                                                                                                                     | `ALTER RLS POLICY ... USING`                                      |
+
+A replacement keeps the policy name, so the attachments' references to it do not change, and `DROP RLS POLICY` refuses
+the policy while they stay attached. Give every attachment `replace_triggered_by` on the policy's `column` and `alias`,
+as in the `redshift_rls_policy_attachment` example: Terraform then detaches the attachments, replaces the policy, and
+attaches them again. Referencing the whole policy instead would also replace the attachments on every predicate change.
+
+**Drift.** Refresh compares the catalog columns, alias, and predicate with the state. Redshift stores the predicate in a
+rewritten form (`svv_rls_policy.polqual`), so state keeps the configured text while the catalog text still matches
+`definition_fingerprint`, a hash of it with whitespace collapsed that is recorded at apply time. A predicate changed
+outside Terraform appears as the catalog text, and the next plan restores the configured one with `ALTER RLS POLICY`.
+Columns or an alias that differ from the catalog beyond spelling, as after the policy was re-created outside
+Terraform, are stored as the catalog reports them, and the next plan replaces the policy; an omitted `alias` follows
+the catalog. A dropped policy is removed from state, and the next plan creates it again.
 
 ## Import
 

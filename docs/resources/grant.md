@@ -17,8 +17,7 @@ REVOKE privilege ... FROM ...;
 REVOKE GRANT OPTION ... FROM ...;
 ```
 
-Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
-revokes the privileges it owns.
+Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
 
 ## Example Usage
 
@@ -94,8 +93,7 @@ explicit database or schema privileges of groups and `PUBLIC`.
 
 A user can hold privileges `WITH GRANT OPTION`. `grant_option_privileges` owns which of the user's privileges carry the
 option: it must be a subset of `privileges`, defaults to none, and only a `user` recipient accepts it. Removing a
-privilege from the set keeps the privilege and revokes only its option with `REVOKE GRANT OPTION`; Redshift rejects
-that while grants the user made depend on it, because the provider never cascades.
+privilege from the set keeps the privilege and revokes only its option.
 
 ```terraform
 resource "redshift_grant" "analyst_tables" {
@@ -135,13 +133,10 @@ resource "redshift_grant" "reader_templates" {
 A role's grants are read with `SHOW GRANTS FOR ROLE … FROM DATABASE`. A user's grants are read with
 `SHOW GRANTS ON DATABASE … FOR` or `SHOW GRANTS ON SCHEMA … FOR`, which report `admin_option`, so grant options are
 observed instead of being folded into plain privileges. Local databases are read in the target database and shared
-databases through the administration database. The resource revokes unexpected privileges in the owned tuple and grants
-missing ones; an unsupported existing privilege raises an error before mutation. A missing database, schema, or
-recipient removes the grant from state. Direct system privileges belong to
+databases through the administration database. Direct system privileges belong to
 [system grants](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/system_grant).
 
-Reference managed role, user, and database names to establish creation order. Changes to those names propagate into the
-grant's immutable inputs and Terraform replaces the grant using the provider's schema policy.
+Reference managed role, user, and database names to establish creation order.
 
 ## Datashare Grants
 
@@ -167,6 +162,129 @@ resource "redshift_grant" "share_tables" {
   privileges    = ["SELECT"]
   depends_on    = [redshift_grant.share_schema]
 }
+```
+
+## Reconciliation
+
+Refresh reads the tuple's privileges and grant options from the catalog; an update reads them again, runs one `GRANT`
+or `REVOKE` statement per privilege that differs, starting from what the catalog holds, and re-reads the catalog to
+verify the exact sets; every change to the tuple itself replaces the grant.
+
+| Change                                                                    | Result                                                                                                                                                                                                                                                  |
+|---------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database_name`, `schema_name`, or `scope`                                | replaces the grant: they identify the tuple, so the old tuple's privileges are revoked and the new tuple's granted                                                                                                                                      |
+| `role`, `user`, or `datashare` set, changed, or swapped for another       | replaces the grant: the recipient is part of the tuple; a renamed managed role, user, or datashare that is referenced here replaces it too                                                                                                              |
+| privilege added to `privileges`                                           | `GRANT ... ON DATABASE` or `GRANT ... ON SCHEMA` for those scopes, `GRANT ... FOR <scope> IN SCHEMA ... DATABASE` or `IN DATABASE` for scoped permissions, and `GRANT ... TO DATASHARE` for a datashare                                                 |
+| privilege removed from `privileges`                                       | the matching `REVOKE ... FROM`, which also removes its grant option                                                                                                                                                                                     |
+| `privileges` set to `[]`                                                  | `REVOKE` for every privilege the tuple holds; the resource stays and owns the empty set                                                                                                                                                                 |
+| privilege added to `grant_option_privileges`                              | `GRANT ... WITH GRANT OPTION`; a privilege added to both sets at once is granted with the option in one statement                                                                                                                                       |
+| privilege removed from `grant_option_privileges`, or the argument removed | `REVOKE GRANT OPTION privilege FOR <scope> ...` for scoped permissions, `REVOKE GRANT OPTION FOR privilege ON ...` for `DATABASE` and `SCHEMA`; the privilege stays, and Redshift rejects the statement while grants the user made depend on the option |
+
+An update revokes before it grants, so a failure part-way never leaves more access than either side: removed
+privileges first, then removed grant options, then added privileges, then added grant options. The statements share no
+transaction: when one fails, the earlier ones stay applied and the next plan shows what is left. A catalog privilege
+outside the scope's list fails a create, update, or deletion before any statement runs. Planning rejects grant options
+for a `role` or `datashare` and options outside `privileges`.
+
+**Drift.** Refresh compares the tuple's catalog rows with the state, and the next plan restores the configuration with
+the statements above: a privilege or grant option granted outside Terraform is revoked, and a revoked one is granted
+again. Other recipients, scopes, and object grants are never read. A `FUNCTIONS` tuple also reads the grants of a
+`PROCEDURES` tuple for the same recipient, database, and schema, and the other way round. A missing database or
+recipient, or a missing schema of a local database, removes the grant from state, and the next plan creates it again.
+
+The following examples show the statements an update runs, each with the database it runs in: the existence
+checks and the catalog read, the changes, and the read that verifies them.
+
+### Replacing a Privilege
+
+With the role `example:readers` holding `INSERT` on the tables of the shared database `analytics`, configuring
+`SELECT` instead revokes `INSERT` before it grants `SELECT`:
+
+```terraform
+resource "redshift_grant" "readers" {
+  database_name = "analytics"
+  role          = "example:readers"
+  scope         = "TABLES"
+  privileges    = ["SELECT"] # was ["INSERT"]
+}
+```
+
+```sql
+-- database: admin
+SELECT database_type FROM svv_redshift_databases WHERE database_name = :database;
+-- params: {"database":"analytics"}
+
+-- database: admin
+SELECT role_name FROM svv_roles WHERE role_name = :role;
+-- params: {"role":"example:readers"}
+
+-- database: admin
+SHOW GRANTS FOR ROLE "example:readers" FROM DATABASE "analytics";
+-- params: {}
+
+-- database: admin
+REVOKE INSERT FOR TABLES IN DATABASE "analytics" FROM ROLE "example:readers";
+-- params: {}
+
+-- database: admin
+GRANT SELECT FOR TABLES IN DATABASE "analytics" TO ROLE "example:readers";
+-- params: {}
+
+-- database: admin
+SELECT database_type FROM svv_redshift_databases WHERE database_name = :database;
+-- params: {"database":"analytics"}
+
+-- database: admin
+SELECT role_name FROM svv_roles WHERE role_name = :role;
+-- params: {"role":"example:readers"}
+
+-- database: admin
+SHOW GRANTS FOR ROLE "example:readers" FROM DATABASE "analytics";
+-- params: {}
+```
+
+### Removing a Grant Option
+
+Emptying `grant_option_privileges` for a user keeps `SELECT` and revokes only the option:
+
+```terraform
+resource "redshift_grant" "analyst" {
+  database_name           = "analytics"
+  user                    = "scoped:analyst"
+  scope                   = "TABLES"
+  privileges              = ["SELECT"]
+  grant_option_privileges = [] # was ["SELECT"]
+}
+```
+
+```sql
+-- database: admin
+SELECT database_type FROM svv_redshift_databases WHERE database_name = :database;
+-- params: {"database":"analytics"}
+
+-- database: admin
+SELECT usename FROM pg_user WHERE usename = :name;
+-- params: {"name":"scoped:analyst"}
+
+-- database: admin
+SHOW GRANTS ON DATABASE "analytics" FOR "scoped:analyst";
+-- params: {}
+
+-- database: admin
+REVOKE GRANT OPTION SELECT FOR TABLES IN DATABASE "analytics" FROM "scoped:analyst";
+-- params: {}
+
+-- database: admin
+SELECT database_type FROM svv_redshift_databases WHERE database_name = :database;
+-- params: {"database":"analytics"}
+
+-- database: admin
+SELECT usename FROM pg_user WHERE usename = :name;
+-- params: {"name":"scoped:analyst"}
+
+-- database: admin
+SHOW GRANTS ON DATABASE "analytics" FOR "scoped:analyst";
+-- params: {}
 ```
 
 ## Import

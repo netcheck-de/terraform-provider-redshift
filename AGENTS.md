@@ -64,6 +64,8 @@ separate foundation change.
    `examples/data-sources/redshift_<name>/data-source.tf`, then run `task docs`. The template opens with a ```sql block
    of simplified statements (statement kind, identifying names, `...` for options; data sources: the catalog source),
    as described in `DEVELOPMENT.md`.
+   A resource template also needs a `## Reconciliation` section before `## Import` whose `| Change | Result |` table
+   names every argument and block field, true to the code (see "Documentation" in `DEVELOPMENT.md`).
 5. In `examples/complete`, use it in the block's own `<block>.tf`, expose each data source in `outputs_<block>.tf`, and
    assert it in `tests/<block>.tftest.hcl`, which declares the shared mocks from `tests/mocks/`.
 6. Raise the pinned counts in `main_test.go` and add the type to the tables and, where it shares an object with other

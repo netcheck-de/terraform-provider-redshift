@@ -94,9 +94,7 @@ resource "aws_redshift_data_share_authorization" "lake_formation" {
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-Exactly one consumer selector is required. Changing any argument replaces the grant; `via_data_catalog` defaults to
-`false` and replaces the grant when the form changes, or when its new value is only known during apply, because the
-catalog cannot confirm an in-place switch between the forms.
+Exactly one consumer selector is required; `via_data_catalog` defaults to `false`.
 
 ## Lifecycle and Ownership
 
@@ -106,11 +104,32 @@ Reads [SVV_DATASHARE_CONSUMERS](https://docs.aws.amazon.com/redshift/latest/dg/r
 filtering by share name and consumer account with null/empty `consumer_namespace` for account grants, or by share name
 and exact `consumer_namespace` for namespace grants. This view has no consumer-type column; the namespace distinguishes
 the grant scope. Account and namespace grants are independent, including when the namespace belongs to the same account.
-The view documents no column for the `VIA DATA CATALOG` form either, so both account forms read the same row: refresh
-confirms that the account holds usage but cannot detect a grant re-created in the other form outside Terraform.
+The view documents no column for the `VIA DATA CATALOG` form either, so both account forms read the same row.
 This resource cannot authorize or associate a cross-account share: use the two AWS resources above. The [complete
 example](https://github.com/netcheck-de/terraform-provider-redshift/tree/main/examples/complete) shows the full
 producer-to-consumer sequence.
+
+## Reconciliation
+
+Refresh checks that the producer database exists and that `SVV_DATASHARE_CONSUMERS` lists the consumer for the share.
+There is no in-place SQL: the only update re-reads the grant to record a null `via_data_catalog` as `false`. Every
+change to the share, the consumer, or the effective `via_data_catalog` form replaces the grant: the old consumer loses
+usage with `REVOKE USAGE ON DATASHARE`, the new one receives it with `GRANT USAGE ON DATASHARE`, and each statement is
+followed by a catalog read that verifies it.
+
+| Change                                                                | Result                                                                                                                          |
+|-----------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| `database` or `datashare`                                             | replaces the grant: they name another share                                                                                     |
+| `account_id` or `namespace_id` set, changed, or swapped for the other | replaces the grant: the consumer is part of the grant, also when the new value is known only during apply                       |
+| `via_data_catalog` switched between `false` and `true`                | replaces the grant: the two forms are separate grants that the catalog reports alike, so an update could not confirm the switch |
+| `via_data_catalog` known only during apply                            | replaces the grant, because the form it resolves to cannot be compared during planning                                          |
+| `via_data_catalog` omitted instead of `false`, or the other way round | no change: both record `false`                                                                                                  |
+| `via_data_catalog` recorded as null by an earlier provider version    | no SQL; an in-place update checks that the grant still exists and records `false`                                               |
+
+**Drift.** Refresh confirms only that the consumer holds usage on the share. A grant revoked outside Terraform removes
+the resource from state, and the next plan creates it again; so does a dropped producer database. Because both account
+forms read the same row, a grant re-created outside Terraform in the other form is not detected. AWS authorization and
+association of the share are never read.
 
 ## Import
 

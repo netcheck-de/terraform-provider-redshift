@@ -37,12 +37,23 @@ resource "redshift_group_membership" "reader" {
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-Changing `group` or `user` replaces the membership.
-
 ## Lifecycle and Ownership
 
-Creation adds this user if absent; deletion removes only this membership. Drift removes a missing relationship from
-state so Terraform can restore it. Other group members remain independent.
+This resource owns only this user's membership; other group members remain independent.
+
+## Reconciliation
+
+Refresh checks whether the user is a member of the group in `pg_group`; the relationship has no setting that changes
+in place, so every change replaces it. Creation runs `ALTER GROUP ... ADD USER` only when the user is not yet a member,
+and deletion runs `ALTER GROUP ... DROP USER` only while it is; both re-read the catalog to verify the result.
+
+| Change  | Result                                                                                                                |
+|---------|-----------------------------------------------------------------------------------------------------------------------|
+| `group` | replaces the membership: `ALTER GROUP ... DROP USER` for the old group and `ALTER GROUP ... ADD USER` for the new one |
+| `user`  | replaces the membership: `ALTER GROUP ... DROP USER` for the old user and `ALTER GROUP ... ADD USER` for the new one  |
+
+**Drift.** A membership removed outside Terraform, or whose group or user was dropped, is removed from state, and the
+next plan adds it again. Other members of the group are never read, so members added outside Terraform stay.
 
 ## Import
 

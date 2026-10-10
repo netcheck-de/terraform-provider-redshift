@@ -16,7 +16,7 @@ GRANT USAGE ON LANGUAGE language_name TO ... [WITH GRANT OPTION];
 REVOKE [GRANT OPTION FOR] USAGE ON LANGUAGE language_name FROM ...;
 ```
 
-An empty `privileges` set revokes `USAGE`. Deleting the resource revokes what it owns.
+Deleting the resource revokes what it owns; see [Reconciliation](#reconciliation) for changes.
 
 ## Example Usage
 
@@ -26,15 +26,13 @@ An empty `privileges` set revokes `USAGE`. Deleting the resource revokes what it
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-All identity arguments require replacement when changed; `privileges` and `grant_option_privileges` update in place.
 `plpythonu` is not supported, because Redshift no longer supports Python UDFs.
 
 ## Lifecycle and Ownership
 
 The resource checks the grantee and the local database, then reads
 [SVV_LANGUAGE_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_LANUGAGE_PRIVILEGES.html) in that
-database, including `admin_option` for grant options. It revokes before it grants and re-reads the catalog to verify
-convergence. A missing grantee or database removes the resource from state.
+database, including `admin_option` for grant options.
 
 Redshift grants `USAGE` on `sql` and `plpgsql` to `PUBLIC` by default, and `SVV_LANGUAGE_PRIVILEGES` lists only
 explicit grants, so the default may have no catalog row. To restrict who can create functions or procedures, manage the
@@ -44,6 +42,48 @@ default can be invisible, every create, update, and destroy of a `PUBLIC` tuple 
 no change, so create it instead of importing it. Destroying any `PUBLIC` tuple leaves `PUBLIC` without `USAGE`; the
 default is never restored. To give it back, apply `privileges = ["USAGE"]`, then remove the resource with a `removed`
 block whose `lifecycle { destroy = false }` keeps that grant.
+
+## Reconciliation
+
+Refresh reads the grantee's `USAGE` on the language and its grant option from `SVV_LANGUAGE_PRIVILEGES`; an update
+reads them again, runs the `GRANT` or `REVOKE` statements for the difference, starting from what the catalog holds, and
+re-reads the catalog to verify the result; every change to the tuple itself replaces the grant.
+
+| Change                                                         | Result                                                                                                                                                                                            |
+|----------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database_name` or `language_name`                             | replaces the grant: language privileges are per database and language, so the old tuple's `USAGE` is revoked and the new tuple's granted                                                          |
+| `grantee` or `grantee_type`                                    | replaces the grant: the grantee is part of the tuple                                                                                                                                              |
+| `privileges` set to `["USAGE"]`                                | `GRANT USAGE ON LANGUAGE ... TO ...`, with `WITH GRANT OPTION` when `grant_option_privileges` is set in the same change                                                                           |
+| `privileges` set to `[]`                                       | `REVOKE USAGE ON LANGUAGE ... FROM ...`, which also removes the grant option; for `PUBLIC` also when the catalog shows no grant, as [Lifecycle and Ownership](#lifecycle-and-ownership) describes |
+| `grant_option_privileges` set to `["USAGE"]`                   | `GRANT USAGE ON LANGUAGE ... TO ... WITH GRANT OPTION`                                                                                                                                            |
+| `grant_option_privileges` set to `[]`, or the argument removed | `REVOKE GRANT OPTION FOR USAGE ON LANGUAGE ... FROM ...`; `USAGE` stays, and Redshift rejects the statement while grants the user made depend on the option                                       |
+
+An update revokes before it grants. The statements share no transaction: when one fails, the earlier ones stay applied
+and the next plan shows what is left. Planning rejects grant options for groups, roles, and `PUBLIC`, and an option
+without `USAGE` in `privileges`.
+
+**Drift.** Refresh compares the grantee's explicit `USAGE` and grant option with the state, and the next plan restores
+the configuration with the statements above: a grant or option added outside Terraform is revoked, and a revoked one is
+granted again. The `PUBLIC` default without a catalog row is never read, so a `PUBLIC` tuple without `USAGE` detects
+an explicit `GRANT USAGE ... TO PUBLIC` but not the default. A missing grantee or database removes the grant from state,
+and the next plan creates it again.
+
+### Revoking the PUBLIC Default
+
+Creating a `PUBLIC` tuple without `USAGE` revokes the default although the catalog read before it shows no grant; the
+statements appear with the database each runs in:
+
+```terraform
+resource "redshift_language_grant" "public_sql" {
+  database_name = "warehouse"
+  language_name = "sql"
+  grantee_type  = "PUBLIC"
+  grantee       = "public"
+  privileges    = []
+}
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/language_grant/transcript/create_public_without_usage.sql" }}
 
 ## Import
 

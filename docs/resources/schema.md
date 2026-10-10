@@ -56,15 +56,39 @@ changing a quota requires a superuser; a quota below the current usage blocks fu
 The quota is read from
 [SVV_REDSHIFT_SCHEMA_QUOTA](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_SCHEMA_QUOTA.html), which,
 unlike `SVV_SCHEMA_QUOTA_STATE`, is also available on Redshift Serverless; a schema without a row there is reported as
-unlimited. Omitted options are reported from the catalog and left unmanaged. Create and Update re-read both and fail
-when the catalog does not hold the planned value.
+unlimited.
 
 ## Lifecycle and Ownership
 
-The resource creates and drops only the schema. A new `name` replaces the schema; the provider never renames it with
-`ALTER SCHEMA ... RENAME TO`, because dependent objects keep the old name. `DROP SCHEMA` does **not** cascade; remove
-dependent tables, views, and datashare memberships first. This resource does not grant permissions or manage the schema
-owner's credentials.
+The resource creates and drops only the schema. `DROP SCHEMA` does **not** cascade; remove dependent tables, views, and
+datashare memberships first. This resource does not grant permissions or manage the schema owner's credentials.
+
+## Reconciliation
+
+Refresh reads the schema and its owner from `pg_namespace` and its quota from `SVV_REDSHIFT_SCHEMA_QUOTA`; an update
+reads them again, runs one `ALTER SCHEMA` statement per changed option starting from what the catalog holds, and
+re-reads the catalog to verify the result; every other change replaces the schema. Replacement and deletion run
+`DROP SCHEMA` without `CASCADE`, so they fail while the schema still holds tables, views, or other objects.
+
+| Change                 | Result                                                                                                                            |
+|------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| `database`             | replaces the schema: a schema cannot move to another database                                                                     |
+| `name`                 | replaces the schema: the provider never renames it with `ALTER SCHEMA ... RENAME TO`, because dependent objects keep the old name |
+| `owner` set or changed | `ALTER SCHEMA ... OWNER TO`                                                                                                       |
+| `owner` removed        | no SQL; the current owner stays and is still reported                                                                             |
+| `quota` set or changed | `ALTER SCHEMA ... QUOTA` in megabytes, or `QUOTA UNLIMITED` for `-1`; requires a superuser                                        |
+| `quota` removed        | no SQL; the current quota stays and is still reported                                                                             |
+
+An update changes the owner before the quota, and the statements share no transaction: when the quota change fails,
+the new owner stays and the next plan shows the quota change again. After them, the update fails when the catalog does
+not hold the configured owner or a quota the connection can read.
+
+**Drift.** Refresh compares the owner and the quota with the state. A configured owner or quota changed outside
+Terraform is set back with the statements above; an omitted one follows the catalog and never plans a change.
+`SVV_REDSHIFT_SCHEMA_QUOTA` shows a regular user only their own schemas, so when the provider's SQL identity is neither
+a superuser nor the owner, the last known quota is kept and a quota changed outside Terraform is not detected. A schema,
+or its database, dropped outside Terraform is removed from state, and the next plan creates the schema again. The
+objects in the schema, its grants, and its comment are never read.
 
 ## Import
 

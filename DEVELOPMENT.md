@@ -11,8 +11,8 @@ resources. Follow its command-specific documentation and verify catalog and life
 Use Go matching `go.mod`, Terraform 1.14 or later, Task v3, and `curl`; golangci-lint is fetched automatically. Run
 `task check` from the module root to check gofmt formatting, lint, `go vet`, and offline race tests with statement
 coverage printed to the terminal. Tests check that every resource and data source has a generated documentation
-page, a template, and examples. A golangci-lint `depguard` rule prevents resource code from importing concrete
-transports.
+page, a template, and examples, and that every resource template documents how each argument reconciles. A
+golangci-lint `depguard` rule prevents resource code from importing concrete transports.
 [Live acceptance tests](README.md#acceptance-test) are opt-in.
 
 The Taskfile provides `fmt`, `markdown-fmt`, `markdown-fmt-check`, `lint`, `actionlint`, `test`, `golden`, `check`,
@@ -197,7 +197,7 @@ Mandatory parallel tests conflict with environment/global-state fixtures. Generi
 add noise to Terraform lifecycle handlers. SQL mutations use domain-specific quoting and privilege allowlists rather
 than a blanket string-construction prohibition. Reassess rules when concrete defects justify them.
 
-## GitHub Actions
+## Documentation
 
 Registry pages in `docs/` are generated; do not edit them directly. Edit the templates in `templates/`, the examples
 in `examples/provider/`, `examples/resources/`, and `examples/data-sources/`, or the schema `MarkdownDescription`
@@ -210,12 +210,38 @@ attribute names and `...` for all further options. Data source templates show th
 clauses keeps the block valid; update it only when a type starts or stops issuing a statement kind or reads a different
 catalog source.
 
+Every resource template also has a `## Reconciliation` section after the usage and explanatory sections and right
+before `## Import`. It is the one place that explains changes: in-place and replacement notes belong there, while
+ownership and permission prose stays under `## Lifecycle and Ownership`. The section has these parts:
+
+- One opening sentence with the general rule: what refresh reads, which statements an in-place change runs before the
+  catalog is re-read, and that every other change replaces the object.
+- A hand-aligned `| Change | Result |` table with rows for every configurable argument and block, named in backticks
+  exactly as in the schema, with nested fields as `block.field`. Write-only and trigger arguments (`password_wo`,
+  `*_wo_version`, `refresh_revision`) and `timeouts.*` are listed too. A result names the statement kind of an in-place
+  change (`ALTER TABLE ... ADD COLUMN`, `GRANT`/`REVOKE`), says "no SQL", or says "replaces the <noun>" with the
+  reason, and spells out conditional cases.
+- A **Drift.** paragraph: what refresh compares, how a change made outside Terraform shows in the next plan, and what
+  is never read back.
+- For non-trivial reconciliation (tables, external tables, materialized views, privilege sets), worked examples: a
+  short HCL before/after excerpt and the resulting SQL embedded from an existing golden file with
+  `{{ codefile "sql" "internal/provider/testdata/sql/<group>/<case>.sql" }}`. Never hand-write SQL that a golden file
+  pins.
+
+Derive every row from the code: the schema plan modifiers, the registered replacement policy, the `alterStep`s in
+`<type>_sql.go`, Update and Read, and the golden files. `TestReconciliationSectionDocumentsEveryInput` in
+`documentation_contract_test.go` requires the section before `## Import`, its table, and every configurable attribute
+and block field in backticks, so a new argument fails the tests until it is documented. `task markdown-fmt` does not
+format templates, so keep prose within 120 columns and align tables by hand.
+
 `task docs-check` runs the `tfplugindocs` validator against the live provider schema, checking publication layout,
 resource/data-source coverage, front matter, and document size limits, and then regenerates the documentation into
 `.cache/docs-check` and fails if it differs from `docs/`, including added or missing pages. It is included in
 `task check` and CI. Published documentation follows the
 [Terraform Registry guidelines](https://developer.hashicorp.com/terraform/registry/providers/docs). Repo-only
 `DEVELOPMENT.md` and `TODO.md` live at the repository root; publish end-user guides under `docs/guides/` when needed.
+
+## GitHub Actions
 
 The repository's `.github/workflows/` files run CI and signed releases from the provider repository root.
 
