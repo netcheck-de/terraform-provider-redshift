@@ -8,8 +8,8 @@ description: Manages a local or datashare-backed Redshift database.
 
 Creates a local database with an optional owner, connection limit, collation, and isolation level, or a consumer
 database from an **already associated** producer datashare. Datashare authorization and the namespace-scoped consumer
-association are AWS resources and must precede shared database creation. The provider waits up to five minutes for the
-inbound share to appear in the SQL catalog. See AWS
+association are AWS resources and must precede shared database creation. The provider waits for the inbound share to
+appear in the SQL catalog, for up to five minutes or, when set, the `timeouts.create` duration. See AWS
 [CREATE DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATABASE.html) and
 [ALTER DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATABASE.html).
 
@@ -25,6 +25,11 @@ DROP DATABASE name;
 resource "redshift_database" "analytics" {
   name          = "analytics"
   datashare_arn = aws_redshift_data_share_consumer_association.analytics.data_share_arn
+
+  # Wait up to 15 minutes, instead of 5, for the associated share to appear in the SQL catalog.
+  timeouts {
+    create = "15m"
+  }
 }
 
 resource "redshift_database" "local" {
@@ -51,6 +56,7 @@ resource "redshift_database" "local" {
 - `datashare_arn` (String) Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database. Changing it replaces the database.
 - `isolation_level` (String) `SERIALIZABLE` or `SNAPSHOT` (the Redshift default) isolation for a local database. Updated in place with `ALTER DATABASE ... ISOLATION LEVEL`, which fails while other sessions are connected to the database. Omit it to keep and report the current level. Not supported for shared databases, where it is null.
 - `owner` (String) SQL user owning a local database. Set with `OWNER` at creation and changed in place with `ALTER DATABASE ... OWNER TO`, which requires a superuser. Omit it to keep and report the current owner. Not supported for shared databases, where it is null.
+- `timeouts` (Block, Optional) Time limits for whole Terraform operations, as durations such as `30m` or `2h`. Unset, an operation has no limit of its own and each SQL statement is bounded only by the provider's `query_timeout`; set, a statement still running when the operation's limit expires is cancelled. A change to the timeouts alone runs no DDL of its own, but applies as an in-place update that reads and verifies the catalog like any other. (see [below for nested schema](#nestedblock--timeouts))
 - `with_permissions` (Boolean) Require object-level grants for a shared database; defaults to `true`. Changing it replaces a shared database (`datashare_arn` set); ignored for local databases.
 
 ### Read-Only
@@ -60,6 +66,15 @@ resource "redshift_database" "local" {
 - `producer_account` (String) Producer account ID; null for local databases.
 - `producer_namespace` (String) Producer namespace ID; null for local databases.
 - `share_name` (String) Producer share name; null for local databases.
+
+<a id="nestedblock--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) Maximum time for creating the object, including follow-up statements and the catalog verification. For a shared database it includes the wait for the associated datashare to appear in the SQL catalog, which without a create timeout ends after five minutes.
+- `delete` (String) Maximum time for dropping the object and verifying that it is gone. Applies only when the value was saved to state by an earlier apply before the destroy.
+- `update` (String) Maximum time for an in-place update, including the catalog reads before and after the change.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 ## Local Database Options
@@ -90,6 +105,26 @@ may prevent it. This resource manages no `PUBLIC` grants; assign permissions sep
 Changing `with_permissions` replaces a shared database. For local databases, `with_permissions` retains its configured
 value or default but has no effect and never forces replacement; the data source reports
 the observed local permission mode as `false`. Resource refreshes do not require AWS datashare discovery permissions.
+
+## Timeouts
+
+The `timeouts` block limits a whole create, update, or delete: every statement it runs and the catalog reads before
+and after. For a shared database, `create` also bounds the wait for the associated datashare to appear in the SQL
+catalog, which polls every second and otherwise gives up after five minutes; raise it when a fresh association takes
+longer to arrive. Without the block, an operation has no limit of its own besides that wait, and each statement is
+bounded only by the provider's `query_timeout`. With it, a statement still running when the operation's time is up is
+cancelled, even when its `query_timeout` is later, and the apply fails with an `Operation timed out` error.
+
+```terraform
+timeouts {
+  create = "15m"
+}
+```
+
+Values are durations such as `90s`, `30m`, or `2h`. A change to them alone runs no DDL of its own, but applies as an
+in-place update that reads and verifies the catalog like any other, and so also restores settings changed outside
+Terraform since the plan. A `delete` value applies only after an apply has saved it to state. Refreshes are bounded
+only by `query_timeout`.
 
 ## Import
 

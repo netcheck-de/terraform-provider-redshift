@@ -143,6 +143,10 @@ func assertLookupParity(t *testing.T, test parityCase) {
 	var paired resource.SchemaResponse
 	test.resource().Schema(context.Background(), resource.SchemaRequest{}, &paired)
 	for name, block := range paired.Schema.Blocks {
+		if name == timeoutsBlockName {
+			assert.NotContains(t, source.Attributes, name, "the timeouts block bounds resource operations and is not observed")
+			continue
+		}
 		assert.NotContains(t, test.selectors, name, "block %s is always observed; select with a lookup selector", name)
 		if actual, ok := source.Attributes[name]; assert.True(t, ok, "missing readable block %s", name) {
 			assertBlockParity(t, name, block, actual)
@@ -218,7 +222,7 @@ func assertCollectionParity(t *testing.T, test parityCase) {
 		if test.resource == nil {
 			continue
 		}
-		if block, ok := blocks[name]; ok {
+		if block, ok := blocks[name]; ok && name != timeoutsBlockName {
 			assertBlockParity(t, name, block, element)
 			continue
 		}

@@ -15,7 +15,8 @@ import (
 
 // blockTestResource is an unregistered resource with a required list block containing a single block and a
 // write-only attribute, a set block, and an optional single block, so the shared lookup, parity, replacement, and alter checks are proven on every
-// block shape before a registered type depends on them.
+// block shape before a registered type depends on them. It also declares the timeouts block, which those checks skip
+// without a per-resource entry.
 type blockTestResource struct{}
 
 // newBlockTestResource constructs the block test resource.
@@ -28,7 +29,7 @@ func (r *blockTestResource) Metadata(_ context.Context, req resource.MetadataReq
 
 // Schema follows the provider's block conventions: singular block names, a required block that says so in its
 // description, and plain lists for primitive values.
-func (r *blockTestResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *blockTestResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	replace := []planmodifier.String{stringplanmodifier.RequiresReplace()}
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
@@ -38,6 +39,7 @@ func (r *blockTestResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"owner":    schema.StringAttribute{Optional: true, Computed: true, MarkdownDescription: "Owning user."},
 		},
 		Blocks: map[string]schema.Block{
+			timeoutsBlockName: operationTimeoutsBlock(ctx, ""),
 			"column": schema.ListNestedBlock{
 				MarkdownDescription: "At least one `column` block is required. Columns in order; changing it replaces the table.",
 				Validators:          []validator.List{listvalidator.IsRequired(), listvalidator.SizeAtLeast(1)},

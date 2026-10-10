@@ -64,6 +64,7 @@ resource "redshift_materialized_view" "revenue_by_region" {
 - `distribution` (Block, Optional) Distribution of the rows across the compute nodes; omitted uses the server default, `EVEN`. Changed in place with `ALTER MATERIALIZED VIEW ... ALTER DISTSTYLE`; removing the block returns the view to `EVEN`. Not read back, so changes made outside Terraform are not detected. (see [below for nested schema](#nestedblock--distribution))
 - `owner` (String) SQL user owning the materialized view. When set, it is applied with `ALTER TABLE ... OWNER TO`; when unset, the creating user owns the materialized view and the attribute reports the catalog owner. `SVV_MV_INFO` shows a regular user only the materialized views it owns, so after a provider identity that is not a superuser transfers ownership away, `auto_refresh` is no longer read back, and changing or dropping the view needs privileges that the new owner grants.
 - `sort_key` (Block, Optional) Compound sort key. Changed in place with `ALTER MATERIALIZED VIEW ... ALTER COMPOUND SORTKEY`; removing the block runs `ALTER SORTKEY NONE`. Not read back, so changes made outside Terraform are not detected. (see [below for nested schema](#nestedblock--sort_key))
+- `timeouts` (Block, Optional) Time limits for whole Terraform operations, as durations such as `30m` or `2h`. Unset, an operation has no limit of its own and each SQL statement is bounded only by the provider's `query_timeout`; set, a statement still running when the operation's limit expires is cancelled. A change to the timeouts alone runs no DDL of its own, but applies as an in-place update that reads and verifies the catalog like any other. (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
 
@@ -85,6 +86,16 @@ Optional:
 Optional:
 
 - `columns` (List of String) Sort key columns in order; required in the block.
+
+
+<a id="nestedblock--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) Maximum time for creating the object, including follow-up statements and the catalog verification. `CREATE MATERIALIZED VIEW` computes the initial data, so it takes as long as running the query.
+- `delete` (String) Maximum time for dropping the object and verifying that it is gone. Applies only when the value was saved to state by an earlier apply before the destroy.
+- `update` (String) Maximum time for an in-place update, including the catalog reads before and after the change.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 ## Definition and Storage Changes
@@ -118,6 +129,26 @@ for the owner and definition and `SVV_MV_INFO` for `auto_refresh`, and removes t
 database, no longer exists. `SVV_MV_INFO` shows regular users only their own materialized views. When a provider SQL
 identity that is not a superuser transfers ownership away, `auto_refresh` keeps its configured value with a warning
 instead of being read back, and changing or dropping the view then needs privileges that the new owner grants.
+
+## Timeouts
+
+The `timeouts` block limits a whole create, update, or delete: every statement it runs and the catalog reads before
+and after. `CREATE MATERIALIZED VIEW` computes the initial data, so it takes as long as running the query, and
+`ALTER DISTSTYLE` or `ALTER SORTKEY` redistribute or re-sort the stored rows. Without the block, an operation has no
+limit of its own, and each statement is bounded only by the provider's `query_timeout`. With it, a statement still
+running when the operation's time is up is cancelled, even when its `query_timeout` is later, and the apply fails with
+an `Operation timed out` error.
+
+```terraform
+timeouts {
+  create = "1h"
+  update = "30m"
+}
+```
+
+Values are durations such as `90s`, `30m`, or `2h`. A change to them alone runs no DDL, but applies as an in-place
+update that reads and verifies the catalog like any other. A `delete` value applies only after an apply has saved it
+to state. Refreshes are bounded only by `query_timeout`.
 
 ## Import
 

@@ -57,9 +57,9 @@ var _ = registerValidateConfigCase("materialized view", validateConfigCase{
 // decodeMaterializedViewState reads a materialized view model from Terraform state.
 func decodeMaterializedViewState(t *testing.T, state tfsdk.State) materializedViewModel {
 	t.Helper()
-	var data materializedViewModel
+	var data materializedViewResourceModel
 	require.False(t, state.Get(context.Background(), &data).HasError())
-	return data
+	return data.materializedViewModel
 }
 
 // TestMaterializedViewDefinitionDrift keeps the configured query across refreshes and surfaces an outside

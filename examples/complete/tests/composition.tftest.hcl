@@ -143,6 +143,7 @@ run "private_same_account_defaults" {
       length(aws_redshift_data_share_authorization.consumer) == 0 && length(aws_redshift_data_share_consumer_association.this) == 0 &&
       local.datashare_arn == "arn:aws:redshift:eu-central-1:111111111111:datashare:11111111-2222-3333-4444-555555555555/example_share" &&
       redshift_database.shared.datashare_arn == local.datashare_arn && redshift_database.shared.with_permissions &&
+      redshift_database.shared.timeouts.create == "15m" &&
       !redshift_datashare.producer.publicly_accessible && redshift_datashare_schema.source.include_new &&
       redshift_datashare_table.source.schema == "public" && redshift_datashare_table.source.table == "fixture"
     )

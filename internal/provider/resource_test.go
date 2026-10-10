@@ -2,11 +2,14 @@ package provider
 
 import (
 	"context"
+	"maps"
+	"reflect"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,15 +28,47 @@ func testResourceClient(client dataapi.Client) resourceClient {
 	return resourceClient{client: client, warehouse: warehouseBinding{field: "workgroup_name", value: types.StringValue("warehouse")}, database: types.StringValue("admin")}
 }
 
-// testState serializes a resource model with its actual Terraform schema.
+// testState serializes a resource model with its actual Terraform schema. A model without the resource's timeouts
+// block, such as the definition a resource shares with its lookup, leaves the block absent, as a configuration
+// without it does.
 func testState(t *testing.T, r resource.Resource, model any) tfsdk.State {
 	t.Helper()
+	ctx := context.Background()
 	var schema resource.SchemaResponse
-	r.Schema(context.Background(), resource.SchemaRequest{}, &schema)
+	r.Schema(ctx, resource.SchemaRequest{}, &schema)
 	state := tfsdk.State{Schema: schema.Schema}
-	diagnostics := state.Set(context.Background(), model)
+	block, hasTimeouts := schema.Schema.Blocks[timeoutsBlockName]
+	if !hasTimeouts || modelHasField(model, timeoutsBlockName) {
+		diagnostics := state.Set(ctx, model)
+		require.False(t, diagnostics.HasError(), "invalid test state: %v", diagnostics)
+		return state
+	}
+	without := schema.Schema
+	without.Blocks = maps.Clone(schema.Schema.Blocks)
+	delete(without.Blocks, timeoutsBlockName)
+	partial := tfsdk.State{Schema: without}
+	diagnostics := partial.Set(ctx, model)
 	require.False(t, diagnostics.HasError(), "invalid test state: %v", diagnostics)
+	values := map[string]tftypes.Value{}
+	require.NoError(t, partial.Raw.As(&values))
+	values[timeoutsBlockName] = tftypes.NewValue(block.Type().TerraformType(ctx), nil)
+	state.Raw = tftypes.NewValue(schema.Schema.Type().TerraformType(ctx), values)
 	return state
+}
+
+// modelHasField reports whether a struct model, or the struct a pointer model points to, declares or promotes a field
+// tagged tfsdk:"name".
+func modelHasField(model any, name string) bool {
+	value := reflect.Indirect(reflect.ValueOf(model))
+	if value.Kind() != reflect.Struct {
+		return false
+	}
+	for _, field := range reflect.VisibleFields(value.Type()) {
+		if field.Tag.Get("tfsdk") == name {
+			return true
+		}
+	}
+	return false
 }
 
 // TestImportRejectsInvalidIdentity checks malformed and incomplete JSON import IDs.

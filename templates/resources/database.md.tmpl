@@ -8,8 +8,8 @@ description: Manages a local or datashare-backed Redshift database.
 
 Creates a local database with an optional owner, connection limit, collation, and isolation level, or a consumer
 database from an **already associated** producer datashare. Datashare authorization and the namespace-scoped consumer
-association are AWS resources and must precede shared database creation. The provider waits up to five minutes for the
-inbound share to appear in the SQL catalog. See AWS
+association are AWS resources and must precede shared database creation. The provider waits for the inbound share to
+appear in the SQL catalog, for up to five minutes or, when set, the `timeouts.create` duration. See AWS
 [CREATE DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATABASE.html) and
 [ALTER DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATABASE.html).
 
@@ -55,6 +55,26 @@ may prevent it. This resource manages no `PUBLIC` grants; assign permissions sep
 Changing `with_permissions` replaces a shared database. For local databases, `with_permissions` retains its configured
 value or default but has no effect and never forces replacement; the data source reports
 the observed local permission mode as `false`. Resource refreshes do not require AWS datashare discovery permissions.
+
+## Timeouts
+
+The `timeouts` block limits a whole create, update, or delete: every statement it runs and the catalog reads before
+and after. For a shared database, `create` also bounds the wait for the associated datashare to appear in the SQL
+catalog, which polls every second and otherwise gives up after five minutes; raise it when a fresh association takes
+longer to arrive. Without the block, an operation has no limit of its own besides that wait, and each statement is
+bounded only by the provider's `query_timeout`. With it, a statement still running when the operation's time is up is
+cancelled, even when its `query_timeout` is later, and the apply fails with an `Operation timed out` error.
+
+```terraform
+timeouts {
+  create = "15m"
+}
+```
+
+Values are durations such as `90s`, `30m`, or `2h`. A change to them alone runs no DDL of its own, but applies as an
+in-place update that reads and verifies the catalog like any other, and so also restores settings changed outside
+Terraform since the plan. A `delete` value applies only after an apply has saved it to state. Refreshes are bounded
+only by `query_timeout`.
 
 ## Import
 

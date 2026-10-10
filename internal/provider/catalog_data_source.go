@@ -221,10 +221,14 @@ func lookupSchemaAttributes(attributes map[string]resourceschema.Attribute, bloc
 }
 
 // lookupBlocks converts resource blocks into computed nested attributes. A block is always observed: an input that
-// selects the object is a plain attribute in catalogSpec.selectors instead.
+// selects the object is a plain attribute in catalogSpec.selectors instead. The timeouts block bounds the resource's
+// operations, has no catalog counterpart, and is left out.
 func lookupBlocks(blocks map[string]resourceschema.Block) map[string]schema.Attribute {
 	attributes := map[string]schema.Attribute{}
 	for name, block := range blocks {
+		if name == timeoutsBlockName {
+			continue
+		}
 		description := lookupDescription(block.GetMarkdownDescription())
 		switch block := block.(type) {
 		case resourceschema.ListNestedBlock:

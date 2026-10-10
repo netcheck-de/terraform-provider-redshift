@@ -78,7 +78,7 @@ func TestDatabaseOptionsDetectDrift(t *testing.T) {
 	desired.IsolationLevel = types.StringValue("SNAPSHOT")
 	state, diagnostics := applyOperation(t, r, "update", data, desired, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
-	var observed databaseModel
+	var observed databaseResourceModel
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	assert.Equal(t, "SNAPSHOT", observed.IsolationLevel.ValueString())
 	assert.Equal(t, []string{`ALTER DATABASE "warehouse" ISOLATION LEVEL SNAPSHOT`}, c.writes)
@@ -219,7 +219,7 @@ func TestDatabaseCollationReadFailures(t *testing.T) {
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			require.Len(t, diagnostics.Warnings(), 1)
 			assert.Contains(t, diagnostics.Warnings()[0].Detail(), "CONNECTION LIMIT")
-			var observed databaseModel
+			var observed databaseResourceModel
 			require.False(t, state.Get(context.Background(), &observed).HasError())
 			assert.True(t, observed.Collation.IsNull())
 
@@ -254,7 +254,7 @@ func TestDatabaseKnownCollationNeedsNoSession(t *testing.T) {
 		require.False(t, diagnostics.HasError(), "%s: %v", operation, diagnostics)
 		assert.Empty(t, diagnostics.Warnings(), operation)
 		if operation == "update" {
-			var observed databaseModel
+			var observed databaseResourceModel
 			require.False(t, state.Get(context.Background(), &observed).HasError())
 			assert.Equal(t, "CASE_SENSITIVE", observed.Collation.ValueString(), "update keeps the prior collation")
 		}

@@ -181,10 +181,16 @@ external SQL clients are not coordinated by this gate.
 
 - `query_timeout` (default `5m`, or the `REDSHIFT_QUERY_TIMEOUT` environment variable) bounds each SQL statement on
   both transports, including IAM credential lookup, connecting, and reading results. An earlier deadline of the running
-  Terraform operation wins. When either expires or Terraform is interrupted, a running Data API statement is cancelled
-  and a direct connection is closed.
+  Terraform operation wins. When either expires or Terraform is interrupted, a running statement is cancelled: through
+  the Data API, or with a cancel request on a direct connection, which is closed if the statement has not stopped five
+  seconds later.
 - `direct_connection.connect_timeout` (default `30s`) bounds opening one direct connection: TCP connect, TLS
   handshake, and authentication. `PGCONNECT_TIMEOUT` does not override it.
+- A `timeouts` block on [`redshift_table`](resources/table.md),
+  [`redshift_materialized_view`](resources/materialized_view.md), and [`redshift_database`](resources/database.md)
+  bounds a whole create, update, or delete, including its catalog verification. Unset, an operation has no limit of
+  its own beyond `query_timeout` per statement; set, it also cancels a statement still running when the operation's
+  time is up.
 - `max_retries` and `retry_mode` control retries of AWS API calls: Data API requests, endpoint discovery, and IAM
   credentials. `max_retries` counts retries, so `max_retries = 2` allows three attempts. When omitted, the AWS SDK
   settings apply: `AWS_MAX_ATTEMPTS` (which counts attempts) and `AWS_RETRY_MODE`, or the `max_attempts` and

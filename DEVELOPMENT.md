@@ -69,6 +69,10 @@ The provider grows in parallel work blocks, so a new type adds files instead of 
     resource does and a single block reads as an object without `[0]`. An input that only the lookup needs, such as a
     plain list of types selecting an overload, is a `catalogSpec.selectors` entry.
   - A listing's result attribute is named after the data source: `data.redshift_tables.x.tables`.
+  - A resource whose operations can outlast one statement declares `timeoutsBlockName: operationTimeoutsBlock(...)`,
+    embeds its lookup-shared model in a `<type>ResourceModel` with a `Timeouts timeouts.Value` field, and wraps
+    Create, Update, and Delete in `boundOperation`. Lookups, replacement policies, and alter coverage skip the block
+    by name, and `testState` leaves it null for models without it.
   - `lookupDescriptions` replaces resource wording that does not apply to an observed value; dotted paths such as
     `distribution.style` reach nested attributes.
 - **Renderers.** `<type>_sql.go` holds pure functions from the Terraform model to SQL: `create<X>Statement`,

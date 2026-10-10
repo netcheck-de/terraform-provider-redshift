@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -63,6 +64,13 @@ type tableModel struct {
 	EffectiveDistribution types.Object `tfsdk:"effective_distribution"`
 	// EffectiveSortKey is the sort key Redshift applies.
 	EffectiveSortKey types.Object `tfsdk:"effective_sort_key"`
+}
+
+// tableResourceModel is the resource state: the definition the lookup shares, plus the timeouts only the resource has.
+type tableResourceModel struct {
+	tableModel
+	// Timeouts bounds create, update, and delete.
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 // tableColumnModel is one column block.
@@ -179,7 +187,7 @@ func (r *tableResource) Metadata(_ context.Context, req resource.MetadataRequest
 const tableReplacementDescription = "Replaces the table when ALTER TABLE cannot make the change in place."
 
 // Schema defines the table identity, columns, constraints, and physical layout.
-func (r *tableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	replaceList := func(attribute string) planmodifier.List {
 		return listplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.ListRequest, resp *listplanmodifier.RequiresReplaceIfFuncResponse) {
 			resp.RequiresReplace = tableRequiresReplace(ctx, req.Config, req.State, req.Plan, attribute)
@@ -264,6 +272,7 @@ func (r *tableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			},
 		},
 		Blocks: map[string]schema.Block{
+			timeoutsBlockName: operationTimeoutsBlock(ctx, ""),
 			"column": schema.ListNestedBlock{
 				MarkdownDescription: "At least one `column` block is required. Column definitions (1 to 1600), matched to the catalog by name, so reordering the blocks runs no SQL. " +
 					"In place, a new column is added with `ALTER TABLE ADD COLUMN` wherever its block appears (not an identity column, and a NOT NULL column only with a default), " +
@@ -399,18 +408,18 @@ func tableKeywordStrings(keywords []sqlclient.Keyword) []string {
 // known yet counts as undecodable: the plan may still lack the style tableDerivedStyle fills in, so only the
 // configuration tells an unknown value from an omitted one, and an interleaved sort key could follow from it.
 func tableRequiresReplace(ctx context.Context, config tfsdk.Config, state tfsdk.State, plan tfsdk.Plan, attribute string) bool {
-	var configured, prior, planned tableModel
+	var configured, prior, planned tableResourceModel
 	if config.Get(ctx, &configured).HasError() || state.Get(ctx, &prior).HasError() || plan.Get(ctx, &planned).HasError() {
 		return true
 	}
 	if tableStyleUnknown(configured.Distribution) || tableStyleUnknown(configured.SortKey) {
 		return true
 	}
-	prevSpec, err := tableSpecOf(prior)
+	prevSpec, err := tableSpecOf(prior.tableModel)
 	if err != nil {
 		return true
 	}
-	planSpec, err := tableSpecOf(planned)
+	planSpec, err := tableSpecOf(planned.tableModel)
 	if err != nil {
 		return true
 	}
@@ -728,9 +737,9 @@ func tableKnownState(data tableModel) tableModel {
 }
 
 // verify re-reads the table after Create or Update and stores it once the catalog matches the plan.
-func (r *tableResource) verify(ctx context.Context, plan tableModel, state *tfsdk.State, diagnostics *diag.Diagnostics, absent string) {
+func (r *tableResource) verify(ctx context.Context, plan tableResourceModel, state *tfsdk.State, diagnostics *diag.Diagnostics, absent string) {
 	observed := plan
-	found, _, err := r.read(ctx, &observed)
+	found, _, err := r.read(ctx, &observed.tableModel)
 	switch {
 	case err != nil:
 		diagnostics.AddError("Verify table", err.Error())
@@ -739,10 +748,10 @@ func (r *tableResource) verify(ctx context.Context, plan tableModel, state *tfsd
 		diagnostics.AddError("Verify table", absent)
 		return
 	}
-	planSpec, err := tableSpecOf(plan)
+	planSpec, err := tableSpecOf(plan.tableModel)
 	if err == nil {
 		var observedSpec tableSpec
-		if observedSpec, err = tableSpecOf(observed); err == nil {
+		if observedSpec, err = tableSpecOf(observed.tableModel); err == nil {
 			err = tableConverged(planSpec, observedSpec)
 		}
 	}
@@ -755,12 +764,14 @@ func (r *tableResource) verify(ctx context.Context, plan tableModel, state *tfsd
 
 // Create validates the definition, creates the table, finishes its sort key and ownership, and verifies the catalog.
 func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data tableModel
+	var data tableResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	ctx, done := boundOperation(ctx, "create", data.Timeouts.Create, &resp.Diagnostics)
+	defer done()
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	spec, err := tableSpecOf(data)
+	spec, err := tableSpecOf(data.tableModel)
 	var statements []string
 	if err == nil {
 		statements, err = createTableStatements(spec)
@@ -776,7 +787,7 @@ func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, 
 	}
 	data.ID = r.identity(database, map[string]string{"schema": spec.schema, "name": spec.name})
 	// A failed follow-up statement or verification must still leave state for the created table.
-	known := tableKnownState(data)
+	known := tableResourceModel{tableModel: tableKnownState(data.tableModel), Timeouts: data.Timeouts}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &known)...)
 	if err := r.exec(ctx, database, statements[1:]...); err != nil {
 		resp.Diagnostics.AddError("Configure table", err.Error())
@@ -787,12 +798,12 @@ func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, 
 
 // ValidateConfig reports definitions Create would reject, during planning once the configuration is known.
 func (r *tableResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data tableModel
+	var data tableResourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
 		return
 	}
-	if _, err := tableSpecOf(data); err != nil {
+	if _, err := tableSpecOf(data.tableModel); err != nil {
 		resp.Diagnostics.AddError("Invalid table", err.Error())
 	}
 }
@@ -803,14 +814,14 @@ func (r *tableResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanR
 	if req.Plan.Raw.IsNull() {
 		return
 	}
-	var plan tableModel
+	var plan tableResourceModel
 	if req.Plan.Get(ctx, &plan).HasError() {
 		return
 	}
 	// A plan that changes nothing else runs no apply, so the recorded layout stays. Any update may observe a layout
 	// Redshift changed on its own since the plan, such as AUTO(ALL) becoming AUTO(EVEN) as rows arrive.
 	if !req.State.Raw.IsNull() {
-		var state tableModel
+		var state tableResourceModel
 		if !req.State.Get(ctx, &state).HasError() {
 			unchanged := req.Plan
 			resp.Diagnostics.Append(unchanged.SetAttribute(ctx, path.Root("effective_distribution"), state.EffectiveDistribution)...)
@@ -821,7 +832,7 @@ func (r *tableResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanR
 			}
 		}
 	}
-	distribution, sortKey := tablePlannedEffective(plan)
+	distribution, sortKey := tablePlannedEffective(plan.tableModel)
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("effective_distribution"), distribution)...)
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("effective_sort_key"), sortKey)...)
 }
@@ -856,12 +867,12 @@ func tableStyleUnknown(block types.Object) bool {
 
 // Read refreshes the definition or removes a table whose table, schema, or database is gone.
 func (r *tableResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data tableModel
+	var data tableResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	found, _, err := r.read(ctx, &data)
+	found, _, err := r.read(ctx, &data.tableModel)
 	switch {
 	case err != nil:
 		resp.Diagnostics.AddError("Read table", err.Error())
@@ -886,16 +897,19 @@ func tableColumnNames(data tableModel) map[string]bool {
 
 // Update applies the in-place changes from the table's current catalog definition and verifies the result.
 func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, current tableModel
+	var plan, prior tableResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &current)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+	ctx, done := boundOperation(ctx, "update", plan.Timeouts.Update, &resp.Diagnostics)
+	defer done()
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if _, err := tableSpecOf(plan); err != nil {
+	if _, err := tableSpecOf(plan.tableModel); err != nil {
 		resp.Diagnostics.AddError("Invalid table", err.Error())
 		return
 	}
+	current := prior.tableModel
 	planned := tableColumnNames(current)
 	found, constraints, err := r.read(ctx, &current)
 	switch {
@@ -906,7 +920,7 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		resp.Diagnostics.AddError("Update table", "The table disappeared during the update; refresh the plan.")
 		return
 	}
-	before, after, err := tableAlterStates(current, constraints, plan)
+	before, after, err := tableAlterStates(current, constraints, plan.tableModel)
 	if err == nil {
 		err = tableStaleDrops(before.spec, after.spec, planned)
 	}
@@ -918,7 +932,7 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	// after the key change; the other phases still start from the definition before the update.
 	encodings := before
 	if err == nil && tableSortKeyReencodes(before.spec, after.spec) {
-		encodings, err = r.refreshEncodings(ctx, plan)
+		encodings, err = r.refreshEncodings(ctx, plan.tableModel)
 	}
 	if err == nil {
 		err = r.exec(ctx, database, tableAlterPhaseStatements(encodings, after, tablePhaseAlterColumns)...)
@@ -953,12 +967,16 @@ func (r *tableResource) refreshEncodings(ctx context.Context, plan tableModel) (
 
 // Delete drops the table without CASCADE and verifies its removal.
 func (r *tableResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data tableModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	var state tableResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	ctx, done := boundOperation(ctx, "delete", state.Timeouts.Delete, &resp.Diagnostics)
+	defer done()
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	data := state.tableModel
 	found, _, err := r.read(ctx, &data)
+
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropTableStatement(tableSpec{schema: data.Schema.ValueString(), name: data.Name.ValueString()}))
 		if err == nil {

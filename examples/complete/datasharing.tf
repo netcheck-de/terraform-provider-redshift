@@ -92,6 +92,11 @@ resource "redshift_database" "shared" {
   name          = "example_shared"
   datashare_arn = local.datashare_arn
 
+  # A fresh association can take a while to reach the SQL catalog.
+  timeouts {
+    create = "15m"
+  }
+
   depends_on = [aws_redshift_data_share_consumer_association.this]
 }
 

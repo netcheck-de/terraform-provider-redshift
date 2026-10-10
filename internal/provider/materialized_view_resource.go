@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -48,6 +49,14 @@ type materializedViewModel struct {
 	Owner types.String `tfsdk:"owner"`
 	// DefinitionFingerprint detects definition changes made outside Terraform.
 	DefinitionFingerprint types.String `tfsdk:"definition_fingerprint"`
+}
+
+// materializedViewResourceModel is the resource state: the attributes the lookup shares, plus the timeouts only the
+// resource has.
+type materializedViewResourceModel struct {
+	materializedViewModel
+	// Timeouts bounds create, update, and delete.
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 var _ = registerResource(newMaterializedViewResource)
@@ -96,7 +105,7 @@ func materializedViewReplaceString() planmodifier.String {
 }
 
 // Schema defines the materialized view identity, its creation-only query and backup, and its in-place settings.
-func (r *materializedViewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *materializedViewResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a materialized view stored in Redshift. Refreshing its data is an action and is not managed.",
 		Attributes: map[string]schema.Attribute{
@@ -129,6 +138,7 @@ func (r *materializedViewResource) Schema(_ context.Context, _ resource.SchemaRe
 			"definition_fingerprint": definitionFingerprintAttribute(),
 		},
 		Blocks: map[string]schema.Block{
+			timeoutsBlockName: operationTimeoutsBlock(ctx, " `CREATE MATERIALIZED VIEW` computes the initial data, so it takes as long as running the query."),
 			"distribution": schema.SingleNestedBlock{
 				MarkdownDescription: "Distribution of the rows across the compute nodes; omitted uses the server default, `EVEN`. Changed in place " +
 					"with `ALTER MATERIALIZED VIEW ... ALTER DISTSTYLE`; removing the block returns the view to `EVEN`. Not read back, so " +
@@ -255,12 +265,14 @@ func (r *materializedViewResource) converge(ctx context.Context, data *materiali
 
 // Create validates the definition, creates the materialized view, applies a configured owner, and verifies it.
 func (r *materializedViewResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data materializedViewModel
+	var data materializedViewResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	ctx, done := boundOperation(ctx, "create", data.Timeouts.Create, &resp.Diagnostics)
+	defer done()
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	statements, err := createMaterializedViewStatements(data)
+	statements, err := createMaterializedViewStatements(data.materializedViewModel)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid materialized view", err.Error())
 		return
@@ -281,7 +293,7 @@ func (r *materializedViewResource) Create(ctx context.Context, req resource.Crea
 		resp.Diagnostics.AddError("Set materialized view owner", err.Error())
 		return
 	}
-	if err := r.converge(ctx, &data, planned, &resp.Diagnostics); err != nil {
+	if err := r.converge(ctx, &data.materializedViewModel, planned.materializedViewModel, &resp.Diagnostics); err != nil {
 		resp.Diagnostics.AddError("Verify materialized view", err.Error())
 		return
 	}
@@ -292,11 +304,12 @@ func (r *materializedViewResource) Create(ctx context.Context, req resource.Crea
 // while other attributes are unknown, because their rendering skips unknown values, so an empty block fails at
 // plan time instead of at apply; the query and name checks wait for a fully known configuration.
 func (r *materializedViewResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data materializedViewModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	var config materializedViewResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	data := config.materializedViewModel
 	if _, err := materializedViewAttributes(data); err != nil {
 		resp.Diagnostics.AddError("Invalid materialized view", err.Error())
 		return
@@ -313,12 +326,12 @@ func (r *materializedViewResource) ValidateConfig(ctx context.Context, req resou
 // After an import no query is configured yet, so state keeps it null instead of the catalog text, which would
 // otherwise differ from the configuration and plan a replacement of the imported view.
 func (r *materializedViewResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data materializedViewModel
+	var data materializedViewResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	observed, found, err := r.read(ctx, data)
+	observed, found, err := r.read(ctx, data.materializedViewModel)
 	if err != nil {
 		resp.Diagnostics.AddError("Read materialized view", err.Error())
 		return
@@ -327,7 +340,7 @@ func (r *materializedViewResource) Read(ctx context.Context, req resource.ReadRe
 		resp.State.RemoveResource(ctx)
 		return
 	}
-	observed.warnHidden(&resp.Diagnostics, data)
+	observed.warnHidden(&resp.Diagnostics, data.materializedViewModel)
 	data.observe(observed)
 	if data.Query.IsNull() {
 		data.DefinitionFingerprint = types.StringValue(definitionFingerprint(observed.view.definition))
@@ -341,13 +354,16 @@ func (r *materializedViewResource) Read(ctx context.Context, req resource.ReadRe
 // import is adopted from configuration without SQL, with a warning that shows the catalog definition, because
 // neither can be compared with the existing view.
 func (r *materializedViewResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data, previous materializedViewModel
+	var data, prior materializedViewResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-	resp.Diagnostics.Append(req.State.Get(ctx, &previous)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+	ctx, done := boundOperation(ctx, "update", data.Timeouts.Update, &resp.Diagnostics)
+	defer done()
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	statements, err := alterMaterializedViewStatements(previous, data)
+	previous := prior.materializedViewModel
+	statements, err := alterMaterializedViewStatements(previous, data.materializedViewModel)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid materialized view", err.Error())
 		return
@@ -372,7 +388,7 @@ func (r *materializedViewResource) Update(ctx context.Context, req resource.Upda
 		resp.Diagnostics.AddError("Update materialized view", err.Error())
 		return
 	}
-	if err := r.converge(ctx, &data, data, &resp.Diagnostics); err != nil {
+	if err := r.converge(ctx, &data.materializedViewModel, data.materializedViewModel, &resp.Diagnostics); err != nil {
 		resp.Diagnostics.AddError("Verify materialized view", err.Error())
 		return
 	}
@@ -385,11 +401,15 @@ func (r *materializedViewResource) Update(ctx context.Context, req resource.Upda
 
 // Delete drops the materialized view restrictively and verifies catalog removal.
 func (r *materializedViewResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data materializedViewModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	var state materializedViewResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	ctx, done := boundOperation(ctx, "delete", state.Timeouts.Delete, &resp.Diagnostics)
+	defer done()
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	data := state.materializedViewModel
+
 	_, found, err := r.read(ctx, data)
 	if err == nil && found {
 		var statement string

@@ -11,6 +11,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -353,4 +355,95 @@ func TestDirectConfigurationSSLModes(t *testing.T) {
 	config, err = client.configuration(context.Background(), "analytics")
 	require.NoError(t, err)
 	require.Error(t, config.TLSConfig.VerifyConnection(tls.ConnectionState{PeerCertificates: []*x509.Certificate{leafCertificate}}))
+}
+
+// TestDirectQueryDeadlineCancelsStatement sends a cancel request for the running statement when its context ends, so
+// Redshift stops an autocommit statement instead of committing it after the provider reported a failure.
+func TestDirectQueryDeadlineCancelsStatement(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	server := &stalledServer{secret: []byte{1, 2, 3, 4}, cancels: make(chan *pgproto3.CancelRequest, 1), cancelled: make(chan struct{})}
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go server.serve(conn)
+		}
+	}()
+	address := listener.Addr().(*net.TCPAddr)
+	client := &Client{
+		Credentials: Credentials{Host: "127.0.0.1", Port: uint16(address.Port), Username: "admin", Password: "secret"},
+		SSLMode:     SSLModeDisable,
+		Timeout:     time.Hour,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	_, err = client.Query(ctx, sqlclient.Connection{Database: "analytics"}, "CREATE MATERIALIZED VIEW slow AS SELECT 1", nil)
+	require.Error(t, err)
+	select {
+	case request := <-server.cancels:
+		assert.Equal(t, uint32(42), request.ProcessID)
+		assert.Equal(t, server.secret, request.SecretKey)
+	default:
+		require.Fail(t, "no cancel request reached the server")
+	}
+	// The cancelled statement's error ends the query, not the socket deadline that follows cancelGrace later.
+	assert.Less(t, time.Since(started), cancelGrace)
+}
+
+// stalledServer completes a password-less startup and holds every statement until a cancel request arrives on another
+// connection, as Redshift does for a long-running statement.
+type stalledServer struct {
+	// secret is the cancel key announced in BackendKeyData.
+	secret []byte
+	// cancels receives the first cancel request.
+	cancels chan *pgproto3.CancelRequest
+	// cancelled closes when the first cancel request arrives.
+	cancelled chan struct{}
+}
+
+// serve handles one connection: either a cancel request or a session whose statements wait for one.
+func (s *stalledServer) serve(conn net.Conn) {
+	defer func() { _ = conn.Close() }()
+	backend := pgproto3.NewBackend(conn, conn)
+	startup, err := backend.ReceiveStartupMessage()
+	if err != nil {
+		return
+	}
+	if request, ok := startup.(*pgproto3.CancelRequest); ok {
+		s.cancels <- request
+		close(s.cancelled)
+		return
+	}
+	backend.Send(&pgproto3.AuthenticationOk{})
+	backend.Send(&pgproto3.BackendKeyData{ProcessID: 42, SecretKey: s.secret})
+	backend.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
+	if backend.Flush() != nil {
+		return
+	}
+	for {
+		message, err := backend.Receive()
+		if err != nil {
+			return
+		}
+		switch message.(type) {
+		case *pgproto3.Terminate:
+			return
+		case *pgproto3.Sync:
+			select {
+			case <-s.cancelled:
+			case <-time.After(time.Minute):
+				return
+			}
+			backend.Send(&pgproto3.ErrorResponse{Severity: "ERROR", Code: "57014", Message: "canceling statement due to user request"})
+			backend.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
+			if backend.Flush() != nil {
+				return
+			}
+		}
+	}
 }

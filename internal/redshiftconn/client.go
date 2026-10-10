@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
@@ -46,6 +48,9 @@ const (
 	DefaultTimeout = 5 * time.Minute
 	// DefaultConnectTimeout bounds connection establishment when Client.ConnectTimeout is unset.
 	DefaultConnectTimeout = 30 * time.Second
+	// cancelGrace is how long a statement whose context ended may take to stop after the cancel request before its
+	// socket is dropped.
+	cancelGrace = 5 * time.Second
 )
 
 // Supported TLS modes, matching the libpq sslmode names. Fallback modes such as prefer are deliberately unsupported.
@@ -155,6 +160,11 @@ func (c *Client) configuration(ctx context.Context, database string) (*pgx.ConnC
 	}
 	// Exec uses safe wire-protocol parameter binding without prepared-statement caching or PostgreSQL-only startup flags.
 	config.DefaultQueryExecMode = pgx.QueryExecModeExec
+	// pgx's default handler only drops the socket when the context ends, which leaves an autocommit statement running,
+	// and possibly committing, after the provider reported it failed. A cancel request stops it on the server first.
+	config.BuildContextWatcherHandler = func(session *pgconn.PgConn) ctxwatch.Handler {
+		return &pgconn.CancelRequestContextWatcherHandler{Conn: session, DeadlineDelay: cancelGrace}
+	}
 	config.TLSConfig, err = c.tlsConfig(mode, credentials.Host)
 	if err != nil {
 		return nil, err

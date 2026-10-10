@@ -148,6 +148,11 @@ func inputReplacement(t *testing.T, input any, changed, existing bool) bool {
 	default:
 		t.Fatalf("replacement input must be a schema attribute or block, got %T", input)
 	}
+	// A custom object type, such as the timeouts block's, plans like the object it wraps, and plan modifiers receive
+	// that plain object.
+	if custom, ok := attributeType.(attr.TypeWithAttributeTypes); ok {
+		attributeType = types.ObjectType{AttrTypes: custom.AttributeTypes()}
+	}
 	before, after := sampleValues(t, attributeType)
 	if !changed {
 		after = before
@@ -328,7 +333,8 @@ func checkReplacementRule(t *testing.T, input any, rule replaceRule) {
 }
 
 // policyInputs lists the inputs a replacement policy must name: configurable attributes and every block, since a
-// block has no computed-only form.
+// block has no computed-only form. The timeouts block is left out: it bounds operations rather than describing the
+// object, so like a computed-only attribute it is checked to never replace without being named.
 func policyInputs(s schema.Schema) []string {
 	var inputs []string
 	for name, attribute := range s.Attributes {
@@ -337,7 +343,9 @@ func policyInputs(s schema.Schema) []string {
 		}
 	}
 	for name := range s.Blocks {
-		inputs = append(inputs, name)
+		if name != timeoutsBlockName {
+			inputs = append(inputs, name)
+		}
 	}
 	slices.Sort(inputs)
 	return inputs
@@ -366,7 +374,7 @@ func assertReplacementPolicy(t *testing.T, s schema.Schema, policy map[string]re
 		if !found && slices.Contains(inputs, name) {
 			continue
 		}
-		// Computed-only attributes must never replace, which the zero rule, replaceNever, checks.
+		// Computed-only attributes and the timeouts block must never replace, which the zero rule, replaceNever, checks.
 		t.Run(name, func(t *testing.T) { checkReplacementRule(t, child, rule) })
 	}
 }

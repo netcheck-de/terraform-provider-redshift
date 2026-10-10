@@ -49,9 +49,10 @@ func alterCoverageGaps[M any](t *testing.T, r resource.Resource, steps []alterSt
 	return missing, unexpected
 }
 
-// inPlaceInputs maps each input attribute and block to whether an update can change it without replacement. The
-// registered replacement policy decides, because a conditional attribute such as a widening column type is updated in
-// place for some changes, which one generic sample cannot show. Inputs the policy does not name are sampled.
+// inPlaceInputs maps each input attribute and block, except the timeouts block, to whether an update can change it
+// without replacement. The registered replacement policy decides, because a conditional attribute such as a widening
+// column type is updated in place for some changes, which one generic sample cannot show. Inputs the policy does not
+// name are sampled.
 func inPlaceInputs(t *testing.T, s schema.Schema, policy map[string]replaceRule) map[string]bool {
 	t.Helper()
 	inPlace := map[string]bool{}
@@ -68,7 +69,10 @@ func inPlaceInputs(t *testing.T, s schema.Schema, policy map[string]replaceRule)
 		}
 	}
 	for name, block := range s.Blocks {
-		classify(name, func() bool { return blockReplacement(t, block, true, true) })
+		// A timeouts change only updates state and runs no SQL, so it needs no alter step.
+		if name != timeoutsBlockName {
+			classify(name, func() bool { return blockReplacement(t, block, true, true) })
+		}
 	}
 	return inPlace
 }
@@ -238,7 +242,7 @@ func TestAlterCoverageWithBlocks(t *testing.T) {
 	missing, unexpected := alterCoverageGaps(t, newBlockTestResource(), []alterStep[struct{}]{step("owner"), step("unique")})
 	assert.Equal(t, []string{"distribution"}, missing)
 	assert.Empty(t, unexpected)
-	missing, unexpected = alterCoverageGaps(t, newBlockTestResource(), []alterStep[struct{}]{step("owner"), step("unique"), step("distribution"), step("column")})
-	assert.Empty(t, missing)
-	assert.Equal(t, []string{"column"}, unexpected)
+	missing, unexpected = alterCoverageGaps(t, newBlockTestResource(), []alterStep[struct{}]{step("owner"), step("unique"), step("distribution"), step("column"), step(timeoutsBlockName)})
+	assert.Empty(t, missing, "the timeouts block needs no alter step")
+	assert.Equal(t, []string{"column", timeoutsBlockName}, unexpected, "a timeouts change runs no SQL, so a step for it is refused")
 }

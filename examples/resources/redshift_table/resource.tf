@@ -59,6 +59,12 @@ resource "redshift_table" "events" {
     columns = ["created_at"]
   }
 
+  # Bound the whole create, including ALTER TABLE ... OWNER TO and the catalog verification; each statement is also
+  # bounded by the provider's query_timeout.
+  timeouts {
+    create = "15m"
+  }
+
   # Replacing a table drops its rows.
   lifecycle {
     prevent_destroy = true

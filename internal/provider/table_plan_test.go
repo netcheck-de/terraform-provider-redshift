@@ -176,9 +176,9 @@ func TestTableModifyPlanEffective(t *testing.T) {
 		resp := resource.ModifyPlanResponse{Plan: tfsdk.Plan(planned)}
 		r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: tfsdk.Plan(planned), State: testState(t, r, prior)}, &resp)
 		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
-		var result tableModel
+		var result tableResourceModel
 		require.False(t, resp.Plan.Get(ctx, &result).HasError())
-		return result
+		return result.tableModel
 	}
 	marked := func(m *tableModel) { m.EffectiveDistribution, m.EffectiveSortKey = unknownDistribution, unknownSortKey }
 	unrecorded := tableWith(auto, func(m *tableModel) {
@@ -211,7 +211,7 @@ func TestTableModifyPlanEffective(t *testing.T) {
 		resp := resource.ModifyPlanResponse{Plan: tfsdk.Plan(planned)}
 		r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: tfsdk.Plan(planned), State: emptyState(t, r)}, &resp)
 		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
-		var result tableModel
+		var result tableResourceModel
 		require.False(t, resp.Plan.Get(ctx, &result).HasError())
 		assert.Equal(t, unknownDistribution, result.EffectiveDistribution)
 	})

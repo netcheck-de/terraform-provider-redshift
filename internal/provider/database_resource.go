@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -61,6 +62,18 @@ type databaseModel struct {
 	IsolationLevel types.String `tfsdk:"isolation_level"`
 }
 
+// databaseResourceModel is the resource state: the attributes the data source shares, plus the timeouts only the
+// resource has.
+type databaseResourceModel struct {
+	databaseModel
+	// Timeouts bounds create, including the wait for an inbound datashare, update, and delete.
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
+}
+
+// databaseShareWait bounds the wait for an inbound datashare when no create timeout is configured, so a share that
+// was never associated fails instead of blocking the apply. The schema and template spell it out as five minutes.
+const databaseShareWait = 5 * time.Minute
+
 // shareSource is the producer identity encoded by a datashare ARN.
 type shareSource struct {
 	// Account is the producer AWS account ID.
@@ -107,7 +120,7 @@ func (r *databaseResource) Metadata(_ context.Context, req resource.MetadataRequ
 }
 
 // Schema defines database identity, optional share binding, permission mode, and local database options.
-func (r *databaseResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *databaseResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a local database or a consumer database bound to a producer datashare.",
 		Attributes: map[string]schema.Attribute{
@@ -156,6 +169,10 @@ func (r *databaseResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				Validators:          []validator.String{stringvalidator.OneOf("SERIALIZABLE", "SNAPSHOT")},
 			},
 		},
+		Blocks: map[string]schema.Block{
+			timeoutsBlockName: operationTimeoutsBlock(ctx, " For a shared database it includes the wait for the associated "+
+				"datashare to appear in the SQL catalog, which without a create timeout ends after five minutes."),
+		},
 	}
 }
 
@@ -187,12 +204,12 @@ func validateDatabase(data databaseModel) error {
 
 // ValidateConfig surfaces local-only options on shared databases at plan time; unknown values are checked at apply.
 func (r *databaseResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data databaseModel
+	var data databaseResourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
 		return
 	}
-	if err := validateDatabase(data); err != nil {
+	if err := validateDatabase(data.databaseModel); err != nil {
 		resp.Diagnostics.AddError("Invalid database options", err.Error())
 	}
 }
@@ -416,13 +433,13 @@ func databaseClearUnknown(data *databaseModel) {
 
 // verifyCreatedDatabase re-reads a created local database, stores what the catalog holds, and reports an absent
 // database or an option that did not converge.
-func (r *databaseResource) verifyCreatedDatabase(ctx context.Context, data databaseModel, resp *resource.CreateResponse) {
-	expected := data
-	found, err := r.read(ctx, &data)
+func (r *databaseResource) verifyCreatedDatabase(ctx context.Context, data databaseResourceModel, resp *resource.CreateResponse) {
+	expected := data.databaseModel
+	found, err := r.read(ctx, &data.databaseModel)
 	if err == nil && found {
-		r.databaseReadCollation(ctx, &data, &resp.Diagnostics)
+		r.databaseReadCollation(ctx, &data.databaseModel, &resp.Diagnostics)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-		err = databaseConverged(expected, data)
+		err = databaseConverged(expected, data.databaseModel)
 	} else if err == nil {
 		err = errors.New("the local database is absent after creation")
 	}
@@ -433,12 +450,14 @@ func (r *databaseResource) verifyCreatedDatabase(ctx context.Context, data datab
 
 // Create creates a local database or waits for its incoming datashare before binding it.
 func (r *databaseResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data databaseModel
+	var data databaseResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	ctx, done := boundOperation(ctx, "create", data.Timeouts.Create, &resp.Diagnostics)
+	defer done()
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := validateDatabase(data); err != nil {
+	if err := validateDatabase(data.databaseModel); err != nil {
 		resp.Diagnostics.AddError("Invalid database options", err.Error())
 		return
 	}
@@ -448,7 +467,7 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 	if data.DatashareARN.IsNull() {
-		statement, err := createDatabaseStatement(data)
+		statement, err := createDatabaseStatement(data.databaseModel)
 		if err == nil {
 			err = r.exec(ctx, r.database.ValueString(), statement)
 		}
@@ -459,7 +478,7 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 		data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
 		data.DatabaseType = types.StringValue("local")
 		data.ShareName, data.ProducerAccount, data.ProducerNamespace = types.StringNull(), types.StringNull(), types.StringNull()
-		databaseClearUnknown(&data)
+		databaseClearUnknown(&data.databaseModel)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 		r.verifyCreatedDatabase(ctx, data, resp)
 		return
@@ -469,8 +488,10 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 		resp.Diagnostics.AddError("Create shared database", err.Error())
 		return
 	}
-	// AWS association can complete before the share appears in the SQL catalog.
-	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	// AWS association can complete before the share appears in the SQL catalog. A create timeout bounds the wait with
+	// the rest of the operation; without one, only the wait is bounded, by databaseShareWait.
+	wait, _ := data.Timeouts.Create(ctx, databaseShareWait)
+	waitCtx, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
 	for {
 		rows, err := r.selectRows(waitCtx, r.database.ValueString(), readDatabaseInboundShareQuery(source))
@@ -487,12 +508,12 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 		}
 		select {
 		case <-waitCtx.Done():
-			resp.Diagnostics.AddError("Discover associated datashare", "The datashare did not become visible within five minutes.")
+			resp.Diagnostics.AddError("Discover associated datashare", fmt.Sprintf("The datashare did not become visible in the SQL catalog within %s.", wait))
 			return
 		case <-time.After(time.Second):
 		}
 	}
-	statement, err := createDatabaseStatement(data)
+	statement, err := createDatabaseStatement(data.databaseModel)
 	if err == nil {
 		err = r.exec(ctx, r.database.ValueString(), statement)
 	}
@@ -505,10 +526,10 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 	data.ShareName = types.StringValue(source.Name)
 	data.ProducerAccount = types.StringValue(source.Account)
 	data.ProducerNamespace = types.StringValue(source.Namespace)
-	databaseClearUnknown(&data)
+	databaseClearUnknown(&data.databaseModel)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	expectedPermissions := data.WithPermissions
-	found, err := r.read(ctx, &data)
+	found, err := r.read(ctx, &data.databaseModel)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify shared database", err.Error())
@@ -522,12 +543,12 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 
 // Read refreshes database attributes and removes absent databases from state.
 func (r *databaseResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data databaseModel
+	var data databaseResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	found, err := r.read(ctx, &data)
+	found, err := r.read(ctx, &data.databaseModel)
 	if err != nil {
 		resp.Diagnostics.AddError("Read database", err.Error())
 		return
@@ -537,7 +558,7 @@ func (r *databaseResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 	if data.Collation.IsNull() {
-		r.databaseReadCollation(ctx, &data, &resp.Diagnostics)
+		r.databaseReadCollation(ctx, &data.databaseModel, &resp.Diagnostics)
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -549,24 +570,26 @@ var errDatabaseVanished = errors.New("the database disappeared during the update
 // of a shared database. The ALTER statements start from the catalog rather than the prior state, so an option
 // changed outside Terraform since the last refresh is still moved to the plan.
 func (r *databaseResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data, prior databaseModel
+	var data, prior databaseResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+	ctx, done := boundOperation(ctx, "update", data.Timeouts.Update, &resp.Diagnostics)
+	defer done()
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := validateDatabase(data); err != nil {
+	if err := validateDatabase(data.databaseModel); err != nil {
 		resp.Diagnostics.AddError("Invalid database options", err.Error())
 		return
 	}
-	expected := data
-	found, err := r.read(ctx, &prior)
+	expected := data.databaseModel
+	found, err := r.read(ctx, &prior.databaseModel)
 	if err == nil && !found {
 		err = errDatabaseVanished
 	}
 	var statements []string
 	if err == nil {
-		statements, err = alterDatabaseStatements(prior, data)
+		statements, err = alterDatabaseStatements(prior.databaseModel, data.databaseModel)
 	}
 	if err == nil {
 		err = r.exec(ctx, r.database.ValueString(), statements...)
@@ -576,12 +599,12 @@ func (r *databaseResource) Update(ctx context.Context, req resource.UpdateReques
 		if data.Collation.IsUnknown() {
 			data.Collation = prior.Collation
 		}
-		if found, err = r.read(ctx, &data); err == nil && !found {
+		if found, err = r.read(ctx, &data.databaseModel); err == nil && !found {
 			err = errDatabaseVanished
 		}
 	}
 	if err == nil {
-		err = databaseConverged(expected, data)
+		err = databaseConverged(expected, data.databaseModel)
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Update database", err.Error())
@@ -592,11 +615,15 @@ func (r *databaseResource) Update(ctx context.Context, req resource.UpdateReques
 
 // Delete drops the selected database and verifies catalog removal.
 func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data databaseModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	var state databaseResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	ctx, done := boundOperation(ctx, "delete", state.Timeouts.Delete, &resp.Diagnostics)
+	defer done()
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	data := state.databaseModel
+
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, r.database.ValueString(), dropDatabaseStatement(data))

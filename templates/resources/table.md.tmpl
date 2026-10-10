@@ -120,6 +120,28 @@ match the catalog. Distribution and sort key columns must have a type that
 The resource never reads or changes comments, row-level security, masking, grants, or datashare membership of the
 table; use `redshift_comment`, the permission resources, and the datashare resources for those.
 
+## Timeouts
+
+The `timeouts` block limits a whole create, update, or delete: every statement it runs, such as `CREATE TABLE`,
+`ALTER TABLE ... ALTER SORTKEY` on a large table, or `DROP TABLE`, and the catalog reads before and after. Without it,
+an operation has no limit of its own, and each statement is bounded only by the provider's `query_timeout`. With it, a
+statement still running when the operation's time is up is cancelled, even when its `query_timeout` is later, and the
+apply fails with an `Operation timed out` error. A create that times out after `CREATE TABLE` leaves the new table in
+state marked as tainted, so the next apply replaces it.
+
+```terraform
+timeouts {
+  create = "15m"
+  update = "2h"
+  delete = "10m"
+}
+```
+
+Values are durations such as `90s`, `30m`, or `2h`. A change to them alone runs no DDL of its own, but applies as an
+in-place update that reads and verifies the catalog like any other: it restores settings changed outside Terraform
+since the plan, and the plan shows the effective layout of an `AUTO` table as known after apply. A `delete` value
+applies only after an apply has saved it to state. Refreshes are bounded only by `query_timeout`.
+
 ## Import
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:

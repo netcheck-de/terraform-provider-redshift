@@ -125,7 +125,7 @@ func TestDatabaseCreationErrorsRetainKnownMetadata(t *testing.T) {
 			r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state)}, &response)
 			require.True(t, response.Diagnostics.HasError())
 			assert.True(t, response.State.Raw.IsFullyKnown(), "%v", response.State.Raw)
-			var observed databaseModel
+			var observed databaseResourceModel
 			require.False(t, response.State.Get(context.Background(), &observed).HasError())
 			assert.Equal(t, "shared", observed.DatabaseType.ValueString())
 			assert.Equal(t, "123456789012", observed.ProducerAccount.ValueString())
@@ -292,7 +292,7 @@ func TestDatabaseImportAllowsLocalDatabase(t *testing.T) {
 	resp := resource.ImportStateResponse{State: testState(t, r, empty)}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","name":"warehouse"}`}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
-	var data databaseModel
+	var data databaseResourceModel
 	require.False(t, resp.State.Get(context.Background(), &data).HasError())
 	assert.True(t, data.DatashareARN.IsNull())
 	resp = resource.ImportStateResponse{State: testState(t, r, empty)}

@@ -82,6 +82,12 @@ resource "redshift_table" "events" {
     columns = ["created_at"]
   }
 
+  # Bound the whole create, including ALTER TABLE ... OWNER TO and the catalog verification; each statement is also
+  # bounded by the provider's query_timeout.
+  timeouts {
+    create = "15m"
+  }
+
   # Replacing a table drops its rows.
   lifecycle {
     prevent_destroy = true
@@ -108,6 +114,7 @@ resource "redshift_table" "events" {
 - `owner` (String) User owning the table, in lowercase. Set it to transfer ownership with `ALTER TABLE ... OWNER TO`; omit it to keep the creating user.
 - `primary_key` (Block, Optional) Primary key. Redshift does not enforce it but uses it for planning. It is added and dropped with `ALTER TABLE ADD PRIMARY KEY` and `DROP CONSTRAINT`; a new primary key on an existing nullable column, or on a new column without a default, replaces the table. (see [below for nested schema](#nestedblock--primary_key))
 - `sort_key` (Block, Optional) Declared sort key; omit the block for `AUTO`. Changes to `AUTO`, `NONE`, or a compound key use `ALTER TABLE ALTER SORTKEY`; a move to `AUTO` from an interleaved key or off a dropped column, and dropping a sort key column Redshift chose itself, first run `ALTER SORTKEY NONE`. Creating or changing an interleaved sort key replaces the table. Without the block, a sort key changed outside Terraform is reported here and planned back to `AUTO`. (see [below for nested schema](#nestedblock--sort_key))
+- `timeouts` (Block, Optional) Time limits for whole Terraform operations, as durations such as `30m` or `2h`. Unset, an operation has no limit of its own and each SQL statement is bounded only by the provider's `query_timeout`; set, a statement still running when the operation's limit expires is cancelled. A change to the timeouts alone runs no DDL of its own, but applies as an in-place update that reads and verifies the catalog like any other. (see [below for nested schema](#nestedblock--timeouts))
 - `unique` (Block Set) UNIQUE constraint, one block per constraint. Redshift does not enforce it. Changes are applied with `ALTER TABLE ADD UNIQUE` and `DROP CONSTRAINT`. (see [below for nested schema](#nestedblock--unique))
 
 ### Read-Only
@@ -188,6 +195,16 @@ Optional:
 
 - `columns` (List of String) Sort key columns in order, at most 400 for a compound and 8 for an interleaved key, of the types `distribution.key` allows; omit them for `AUTO` and `NONE`.
 - `style` (String) Sort key style: `AUTO`, `COMPOUND`, `INTERLEAVED`, or `NONE`. Omitted, it is `COMPOUND` when `columns` is set and `AUTO` otherwise. `NONE` removes the sort key with `ALTER SORTKEY NONE`, also right after `CREATE TABLE`. Without sort key columns, `AUTO` and `NONE` differ only in `SVV_TABLE_INFO`, which lists tables with rows; for an empty table the configured one of the two is kept.
+
+
+<a id="nestedblock--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) Maximum time for creating the object, including follow-up statements and the catalog verification.
+- `delete` (String) Maximum time for dropping the object and verifying that it is gone. Applies only when the value was saved to state by an earlier apply before the destroy.
+- `update` (String) Maximum time for an in-place update, including the catalog reads before and after the change.
 
 
 <a id="nestedblock--unique"></a>
@@ -311,6 +328,28 @@ match the catalog. Distribution and sort key columns must have a type that
 
 The resource never reads or changes comments, row-level security, masking, grants, or datashare membership of the
 table; use `redshift_comment`, the permission resources, and the datashare resources for those.
+
+## Timeouts
+
+The `timeouts` block limits a whole create, update, or delete: every statement it runs, such as `CREATE TABLE`,
+`ALTER TABLE ... ALTER SORTKEY` on a large table, or `DROP TABLE`, and the catalog reads before and after. Without it,
+an operation has no limit of its own, and each statement is bounded only by the provider's `query_timeout`. With it, a
+statement still running when the operation's time is up is cancelled, even when its `query_timeout` is later, and the
+apply fails with an `Operation timed out` error. A create that times out after `CREATE TABLE` leaves the new table in
+state marked as tainted, so the next apply replaces it.
+
+```terraform
+timeouts {
+  create = "15m"
+  update = "2h"
+  delete = "10m"
+}
+```
+
+Values are durations such as `90s`, `30m`, or `2h`. A change to them alone runs no DDL of its own, but applies as an
+in-place update that reads and verifies the catalog like any other: it restores settings changed outside Terraform
+since the plan, and the plan shows the effective layout of an `AUTO` table as known after apply. A `delete` value
+applies only after an apply has saved it to state. Refreshes are bounded only by `query_timeout`.
 
 ## Import
 

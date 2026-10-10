@@ -284,7 +284,9 @@ func TestLookupBlocks(t *testing.T) {
 	var source resource.SchemaResponse
 	newBlockTestResource().Schema(context.Background(), resource.SchemaRequest{}, &source)
 	converted := lookupSchemaAttributes(source.Schema.Attributes, source.Schema.Blocks, false, nil)
-	require.Len(t, converted, len(source.Schema.Attributes)+len(source.Schema.Blocks))
+	require.Contains(t, source.Schema.Blocks, timeoutsBlockName)
+	assert.NotContains(t, converted, timeoutsBlockName, "the timeouts block bounds resource operations and is not observed")
+	require.Len(t, converted, len(source.Schema.Attributes)+len(source.Schema.Blocks)-1)
 	for _, name := range []string{"unique", "distribution"} {
 		assert.Equal(t, source.Schema.Blocks[name].Type(), converted[name].GetType(), name)
 	}
