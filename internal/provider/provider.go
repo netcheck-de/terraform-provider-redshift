@@ -3,11 +3,15 @@ package provider
 
 import (
 	"context"
+	"strconv"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/redshiftconn"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata"
@@ -62,6 +66,14 @@ type providerModel struct {
 	SecretARN types.String `tfsdk:"secret_arn"`
 	// Connection selects the direct SQL transport instead of either Data API selector.
 	Connection *directConnectionModel `tfsdk:"direct_connection"`
+	// QueryTimeout bounds one SQL statement as a duration string; null falls back to REDSHIFT_QUERY_TIMEOUT, then 5m.
+	QueryTimeout types.String `tfsdk:"query_timeout"`
+	// MaxRetries counts AWS API retries after the first attempt; null keeps the AWS SDK configuration.
+	MaxRetries types.Int64 `tfsdk:"max_retries"`
+	// RetryMode selects the AWS SDK retry strategy; null keeps the AWS SDK configuration.
+	RetryMode types.String `tfsdk:"retry_mode"`
+	// ApplicationName labels SQL sessions and Data API statements; null means terraform-provider-redshift/<version>.
+	ApplicationName types.String `tfsdk:"application_name"`
 }
 
 // New returns a provider factory carrying the supplied build version.
@@ -87,6 +99,38 @@ func (p *redshiftProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 			"db_user":            schema.StringAttribute{Optional: true, MarkdownDescription: "Existing SQL user for cluster Data API authentication; conflicts with secret_arn."},
 			"secret_arn":         schema.StringAttribute{Optional: true, MarkdownDescription: "Data API Secrets Manager credentials; conflicts with db_user and direct_connection."},
 			"database":           schema.StringAttribute{Required: true, MarkdownDescription: "Existing local administration database for catalog queries."},
+			"query_timeout": schema.StringAttribute{
+				Optional: true,
+				MarkdownDescription: "Maximum time for one SQL statement, including IAM credential lookup, connection, execution, and result " +
+					"retrieval, as a duration such as `90s` or `1h`. Defaults to the `" + queryTimeoutEnv + "` environment variable, " +
+					"then `" + defaultQueryTimeout + "`. An earlier deadline of the running Terraform operation still applies.",
+				Validators: []validator.String{durationValidator{}},
+			},
+			"max_retries": schema.Int64Attribute{
+				Optional: true,
+				MarkdownDescription: "Maximum number of times an AWS API call is retried when AWS throttles requests or you experience transient " +
+					"failures, so a call makes at most `max_retries + 1` attempts. Applies to Data API, endpoint discovery, and IAM " +
+					"credential calls, not to SQL sent over `direct_connection`. If omitted, the AWS SDK configuration applies: the " +
+					"`AWS_MAX_ATTEMPTS` environment variable or the shared configuration parameter `max_attempts` (both count attempts, " +
+					"not retries), otherwise 3 attempts. At most " + strconv.Itoa(maxRetries) + ".",
+				Validators: []validator.Int64{int64validator.Between(0, maxRetries)},
+			},
+			"retry_mode": schema.StringAttribute{
+				Optional: true,
+				MarkdownDescription: "Specifies how AWS API retries are attempted. Valid values are `standard` and `adaptive`. If omitted, the " +
+					"`AWS_RETRY_MODE` environment variable or the shared configuration parameter `retry_mode` applies, otherwise `standard`.",
+				Validators: []validator.String{stringvalidator.OneOf(retryModes...)},
+			},
+			"application_name": schema.StringAttribute{
+				Optional: true,
+				MarkdownDescription: "Name reported as the `application_name` of direct SQL sessions and as the Data API statement name, " +
+					"as shown in `SYS_CONNECTION_LOG` and `ListStatements`. Up to 250 printable ASCII characters; defaults to " +
+					"`" + applicationNamePrefix + "<version>`.",
+				Validators: []validator.String{
+					stringvalidator.LengthBetween(1, maxApplicationName),
+					stringvalidator.RegexMatches(applicationNamePattern, "must contain only printable ASCII characters"),
+				},
+			},
 		},
 		Blocks: map[string]schema.Block{"direct_connection": connectionSchema()},
 	}
@@ -121,7 +165,7 @@ func (p *redshiftProvider) Configure(ctx context.Context, req provider.Configure
 		p.client = nil
 	}
 	if p.client == nil {
-		client, err := data.sqlClient(ctx)
+		client, err := data.sqlClient(ctx, p.version)
 		if err != nil {
 			resp.Diagnostics.AddError("Configure SQL connection", err.Error())
 			return

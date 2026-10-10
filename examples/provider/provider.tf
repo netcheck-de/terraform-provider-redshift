@@ -76,5 +76,18 @@ provider "redshift" {
     password = var.redshift_password
     # verify-full is the default; weaker modes are an explicit opt-in.
     sslmode = "verify-full"
+    # Fail fast on an unreachable endpoint; the default is 30s.
+    connect_timeout = "10s"
   }
+}
+
+# Long-running statements, such as materialized view builds, and a busy account with throttled AWS APIs.
+provider "redshift" {
+  alias          = "long_running"
+  region         = "eu-central-1"
+  workgroup_name = "analytics"
+  database       = "dev"
+  query_timeout  = "30m"
+  max_retries    = 10
+  retry_mode     = "adaptive"
 }

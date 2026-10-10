@@ -97,7 +97,20 @@ provider "redshift" {
     password = var.redshift_password
     # verify-full is the default; weaker modes are an explicit opt-in.
     sslmode = "verify-full"
+    # Fail fast on an unreachable endpoint; the default is 30s.
+    connect_timeout = "10s"
   }
+}
+
+# Long-running statements, such as materialized view builds, and a busy account with throttled AWS APIs.
+provider "redshift" {
+  alias          = "long_running"
+  region         = "eu-central-1"
+  workgroup_name = "analytics"
+  database       = "dev"
+  query_timeout  = "30m"
+  max_retries    = 10
+  retry_mode     = "adaptive"
 }
 ```
 
@@ -111,11 +124,15 @@ provider "redshift" {
 
 ### Optional
 
+- `application_name` (String) Name reported as the `application_name` of direct SQL sessions and as the Data API statement name, as shown in `SYS_CONNECTION_LOG` and `ListStatements`. Up to 250 printable ASCII characters; defaults to `terraform-provider-redshift/<version>`.
 - `cluster_identifier` (String) Provisioned Data API cluster identifier; conflicts with workgroup_name and direct_connection.
 - `db_user` (String) Existing SQL user for cluster Data API authentication; conflicts with secret_arn.
 - `direct_connection` (Block, Optional) Direct TLS SQL connection. Use username/password or an IAM warehouse selector, never both. (see [below for nested schema](#nestedblock--direct_connection))
+- `max_retries` (Number) Maximum number of times an AWS API call is retried when AWS throttles requests or you experience transient failures, so a call makes at most `max_retries + 1` attempts. Applies to Data API, endpoint discovery, and IAM credential calls, not to SQL sent over `direct_connection`. If omitted, the AWS SDK configuration applies: the `AWS_MAX_ATTEMPTS` environment variable or the shared configuration parameter `max_attempts` (both count attempts, not retries), otherwise 3 attempts. At most 100.
 - `profile` (String) AWS shared configuration profile; defaults to the `AWS_PROFILE` environment variable or the AWS SDK default credential chain.
+- `query_timeout` (String) Maximum time for one SQL statement, including IAM credential lookup, connection, execution, and result retrieval, as a duration such as `90s` or `1h`. Defaults to the `REDSHIFT_QUERY_TIMEOUT` environment variable, then `5m`. An earlier deadline of the running Terraform operation still applies.
 - `region` (String) AWS Region; defaults to the AWS SDK configuration, such as the `AWS_REGION` environment variable.
+- `retry_mode` (String) Specifies how AWS API retries are attempted. Valid values are `standard` and `adaptive`. If omitted, the `AWS_RETRY_MODE` environment variable or the shared configuration parameter `retry_mode` applies, otherwise `standard`.
 - `secret_arn` (String) Data API Secrets Manager credentials; conflicts with db_user and direct_connection.
 - `workgroup_name` (String) Serverless Data API workgroup name or ARN; conflicts with cluster_identifier and direct_connection.
 
@@ -125,6 +142,7 @@ provider "redshift" {
 Optional:
 
 - `ca_cert_file` (String) PEM CA bundle added to system trust for `verify-full` and `verify-ca`.
+- `connect_timeout` (String) Maximum time to open one connection, covering TCP connect, TLS handshake, and authentication, as a duration such as `10s`; defaults to `30s`. IAM credential lookups are bounded by `query_timeout` instead. `PGCONNECT_TIMEOUT` and other `PG*` environment variables do not override it.
 - `host` (String) Endpoint hostname; required for password authentication, optional override for IAM.
 - `iam` (Block, Optional) Obtain temporary SQL credentials for one Serverless workgroup or provisioned cluster. (see [below for nested schema](#nestedblock--direct_connection--iam))
 - `password` (String, Sensitive) SQL password; supports ephemeral input and is never part of resource state.
@@ -158,6 +176,30 @@ Identity-provider and SQL group creation require a SQL superuser.
 Catalog mutations are serialized within each configured provider instance, across its databases, to avoid Redshift
 catalog transaction conflicts. Read-only SELECT and SHOW statements remain concurrent. Separate provider instances or
 external SQL clients are not coordinated by this gate.
+
+## Timeouts and retries
+
+- `query_timeout` (default `5m`, or the `REDSHIFT_QUERY_TIMEOUT` environment variable) bounds each SQL statement on
+  both transports, including IAM credential lookup, connecting, and reading results. An earlier deadline of the running
+  Terraform operation wins. When either expires or Terraform is interrupted, a running Data API statement is cancelled
+  and a direct connection is closed.
+- `direct_connection.connect_timeout` (default `30s`) bounds opening one direct connection: TCP connect, TLS
+  handshake, and authentication. `PGCONNECT_TIMEOUT` does not override it.
+- `max_retries` and `retry_mode` control retries of AWS API calls: Data API requests, endpoint discovery, and IAM
+  credentials. `max_retries` counts retries, so `max_retries = 2` allows three attempts. When omitted, the AWS SDK
+  settings apply: `AWS_MAX_ATTEMPTS` (which counts attempts) and `AWS_RETRY_MODE`, or the `max_attempts` and
+  `retry_mode` shared configuration parameters. Throttling and Data API statement-limit errors are retried; a
+  submitted statement is never run twice. Unlike the AWS SDK default, retries are not cut short by a client-side retry
+  quota shared across calls. SQL errors and direct-connection failures are not retried.
+- `application_name` (default `terraform-provider-redshift/<version>`) labels direct sessions in `SYS_CONNECTION_LOG`
+  and Data API statements in `ListStatements`.
+- AWS API calls honor the standard AWS SDK environment: `AWS_ENDPOINT_URL_REDSHIFT_DATA`, `AWS_ENDPOINT_URL_REDSHIFT`,
+  and `AWS_ENDPOINT_URL_REDSHIFT_SERVERLESS` for custom endpoints, `HTTPS_PROXY` and `NO_PROXY` for proxies, and
+  `AWS_CA_BUNDLE` for a custom CA. SQL traffic over `direct_connection` uses none of these; it connects to the
+  endpoint directly and trusts `direct_connection.ca_cert_file`.
+- The [Data API](https://docs.aws.amazon.com/redshift/latest/mgmt/data-api.html) limits a query to 24 hours, a
+  statement to 200 KB, and a result to 500 MB after gzip compression, with at most 500 active statements per
+  cluster. Direct connections are not subject to these limits.
 
 ## Reading arguments and attributes
 

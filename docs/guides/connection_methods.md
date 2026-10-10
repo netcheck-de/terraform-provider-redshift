@@ -138,7 +138,9 @@ Each statement opens and deterministically closes its own database-specific conn
 credentials are cached only in process memory and refreshed before expiration. This avoids an unbounded connection pool
 without a provider shutdown hook. Parameter binding uses uncached PostgreSQL wire-protocol execution compatible with
 Redshift, preserving quotes, comments, dollar-quoted bodies, and casts. Ambiguous network failures do not trigger
-mutation retries.
+mutation retries. `direct_connection.connect_timeout` (default `30s`) bounds opening each connection, while
+`query_timeout` bounds the whole statement, including IAM credential lookups; see "Timeouts and retries" on the
+provider page.
 
 ## Imports and transport switching
 

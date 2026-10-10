@@ -41,8 +41,12 @@ type connection interface {
 	Close(context.Context) error
 }
 
-// DefaultTimeout bounds a query when Client.Timeout is unset.
-const DefaultTimeout = 5 * time.Minute
+const (
+	// DefaultTimeout bounds a query when Client.Timeout is unset.
+	DefaultTimeout = 5 * time.Minute
+	// DefaultConnectTimeout bounds connection establishment when Client.ConnectTimeout is unset.
+	DefaultConnectTimeout = 30 * time.Second
+)
 
 // Supported TLS modes, matching the libpq sslmode names. Fallback modes such as prefer are deliberately unsupported.
 const (
@@ -72,6 +76,11 @@ type Client struct {
 	SSLMode string
 	// Timeout bounds credential acquisition, connection establishment, and SQL execution; zero selects DefaultTimeout.
 	Timeout time.Duration
+	// ConnectTimeout bounds dialing, the TLS handshake, and startup authentication within Timeout; zero selects
+	// DefaultConnectTimeout.
+	ConnectTimeout time.Duration
+	// ApplicationName identifies the session in Redshift connection logs; empty leaves it unset.
+	ApplicationName string
 	// dial permits deterministic protocol/error testing without a real warehouse.
 	dial func(context.Context, *pgx.ConnConfig) (connection, error)
 }
@@ -130,14 +139,20 @@ func (c *Client) configuration(ctx context.Context, database string) (*pgx.ConnC
 		return nil, fmt.Errorf("unsupported sslmode %q", mode)
 	}
 	// pgx requires a parsed config; explicitly overwrite environment/service/passfile-derived routing and authentication.
-	config, err := pgx.ParseConfig("sslmode=" + mode)
+	// Connection-string settings take precedence over PG* variables, so connect_timeout=0 keeps PGCONNECT_TIMEOUT from
+	// installing its own dialer deadline (or failing the parse) underneath the configured ConnectTimeout.
+	config, err := pgx.ParseConfig("sslmode=" + mode + " connect_timeout=0")
 	if err != nil {
 		return nil, fmt.Errorf("parse SQL configuration: %w", err)
 	}
 	config.Host, config.Port, config.User, config.Password, config.Database = credentials.Host, credentials.Port, credentials.Username, credentials.Password, database
 	config.Fallbacks = nil
-	config.ConnectTimeout = cmp.Or(c.Timeout, DefaultTimeout)
+	config.ConnectTimeout = cmp.Or(c.ConnectTimeout, DefaultConnectTimeout)
+	// Replacing the map also drops PGAPPNAME, PGOPTIONS, and PGTZ.
 	config.RuntimeParams = map[string]string{"client_encoding": "UTF8"}
+	if c.ApplicationName != "" {
+		config.RuntimeParams["application_name"] = c.ApplicationName
+	}
 	// Exec uses safe wire-protocol parameter binding without prepared-statement caching or PostgreSQL-only startup flags.
 	config.DefaultQueryExecMode = pgx.QueryExecModeExec
 	config.TLSConfig, err = c.tlsConfig(mode, credentials.Host)

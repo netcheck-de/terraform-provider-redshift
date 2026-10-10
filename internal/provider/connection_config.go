@@ -1,11 +1,17 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"os"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -27,6 +33,8 @@ type directConnectionModel struct {
 	CACertFile types.String `tfsdk:"ca_cert_file"`
 	// SSLMode selects TLS verification; null means verify-full.
 	SSLMode types.String `tfsdk:"sslmode"`
+	// ConnectTimeout bounds connection establishment as a duration string; null means 30s.
+	ConnectTimeout types.String `tfsdk:"connect_timeout"`
 	// IAM selects an AWS warehouse whose temporary credentials authenticate each new connection.
 	IAM *iamConnectionModel `tfsdk:"iam"`
 }
@@ -58,6 +66,13 @@ func connectionSchema() schema.SingleNestedBlock {
 					"exposes credentials to impersonation or eavesdropping.",
 				Validators: []validator.String{stringvalidator.OneOf(redshiftconn.SSLModes...)},
 			},
+			"connect_timeout": schema.StringAttribute{
+				Optional: true,
+				MarkdownDescription: "Maximum time to open one connection, covering TCP connect, TLS handshake, and authentication, as a duration " +
+					"such as `10s`; defaults to `30s`. IAM credential lookups are bounded by `query_timeout` instead. " +
+					"`PGCONNECT_TIMEOUT` and other `PG*` environment variables do not override it.",
+				Validators: []validator.String{durationValidator{}},
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"iam": schema.SingleNestedBlock{MarkdownDescription: "Obtain temporary SQL credentials for one Serverless workgroup or provisioned cluster.", Attributes: map[string]schema.Attribute{
@@ -67,6 +82,133 @@ func connectionSchema() schema.SingleNestedBlock {
 			}},
 		},
 	}
+}
+
+// queryTimeoutEnv supplies query_timeout when the argument is omitted.
+const queryTimeoutEnv = "REDSHIFT_QUERY_TIMEOUT"
+
+// Defaults and limits of the transport-wide settings; the default timeout keeps the behavior of earlier releases.
+const (
+	// defaultQueryTimeout bounds one SQL statement.
+	defaultQueryTimeout = "5m"
+	// applicationNamePrefix precedes the provider version in the default application_name.
+	applicationNamePrefix = "terraform-provider-redshift/"
+	// maxRetries caps max_retries; with the SDK's 20s backoff ceiling it already allows more than half an hour of
+	// retries per call, and a bound keeps the attempt count from overflowing into the SDK's "unlimited".
+	maxRetries = 100
+	// maxApplicationName is the width of the application_name column in Redshift connection logs, well below the
+	// Data API StatementName limit.
+	maxApplicationName = 250
+)
+
+// retryModes lists the AWS SDK retry modes accepted by retry_mode.
+var retryModes = []string{string(aws.RetryModeStandard), string(aws.RetryModeAdaptive)}
+
+// applicationNamePattern restricts application_name to printable ASCII, which both transports pass through verbatim.
+var applicationNamePattern = regexp.MustCompile(`^[\x20-\x7e]+$`)
+
+// transportSettings holds the resolved limits and labels shared by both SQL transports.
+type transportSettings struct {
+	// queryTimeout bounds one statement, including credential lookup, connection, execution, and result retrieval.
+	queryTimeout time.Duration
+	// connectTimeout bounds connection establishment for direct connections.
+	connectTimeout time.Duration
+	// applicationName labels sessions and Data API statements.
+	applicationName string
+}
+
+// durationValidator accepts positive time.ParseDuration strings.
+type durationValidator struct{}
+
+// Description explains the accepted duration format.
+func (durationValidator) Description(context.Context) string {
+	return "value must be a positive duration such as 30s, 5m, or 1h30m"
+}
+
+// MarkdownDescription explains the accepted duration format.
+func (v durationValidator) MarkdownDescription(ctx context.Context) string { return v.Description(ctx) }
+
+// ValidateString rejects malformed or non-positive durations while deferring unknown values to configuration.
+func (durationValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+	if _, err := parseDuration(req.ConfigValue.ValueString()); err != nil {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid duration", err.Error())
+	}
+}
+
+// parseDuration parses a positive duration; zero would disable a timeout rather than tighten it.
+func parseDuration(value string) (time.Duration, error) {
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid duration %q: use a number with a unit such as 30s, 5m, or 1h", value)
+	}
+	if duration <= 0 {
+		return 0, fmt.Errorf("duration %q must be positive", value)
+	}
+	return duration, nil
+}
+
+// validateTransport checks the transport-wide settings. They shape every statement and AWS call, so unlike
+// credentials they cannot be deferred until apply.
+func (data providerModel) validateTransport(allowUnknown bool) error {
+	durations := map[string]types.String{"query_timeout": data.QueryTimeout}
+	if data.Connection != nil {
+		durations["direct_connection.connect_timeout"] = data.Connection.ConnectTimeout
+	}
+	unknown := data.MaxRetries.IsUnknown() || data.RetryMode.IsUnknown() || data.ApplicationName.IsUnknown()
+	for _, value := range durations {
+		unknown = unknown || value.IsUnknown()
+	}
+	if !allowUnknown && unknown {
+		return fmt.Errorf("query_timeout, max_retries, retry_mode, application_name, and direct_connection.connect_timeout must be known during configuration")
+	}
+	for name, value := range durations {
+		if value.IsNull() || value.IsUnknown() {
+			continue
+		}
+		if _, err := parseDuration(value.ValueString()); err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+	}
+	if retries := data.MaxRetries; !retries.IsNull() && !retries.IsUnknown() && (retries.ValueInt64() < 0 || retries.ValueInt64() > maxRetries) {
+		return fmt.Errorf("max_retries must be between 0 and %d", maxRetries)
+	}
+	if mode := data.RetryMode; !mode.IsNull() && !mode.IsUnknown() && !slices.Contains(retryModes, mode.ValueString()) {
+		return fmt.Errorf("retry_mode must be one of %s", strings.Join(retryModes, ", "))
+	}
+	if name := data.ApplicationName; !name.IsNull() && !name.IsUnknown() {
+		if len(name.ValueString()) > maxApplicationName || !applicationNamePattern.MatchString(name.ValueString()) {
+			return fmt.Errorf("application_name must be 1 to %d printable ASCII characters", maxApplicationName)
+		}
+	}
+	return nil
+}
+
+// transport resolves the transport-wide settings from known configuration, the environment, and defaults.
+func (data providerModel) transport(version string) (transportSettings, error) {
+	settings := transportSettings{connectTimeout: redshiftconn.DefaultConnectTimeout, applicationName: applicationNamePrefix + version}
+	timeout, source := data.QueryTimeout.ValueString(), "query_timeout"
+	if data.QueryTimeout.IsNull() {
+		timeout = defaultQueryTimeout
+		if value := os.Getenv(queryTimeoutEnv); value != "" {
+			timeout, source = value, queryTimeoutEnv
+		}
+	}
+	var err error
+	if settings.queryTimeout, err = parseDuration(timeout); err != nil {
+		return transportSettings{}, fmt.Errorf("%s: %w", source, err)
+	}
+	if data.Connection != nil && !data.Connection.ConnectTimeout.IsNull() {
+		if settings.connectTimeout, err = parseDuration(data.Connection.ConnectTimeout.ValueString()); err != nil {
+			return transportSettings{}, fmt.Errorf("direct_connection.connect_timeout: %w", err)
+		}
+	}
+	if !data.ApplicationName.IsNull() {
+		settings.applicationName = data.ApplicationName.ValueString()
+	}
+	return settings, nil
 }
 
 // validate checks selector/authentication combinations while allowing unknown warehouse and endpoint values.
@@ -83,6 +225,9 @@ func (data providerModel) validate(allowUnknown bool) error {
 	}
 	if selectors != 1 {
 		return fmt.Errorf("configure exactly one of workgroup_name, cluster_identifier, or direct_connection")
+	}
+	if err := data.validateTransport(allowUnknown); err != nil {
+		return err
 	}
 	if !allowUnknown && (data.Region.IsUnknown() || data.Profile.IsUnknown()) {
 		return fmt.Errorf("region and profile must be known during configuration")

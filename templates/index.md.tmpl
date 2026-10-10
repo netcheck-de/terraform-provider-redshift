@@ -41,6 +41,30 @@ Catalog mutations are serialized within each configured provider instance, acros
 catalog transaction conflicts. Read-only SELECT and SHOW statements remain concurrent. Separate provider instances or
 external SQL clients are not coordinated by this gate.
 
+## Timeouts and retries
+
+- `query_timeout` (default `5m`, or the `REDSHIFT_QUERY_TIMEOUT` environment variable) bounds each SQL statement on
+  both transports, including IAM credential lookup, connecting, and reading results. An earlier deadline of the running
+  Terraform operation wins. When either expires or Terraform is interrupted, a running Data API statement is cancelled
+  and a direct connection is closed.
+- `direct_connection.connect_timeout` (default `30s`) bounds opening one direct connection: TCP connect, TLS
+  handshake, and authentication. `PGCONNECT_TIMEOUT` does not override it.
+- `max_retries` and `retry_mode` control retries of AWS API calls: Data API requests, endpoint discovery, and IAM
+  credentials. `max_retries` counts retries, so `max_retries = 2` allows three attempts. When omitted, the AWS SDK
+  settings apply: `AWS_MAX_ATTEMPTS` (which counts attempts) and `AWS_RETRY_MODE`, or the `max_attempts` and
+  `retry_mode` shared configuration parameters. Throttling and Data API statement-limit errors are retried; a
+  submitted statement is never run twice. Unlike the AWS SDK default, retries are not cut short by a client-side retry
+  quota shared across calls. SQL errors and direct-connection failures are not retried.
+- `application_name` (default `terraform-provider-redshift/<version>`) labels direct sessions in `SYS_CONNECTION_LOG`
+  and Data API statements in `ListStatements`.
+- AWS API calls honor the standard AWS SDK environment: `AWS_ENDPOINT_URL_REDSHIFT_DATA`, `AWS_ENDPOINT_URL_REDSHIFT`,
+  and `AWS_ENDPOINT_URL_REDSHIFT_SERVERLESS` for custom endpoints, `HTTPS_PROXY` and `NO_PROXY` for proxies, and
+  `AWS_CA_BUNDLE` for a custom CA. SQL traffic over `direct_connection` uses none of these; it connects to the
+  endpoint directly and trusts `direct_connection.ca_cert_file`.
+- The [Data API](https://docs.aws.amazon.com/redshift/latest/mgmt/data-api.html) limits a query to 24 hours, a
+  statement to 200 KB, and a result to 500 MB after gzip compression, with at most 500 active statements per
+  cluster. Direct connections are not subject to these limits.
+
 ## Reading arguments and attributes
 
 Each page's Schema section lists required and optional arguments, including optional/computed arguments, followed by

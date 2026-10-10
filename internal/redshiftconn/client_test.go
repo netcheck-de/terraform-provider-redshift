@@ -241,6 +241,60 @@ func TestDirectConfigurationRejectsInvalidPGEnvironment(t *testing.T) {
 	require.ErrorContains(t, err, "parse SQL configuration")
 }
 
+// TestDirectConfigurationConnectTimeoutAndApplicationName keeps the connect timeout and application name independent
+// of the query timeout and of PG* environment variables, including malformed ones.
+func TestDirectConfigurationConnectTimeoutAndApplicationName(t *testing.T) {
+	for _, value := range []string{"1", "invalid"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("PGCONNECT_TIMEOUT", value)
+			t.Setenv("PGAPPNAME", "environment")
+			client := directTestClient()
+			client.Timeout = time.Hour
+			config, err := client.configuration(context.Background(), "analytics")
+			require.NoError(t, err)
+			assert.Equal(t, DefaultConnectTimeout, config.ConnectTimeout)
+			assert.NotContains(t, config.RuntimeParams, "application_name")
+			client.ConnectTimeout, client.ApplicationName = 10*time.Second, "terraform-provider-redshift/test"
+			config, err = client.configuration(context.Background(), "analytics")
+			require.NoError(t, err)
+			assert.Equal(t, 10*time.Second, config.ConnectTimeout)
+			assert.Equal(t, map[string]string{"client_encoding": "UTF8", "application_name": "terraform-provider-redshift/test"}, config.RuntimeParams)
+		})
+	}
+}
+
+// TestDirectQueryTimeoutCoversCredentials bounds IAM credential lookups by the query timeout, not the connect timeout,
+// and lets an earlier caller deadline win.
+func TestDirectQueryTimeoutCoversCredentials(t *testing.T) {
+	for _, callerDeadline := range []bool{false, true} {
+		var remaining time.Duration
+		client := directTestClient()
+		client.Timeout, client.ConnectTimeout = time.Hour, time.Second
+		client.IAM = credentialFunc(func(ctx context.Context, _ string) (Credentials, error) {
+			deadline, ok := ctx.Deadline()
+			require.True(t, ok)
+			remaining = time.Until(deadline)
+			return Credentials{Host: "warehouse.example.com", Username: "IAM:reader", Password: "temporary"}, nil
+		})
+		client.dial = func(context.Context, *pgx.ConnConfig) (connection, error) {
+			return &connectionStub{rows: &rowsStub{}}, nil
+		}
+		ctx := context.Background()
+		if callerDeadline {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, time.Minute)
+			defer cancel()
+		}
+		_, err := client.Query(ctx, sqlclient.Connection{Database: "analytics"}, "SELECT 1", nil)
+		require.NoError(t, err)
+		if callerDeadline {
+			assert.LessOrEqual(t, remaining, time.Minute)
+		} else {
+			assert.Greater(t, remaining, 59*time.Minute)
+		}
+	}
+}
+
 // TestDirectConfigurationSSLModes maps each sslmode to its TLS behavior and verifies chains without hostnames for verify-ca.
 func TestDirectConfigurationSSLModes(t *testing.T) {
 	for mode, check := range map[string]func(*tls.Config){

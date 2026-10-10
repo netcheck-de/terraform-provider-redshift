@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,12 +10,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/redshift"
 	redshifttypes "github.com/aws/aws-sdk-go-v2/service/redshift/types"
+	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
+	"github.com/aws/smithy-go"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -126,6 +132,55 @@ func TestDatashareDiscoveryUsesProviderAWSConfiguration(t *testing.T) {
 		observed, err := data.datashareARN(context.Background(), source)
 		require.NoError(t, err)
 		assert.Equal(t, shareARN, observed)
+	}
+}
+
+// TestDataAPIRetriesUseProviderSettings exercises the real SDK against a local fake endpoint: a statement-limit
+// rejection is retried exactly max_retries times without a retry quota, and statements carry the application name.
+func TestDataAPIRetriesUseProviderSettings(t *testing.T) {
+	t.Setenv("AWS_PROFILE", "")
+	t.Setenv("AWS_DEFAULT_PROFILE", "")
+	t.Setenv("AWS_REGION", "eu-central-1")
+	t.Setenv("AWS_ACCESS_KEY_ID", "TESTKEY")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "TESTSECRET")
+	t.Setenv("AWS_SESSION_TOKEN", "")
+	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+	t.Setenv("AWS_MAX_ATTEMPTS", "")
+	t.Setenv("AWS_RETRY_MODE", "")
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		var input struct {
+			StatementName   string
+			WaitTimeSeconds int32
+		}
+		assert.Equal(t, "RedshiftData.ExecuteStatement", r.Header.Get("X-Amz-Target"))
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&input))
+		assert.Equal(t, "terraform-provider-redshift/test", input.StatementName)
+		assert.Zero(t, input.WaitTimeSeconds)
+		w.Header().Set("Content-Type", "application/x-amz-json-1.1")
+		w.Header().Set("X-Amzn-ErrorType", "ActiveStatementsExceededException")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprint(w, `{"__type":"ActiveStatementsExceededException","Message":"too many active statements"}`)
+	}))
+	defer server.Close()
+	t.Setenv("AWS_ENDPOINT_URL_REDSHIFT_DATA", server.URL)
+	for _, retries := range []int64{0, 1} {
+		for _, mode := range []string{"standard", "adaptive"} {
+			attempts.Store(0)
+			data := providerModel{Workgroup: types.StringValue("warehouse"), Database: types.StringValue("admin"), MaxRetries: types.Int64Value(retries), RetryMode: types.StringValue(mode)}
+			client, err := data.sqlClient(context.Background(), "test")
+			require.NoError(t, err)
+			_, err = client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
+			require.ErrorContains(t, err, "ActiveStatementsExceededException")
+			assert.Equal(t, int32(retries+1), attempts.Load(), "%d retries in %s mode", retries, mode)
+			// A client shared by every resource must not run out of retries under sustained statement-limit errors.
+			retryer := client.(*dataapi.Client).API.(*redshiftdata.Client).Options().Retryer
+			for range 1000 {
+				_, err := retryer.GetRetryToken(context.Background(), &smithy.GenericAPIError{Code: "ActiveStatementsExceededException"})
+				require.NoError(t, err)
+			}
+		}
 	}
 }
 
