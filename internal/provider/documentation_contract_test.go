@@ -59,6 +59,9 @@ func TestDocsExistForEveryRegisteredType(t *testing.T) {
 			template, err := os.ReadFile(filepath.Join(root, "templates", category.dir, name+".md.tmpl"))
 			if assert.NoError(t, err) {
 				assert.Contains(t, string(template), heading+"\n\n```sql\n", "%s must introduce its SQL summary with %q", typeName, heading)
+				if category.dir == "resources" {
+					assert.Contains(t, string(template), importBindingsNote, "%s must name the other import bindings", typeName)
+				}
 			}
 		}
 	}
@@ -101,6 +104,12 @@ var terraformFence = regexp.MustCompile("(?ms)^```(?:terraform|hcl)\n(.*?)^```")
 
 // blockHeader matches a line that opens a block, such as `column {` or `resource "redshift_table" "events" {`.
 var blockHeader = regexp.MustCompile(`^\s*[a-z_]+(\s+"[^"]*")*\s*\{\s*$`)
+
+// importBindingsNote follows each Serverless import example, because provisioned clusters and direct password
+// connections bind the import identity with a different key.
+const importBindingsNote = "Replace `workgroup_name` with `cluster_identifier` for a provisioned\ncluster, or with " +
+	"`endpoint` (`host:port`) for a direct password connection; see\n" +
+	"[connection methods](../guides/connection_methods.md#imports-and-transport-switching)."
 
 // sqlSummaryHeadings names the section that holds each page kind's simplified SQL block, so readers know what it shows.
 var sqlSummaryHeadings = map[string]string{

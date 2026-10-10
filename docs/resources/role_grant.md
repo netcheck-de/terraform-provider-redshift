@@ -103,6 +103,10 @@ import {
 }
 ```
 
+The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
+cluster, or with `endpoint` (`host:port`) for a direct password connection; see
+[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
+
 Alternatively, use `terraform import`:
 
 ```shell
