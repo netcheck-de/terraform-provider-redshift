@@ -6,11 +6,12 @@ description: Manages existing local object annotations independently of object d
 
 # redshift_comment (Resource)
 
-Manages a comment on an existing local database, schema, table, view, or column without owning the object's definition.
-See AWS [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
+Manages a comment on an existing local database, schema, table, view, column, or table constraint without owning the
+object's definition. See AWS [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
 
 ```sql
 COMMENT ON ... IS 'text' | NULL;
+COMMENT ON CONSTRAINT constraint_name ON schema_name.object_name IS 'text' | NULL;
 ```
 
 ## Example Usage
@@ -31,6 +32,15 @@ resource "redshift_comment" "column" {
   column_name   = "day"
   text          = "UTC reporting date."
 }
+
+resource "redshift_comment" "primary_key" {
+  database_name   = "analytics"
+  object_type     = "CONSTRAINT"
+  schema_name     = "reporting"
+  object_name     = "daily_summary"
+  constraint_name = "daily_summary_pkey"
+  text            = "One row per reporting day."
+}
 ```
 
 <!-- markdownlint-disable MD013 MD022 MD033 -->
@@ -39,30 +49,33 @@ resource "redshift_comment" "column" {
 
 ### Required
 
-- `database_name` (String) Local database containing the target object.
-- `object_name` (String) Database/schema/relation name according to object_type.
-- `object_type` (String) DATABASE, SCHEMA, TABLE, VIEW, or COLUMN.
-- `text` (String) Comment text. An empty string represents no annotation.
+- `database_name` (String) Local database containing the target object. Changing it replaces the comment.
+- `object_name` (String) Name of the database or schema itself; for `TABLE` and `VIEW` the relation; for `COLUMN` and `CONSTRAINT` the table that holds it. Changing it replaces the comment.
+- `object_type` (String) Kind of the annotated object: `DATABASE`, `SCHEMA`, `TABLE`, `VIEW`, `COLUMN`, or `CONSTRAINT`. Changing it replaces the comment.
+- `text` (String) Comment text. An empty string represents no annotation and clears it with `IS NULL`.
 
 ### Optional
 
-- `column_name` (String) Required only for COLUMN.
-- `schema_name` (String) Required for TABLE, VIEW, COLUMN; omit for DATABASE and SCHEMA.
+- `column_name` (String) Column within `object_name`; required for `COLUMN` and rejected otherwise. Changing it replaces the comment.
+- `constraint_name` (String) Primary key, unique, or foreign key constraint on the table `object_name`; required for `CONSTRAINT` and rejected otherwise. Changing it replaces the comment.
+- `schema_name` (String) Schema of the relation; required for `TABLE`, `VIEW`, `COLUMN`, and `CONSTRAINT`, and rejected for `DATABASE` and `SCHEMA`. Changing it replaces the comment.
 
 ### Read-Only
 
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-For `DATABASE`, `object_name` must equal `database_name`. For `COLUMN`, `object_name` identifies the relation. An
-empty `text` clears the comment using `IS NULL`. All identity arguments require replacement; text updates in
-place.
+For `DATABASE`, `object_name` must equal `database_name`. For `COLUMN`, `object_name` identifies the relation. For
+`CONSTRAINT`, `object_name` is the table and `constraint_name` the primary key, unique, or foreign key constraint on
+it; `redshift_constraints` lists the names. An empty `text` clears the comment using `IS NULL`. All identity
+arguments require replacement; text updates in place.
 
 ## Lifecycle and Ownership
 
 The SQL caller must own the object or be a superuser. Reads use the target database's `pg_description` and object
-catalogs. Database comments execute in the database being annotated, as required by Redshift. Shared database objects,
-constraints, external table/column comments, and columns of late-binding views are not supported.
+catalogs; constraint comments are read from `pg_description` joined to `pg_constraint`. Database comments execute in the
+database being annotated, as required by Redshift. Shared database objects, external table/column comments, and columns
+of late-binding views are not supported.
 
 Creation sets the annotation on an existing object; it does not create the object. Read refreshes edited or removed text
 so Terraform can repair drift; a missing annotation is represented by an empty `text` string. If the underlying object
@@ -97,5 +110,6 @@ terraform import redshift_comment.column \
   '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","object_type":"COLUMN","schema_name":"reporting","object_name":"daily_summary","column_name":"day"}'
 ```
 
-For database/schema annotations, omit `schema_name` and `column_name`. For table/view annotations, omit `column_name`.
+For database/schema annotations, omit `schema_name`, `column_name`, and `constraint_name`. For table/view annotations,
+omit `column_name` and `constraint_name`; for constraint annotations, include `constraint_name` and omit `column_name`.
 The first refresh reads existing text; imports do not change annotations.

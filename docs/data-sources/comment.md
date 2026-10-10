@@ -6,7 +6,7 @@ description: Reads a local object's annotation without adopting or clearing it.
 
 # redshift_comment (Data Source)
 
-Reads a local database, schema, table, view, or column annotation. See AWS
+Reads a local database, schema, table, view, column, or table constraint annotation. See AWS
 [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
 
 ```sql
@@ -32,24 +32,25 @@ data "redshift_comment" "column" {
 ### Required
 
 - `database_name` (String) Local database containing the target object.
-- `object_name` (String) Database/schema/relation name according to object_type.
-- `object_type` (String) DATABASE, SCHEMA, TABLE, VIEW, or COLUMN.
+- `object_name` (String) Name of the database or schema itself; for `TABLE` and `VIEW` the relation; for `COLUMN` and `CONSTRAINT` the table that holds it.
+- `object_type` (String) Kind of the annotated object: `DATABASE`, `SCHEMA`, `TABLE`, `VIEW`, `COLUMN`, or `CONSTRAINT`.
 
 ### Optional
 
-- `column_name` (String) Required only for COLUMN.
-- `schema_name` (String) Required for TABLE, VIEW, COLUMN; omit for DATABASE and SCHEMA.
+- `column_name` (String) Column within `object_name`; required for `COLUMN` and rejected otherwise.
+- `constraint_name` (String) Primary key, unique, or foreign key constraint on the table `object_name`; required for `CONSTRAINT` and rejected otherwise.
+- `schema_name` (String) Schema of the relation; required for `TABLE`, `VIEW`, `COLUMN`, and `CONSTRAINT`, and rejected for `DATABASE` and `SCHEMA`.
 
 ### Read-Only
 
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
-- `text` (String) Comment text. An empty string represents no annotation.
+- `text` (String) Comment text. An empty string represents no annotation and clears it with `IS NULL`.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the object's JSON identity in the paired resource format. It includes the warehouse, provider
-database, `database_name`, `object_type`, and `object_name`; `schema_name` and `column_name` are included when
-configured. An existing object with no annotation still has an ID.
+database, `database_name`, `object_type`, and `object_name`; `schema_name`, `column_name`, and `constraint_name` are
+included when configured. An existing object with no annotation still has an ID.
 
 An unannotated existing object returns an empty `text` string. A missing object raises an error. Shared objects,
-constraints, external relation comments, and late-binding view column comments are unsupported. The lookup never
+external relation comments, and late-binding view column comments are unsupported. The lookup never
 creates, changes, or clears an annotation.

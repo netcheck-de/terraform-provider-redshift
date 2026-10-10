@@ -1,0 +1,32 @@
+---
+subcategory: Catalog Discovery
+page_title: redshift_columns Data Source - terraform-provider-redshift
+description: Lists relation columns with their position, type, nullability, and default.
+---
+
+# redshift_columns (Data Source)
+
+Lists the columns of one database's tables, views, and external tables. See AWS
+[SVV_ALL_COLUMNS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ALL_COLUMNS.html).
+
+```sql
+SELECT ... FROM svv_all_columns WHERE database_name = '...' AND schema_name = '...' AND table_name = '...';
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_columns/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`database` defaults to the provider's `database`; the read runs in the provider's database. `id` combines the
+warehouse binding, the listed database, and the configured filters. Items are ordered by schema, table, and
+`ordinal_position`; no match returns an empty `items` list. Without a `table` filter, the listing covers every
+relation of the database, so filter as narrowly as possible on large warehouses.
+
+`data_type` is the bare type name; length, precision, and scale are separate attributes. `nullable` is null when the
+catalog has no nullability information, for example for some external columns. An empty `column_default` or remarks
+value cannot be told apart from none and is reported as null. Superusers see every column; other users see only
+columns of relations they own.

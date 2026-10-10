@@ -1,0 +1,1 @@
+-- error: object_name is required for CONSTRAINT

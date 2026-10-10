@@ -1,0 +1,1 @@
+-- error: column_name is required only for COLUMN

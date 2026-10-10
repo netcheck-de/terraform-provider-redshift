@@ -1,0 +1,1 @@
+SELECT COALESCE(d.description, '') AS text FROM pg_constraint k JOIN pg_class o ON o.oid = k.conrelid JOIN pg_namespace n ON n.oid = o.relnamespace LEFT JOIN pg_description d ON d.objoid = k.oid AND d.classoid = 'pg_constraint'::regclass AND d.objsubid = 0 WHERE k.conname = :constraint AND o.relname = :name AND n.nspname = :schema;

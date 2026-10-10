@@ -1,0 +1,32 @@
+---
+subcategory: Catalog Discovery
+page_title: redshift_constraints Data Source - terraform-provider-redshift
+description: Lists primary key, unique, and foreign key constraints with their key columns.
+---
+
+# redshift_constraints (Data Source)
+
+Lists the key constraints of one database's tables. Redshift does not enforce them, but the query planner relies on
+them. See AWS [Defining table constraints](https://docs.aws.amazon.com/redshift/latest/dg/t_Defining_constraints.html)
+and [Querying the catalog tables](https://docs.aws.amazon.com/redshift/latest/dg/c_join_PG.html).
+
+```sql
+SELECT ... FROM pg_constraint WHERE contype IN ('p', 'u', 'f') ...;
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_constraints/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`database` defaults to the provider's `database`. `PG_CONSTRAINT` only covers the database a statement runs in, so
+the read connects to the listed database, which must be a local database. `id` combines the warehouse binding, the
+listed database, and the configured filters. Items are ordered by schema, table, and constraint name; no match returns
+an empty `items` list.
+
+Key columns are parsed from `pg_get_constraintdef`, because the catalog's column-number arrays are not readable
+through the provider's SQL transports; `columns` and `referenced_columns` keep key order, so the n-th columns of a composite foreign key
+correspond. Use `name` with `redshift_comment` and `object_type = "CONSTRAINT"` to annotate a constraint.

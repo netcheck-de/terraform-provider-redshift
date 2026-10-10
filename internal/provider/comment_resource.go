@@ -23,14 +23,16 @@ type commentModel struct {
 	ID types.String `tfsdk:"id"`
 	// DatabaseName is the local database where COMMENT executes.
 	DatabaseName types.String `tfsdk:"database_name"`
-	// ObjectType selects DATABASE, SCHEMA, TABLE, VIEW, or COLUMN.
+	// ObjectType selects DATABASE, SCHEMA, TABLE, VIEW, COLUMN, or CONSTRAINT.
 	ObjectType types.String `tfsdk:"object_type"`
-	// ObjectName identifies the database, schema, or parent relation.
+	// ObjectName identifies the database, schema, or parent relation of a column or constraint.
 	ObjectName types.String `tfsdk:"object_name"`
-	// SchemaName qualifies table, view, and column targets.
+	// SchemaName qualifies table, view, column, and constraint targets.
 	SchemaName types.String `tfsdk:"schema_name"`
 	// ColumnName selects a column annotation within ObjectName.
 	ColumnName types.String `tfsdk:"column_name"`
+	// ConstraintName selects a constraint annotation on the table ObjectName.
+	ConstraintName types.String `tfsdk:"constraint_name"`
 	// Text is the annotation; empty text clears it with IS NULL.
 	Text types.String `tfsdk:"text"`
 }
@@ -48,13 +50,14 @@ func (r *commentResource) Metadata(_ context.Context, req resource.MetadataReque
 // Schema defines the target object's immutable identity and mutable annotation text.
 func (r *commentResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{MarkdownDescription: "Manages an object's comment independently of its definition. Destroy clears only the annotation.", Attributes: map[string]schema.Attribute{
-		"id":            idAttribute(),
-		"database_name": privilegeString("Local database containing the target object.", false),
-		"object_type":   privilegeString("DATABASE, SCHEMA, TABLE, VIEW, or COLUMN.", false, "DATABASE", "SCHEMA", "TABLE", "VIEW", "COLUMN"),
-		"object_name":   privilegeString("Database/schema/relation name according to object_type.", false),
-		"schema_name":   privilegeString("Required for TABLE, VIEW, COLUMN; omit for DATABASE and SCHEMA.", true),
-		"column_name":   privilegeString("Required only for COLUMN.", true),
-		"text":          schema.StringAttribute{Required: true, MarkdownDescription: "Comment text. An empty string represents no annotation."},
+		"id":              idAttribute(),
+		"database_name":   privilegeString("Local database containing the target object. Changing it replaces the comment.", false),
+		"object_type":     privilegeString("Kind of the annotated object: `DATABASE`, `SCHEMA`, `TABLE`, `VIEW`, `COLUMN`, or `CONSTRAINT`. Changing it replaces the comment.", false, "DATABASE", "SCHEMA", "TABLE", "VIEW", "COLUMN", "CONSTRAINT"),
+		"object_name":     privilegeString("Name of the database or schema itself; for `TABLE` and `VIEW` the relation; for `COLUMN` and `CONSTRAINT` the table that holds it. Changing it replaces the comment.", false),
+		"schema_name":     privilegeString("Schema of the relation; required for `TABLE`, `VIEW`, `COLUMN`, and `CONSTRAINT`, and rejected for `DATABASE` and `SCHEMA`. Changing it replaces the comment.", true),
+		"column_name":     privilegeString("Column within `object_name`; required for `COLUMN` and rejected otherwise. Changing it replaces the comment.", true),
+		"constraint_name": privilegeString("Primary key, unique, or foreign key constraint on the table `object_name`; required for `CONSTRAINT` and rejected otherwise. Changing it replaces the comment.", true),
+		"text":            schema.StringAttribute{Required: true, MarkdownDescription: "Comment text. An empty string represents no annotation and clears it with `IS NULL`."},
 	}}
 }
 
@@ -135,6 +138,9 @@ func (r *commentResource) Create(ctx context.Context, req resource.CreateRequest
 	if !data.ColumnName.IsNull() {
 		fields["column_name"] = data.ColumnName.ValueString()
 	}
+	if !data.ConstraintName.IsNull() {
+		fields["constraint_name"] = data.ConstraintName.ValueString()
+	}
 	data.ID = r.identity(r.database.ValueString(), fields)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	if err := r.reconcile(ctx, data, false); err != nil {
@@ -207,7 +213,7 @@ func (r *commentResource) ImportState(ctx context.Context, req resource.ImportSt
 	}
 	var values map[string]string
 	_ = json.Unmarshal([]byte(req.ID), &values)
-	for _, field := range []string{"schema_name", "column_name"} {
+	for _, field := range []string{"schema_name", "column_name", "constraint_name"} {
 		if values[field] != "" {
 			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root(field), values[field])...)
 		}

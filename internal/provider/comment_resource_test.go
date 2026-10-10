@@ -24,12 +24,13 @@ var _ = registerValidateConfigCase("comment", validateConfigCase{
 })
 
 var _ = registerReplacementPolicy("redshift_comment", map[string]replaceRule{
-	"database_name": replaceAlways,
-	"schema_name":   replaceAlways,
-	"object_type":   replaceAlways,
-	"object_name":   replaceAlways,
-	"column_name":   replaceAlways,
-	"text":          replaceNever,
+	"database_name":   replaceAlways,
+	"schema_name":     replaceAlways,
+	"object_type":     replaceAlways,
+	"object_name":     replaceAlways,
+	"column_name":     replaceAlways,
+	"constraint_name": replaceAlways,
+	"text":            replaceNever,
 })
 
 // schemaComment supplies an annotation on a local schema for lifecycle tests.
@@ -92,6 +93,7 @@ func TestCommentTargets(t *testing.T) {
 		{"COLUMN", "serving", "", "table", false},
 		{"TABLE", "", "", "table", false},
 		{"TABLE", "serving", "column", "table", false},
+		{"CONSTRAINT", "serving", "", "table", false},
 		{"unknown", "", "", "table", false},
 	} {
 		data := schemaComment()

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var _ = registerParity(parityCase{source: newCommentDataSource, resource: newCommentResource, selectors: []string{"database_name", "schema_name", "object_type", "object_name", "column_name"}})
+var _ = registerParity(parityCase{source: newCommentDataSource, resource: newCommentResource, selectors: []string{"database_name", "schema_name", "object_type", "object_name", "column_name", "constraint_name"}})
 
 // TestCommentLookup reads annotations and empty text without claiming or clearing them.
 func TestCommentLookup(t *testing.T) {
@@ -28,6 +28,7 @@ func TestCommentLookupIdentitySelectors(t *testing.T) {
 		{"database_name": "analytics", "object_type": "SCHEMA", "object_name": "serving"},
 		{"database_name": "analytics", "object_type": "TABLE", "schema_name": "serving", "object_name": "events"},
 		{"database_name": "analytics", "object_type": "COLUMN", "schema_name": "serving", "object_name": "events", "column_name": "time"},
+		{"database_name": "analytics", "object_type": "CONSTRAINT", "schema_name": "serving", "object_name": "events", "constraint_name": "events_pkey"},
 	} {
 		t.Run(fields["object_type"], func(t *testing.T) {
 			exerciseCatalogLookup(t, newCommentDataSource, fields, map[string]attr.Value{"text": types.StringValue("")}, queryFunc(func(_ context.Context, target sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {

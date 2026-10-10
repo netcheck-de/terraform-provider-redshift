@@ -1,0 +1,30 @@
+---
+subcategory: Catalog Discovery
+page_title: redshift_databases Data Source - terraform-provider-redshift
+description: Lists local and datashare databases, optionally filtered by type and name pattern.
+---
+
+# redshift_databases (Data Source)
+
+Lists the warehouse's local databases and the databases created from datashares, with their owners and isolation
+levels. See AWS [SVV_REDSHIFT_DATABASES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_DATABASES.html).
+
+```sql
+SELECT ... FROM svv_redshift_databases WHERE database_type = '...' AND database_name LIKE '...';
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_databases/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+The read runs in the provider's `database`. `id` is the JSON identity of the listing: the warehouse binding, the
+provider database, and the configured filters. Items are ordered by name; a filter that matches nothing returns an
+empty `items` list rather than an error.
+
+The listing shows what the provider's SQL identity may see: with metadata security enabled, other users' databases
+can be hidden. Owners are resolved from `pg_user`; an owner that is not a local user is null. The AWS Glue Data
+Catalog (`awsdatacatalog`) and other auto-mounted catalogs that `SHOW DATABASES` also prints are not included.

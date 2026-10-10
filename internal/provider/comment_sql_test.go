@@ -12,6 +12,25 @@ func TestCommentSQL(t *testing.T) {
 	target := func(kind, schema, name, column string) commentModel {
 		return commentModel{DatabaseName: types.StringValue("analytics"), ObjectType: types.StringValue(kind), ObjectName: types.StringValue(name), SchemaName: types.StringValue(schema), ColumnName: types.StringValue(column)}
 	}
+	constraint := func(schema, name, constraint string) commentModel {
+		data := target("CONSTRAINT", schema, name, "")
+		data.ConstraintName = types.StringValue(constraint)
+		return data
+	}
+	withConstraint := func(data commentModel) commentModel {
+		data.ConstraintName = types.StringValue("orders_pkey")
+		return data
+	}
+	readTarget := func(data commentModel) func() (string, error) {
+		return func() (string, error) {
+			query, err := readCommentQuery(data)
+			if err != nil {
+				return "", err
+			}
+			sql, _, err := query.Build()
+			return sql, err
+		}
+	}
 	set := func(data commentModel, text string) func() (string, error) {
 		return func() (string, error) { return commentStatement(data, text) }
 	}
@@ -52,6 +71,16 @@ func TestCommentSQL(t *testing.T) {
 		{"read_view", read("VIEW", "serving", "view", "")},
 		{"read_column", read("COLUMN", `odd"schema`, `Odd"Table`, `odd"column`)},
 		{"read_unsupported_kind", read("FUNCTION", "serving", "f", "")},
+		{"constraint", set(constraint("serving", "orders", "orders_pkey"), `it's \annotated`)},
+		{"constraint_quoted_identifiers", set(constraint(`Odd"Schema`, `Odd"Table`, `Odd"Key`), `it's \annotated`)},
+		{"clear_constraint", set(constraint("serving", "orders", "orders_pkey"), "")},
+		{"constraint_without_constraint_name", annotate("CONSTRAINT", "serving", "orders", "")},
+		{"constraint_without_schema", set(constraint("", "orders", "orders_pkey"), "note")},
+		{"constraint_without_table", set(constraint("serving", "", "orders_pkey"), "note")},
+		{"constraint_with_column", set(withConstraint(target("CONSTRAINT", "serving", "orders", "id")), "note")},
+		{"table_with_constraint", set(withConstraint(target("TABLE", "serving", "orders", "")), "note")},
+		{"schema_with_constraint", set(withConstraint(target("SCHEMA", "", "serving", "")), "note")},
+		{"read_constraint", readTarget(constraint(`Odd"Schema`, `Odd"Table`, `Odd"Key`))},
 		{"read_local_database", func() (string, error) {
 			sql, _, err := commentDatabaseQuery(target("SCHEMA", "", "serving", "")).Build()
 			return sql, err
