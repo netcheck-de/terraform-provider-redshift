@@ -50,11 +50,11 @@ data "redshift_grants" "analysts" {
 
 ### Read-Only
 
+- `grants` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--grants))
 - `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
-- `items` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--items))
 
-<a id="nestedatt--items"></a>
-### Nested Schema for `items`
+<a id="nestedatt--grants"></a>
+### Nested Schema for `grants`
 
 Read-Only:
 

@@ -41,7 +41,7 @@ func TestColumnGrantsListing(t *testing.T) {
 			assert.Equal(t, test.database, database)
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
-			items := observed.Attributes()[collectionItems].(types.List).Elements()
+			items := collectionResult(source, observed).Elements()
 			require.Len(t, items, len(test.items))
 			for index, expected := range test.items {
 				item := items[index].(types.Object).Attributes()

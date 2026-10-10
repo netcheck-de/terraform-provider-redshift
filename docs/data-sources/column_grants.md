@@ -38,11 +38,11 @@ data "redshift_column_grants" "events" {
 
 ### Read-Only
 
+- `column_grants` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--column_grants))
 - `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
-- `items` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--items))
 
-<a id="nestedatt--items"></a>
-### Nested Schema for `items`
+<a id="nestedatt--column_grants"></a>
+### Nested Schema for `column_grants`
 
 Read-Only:
 

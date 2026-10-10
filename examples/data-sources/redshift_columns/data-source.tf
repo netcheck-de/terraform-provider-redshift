@@ -5,5 +5,5 @@ data "redshift_columns" "daily_summary" {
 }
 
 output "required_columns" {
-  value = [for column in data.redshift_columns.daily_summary.items : column.name if column.nullable == false]
+  value = [for column in data.redshift_columns.daily_summary.columns : column.name if column.nullable == false]
 }

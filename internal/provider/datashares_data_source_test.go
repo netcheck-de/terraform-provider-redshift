@@ -50,7 +50,7 @@ func TestDatasharesList(t *testing.T) {
 				identity[key] = value
 			}
 			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", identity)
-			items := observed.Attributes()[collectionItems].(types.List).Elements()
+			items := collectionResult(source, observed).Elements()
 			require.Len(t, items, len(test.shares))
 			for index, name := range test.shares {
 				item := items[index].(types.Object).Attributes()

@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -26,7 +27,7 @@ func alterCoverageGaps[M any](t *testing.T, r resource.Resource, steps []alterSt
 	var response resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &response)
 	require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
-	inPlace := inPlaceAttributes(t, response.Schema.Attributes, replacementPolicies.entries[metadata.TypeName])
+	inPlace := inPlaceInputs(t, response.Schema, replacementPolicies.entries[metadata.TypeName])
 	covered := map[string]bool{}
 	claims := slices.Clone(exempt)
 	for _, step := range steps {
@@ -48,21 +49,26 @@ func alterCoverageGaps[M any](t *testing.T, r resource.Resource, steps []alterSt
 	return missing, unexpected
 }
 
-// inPlaceAttributes maps each input to whether an update can change it without replacement. The registered replacement
-// policy decides, because a conditional attribute such as a widening column type is updated in place for some
-// changes, which one generic sample cannot show. Inputs the policy does not name are sampled.
-func inPlaceAttributes(t *testing.T, attributes map[string]schema.Attribute, policy map[string]replaceRule) map[string]bool {
+// inPlaceInputs maps each input attribute and block to whether an update can change it without replacement. The
+// registered replacement policy decides, because a conditional attribute such as a widening column type is updated in
+// place for some changes, which one generic sample cannot show. Inputs the policy does not name are sampled.
+func inPlaceInputs(t *testing.T, s schema.Schema, policy map[string]replaceRule) map[string]bool {
 	t.Helper()
 	inPlace := map[string]bool{}
-	for name, attribute := range attributes {
-		if !attribute.IsRequired() && !attribute.IsOptional() {
-			continue
-		}
+	classify := func(name string, sample func() bool) {
 		if rule, ok := policy[name]; ok {
 			inPlace[name] = rule.kind != replaceKindAlways
 		} else {
-			inPlace[name] = !attributeReplacement(t, attribute, true, true)
+			inPlace[name] = !sample()
 		}
+	}
+	for name, attribute := range s.Attributes {
+		if attribute.IsRequired() || attribute.IsOptional() {
+			classify(name, func() bool { return attributeReplacement(t, attribute, true, true) })
+		}
+	}
+	for name, block := range s.Blocks {
+		classify(name, func() bool { return blockReplacement(t, block, true, true) })
 	}
 	return inPlace
 }
@@ -214,7 +220,25 @@ func TestAlterCoverageFollowsPolicy(t *testing.T) {
 	policy := map[string]replaceRule{
 		"name": replaceAlways, "column_type": replaceConditional("TestAlterCoverageFollowsPolicy"), "comment": replaceNever,
 	}
-	assert.Equal(t, map[string]bool{"name": false, "column_type": true, "comment": true}, inPlaceAttributes(t, attributes, policy))
-	assert.Equal(t, map[string]bool{"name": false, "column_type": false, "comment": true}, inPlaceAttributes(t, attributes, nil),
+	blocks := map[string]schema.Block{
+		"column":       schema.ListNestedBlock{PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplace()}},
+		"distribution": schema.SingleNestedBlock{Attributes: map[string]schema.Attribute{"style": schema.StringAttribute{Optional: true}}},
+	}
+	s := schema.Schema{Attributes: attributes, Blocks: blocks}
+	policy["column"] = replaceConditional("TestAlterCoverageFollowsPolicy")
+	assert.Equal(t, map[string]bool{"name": false, "column_type": true, "comment": true, "column": true, "distribution": true}, inPlaceInputs(t, s, policy))
+	assert.Equal(t, map[string]bool{"name": false, "column_type": false, "comment": true, "column": false, "distribution": true}, inPlaceInputs(t, s, nil),
 		"without a policy the generic sample decides")
+}
+
+// TestAlterCoverageWithBlocks requires an alter step for every block updated in place and refuses one for a
+// replacing block.
+func TestAlterCoverageWithBlocks(t *testing.T) {
+	step := func(attribute string) alterStep[struct{}] { return alterStep[struct{}]{attribute: attribute} }
+	missing, unexpected := alterCoverageGaps(t, newBlockTestResource(), []alterStep[struct{}]{step("owner"), step("unique")})
+	assert.Equal(t, []string{"distribution"}, missing)
+	assert.Empty(t, unexpected)
+	missing, unexpected = alterCoverageGaps(t, newBlockTestResource(), []alterStep[struct{}]{step("owner"), step("unique"), step("distribution"), step("column")})
+	assert.Empty(t, missing)
+	assert.Equal(t, []string{"column"}, unexpected)
 }

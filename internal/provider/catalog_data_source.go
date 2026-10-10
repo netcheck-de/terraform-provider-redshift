@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -33,6 +34,9 @@ type catalogSpec struct {
 	identityDatabase string
 	// adjust rewrites the identity fields where the paired resource omits or derives some of them.
 	adjust func(map[string]string)
+	// selectors are lookup inputs the paired resource does not have, such as a plain list of argument types that
+	// selects an overload whose arguments the resource configures as blocks.
+	selectors map[string]schema.Attribute
 }
 
 // catalogDataSource shares configuration and read-only state handling for permission and relationship lookups.
@@ -55,8 +59,13 @@ func lookupValue(data *types.Object, name string, value attr.Value) {
 // replacementNote matches resource-only replacement wording that does not apply to lookups.
 var replacementNote = regexp.MustCompile(`(;\s*c|\s*C)hanging it replaces the \w+\.`)
 
-// lookupDescription removes replacement notes from a paired resource's attribute description.
+// requiredBlockNote matches the sentence that opens a required block's description. Resources need it because
+// tfplugindocs labels every block as optional, but a lookup's output is never configured.
+var requiredBlockNote = regexp.MustCompile(`^At least one [^.]* is required\.\s*`)
+
+// lookupDescription removes replacement and required-block notes from a paired resource's description.
 func lookupDescription(description string) string {
+	description = requiredBlockNote.ReplaceAllString(description, "")
 	return replacementNote.ReplaceAllStringFunc(description, func(note string) string {
 		if strings.HasPrefix(note, ";") {
 			return "."
@@ -203,6 +212,40 @@ func lookupAttribute(attribute resourceschema.Attribute, observed bool, descript
 	}
 }
 
+// lookupSchemaAttributes converts a resource's attributes and blocks for a lookup. Data sources never declare
+// blocks, so each block becomes a computed nested attribute of the same type.
+func lookupSchemaAttributes(attributes map[string]resourceschema.Attribute, blocks map[string]resourceschema.Block, observeAll bool, computed []string) map[string]schema.Attribute {
+	converted := lookupAttributes(attributes, observeAll, computed)
+	maps.Copy(converted, lookupBlocks(blocks))
+	return converted
+}
+
+// lookupBlocks converts resource blocks into computed nested attributes. A block is always observed: an input that
+// selects the object is a plain attribute in catalogSpec.selectors instead.
+func lookupBlocks(blocks map[string]resourceschema.Block) map[string]schema.Attribute {
+	attributes := map[string]schema.Attribute{}
+	for name, block := range blocks {
+		description := lookupDescription(block.GetMarkdownDescription())
+		switch block := block.(type) {
+		case resourceschema.ListNestedBlock:
+			attributes[name] = schema.ListNestedAttribute{NestedObject: lookupBlockObject(block.NestedObject), Computed: true, CustomType: block.CustomType, MarkdownDescription: description}
+		case resourceschema.SetNestedBlock:
+			attributes[name] = schema.SetNestedAttribute{NestedObject: lookupBlockObject(block.NestedObject), Computed: true, CustomType: block.CustomType, MarkdownDescription: description}
+		case resourceschema.SingleNestedBlock:
+			attributes[name] = schema.SingleNestedAttribute{Attributes: lookupSchemaAttributes(block.Attributes, block.Blocks, true, nil), Computed: true, CustomType: block.CustomType, MarkdownDescription: description}
+		default:
+			// A new block kind must fail at schema construction rather than silently drop an output.
+			panic("lookupBlocks: unsupported resource block type for " + name)
+		}
+	}
+	return attributes
+}
+
+// lookupBlockObject converts the element object of a list or set block, including its nested blocks.
+func lookupBlockObject(object resourceschema.NestedBlockObject) schema.NestedAttributeObject {
+	return schema.NestedAttributeObject{Attributes: lookupSchemaAttributes(object.Attributes, object.Blocks, true, nil), CustomType: object.CustomType}
+}
+
 // lookupNestedObject converts the element object of a nested collection.
 func lookupNestedObject(object resourceschema.NestedAttributeObject, observed bool) schema.NestedAttributeObject {
 	value := schema.NestedAttributeObject{Attributes: lookupAttributes(object.Attributes, observed, nil), CustomType: object.CustomType}
@@ -217,17 +260,137 @@ func newCatalogDataSource(spec catalogSpec) datasource.DataSource {
 	var source resource.SchemaResponse
 	paired := spec.factory()
 	paired.Schema(context.Background(), resource.SchemaRequest{}, &source)
-	attributes := lookupAttributes(source.Schema.Attributes, false, spec.computed)
+	for _, name := range spec.computed {
+		if _, ok := source.Schema.Attributes[name]; !ok {
+			// A stale entry would otherwise hide that the spec no longer matches the resource; blocks are always
+			// observed and never listed.
+			panic("newCatalogDataSource: computed " + name + " is not a resource attribute")
+		}
+	}
+	attributes := lookupSchemaAttributes(source.Schema.Attributes, source.Schema.Blocks, false, spec.computed)
+	if spec.exists {
+		if _, ok := attributes["exists"]; ok {
+			panic("newCatalogDataSource: the exists output shadows a resource attribute or block")
+		}
+		// Added before the selectors so a selector named exists collides instead of being replaced.
+		attributes["exists"] = schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether this explicit relationship exists. False also covers missing parents."}
+	}
+	for name, selector := range spec.selectors {
+		if _, ok := attributes[name]; ok || name == "id" {
+			// A selector shadowing a paired output or the lookup's own id would hide that value, or be replaced by it.
+			panic("newCatalogDataSource: selector " + name + " is a resource attribute, block, or lookup output")
+		}
+		attributes[name] = selector
+	}
 	if _, ok := attributes["id"]; ok {
 		attributes["id"] = dataSourceIDAttribute()
-	}
-	if spec.exists {
-		attributes["exists"] = schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether this explicit relationship exists. False also covers missing parents."}
 	}
 	if r, ok := paired.(*privilegeResource); ok && spec.identityFields == nil {
 		spec.identityFields = r.fields
 	}
 	return &catalogDataSource{spec: spec, attributes: attributes}
+}
+
+// lookupDescriptions replaces the paired resource's descriptions of the given outputs, named by dotted paths such
+// as distribution.style for nested attributes. The resource text covers apply, import, and state behavior that a
+// read-only lookup does not have.
+func lookupDescriptions(source datasource.DataSource, descriptions map[string]string) datasource.DataSource {
+	lookup := source.(*catalogDataSource)
+	for name, description := range descriptions {
+		lookup.attributes = describedAttributes(lookup.attributes, strings.Split(name, "."), name, description)
+	}
+	return lookup
+}
+
+// describedAttributes returns a copy of attributes whose attribute at path carries description, so nested maps that
+// another schema might share are never modified in place.
+func describedAttributes(attributes map[string]schema.Attribute, path []string, name, description string) map[string]schema.Attribute {
+	attribute, ok := attributes[path[0]]
+	if !ok {
+		// A misspelled or removed output must fail at schema construction rather than keep the resource text.
+		panic("lookupDescriptions: missing attribute " + name)
+	}
+	attributes = maps.Clone(attributes)
+	attributes[path[0]] = describedAttribute(attribute, path[1:], name, description)
+	return attributes
+}
+
+// describedAttribute replaces the description of attribute, or of the nested attribute at rest.
+func describedAttribute(attribute schema.Attribute, rest []string, name, description string) schema.Attribute {
+	nested := len(rest) > 0
+	switch attribute := attribute.(type) {
+	case schema.ListNestedAttribute:
+		if nested {
+			attribute.NestedObject.Attributes = describedAttributes(attribute.NestedObject.Attributes, rest, name, description)
+		} else {
+			attribute.MarkdownDescription = description
+		}
+		return attribute
+	case schema.SetNestedAttribute:
+		if nested {
+			attribute.NestedObject.Attributes = describedAttributes(attribute.NestedObject.Attributes, rest, name, description)
+		} else {
+			attribute.MarkdownDescription = description
+		}
+		return attribute
+	case schema.MapNestedAttribute:
+		if nested {
+			attribute.NestedObject.Attributes = describedAttributes(attribute.NestedObject.Attributes, rest, name, description)
+		} else {
+			attribute.MarkdownDescription = description
+		}
+		return attribute
+	case schema.SingleNestedAttribute:
+		if nested {
+			attribute.Attributes = describedAttributes(attribute.Attributes, rest, name, description)
+		} else {
+			attribute.MarkdownDescription = description
+		}
+		return attribute
+	}
+	if nested {
+		panic("lookupDescriptions: " + name + " descends into an attribute without nested attributes")
+	}
+	switch attribute := attribute.(type) {
+	case schema.StringAttribute:
+		attribute.MarkdownDescription = description
+		return attribute
+	case schema.BoolAttribute:
+		attribute.MarkdownDescription = description
+		return attribute
+	case schema.Int64Attribute:
+		attribute.MarkdownDescription = description
+		return attribute
+	case schema.Int32Attribute:
+		attribute.MarkdownDescription = description
+		return attribute
+	case schema.Float64Attribute:
+		attribute.MarkdownDescription = description
+		return attribute
+	case schema.Float32Attribute:
+		attribute.MarkdownDescription = description
+		return attribute
+	case schema.NumberAttribute:
+		attribute.MarkdownDescription = description
+		return attribute
+	case schema.DynamicAttribute:
+		attribute.MarkdownDescription = description
+		return attribute
+	case schema.ListAttribute:
+		attribute.MarkdownDescription = description
+		return attribute
+	case schema.SetAttribute:
+		attribute.MarkdownDescription = description
+		return attribute
+	case schema.MapAttribute:
+		attribute.MarkdownDescription = description
+		return attribute
+	case schema.ObjectAttribute:
+		attribute.MarkdownDescription = description
+		return attribute
+	default:
+		panic("lookupDescriptions: unsupported attribute type for " + name)
+	}
 }
 
 // observedID matches the paired resource's identity keys and ownership database, not its SQL query route.

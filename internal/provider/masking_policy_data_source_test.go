@@ -74,7 +74,7 @@ func TestMaskingPoliciesListing(t *testing.T) {
 		require.False(t, diagnostics.HasError(), "%v", diagnostics)
 		var data types.Object
 		require.False(t, state.Get(context.Background(), &data).HasError())
-		items := data.Attributes()[collectionItems].(types.List).Elements()
+		items := collectionResult(source, data).Elements()
 		require.Len(t, items, 1)
 		item := items[0].(types.Object)
 		assert.Equal(t, "mask_email", objectString(item, "name"))
@@ -92,7 +92,7 @@ func TestMaskingPoliciesListing(t *testing.T) {
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	var data types.Object
 	require.False(t, state.Get(context.Background(), &data).HasError())
-	assert.Empty(t, data.Attributes()[collectionItems].(types.List).Elements())
+	assert.Empty(t, collectionResult(source, data).Elements())
 }
 
 // TestMaskingPoliciesListingFailures reports catalog errors and undecodable rows instead of a partial list.

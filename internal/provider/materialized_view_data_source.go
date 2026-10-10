@@ -17,7 +17,7 @@ const materializedViewLookupStorageDescription = "Always null: no catalog view t
 // newMaterializedViewDataSource reads a materialized view's definition, refresh setting, and owner without
 // managing it. Storage options have no catalog source every user can read, so they stay null.
 func newMaterializedViewDataSource() datasource.DataSource {
-	return viewLookupDescriptions(newCatalogDataSource(catalogSpec{name: "materialized_view", factory: newMaterializedViewResource, computed: []string{"query", "backup", "diststyle", "distkey", "sortkey"}, identityFields: []string{"schema", "name"}, identityDatabase: "database", lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
+	return lookupDescriptions(newCatalogDataSource(catalogSpec{name: "materialized_view", factory: newMaterializedViewResource, computed: []string{"query", "backup", "diststyle", "distkey", "sortkey"}, identityFields: []string{"schema", "name"}, identityDatabase: "database", lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
 		attributes := data.Attributes()
 		model := materializedViewModel{ID: types.StringNull(), Database: attributes["database"].(types.String), Schema: attributes["schema"].(types.String), Name: attributes["name"].(types.String)}
 		observed, found, err := (&materializedViewResource{*client}).read(ctx, model)

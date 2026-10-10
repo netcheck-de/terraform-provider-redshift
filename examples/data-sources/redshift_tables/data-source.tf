@@ -5,5 +5,5 @@ data "redshift_tables" "materialized" {
 }
 
 output "materialized_views" {
-  value = [for table in data.redshift_tables.materialized.items : "${table.schema}.${table.name}"]
+  value = [for table in data.redshift_tables.materialized.tables : "${table.schema}.${table.name}"]
 }

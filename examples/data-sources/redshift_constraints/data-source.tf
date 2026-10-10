@@ -6,7 +6,7 @@ data "redshift_constraints" "orders_keys" {
 }
 
 resource "redshift_comment" "orders_key" {
-  for_each = { for key in data.redshift_constraints.orders_keys.items : key.name => key }
+  for_each = { for key in data.redshift_constraints.orders_keys.constraints : key.name => key }
 
   database_name   = each.value.database
   object_type     = "CONSTRAINT"

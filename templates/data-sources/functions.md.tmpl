@@ -22,5 +22,5 @@ SELECT ... FROM pg_proc_info WHERE prokind = 'f' AND nspname = '...' AND proname
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 The listing reads the catalog of the selected database, so it shows only functions the provider's SQL identity can see.
-Built-in functions in `pg_*` schemas and `information_schema` are excluded. An empty `items` list means that nothing
+Built-in functions in `pg_*` schemas and `information_schema` are excluded. An empty `functions` list means that nothing
 matches; a missing database or a catalog failure is an error.

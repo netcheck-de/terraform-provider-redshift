@@ -71,7 +71,7 @@ func TestRlsPoliciesListing(t *testing.T) {
 	var identity map[string]string
 	require.NoError(t, json.Unmarshal([]byte(observed.Attributes()["id"].(types.String).ValueString()), &identity))
 	assert.Equal(t, map[string]string{"workgroup_name": "warehouse", "database": "analytics"}, identity)
-	items := observed.Attributes()[collectionItems].(types.List).Elements()
+	items := collectionResult(source, observed).Elements()
 	require.Len(t, items, 2)
 	open, filtered := items[0].(types.Object).Attributes(), items[1].(types.Object).Attributes()
 	assert.Equal(t, types.StringValue("open"), open["name"])
@@ -87,7 +87,7 @@ func TestRlsPoliciesListing(t *testing.T) {
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.Equal(t, "admin", target.Database)
 	require.False(t, state.Get(context.Background(), &observed).HasError())
-	assert.Empty(t, observed.Attributes()[collectionItems].(types.List).Elements())
+	assert.Empty(t, collectionResult(source, observed).Elements())
 
 	for _, failure := range []func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error){
 		func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {

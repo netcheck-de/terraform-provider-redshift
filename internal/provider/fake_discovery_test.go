@@ -145,7 +145,7 @@ func discoveryRead(t *testing.T, factory func() datasource.DataSource, filters m
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	var identity map[string]string
 	require.NoError(t, json.Unmarshal([]byte(observed.Attributes()["id"].(types.String).ValueString()), &identity))
-	list := observed.Attributes()[collectionItems].(types.List)
+	list := collectionResult(source, observed)
 	require.False(t, list.IsNull(), "a listing is never null")
 	var items []map[string]attr.Value
 	for _, element := range list.Elements() {

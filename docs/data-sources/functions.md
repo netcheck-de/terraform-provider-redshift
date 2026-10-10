@@ -22,7 +22,7 @@ data "redshift_functions" "public" {
 }
 
 output "lambda_udfs" {
-  value = [for function in data.redshift_functions.public.items : function.name if function.language == "exfunc"]
+  value = [for function in data.redshift_functions.public.functions : function.name if function.language == "exfunc"]
 }
 ```
 
@@ -38,11 +38,11 @@ output "lambda_udfs" {
 
 ### Read-Only
 
+- `functions` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--functions))
 - `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
-- `items` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--items))
 
-<a id="nestedatt--items"></a>
-### Nested Schema for `items`
+<a id="nestedatt--functions"></a>
+### Nested Schema for `functions`
 
 Read-Only:
 
@@ -57,5 +57,5 @@ Read-Only:
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 The listing reads the catalog of the selected database, so it shows only functions the provider's SQL identity can see.
-Built-in functions in `pg_*` schemas and `information_schema` are excluded. An empty `items` list means that nothing
+Built-in functions in `pg_*` schemas and `information_schema` are excluded. An empty `functions` list means that nothing
 matches; a missing database or a catalog failure is an error.

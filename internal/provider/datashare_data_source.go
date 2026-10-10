@@ -51,7 +51,7 @@ func (d *datashareDataSource) Metadata(_ context.Context, req datasource.Metadat
 func (d *datashareDataSource) Schema(ctx context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	var source resource.SchemaResponse
 	newDatashareResource().Schema(ctx, resource.SchemaRequest{}, &source)
-	attributes := lookupAttributes(source.Schema.Attributes, false, nil)
+	attributes := lookupSchemaAttributes(source.Schema.Attributes, source.Schema.Blocks, false, nil)
 	attributes["id"] = dataSourceIDAttribute()
 	attributes["publicly_accessible"] = datasharePublicObservation
 	resp.Schema = schema.Schema{MarkdownDescription: "Looks up a producer datashare in a local database.", Attributes: attributes}

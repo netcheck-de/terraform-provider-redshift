@@ -21,7 +21,7 @@ data "redshift_masking_policies" "warehouse" {
 }
 
 output "masking_policy_names" {
-  value = data.redshift_masking_policies.warehouse.items[*].name
+  value = data.redshift_masking_policies.warehouse.masking_policies[*].name
 }
 ```
 
@@ -36,21 +36,21 @@ output "masking_policy_names" {
 ### Read-Only
 
 - `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
-- `items` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--items))
+- `masking_policies` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--masking_policies))
 
-<a id="nestedatt--items"></a>
-### Nested Schema for `items`
+<a id="nestedatt--masking_policies"></a>
+### Nested Schema for `masking_policies`
 
 Read-Only:
 
 - `database` (String) Local database that holds the policy; the policy can only be attached to relations in this database.
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
 - `expression` (String) SQL expression of the `USING` clause that computes the masked value from the input columns, for example `'XXXX'::VARCHAR(256)` or a `CASE` over the inputs. A constant must be cast to the input type. Updated in place with `ALTER MASKING POLICY`. Redshift stores its own rendering, so refresh keeps the configured text while `definition_fingerprint` matches and shows the catalog text after a change made outside Terraform.
-- `input_columns` (Attributes List) Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached. Redshift cannot alter them, so changing a name or type replaces the policy; another spelling of the same type, such as `TEXT` for `VARCHAR(256)`, does not. (see [below for nested schema](#nestedatt--items--input_columns))
+- `input_columns` (Attributes List) Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached. Redshift cannot alter them, so changing a name or type replaces the policy; another spelling of the same type, such as `TEXT` for `VARCHAR(256)`, does not. (see [below for nested schema](#nestedatt--masking_policies--input_columns))
 - `name` (String) Policy name, unique among the masking policies of the database.
 
-<a id="nestedatt--items--input_columns"></a>
-### Nested Schema for `items.input_columns`
+<a id="nestedatt--masking_policies--input_columns"></a>
+### Nested Schema for `masking_policies.input_columns`
 
 Read-Only:
 

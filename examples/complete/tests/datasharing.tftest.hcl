@@ -40,7 +40,7 @@ override_data {
   target = data.redshift_datashare_privilege.share_operators
   values = { privileges = ["ALTER", "SHARE"] }
 }
-# Terraform test mocks cannot override list-nested attributes such as the listings' items, so the listing runs
+# Terraform test mocks cannot override list-nested attributes such as a listing's elements, so the listing runs
 # assert the filters and the output wiring instead of element values.
 override_data {
   target = data.redshift_datashares.outbound
@@ -81,8 +81,8 @@ run "datasharing_apply" {
       output.datasharing.producer_namespace == "11111111-2222-3333-4444-555555555555" &&
       output.datasharing.share_operator_privileges == toset(["ALTER", "SHARE"]) &&
       data.redshift_datashares.outbound.id == "outbound-listing-identity" && data.redshift_datashares.inbound.id == "inbound-listing-identity" &&
-      output.datasharing.outbound_shares == [for share in data.redshift_datashares.outbound.items : share.name] &&
-      length(output.datasharing.inbound_shares) == length(data.redshift_datashares.inbound.items)
+      output.datasharing.outbound_shares == [for share in data.redshift_datashares.outbound.datashares : share.name] &&
+      length(output.datasharing.inbound_shares) == length(data.redshift_datashares.inbound.datashares)
     )
     error_message = "The datasharing output must pass the observed share metadata, listings, and permissions through unchanged."
   }

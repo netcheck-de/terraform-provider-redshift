@@ -26,7 +26,7 @@ SELECT ... FROM svv_mv_info WHERE database_name = '...';
 
 `database` defaults to the provider's `database`; both reads run in the provider's database. `id` combines the
 warehouse binding, the listed database, and the configured filters. Items are ordered by schema and name; no match
-returns an empty `items` list.
+returns an empty `tables` list.
 
 `SVV_ALL_TABLES` reports materialized views as views. The listing reclassifies every view that `SVV_MV_INFO` knows as
 `MATERIALIZED VIEW`. `SVV_MV_INFO` shows a regular user only the materialized views it owns, so unless the provider's

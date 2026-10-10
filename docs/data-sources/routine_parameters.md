@@ -27,7 +27,7 @@ data "redshift_routine_parameters" "upper" {
 }
 
 output "upper_inputs" {
-  value = [for parameter in data.redshift_routine_parameters.upper.items : parameter.data_type if parameter.mode == "IN"]
+  value = [for parameter in data.redshift_routine_parameters.upper.routine_parameters : parameter.data_type if parameter.mode == "IN"]
 }
 ```
 
@@ -45,10 +45,10 @@ output "upper_inputs" {
 ### Read-Only
 
 - `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
-- `items` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--items))
+- `routine_parameters` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--routine_parameters))
 
-<a id="nestedatt--items"></a>
-### Nested Schema for `items`
+<a id="nestedatt--routine_parameters"></a>
+### Nested Schema for `routine_parameters`
 
 Read-Only:
 

@@ -84,9 +84,9 @@ run "permissions_apply" {
       output.permission_checks.column_privileges["SELECT"] == toset(["id", "label"]) &&
       output.permission_checks.language_privileges == toset(["USAGE"]) &&
       output.permission_checks.language_grant_options == toset(["USAGE"]) &&
-      length(output.permission_checks.table_grants) == length(data.redshift_grants.local_events.items) &&
-      length(output.permission_checks.loader_grants) == length(distinct([for grant in data.redshift_grants.loader.items : grant.privilege])) &&
-      length(output.permission_checks.column_grants) == length(data.redshift_column_grants.local.items)
+      length(output.permission_checks.table_grants) == length(data.redshift_grants.local_events.grants) &&
+      length(output.permission_checks.loader_grants) == length(distinct([for grant in data.redshift_grants.loader.grants : grant.privilege])) &&
+      length(output.permission_checks.column_grants) == length(data.redshift_column_grants.local.column_grants)
     )
     error_message = "Permission outputs must expose the observed column, language, and listed grants."
   }

@@ -34,6 +34,10 @@ through the Data API or a direct TLS connection.
 - Create and Update re-read the catalog to verify convergence; Read calls `RemoveResource` when the object or its parent
   is gone, and returns errors only for real failures.
 - Resource IDs are JSON objects built by `resourceClient.identity` and checked by `bound`; imports use the same JSON.
+- Nested configuration uses blocks with singular names; a required block validates with `listvalidator.IsRequired()`,
+  `setvalidator.IsRequired()`, or `objectvalidator.IsRequired()` (plus `SizeAtLeast(1)` for lists and sets) and its
+  description starts with "At least one … is required". Lists of plain values stay plural attributes. Data sources never declare blocks, and a listing's result attribute is named after
+  the data source. See "Schema conventions" in `DEVELOPMENT.md`.
 - Comments explain why, not what.
 
 ## Tests

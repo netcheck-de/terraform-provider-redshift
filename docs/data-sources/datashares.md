@@ -34,11 +34,11 @@ data "redshift_datashares" "outbound" {
 
 ### Read-Only
 
+- `datashares` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--datashares))
 - `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
-- `items` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--items))
 
-<a id="nestedatt--items"></a>
-### Nested Schema for `items`
+<a id="nestedatt--datashares"></a>
+### Nested Schema for `datashares`
 
 Read-Only:
 
@@ -55,7 +55,7 @@ Read-Only:
 - `share_type` (String) `OUTBOUND` for a share this namespace produces, `INBOUND` for one it consumes.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-`items` is empty when nothing matches; it is ordered by share type and name. Outbound shares report their producer
+`datashares` is empty when nothing matches; it is ordered by share type and name. Outbound shares report their producer
 `database` and `owner`. Inbound shares report the `consumer_database` created from them, while `producer_account` and
 `producer_namespace` identify the producer; their `database` and `owner` are null.
 

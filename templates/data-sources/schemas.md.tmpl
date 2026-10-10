@@ -24,7 +24,7 @@ SELECT ... FROM svv_all_schemas WHERE database_name = '...' AND schema_type = '.
 `database` defaults to the provider's `database`. The read always runs in the provider's database, because
 `SVV_ALL_SCHEMAS` spans every database of the warehouse, so datashare databases can be listed without connecting to
 them. `id` combines the warehouse binding, the listed database, and the configured filters. Items are ordered by
-name; no match returns an empty `items` list.
+name; no match returns an empty `schemas` list.
 
 System schemas such as `pg_catalog` and `information_schema` are included; filter them in Terraform when needed.
 Superusers see every schema; other users see only schemas they own or may use. Owner IDs of shared schemas belong to

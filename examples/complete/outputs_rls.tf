@@ -13,6 +13,6 @@ output "row_level_security" {
       conjunction_type             = data.redshift_table_security.rls_events.conjunction_type
       datashare_row_level_security = data.redshift_table_security.rls_events.datashare_row_level_security
     }
-    policies = [for policy in data.redshift_rls_policies.local.items : policy.name]
+    policies = [for policy in data.redshift_rls_policies.local.rls_policies : policy.name]
   }
 }

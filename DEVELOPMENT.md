@@ -46,13 +46,31 @@ The provider grows in parallel work blocks, so a new type adds files instead of 
   `var _ = registerDataSource(newX)` (`registry.go`); `provider.go` returns clones of the registry, and `main_test.go`
   derives the expected counts from the generated `docs/` pages. The type's test files register its cross-cutting
   cases next to the code they cover:
-  - `registerReplacementPolicy(type, rules)` declares, per attribute, whether a change never, always, or conditionally
-    replaces the object; `replacement_policy_test.go` checks the schema against it.
+  - `registerReplacementPolicy(type, rules)` declares, per attribute and block, whether a change never, always, or
+    conditionally replaces the object; `replacement_policy_test.go` checks the schema against it, and every block
+    counts as an input.
   - `registerParity(parityCase{...})` pairs a lookup with its resource (or a collection lookup with its element shape);
-    a resource without a lookup registers an explicit exemption.
+    a resource without a lookup registers an explicit exemption. `lookupSelectors` names inputs only the lookup has.
   - `registerLifecycleCase(...)` adds the type to the lifecycle, retry, and transcript runs in `lifecycle_test.go`.
   - `registerFakeFamily(...)` in `fake_<type>_test.go` teaches the stateful `catalog` fake the type's statements and
     catalog reads; the fake consults registered families before its built-in cases.
+- **Schema conventions.** Similar resources model the same concept the same way:
+  - Nested configuration is a block with a singular name (`column`, `primary_key`, `distribution`), as in the
+    official providers; lists of plain values stay plural attributes (`arguments`, `search_path`, `values`).
+  - Blocks have no `Required`, `Computed`, or `Default`. A required list block declares `listvalidator.IsRequired()`
+    with `listvalidator.SizeAtLeast(1)`, a required set block `setvalidator.IsRequired()` with
+    `setvalidator.SizeAtLeast(1)`, and a required single block `objectvalidator.IsRequired()`. Its description starts
+    with "At least one `x` block is required." because tfplugindocs labels every block as optional; lookups drop
+    that sentence. Attributes inside a block may be optional and computed and may have defaults.
+  - Absent list and set blocks arrive as null, block plan modifiers cannot add or remove elements, and Terraform
+    requires the applied state of a list block to keep the planned order.
+  - Data sources never declare blocks. `newCatalogDataSource` and `collectionElement` turn each resource block into a
+    computed nested attribute of the same name and type, so `data.redshift_x.y.column[0].name` addresses what the
+    resource does and a single block reads as an object without `[0]`. An input that only the lookup needs, such as a
+    plain list of types selecting an overload, is a `catalogSpec.selectors` entry.
+  - A listing's result attribute is named after the data source: `data.redshift_tables.x.tables`.
+  - `lookupDescriptions` replaces resource wording that does not apply to an observed value; dotted paths such as
+    `distribution.style` reach nested attributes.
 - **Renderers.** `<type>_sql.go` holds pure functions from the Terraform model to SQL: `create<X>Statement`,
   `alter<X>Statements` (one statement per changed option, built from `alterStep`s in `alter.go`), `drop<X>Statement`,
   and `read<X>Query`. Resource methods only call them and run the result through `resourceClient.exec` and

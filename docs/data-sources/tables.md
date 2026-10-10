@@ -26,7 +26,7 @@ data "redshift_tables" "materialized" {
 }
 
 output "materialized_views" {
-  value = [for table in data.redshift_tables.materialized.items : "${table.schema}.${table.name}"]
+  value = [for table in data.redshift_tables.materialized.tables : "${table.schema}.${table.name}"]
 }
 ```
 
@@ -43,10 +43,10 @@ output "materialized_views" {
 ### Read-Only
 
 - `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
-- `items` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--items))
+- `tables` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--tables))
 
-<a id="nestedatt--items"></a>
-### Nested Schema for `items`
+<a id="nestedatt--tables"></a>
+### Nested Schema for `tables`
 
 Read-Only:
 
@@ -60,7 +60,7 @@ Read-Only:
 
 `database` defaults to the provider's `database`; both reads run in the provider's database. `id` combines the
 warehouse binding, the listed database, and the configured filters. Items are ordered by schema and name; no match
-returns an empty `items` list.
+returns an empty `tables` list.
 
 `SVV_ALL_TABLES` reports materialized views as views. The listing reclassifies every view that `SVV_MV_INFO` knows as
 `MATERIALIZED VIEW`. `SVV_MV_INFO` shows a regular user only the materialized views it owns, so unless the provider's

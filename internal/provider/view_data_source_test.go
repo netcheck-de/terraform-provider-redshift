@@ -43,12 +43,10 @@ func TestViewLookupDescriptions(t *testing.T) {
 	for _, factory := range []func() datasource.DataSource{newViewDataSource, newMaterializedViewDataSource} {
 		var response datasource.SchemaResponse
 		factory().Schema(context.Background(), datasource.SchemaRequest{}, &response)
-		for name, attribute := range response.Schema.Attributes {
-			description := attribute.GetMarkdownDescription()
+		for name, description := range nestedDescriptions(response.Schema.Attributes) {
 			for _, resourceOnly := range []string{"State keeps", "import", "A change runs", "Defaults to", "When set", "Changed in place", "Changing it"} {
 				assert.NotContains(t, description, resourceOnly, "%s", name)
 			}
 		}
 	}
-	assert.Panics(t, func() { viewLookupDescriptions(newViewDataSource(), map[string]string{"missing": "text"}) })
 }

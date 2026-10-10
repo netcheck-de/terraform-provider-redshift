@@ -4,5 +4,5 @@ data "redshift_functions" "public" {
 }
 
 output "lambda_udfs" {
-  value = [for function in data.redshift_functions.public.items : function.name if function.language == "exfunc"]
+  value = [for function in data.redshift_functions.public.functions : function.name if function.language == "exfunc"]
 }

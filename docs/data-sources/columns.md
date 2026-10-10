@@ -23,7 +23,7 @@ data "redshift_columns" "daily_summary" {
 }
 
 output "required_columns" {
-  value = [for column in data.redshift_columns.daily_summary.items : column.name if column.nullable == false]
+  value = [for column in data.redshift_columns.daily_summary.columns : column.name if column.nullable == false]
 }
 ```
 
@@ -39,11 +39,11 @@ output "required_columns" {
 
 ### Read-Only
 
+- `columns` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--columns))
 - `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
-- `items` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--items))
 
-<a id="nestedatt--items"></a>
-### Nested Schema for `items`
+<a id="nestedatt--columns"></a>
+### Nested Schema for `columns`
 
 Read-Only:
 
@@ -63,7 +63,7 @@ Read-Only:
 
 `database` defaults to the provider's `database`; the read runs in the provider's database. `id` combines the
 warehouse binding, the listed database, and the configured filters. Items are ordered by schema, table, and
-`ordinal_position`; no match returns an empty `items` list. Without a `table` filter, the listing covers every
+`ordinal_position`; no match returns an empty `columns` list. Without a `table` filter, the listing covers every
 relation of the database, so filter as narrowly as possible on large warehouses.
 
 `data_type` is the bare type name; length, precision, and scale are separate attributes. `nullable` is null when the

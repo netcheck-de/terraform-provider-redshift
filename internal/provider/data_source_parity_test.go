@@ -21,6 +21,9 @@ type parityCase struct {
 	resource func() resource.Resource
 	// selectors are the lookup inputs, which keep the resource's required/optional flags.
 	selectors []string
+	// lookupSelectors are inputs only the lookup has (catalogSpec.selectors), such as argument types selecting an
+	// overload whose arguments the resource configures as blocks.
+	lookupSelectors []string
 	// collection marks a listing whose elements, not its top level, mirror the resource.
 	collection bool
 	// filters are a collection's optional inputs.
@@ -68,6 +71,13 @@ func readableAttributes(factory func() resource.Resource) map[string]schema.Attr
 	return attributes
 }
 
+// resourceBlocks returns a resource's blocks, which a lookup always observes.
+func resourceBlocks(factory func() resource.Resource) map[string]schema.Block {
+	var response resource.SchemaResponse
+	factory().Schema(context.Background(), resource.SchemaRequest{}, &response)
+	return response.Schema.Blocks
+}
+
 // dataSourceSchema returns a data source's schema.
 func dataSourceSchema(factory func() datasource.DataSource) datasourceschema.Schema {
 	var response datasource.SchemaResponse
@@ -75,12 +85,77 @@ func dataSourceSchema(factory func() datasource.DataSource) datasourceschema.Sch
 	return response.Schema
 }
 
+// assertBlockParity checks that a lookup observes a resource block as a computed nested attribute of the same kind,
+// recursively, so data.x.column[0].name addresses what resource.x.column[0].name does. Types are compared per child
+// because the observed object omits attributes the lookup cannot read, such as write-only secrets.
+func assertBlockParity(t *testing.T, path string, block schema.Block, observed datasourceschema.Attribute) {
+	t.Helper()
+	assert.True(t, observed.IsComputed(), "%s must be computed", path)
+	assert.False(t, observed.IsRequired() || observed.IsOptional(), "%s must not be configurable", path)
+	var attributes map[string]schema.Attribute
+	var blocks map[string]schema.Block
+	var nested map[string]datasourceschema.Attribute
+	switch block := block.(type) {
+	case schema.ListNestedBlock:
+		list, ok := observed.(datasourceschema.ListNestedAttribute)
+		require.True(t, ok, "%s: a list block is observed as a list of nested objects", path)
+		attributes, blocks, nested = block.NestedObject.Attributes, block.NestedObject.Blocks, list.NestedObject.Attributes
+	case schema.SetNestedBlock:
+		set, ok := observed.(datasourceschema.SetNestedAttribute)
+		require.True(t, ok, "%s: a set block is observed as a set of nested objects", path)
+		attributes, blocks, nested = block.NestedObject.Attributes, block.NestedObject.Blocks, set.NestedObject.Attributes
+	case schema.SingleNestedBlock:
+		single, ok := observed.(datasourceschema.SingleNestedAttribute)
+		require.True(t, ok, "%s: a single block is observed as a single nested object", path)
+		attributes, blocks, nested = block.Attributes, block.Blocks, single.Attributes
+	default:
+		t.Fatalf("%s: add parity coverage for block type %T", path, block)
+	}
+	for name, child := range blocks {
+		actual, ok := nested[name]
+		if assert.True(t, ok, "missing readable block %s.%s", path, name) {
+			assertBlockParity(t, path+"."+name, child, actual)
+		}
+	}
+	for name, attribute := range attributes {
+		actual, ok := nested[name]
+		if lookupExcluded(name, attribute) {
+			assert.False(t, ok, "%s.%s cannot be observed", path, name)
+			continue
+		}
+		if assert.True(t, ok, "missing readable attribute %s.%s", path, name) {
+			assert.Equal(t, attribute.GetType(), actual.GetType(), "%s.%s", path, name)
+			assert.True(t, actual.IsComputed(), "%s.%s must be computed", path, name)
+		}
+	}
+	for name := range nested {
+		_, attribute := attributes[name]
+		_, child := blocks[name]
+		assert.True(t, attribute || child, "unpaired nested attribute %s.%s", path, name)
+	}
+}
+
 // assertLookupParity checks a single-object lookup against its paired resource.
 func assertLookupParity(t *testing.T, test parityCase) {
 	t.Helper()
 	source := dataSourceSchema(test.source)
+	assert.Empty(t, source.Blocks, "data sources never declare blocks")
 	var paired resource.SchemaResponse
 	test.resource().Schema(context.Background(), resource.SchemaRequest{}, &paired)
+	for name, block := range paired.Schema.Blocks {
+		assert.NotContains(t, test.selectors, name, "block %s is always observed; select with a lookup selector", name)
+		if actual, ok := source.Attributes[name]; assert.True(t, ok, "missing readable block %s", name) {
+			assertBlockParity(t, name, block, actual)
+		}
+	}
+	for _, name := range test.lookupSelectors {
+		assert.NotContains(t, paired.Schema.Attributes, name, "lookup selector %s shadows a resource attribute", name)
+		assert.NotContains(t, paired.Schema.Blocks, name, "lookup selector %s shadows a resource block", name)
+		if actual, ok := source.Attributes[name]; assert.True(t, ok, "missing lookup selector %s", name) {
+			assert.True(t, actual.IsRequired() || actual.IsOptional(), "lookup selector %s must be an input", name)
+			assert.False(t, actual.IsComputed(), "lookup selector %s must not be computed", name)
+		}
+	}
 	for name, attribute := range paired.Schema.Attributes {
 		if lookupExcluded(name, attribute) {
 			assert.NotContains(t, source.Attributes, name)
@@ -102,24 +177,27 @@ func assertLookupParity(t *testing.T, test parityCase) {
 		}
 	}
 	for name := range source.Attributes {
-		if name != "exists" {
-			assert.Contains(t, paired.Schema.Attributes, name, "unpaired data-source attribute")
-		}
+		_, attribute := paired.Schema.Attributes[name]
+		_, block := paired.Schema.Blocks[name]
+		assert.True(t, attribute || block || name == "exists" || slices.Contains(test.lookupSelectors, name), "unpaired data-source attribute %s", name)
 	}
 }
 
-// assertCollectionParity checks a listing's filters and that its element type is a computed subset of the
-// paired resource's readable attributes.
+// assertCollectionParity checks a listing's filters, that its result attribute is named after the data source, and
+// that its element type is a computed subset of the paired resource's readable attributes and blocks.
 func assertCollectionParity(t *testing.T, test parityCase) {
 	t.Helper()
 	source := dataSourceSchema(test.source)
+	assert.Empty(t, source.Blocks, "data sources never declare blocks")
 	var readable map[string]schema.Attribute
+	var blocks map[string]schema.Block
 	if test.resource != nil {
-		readable = readableAttributes(test.resource)
+		readable, blocks = readableAttributes(test.resource), resourceBlocks(test.resource)
 	}
-	expected := append([]string{"id", collectionItems}, test.filters...)
+	result := registeredDataSourceName(test.source)
+	expected := append([]string{"id", result}, test.filters...)
 	for name, attribute := range source.Attributes {
-		require.Contains(t, expected, name, "collection attributes are id, %s, and the declared filters", collectionItems)
+		require.Contains(t, expected, name, "collection attributes are id, %s, and the declared filters", result)
 		if !slices.Contains(test.filters, name) {
 			continue
 		}
@@ -131,8 +209,8 @@ func assertCollectionParity(t *testing.T, test parityCase) {
 	}
 	require.Contains(t, source.Attributes, "id")
 	assert.True(t, source.Attributes["id"].IsComputed())
-	items, ok := source.Attributes[collectionItems].(datasourceschema.ListNestedAttribute)
-	require.True(t, ok, "%s must be a list of nested objects", collectionItems)
+	items, ok := source.Attributes[result].(datasourceschema.ListNestedAttribute)
+	require.True(t, ok, "%s must be a list of nested objects", result)
 	assert.True(t, items.IsComputed())
 	require.NotEmpty(t, items.NestedObject.Attributes)
 	for name, element := range items.NestedObject.Attributes {
@@ -140,11 +218,20 @@ func assertCollectionParity(t *testing.T, test parityCase) {
 		if test.resource == nil {
 			continue
 		}
+		if block, ok := blocks[name]; ok {
+			assertBlockParity(t, name, block, element)
+			continue
+		}
 		paired, ok := readable[name]
 		if assert.True(t, ok, "element attribute %s is not a readable resource attribute", name) {
 			assert.Equal(t, paired.GetType(), element.GetType(), name)
 		}
 	}
+}
+
+// TestBlockLookupParity proves the block and lookup-only selector checks on the block test resource.
+func TestBlockLookupParity(t *testing.T) {
+	assertLookupParity(t, parityCase{source: blockTestLookup, resource: newBlockTestResource, selectors: []string{"database", "name"}, lookupSelectors: []string{"column_types"}})
 }
 
 // TestDataSourceReadableAttributeParity checks all lookup schemas against their paired resources.
@@ -161,6 +248,7 @@ func TestDataSourceReadableAttributeParity(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			if test.collection {
+				require.Empty(t, test.lookupSelectors, "lookup selectors apply only to single-object lookups")
 				assertCollectionParity(t, test)
 				return
 			}

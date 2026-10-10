@@ -4,5 +4,5 @@ data "redshift_databases" "analytics" {
 }
 
 output "analytics_databases" {
-  value = [for database in data.redshift_databases.analytics.items : database.name]
+  value = [for database in data.redshift_databases.analytics.databases : database.name]
 }

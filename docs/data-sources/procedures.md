@@ -22,7 +22,7 @@ data "redshift_procedures" "etl" {
 }
 
 output "definer_procedures" {
-  value = [for procedure in data.redshift_procedures.etl.items : procedure.name if procedure.security == "DEFINER"]
+  value = [for procedure in data.redshift_procedures.etl.procedures : procedure.name if procedure.security == "DEFINER"]
 }
 ```
 
@@ -39,10 +39,10 @@ output "definer_procedures" {
 ### Read-Only
 
 - `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
-- `items` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--items))
+- `procedures` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--procedures))
 
-<a id="nestedatt--items"></a>
-### Nested Schema for `items`
+<a id="nestedatt--procedures"></a>
+### Nested Schema for `procedures`
 
 Read-Only:
 
@@ -57,4 +57,4 @@ Read-Only:
 
 The listing reads the catalog of the selected database, so it shows only procedures the provider's SQL identity can
 see. `arguments` holds the input (`IN` and `INOUT`) types that identify each overload; use
-`redshift_routine_parameters` for every parameter and its mode. An empty `items` list means that nothing matches.
+`redshift_routine_parameters` for every parameter and its mode. An empty `procedures` list means that nothing matches.

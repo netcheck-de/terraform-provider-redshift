@@ -17,7 +17,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -121,8 +123,31 @@ func modifierReplacement[M any](t *testing.T, modifiers []M, run func(M) (bool, 
 // attributeReplacement invokes the actual schema modifiers with a changed or unchanged input.
 func attributeReplacement(t *testing.T, attribute schema.Attribute, changed, existing bool) bool {
 	t.Helper()
+	return inputReplacement(t, attribute, changed, existing)
+}
+
+// blockReplacement invokes a block's own plan modifiers, which the framework runs like those of the nested
+// attribute of the same type.
+func blockReplacement(t *testing.T, block schema.Block, changed, existing bool) bool {
+	t.Helper()
+	return inputReplacement(t, block, changed, existing)
+}
+
+// inputReplacement plans a schema.Attribute or schema.Block as the only input of a schema and reports whether a
+// changed or unchanged value requests replacement.
+func inputReplacement(t *testing.T, input any, changed, existing bool) bool {
+	t.Helper()
 	ctx := context.Background()
-	attributeType := attribute.GetType()
+	var single schema.Schema
+	var attributeType attr.Type
+	switch input := input.(type) {
+	case schema.Attribute:
+		single, attributeType = schema.Schema{Attributes: map[string]schema.Attribute{"value": input}}, input.GetType()
+	case schema.Block:
+		single, attributeType = schema.Schema{Blocks: map[string]schema.Block{"value": input}}, input.Type()
+	default:
+		t.Fatalf("replacement input must be a schema attribute or block, got %T", input)
+	}
 	before, after := sampleValues(t, attributeType)
 	if !changed {
 		after = before
@@ -132,7 +157,6 @@ func attributeReplacement(t *testing.T, attribute schema.Attribute, changed, exi
 	require.NoError(t, err)
 	afterValue, err := after.ToTerraformValue(ctx)
 	require.NoError(t, err)
-	single := schema.Schema{Attributes: map[string]schema.Attribute{"value": attribute}}
 	state := tfsdk.State{Schema: single, Raw: tftypes.NewValue(objectType, map[string]tftypes.Value{"value": beforeValue})}
 	if !existing {
 		state.Raw = tftypes.NewValue(objectType, nil)
@@ -174,7 +198,7 @@ func attributeReplacement(t *testing.T, attribute schema.Attribute, changed, exi
 			return response.RequiresReplace, response.Diagnostics
 		})
 	}
-	switch attribute := attribute.(type) {
+	switch attribute := input.(type) {
 	case schema.StringAttribute:
 		return modifierReplacement(t, attribute.PlanModifiers, func(modifier planmodifier.String) (bool, diag.Diagnostics) {
 			request := planmodifier.StringRequest{Path: root, Config: config, Plan: plan, State: state, ConfigValue: after.(types.String), PlanValue: after.(types.String), StateValue: before.(types.String)}
@@ -226,34 +250,58 @@ func attributeReplacement(t *testing.T, attribute schema.Attribute, changed, exi
 		return object(attribute.PlanModifiers)
 	case schema.SingleNestedAttribute:
 		return object(attribute.PlanModifiers)
+	case schema.ListNestedBlock:
+		return list(attribute.PlanModifiers)
+	case schema.SetNestedBlock:
+		return set(attribute.PlanModifiers)
+	case schema.SingleNestedBlock:
+		return object(attribute.PlanModifiers)
 	default:
-		t.Fatalf("add replacement coverage for attribute type %T", attribute)
+		t.Fatalf("add replacement coverage for input type %T", input)
 		return false
 	}
 }
 
-// replacingNestedAttributes lists the nested attributes, at any depth and as dotted paths, whose own modifiers
-// request replacement. The framework runs those modifiers too, so a replacing child would replace the resource
-// behind the top-level policy's back; nested values replace only through the top-level RequiresReplaceIf, which
-// sees the whole value.
-func replacingNestedAttributes(t *testing.T, attribute schema.Attribute) []string {
-	t.Helper()
-	var nested map[string]schema.Attribute
-	switch attribute := attribute.(type) {
+// nestedInputs returns the child attributes and blocks of a nested attribute or block, keyed by name; attributes
+// and blocks of one object never share a name.
+func nestedInputs(input any) map[string]any {
+	var attributes map[string]schema.Attribute
+	var blocks map[string]schema.Block
+	switch input := input.(type) {
 	case schema.ListNestedAttribute:
-		nested = attribute.NestedObject.Attributes
+		attributes = input.NestedObject.Attributes
 	case schema.SetNestedAttribute:
-		nested = attribute.NestedObject.Attributes
+		attributes = input.NestedObject.Attributes
 	case schema.MapNestedAttribute:
-		nested = attribute.NestedObject.Attributes
+		attributes = input.NestedObject.Attributes
 	case schema.SingleNestedAttribute:
-		nested = attribute.Attributes
-	default:
-		return nil
+		attributes = input.Attributes
+	case schema.ListNestedBlock:
+		attributes, blocks = input.NestedObject.Attributes, input.NestedObject.Blocks
+	case schema.SetNestedBlock:
+		attributes, blocks = input.NestedObject.Attributes, input.NestedObject.Blocks
+	case schema.SingleNestedBlock:
+		attributes, blocks = input.Attributes, input.Blocks
 	}
+	nested := map[string]any{}
+	for name, attribute := range attributes {
+		nested[name] = attribute
+	}
+	for name, block := range blocks {
+		nested[name] = block
+	}
+	return nested
+}
+
+// replacingNestedAttributes lists the nested attributes and blocks of an attribute or block, at any depth and as
+// dotted paths, whose own modifiers request replacement. The framework runs those modifiers too, so a replacing
+// child would replace the resource behind the top-level policy's back; nested values replace only through the
+// top-level RequiresReplaceIf, which sees the whole value.
+func replacingNestedAttributes(t *testing.T, input any) []string {
+	t.Helper()
 	var replacing []string
-	for name, child := range nested {
-		if attributeReplacement(t, child, true, true) {
+	for name, child := range nestedInputs(input) {
+		if inputReplacement(t, child, true, true) {
 			replacing = append(replacing, name)
 		}
 		for _, inner := range replacingNestedAttributes(t, child) {
@@ -264,22 +312,66 @@ func replacingNestedAttributes(t *testing.T, attribute schema.Attribute) []strin
 	return replacing
 }
 
-// checkReplacementRule checks one attribute against its rule; a conditional rule delegates the changed-value
-// check to its named test.
-func checkReplacementRule(t *testing.T, attribute schema.Attribute, rule replaceRule) {
+// checkReplacementRule checks one attribute or block against its rule; a conditional rule delegates the
+// changed-value check to its named test.
+func checkReplacementRule(t *testing.T, input any, rule replaceRule) {
 	t.Helper()
 	if rule.kind == replaceKindConditional {
 		require.NotEmpty(t, rule.test, "conditional replacement needs a named per-resource test")
 		requireTestFunction(t, rule.test)
 	} else {
-		assert.Equal(t, rule.kind == replaceKindAlways, attributeReplacement(t, attribute, true, true), "changed input")
+		assert.Equal(t, rule.kind == replaceKindAlways, inputReplacement(t, input, true, true), "changed input")
 	}
-	assert.False(t, attributeReplacement(t, attribute, false, true), "unchanged input")
-	assert.False(t, attributeReplacement(t, attribute, true, false), "initial creation")
-	assert.Empty(t, replacingNestedAttributes(t, attribute), "nested attributes replace only through the top-level attribute")
+	assert.False(t, inputReplacement(t, input, false, true), "unchanged input")
+	assert.False(t, inputReplacement(t, input, true, false), "initial creation")
+	assert.Empty(t, replacingNestedAttributes(t, input), "nested attributes replace only through the top-level input")
 }
 
-// TestEveryResourceAttributeReplacementPolicy covers every input and computed attribute across all resources.
+// policyInputs lists the inputs a replacement policy must name: configurable attributes and every block, since a
+// block has no computed-only form.
+func policyInputs(s schema.Schema) []string {
+	var inputs []string
+	for name, attribute := range s.Attributes {
+		if attribute.IsRequired() || attribute.IsOptional() {
+			inputs = append(inputs, name)
+		}
+	}
+	for name := range s.Blocks {
+		inputs = append(inputs, name)
+	}
+	slices.Sort(inputs)
+	return inputs
+}
+
+// assertReplacementPolicy checks every attribute and block of a resource schema against its policy.
+func assertReplacementPolicy(t *testing.T, s schema.Schema, policy map[string]replaceRule) {
+	t.Helper()
+	inputs := policyInputs(s)
+	for _, name := range inputs {
+		_, found := policy[name]
+		assert.True(t, found, "input %s needs an explicit replacement policy", name)
+	}
+	for name := range policy {
+		assert.Contains(t, inputs, name, "policy must not contain stale input name %s", name)
+	}
+	children := map[string]any{}
+	for name, attribute := range s.Attributes {
+		children[name] = attribute
+	}
+	for name, block := range s.Blocks {
+		children[name] = block
+	}
+	for name, child := range children {
+		rule, found := policy[name]
+		if !found && slices.Contains(inputs, name) {
+			continue
+		}
+		// Computed-only attributes must never replace, which the zero rule, replaceNever, checks.
+		t.Run(name, func(t *testing.T) { checkReplacementRule(t, child, rule) })
+	}
+}
+
+// TestEveryResourceAttributeReplacementPolicy covers every input, block, and computed attribute across all resources.
 func TestEveryResourceAttributeReplacementPolicy(t *testing.T) {
 	require.Empty(t, replacementPolicies.duplicates, "duplicate replacement policies")
 	resources, _ := registeredTypeNames()
@@ -294,22 +386,7 @@ func TestEveryResourceAttributeReplacementPolicy(t *testing.T) {
 			require.True(t, found, "resource needs an explicit replacement policy")
 			var response resource.SchemaResponse
 			instance.Schema(context.Background(), resource.SchemaRequest{}, &response)
-			inputs := map[string]bool{}
-			for name, attribute := range response.Schema.Attributes {
-				t.Run(name, func(t *testing.T) {
-					rule := replaceNever
-					if attribute.IsRequired() || attribute.IsOptional() {
-						inputs[name] = true
-						var found bool
-						rule, found = policy[name]
-						require.True(t, found, "input needs an explicit replacement policy")
-					}
-					checkReplacementRule(t, attribute, rule)
-				})
-			}
-			for name := range policy {
-				assert.True(t, inputs[name], "policy must not contain stale attribute name %s", name)
-			}
+			assertReplacementPolicy(t, response.Schema, policy)
 		})
 	}
 	require.Len(t, registered, len(resources))
@@ -344,16 +421,48 @@ func TestReplacementSamplesCoverEveryAttributeKind(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			before, after := sampleValues(t, attribute.GetType())
 			assert.False(t, before.Equal(after), "samples must differ")
-			rule := replaceNever
-			switch {
-			case strings.HasSuffix(name, "_replaces"):
-				rule = replaceAlways
-			case strings.HasSuffix(name, "_conditional"):
-				rule = replaceConditional("TestReplacementSamplesCoverEveryAttributeKind")
-			}
-			checkReplacementRule(t, attribute, rule)
+			checkReplacementRule(t, attribute, sampleRule(name))
 		})
 	}
+	block := schema.NestedBlockObject{Attributes: nested.Attributes, Blocks: map[string]schema.Block{"inner": schema.SingleNestedBlock{Attributes: nested.Attributes}}}
+	for name, block := range map[string]schema.Block{
+		"list_block":            schema.ListNestedBlock{NestedObject: block},
+		"set_block":             schema.SetNestedBlock{NestedObject: block},
+		"single_block":          schema.SingleNestedBlock{Attributes: nested.Attributes, Blocks: block.Blocks},
+		"list_block_replaces":   schema.ListNestedBlock{NestedObject: block, PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplace()}},
+		"set_block_replaces":    schema.SetNestedBlock{NestedObject: block, PlanModifiers: []planmodifier.Set{setplanmodifier.RequiresReplace()}},
+		"single_block_replaces": schema.SingleNestedBlock{Attributes: nested.Attributes, PlanModifiers: []planmodifier.Object{objectplanmodifier.RequiresReplace()}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			before, after := sampleValues(t, block.Type())
+			assert.False(t, before.Equal(after), "samples must differ")
+			checkReplacementRule(t, block, sampleRule(name))
+		})
+	}
+}
+
+// sampleRule derives the expected rule of a sample input from its name's suffix.
+func sampleRule(name string) replaceRule {
+	switch {
+	case strings.HasSuffix(name, "_replaces"):
+		return replaceAlways
+	case strings.HasSuffix(name, "_conditional"):
+		return replaceConditional("TestReplacementSamplesCoverEveryAttributeKind")
+	}
+	return replaceNever
+}
+
+// TestBlockReplacementPolicy checks a schema with every block shape against its policy, and that every block counts
+// as an input even though blocks have no required or optional flag.
+func TestBlockReplacementPolicy(t *testing.T) {
+	var response resource.SchemaResponse
+	newBlockTestResource().Schema(context.Background(), resource.SchemaRequest{}, &response)
+	assert.Equal(t, []string{"column", "database", "distribution", "name", "owner", "unique"}, policyInputs(response.Schema))
+	assertReplacementPolicy(t, response.Schema, blockTestPolicy)
+	column := response.Schema.Blocks["column"].(schema.ListNestedBlock)
+	assert.True(t, blockReplacement(t, column, true, true))
+	assert.False(t, blockReplacement(t, response.Schema.Blocks["unique"], true, true))
+	assert.Empty(t, replacingNestedAttributes(t, column), "the identity block and the column attributes replace only through column")
 }
 
 // TestReplacingNestedAttributesFound finds a replacing child in every nested shape, including a single nested
@@ -374,10 +483,25 @@ func TestReplacingNestedAttributesFound(t *testing.T) {
 			assert.Equal(t, []string{"child"}, replacingNestedAttributes(t, attribute))
 		})
 	}
+	blockObject := schema.NestedBlockObject{Attributes: replacing}
+	for name, block := range map[string]schema.Block{
+		"single block": schema.SingleNestedBlock{Attributes: replacing},
+		"list block":   schema.ListNestedBlock{NestedObject: blockObject},
+		"set block":    schema.SetNestedBlock{NestedObject: blockObject},
+	} {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, []string{"child"}, replacingNestedAttributes(t, block))
+		})
+	}
 	deep := schema.SingleNestedAttribute{Optional: true, Attributes: map[string]schema.Attribute{
 		"inner": schema.ListNestedAttribute{Optional: true, NestedObject: object},
 	}}
 	assert.Equal(t, []string{"inner.child"}, replacingNestedAttributes(t, deep))
+	// A replacing child block is reported by name, and its own replacing children by path.
+	parent := schema.ListNestedBlock{NestedObject: schema.NestedBlockObject{Blocks: map[string]schema.Block{
+		"inner": schema.SingleNestedBlock{Attributes: replacing, PlanModifiers: []planmodifier.Object{objectplanmodifier.RequiresReplace()}},
+	}}}
+	assert.Equal(t, []string{"inner", "inner.child"}, replacingNestedAttributes(t, parent))
 	assert.Empty(t, replacingNestedAttributes(t, schema.StringAttribute{Optional: true}))
 }
 

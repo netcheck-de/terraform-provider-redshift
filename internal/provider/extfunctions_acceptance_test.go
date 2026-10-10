@@ -60,15 +60,15 @@ data "redshift_routine_parameters" "upper" {
 			{Config: configuration(0, "VOLATILE"), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_external_function.upper", "volatility", "VOLATILE"),
 				resource.TestCheckResourceAttrSet("redshift_external_function.upper", "owner"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "items.#", "1"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "items.0.language", "exfunc"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "items.0.arguments.0", "character varying"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "items.0.arguments.1", "integer"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "items.0.return_type", "character varying"),
+				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.language", "exfunc"),
+				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.arguments.0", "character varying"),
+				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.arguments.1", "integer"),
+				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.return_type", "character varying"),
 			)},
 			{Config: configuration(3000, "STABLE"), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_external_function.upper", "volatility", "STABLE"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "items.0.volatility", "STABLE"),
+				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.volatility", "STABLE"),
 			)},
 			{Config: configuration(3000, "STABLE"), PlanOnly: true},
 			{

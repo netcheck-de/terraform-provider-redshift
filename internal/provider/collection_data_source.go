@@ -12,12 +12,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// collectionItems is the computed attribute holding a collection's elements.
-const collectionItems = "items"
-
 // collectionSpec describes a read-only listing of catalog objects.
 type collectionSpec struct {
-	// name is the Terraform data-source suffix.
+	// name is the Terraform data-source suffix and, because a plural type name reads as its result, also the
+	// computed attribute holding the elements, as in data.redshift_tables.x.tables.
 	name string
 	// description is the data source's documentation.
 	description string
@@ -41,6 +39,12 @@ type collectionDataSource struct {
 
 // newCollectionDataSource builds a listing data source from its spec.
 func newCollectionDataSource(spec collectionSpec) datasource.DataSource {
+	for _, reserved := range []string{"id", spec.name} {
+		if _, ok := spec.filters[reserved]; ok {
+			// A filter with the result's or identity's name would be overwritten by the read.
+			panic("newCollectionDataSource: filter " + reserved + " collides with a computed attribute of " + spec.name)
+		}
+	}
 	return &collectionDataSource{spec: spec}
 }
 
@@ -49,7 +53,7 @@ func newCollectionDataSource(spec collectionSpec) datasource.DataSource {
 func collectionElement(factory func() resource.Resource, names ...string) map[string]schema.Attribute {
 	var source resource.SchemaResponse
 	factory().Schema(context.Background(), resource.SchemaRequest{}, &source)
-	observed := lookupAttributes(source.Schema.Attributes, true, nil)
+	observed := lookupSchemaAttributes(source.Schema.Attributes, source.Schema.Blocks, true, nil)
 	element := map[string]schema.Attribute{}
 	for _, name := range names {
 		attribute, ok := observed[name]
@@ -78,7 +82,7 @@ func (d *collectionDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 		attributes = map[string]schema.Attribute{}
 	}
 	attributes["id"] = schema.StringAttribute{Computed: true, MarkdownDescription: "JSON identity of this listing: the warehouse binding, the database, and the configured filters."}
-	attributes[collectionItems] = schema.ListNestedAttribute{
+	attributes[d.spec.name] = schema.ListNestedAttribute{
 		Computed: true, MarkdownDescription: "Matching objects; empty when nothing matches.",
 		NestedObject: schema.NestedAttributeObject{Attributes: d.spec.element},
 	}
@@ -135,7 +139,7 @@ func (d *collectionDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	lookupValue(&data, collectionItems, list)
+	lookupValue(&data, d.spec.name, list)
 	lookupValue(&data, "id", d.collectionID(data))
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }

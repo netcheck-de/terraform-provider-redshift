@@ -32,22 +32,22 @@ data "redshift_rls_policies" "analytics" {
 ### Read-Only
 
 - `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
-- `items` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--items))
+- `rls_policies` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--rls_policies))
 
-<a id="nestedatt--items"></a>
-### Nested Schema for `items`
+<a id="nestedatt--rls_policies"></a>
+### Nested Schema for `rls_policies`
 
 Read-Only:
 
 - `alias` (String) Relation alias of the `WITH` clause (`AS alias`), which the predicate may use to qualify columns; requires `columns`. All policies attached to one relation must use the same alias. It compares without case, as Redshift folds identifiers. Removing it from configuration keeps the current alias. Like `columns`, a change needs `replace_triggered_by` on the attachments.
-- `columns` (Attributes List) Ordered `WITH` columns the predicate reads from each attached relation, which must have all of them. Omit it only when the predicate references no relation column. Names compare without case and types in canonical form, so respelling `VARCHAR(64)` as the catalog's `character varying(64)`, or importing the policy, plans no change. `ALTER RLS POLICY` cannot change the `WITH` clause, and `DROP RLS POLICY` refuses a policy that is still attached, so give each attachment `replace_triggered_by` on `columns` and `alias`. (see [below for nested schema](#nestedatt--items--columns))
+- `columns` (Attributes List) Ordered `WITH` columns the predicate reads from each attached relation, which must have all of them. Omit it only when the predicate references no relation column. Names compare without case and types in canonical form, so respelling `VARCHAR(64)` as the catalog's `character varying(64)`, or importing the policy, plans no change. `ALTER RLS POLICY` cannot change the `WITH` clause, and `DROP RLS POLICY` refuses a policy that is still attached, so give each attachment `replace_triggered_by` on `columns` and `alias`. (see [below for nested schema](#nestedatt--rls_policies--columns))
 - `database` (String) Local database that holds the policy and the relations it is attached to.
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
 - `name` (String) Policy name, unique within the database.
 - `predicate` (String) Filter expression of the `USING ( ... )` clause, applied to the `WHERE` clause of queries on attached relations, for example `region = current_user`. It must be a single expression without `;`. Changing it runs `ALTER RLS POLICY` in place. Redshift stores a rewritten form; when that changes outside Terraform, refresh reports the catalog text.
 
-<a id="nestedatt--items--columns"></a>
-### Nested Schema for `items.columns`
+<a id="nestedatt--rls_policies--columns"></a>
+### Nested Schema for `rls_policies.columns`
 
 Read-Only:
 

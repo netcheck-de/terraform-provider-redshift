@@ -21,7 +21,7 @@ SELECT ... FROM svv_datashares ...;
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-`items` is empty when nothing matches; it is ordered by share type and name. Outbound shares report their producer
+`datashares` is empty when nothing matches; it is ordered by share type and name. Outbound shares report their producer
 `database` and `owner`. Inbound shares report the `consumer_database` created from them, while `producer_account` and
 `producer_namespace` identify the producer; their `database` and `owner` are null.
 

@@ -30,7 +30,7 @@ func routineListingRead(t *testing.T, source datasource.DataSource, filters map[
 	identity := map[string]string{}
 	require.NoError(t, json.Unmarshal([]byte(observed.Attributes()["id"].(types.String).ValueString()), &identity))
 	var items []map[string]any
-	for _, element := range observed.Attributes()[collectionItems].(types.List).Elements() {
+	for _, element := range collectionResult(source, observed).Elements() {
 		item := map[string]any{}
 		for name, value := range element.(types.Object).Attributes() {
 			switch value := value.(type) {

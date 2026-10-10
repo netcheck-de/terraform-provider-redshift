@@ -4,5 +4,5 @@ data "redshift_procedures" "etl" {
 }
 
 output "definer_procedures" {
-  value = [for procedure in data.redshift_procedures.etl.items : procedure.name if procedure.security == "DEFINER"]
+  value = [for procedure in data.redshift_procedures.etl.procedures : procedure.name if procedure.security == "DEFINER"]
 }

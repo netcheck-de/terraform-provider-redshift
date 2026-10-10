@@ -132,7 +132,7 @@ data "redshift_grants" "table" {
 				resource.TestCheckTypeSetElemAttr("data.redshift_column_grant.role", "privileges.SELECT.*", "label"),
 				resource.TestCheckTypeSetElemAttr("data.redshift_column_grant.role", "privileges.UPDATE.*", "label"),
 				resource.TestCheckTypeSetElemAttr("data.redshift_language_grant.role", "privileges.*", "USAGE"),
-				resource.TestCheckResourceAttr("data.redshift_column_grants.serving", "items.#", "4"),
+				resource.TestCheckResourceAttr("data.redshift_column_grants.serving", "column_grants.#", "4"),
 			)},
 			{Config: configuration(true), PlanOnly: true},
 			{ResourceName: "redshift_column_grant.role", ImportState: true, ImportStateVerify: true},

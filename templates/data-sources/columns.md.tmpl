@@ -23,7 +23,7 @@ SELECT ... FROM svv_all_columns WHERE database_name = '...' AND schema_name = '.
 
 `database` defaults to the provider's `database`; the read runs in the provider's database. `id` combines the
 warehouse binding, the listed database, and the configured filters. Items are ordered by schema, table, and
-`ordinal_position`; no match returns an empty `items` list. Without a `table` filter, the listing covers every
+`ordinal_position`; no match returns an empty `columns` list. Without a `table` filter, the listing covers every
 relation of the database, so filter as narrowly as possible on large warehouses.
 
 `data_type` is the bare type name; length, precision, and scale are separate attributes. `nullable` is null when the

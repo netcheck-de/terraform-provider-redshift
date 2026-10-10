@@ -22,7 +22,7 @@ data "redshift_databases" "analytics" {
 }
 
 output "analytics_databases" {
-  value = [for database in data.redshift_databases.analytics.items : database.name]
+  value = [for database in data.redshift_databases.analytics.databases : database.name]
 }
 ```
 
@@ -37,11 +37,11 @@ output "analytics_databases" {
 
 ### Read-Only
 
+- `databases` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--databases))
 - `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
-- `items` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--items))
 
-<a id="nestedatt--items"></a>
-### Nested Schema for `items`
+<a id="nestedatt--databases"></a>
+### Nested Schema for `databases`
 
 Read-Only:
 
@@ -53,7 +53,7 @@ Read-Only:
 
 The read runs in the provider's `database`. `id` is the JSON identity of the listing: the warehouse binding, the
 provider database, and the configured filters. Items are ordered by name; a filter that matches nothing returns an
-empty `items` list rather than an error.
+empty `databases` list rather than an error.
 
 The listing shows what the provider's SQL identity may see: with metadata security enabled, other users' databases
 can be hidden. Owners are resolved from `pg_user`; an owner that is not a local user is null. The AWS Glue Data

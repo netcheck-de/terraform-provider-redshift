@@ -27,7 +27,7 @@ mock_provider "redshift" { alias = "producer_direct_password" }
 mock_provider "redshift" { alias = "consumer_direct_password" }
 
 # Observed catalog values deliberately differ from configuration where Redshift rewrites them. Terraform cannot
-# override computed lists of nested objects (columns, items), so those keep their mocked values.
+# override computed lists of nested objects (columns, rls_policies), so those keep their mocked values.
 override_data {
   target = data.redshift_rls_policy.own_region
   values = {

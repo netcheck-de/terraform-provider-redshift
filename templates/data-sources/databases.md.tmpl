@@ -23,7 +23,7 @@ SELECT ... FROM svv_redshift_databases WHERE database_type = '...' AND database_
 
 The read runs in the provider's `database`. `id` is the JSON identity of the listing: the warehouse binding, the
 provider database, and the configured filters. Items are ordered by name; a filter that matches nothing returns an
-empty `items` list rather than an error.
+empty `databases` list rather than an error.
 
 The listing shows what the provider's SQL identity may see: with metadata security enabled, other users' databases
 can be hidden. Owners are resolved from `pg_user`; an owner that is not a local user is null. The AWS Glue Data

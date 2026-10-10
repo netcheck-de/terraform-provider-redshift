@@ -41,7 +41,7 @@ func TestGrantsListing(t *testing.T) {
 			assert.Equal(t, test.statement, statement)
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
-			assert.Len(t, observed.Attributes()[collectionItems].(types.List).Elements(), test.items)
+			assert.Len(t, collectionResult(source, observed).Elements(), test.items)
 		})
 	}
 	for name, filters := range map[string]map[string]string{

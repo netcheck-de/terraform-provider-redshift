@@ -80,6 +80,32 @@ func TestCollectionDataSourceSchema(t *testing.T) {
 	}
 	assertCollectionParity(t, parityCase{source: resourceShaped, resource: newSchemaResource, filters: []string{"owner"}, collection: true})
 	assert.Panics(t, func() { collectionElement(newSchemaResource, "missing") })
+	var response datasource.SchemaResponse
+	source.Schema(context.Background(), datasource.SchemaRequest{}, &response)
+	assert.Contains(t, response.Schema.Attributes, "test_schemas", "the result is named after the data source")
+	assert.NotContains(t, response.Schema.Attributes, "items")
+	for _, reserved := range []string{"test_schemas", "id"} {
+		assert.Panics(t, func() {
+			newCollectionDataSource(collectionSpec{name: "test_schemas", filters: map[string]schema.Attribute{reserved: schema.StringAttribute{Optional: true}}})
+		}, "a filter named %s would be overwritten by the read", reserved)
+	}
+}
+
+// collectionResult returns a listing's result list, which is named after the data source.
+func collectionResult(source datasource.DataSource, observed types.Object) types.List {
+	return observed.Attributes()[source.(*collectionDataSource).spec.name].(types.List)
+}
+
+// TestCollectionElementFromBlocks lists resource blocks as computed nested attributes of the same shape.
+func TestCollectionElementFromBlocks(t *testing.T) {
+	element := collectionElement(newBlockTestResource, "database", "name", "column", "unique", "distribution")
+	listing := func() datasource.DataSource {
+		return newCollectionDataSource(collectionSpec{name: "block_tests", element: element})
+	}
+	assertCollectionParity(t, parityCase{source: listing, resource: newBlockTestResource, collection: true})
+	column := element["column"].(schema.ListNestedAttribute)
+	assert.True(t, column.Computed)
+	assert.IsType(t, schema.SingleNestedAttribute{}, column.NestedObject.Attributes["identity"])
 }
 
 // TestCollectionDataSourceRead checks filtered and unfiltered listings, empty results, and failures.
@@ -117,7 +143,7 @@ func TestCollectionDataSourceRead(t *testing.T) {
 			var identity map[string]string
 			require.NoError(t, json.Unmarshal([]byte(observed.Attributes()["id"].(types.String).ValueString()), &identity))
 			assert.Equal(t, test.identity, identity)
-			items := observed.Attributes()[collectionItems].(types.List)
+			items := collectionResult(source, observed)
 			require.False(t, items.IsNull(), "an empty listing is an empty list, not null")
 			require.Len(t, items.Elements(), len(test.rows))
 			for index, row := range test.rows {
