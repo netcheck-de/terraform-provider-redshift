@@ -14,6 +14,7 @@ resource "redshift_materialized_view" "revenue_by_region" {
     style = "KEY"
     key   = "region"
   }
+
   sort_key {
     columns = ["region"]
   }

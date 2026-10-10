@@ -19,6 +19,7 @@ resource "redshift_masking_policy" "card" {
     name = "is_fraud"
     type = "BOOLEAN"
   }
+
   input_column {
     name = "pan"
     type = "VARCHAR(16)"

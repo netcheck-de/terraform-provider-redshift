@@ -178,6 +178,7 @@ resource "redshift_table" "events" {
       step = 1
     }
   }
+
   column {
     name     = "label"
     type     = "varchar(64)"
@@ -188,9 +189,11 @@ resource "redshift_table" "events" {
   primary_key {
     columns = ["id"]
   }
+
   distribution {
     key = "id"
   }
+
   sort_key {
     columns = ["id"]
   }
@@ -207,11 +210,13 @@ column {
   name = "id"
   # ...
 }
+
 column {
   name     = "note"
   type     = "varchar(32)"
   encoding = "LZO"
 }
+
 column {
   name = "label"
   # ...
@@ -229,10 +234,12 @@ column {
   name = "note"
   # ...
 }
+
 column {
   name = "label"
   # ...
 }
+
 column {
   name = "id"
   # ...
@@ -274,6 +281,7 @@ its block in the same change, the keys move before the column is dropped:
 distribution {
   key = "id" # was "note"
 }
+
 sort_key {
   columns = ["id"] # was ["note"]
 }

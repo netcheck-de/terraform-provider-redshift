@@ -32,14 +32,17 @@ resource "redshift_external_table" "sales" {
     name = "sales_id"
     type = "integer"
   }
+
   column {
     name = "price_paid"
     type = "decimal(8,2)"
   }
+
   column {
     name = "sale_time"
     type = "timestamp"
   }
+
   partition_key {
     name = "sale_date"
     type = "date"
@@ -63,6 +66,7 @@ resource "redshift_external_table" "events" {
     name = "id"
     type = "bigint"
   }
+
   column {
     name = "payload"
     type = "varchar(65535)"
@@ -84,10 +88,12 @@ resource "redshift_external_table" "clicks" {
     name = "click_id"
     type = "bigint"
   }
+
   column {
     name = "page"
     type = "varchar(1024)"
   }
+
   column {
     name = "clicked_at"
     type = "timestamp"
@@ -229,10 +235,12 @@ resource "redshift_external_table" "events" {
     name = "id"
     type = "integer"
   }
+
   column {
     name = "label"
     type = "varchar(64)"
   }
+
   partition_key {
     name = "event_date"
     type = "date"
@@ -258,6 +266,7 @@ column {
   name = "label"
   type = "varchar(64)"
 }
+
 column {
   name = "note"
   type = "varchar"
@@ -319,10 +328,12 @@ column {
   name = "id"
   type = "integer"
 }
+
 column {
   name = "amount"
   type = "decimal(8,2)"
 }
+
 column {
   name = "label"
   type = "varchar(64)"

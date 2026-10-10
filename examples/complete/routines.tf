@@ -29,11 +29,13 @@ resource "redshift_procedure" "scale" {
     name = "factor"
     type = "integer"
   }
+
   argument {
     name = "amount"
     mode = "INOUT"
     type = "bigint"
   }
+
   argument {
     name = "label"
     mode = "OUT"

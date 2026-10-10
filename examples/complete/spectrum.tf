@@ -135,10 +135,12 @@ resource "redshift_external_table" "events" {
     name = "id"
     type = "integer"
   }
+
   column {
     name = "label"
     type = "varchar(64)"
   }
+
   partition_key {
     name = "event_date"
     type = "date"

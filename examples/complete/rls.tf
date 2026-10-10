@@ -10,6 +10,7 @@ resource "redshift_table" "rls_events" {
     name = "id"
     type = "integer"
   }
+
   column {
     name = "region"
     type = "varchar(64)"
@@ -27,6 +28,7 @@ resource "redshift_table" "rls_regions" {
     name = "reader"
     type = "varchar(128)"
   }
+
   column {
     name = "region"
     type = "varchar(64)"

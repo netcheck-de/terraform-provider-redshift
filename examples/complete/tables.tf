@@ -11,6 +11,7 @@ resource "redshift_table" "accounts" {
     type     = "integer"
     nullable = false
   }
+
   column {
     name     = "name"
     type     = "varchar(128)"
@@ -20,6 +21,7 @@ resource "redshift_table" "accounts" {
   primary_key {
     columns = ["account_id"]
   }
+
   distribution {
     style = "ALL"
   }
@@ -40,23 +42,27 @@ resource "redshift_table" "orders" {
       step = 1
     }
   }
+
   column {
     name     = "account_id"
     type     = "integer"
     nullable = false
     encoding = "AZ64"
   }
+
   column {
     name     = "status"
     type     = "varchar(16)"
     default  = "'new'"
     encoding = "BYTEDICT"
   }
+
   column {
     name     = "amount"
     type     = "numeric(12,2)"
     encoding = "AZ64"
   }
+
   column {
     name     = "created_at"
     type     = "timestamp"
@@ -67,9 +73,11 @@ resource "redshift_table" "orders" {
   primary_key {
     columns = ["order_id"]
   }
+
   unique {
     columns = ["account_id", "created_at"]
   }
+
   foreign_key {
     columns = ["account_id"]
     references {
@@ -82,6 +90,7 @@ resource "redshift_table" "orders" {
   distribution {
     key = "account_id"
   }
+
   sort_key {
     columns = ["created_at", "order_id"]
   }
@@ -99,6 +108,7 @@ resource "redshift_table" "events" {
     name = "event_id"
     type = "bigint"
   }
+
   column {
     name = "payload"
     type = "super"

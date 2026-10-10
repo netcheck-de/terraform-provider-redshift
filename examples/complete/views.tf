@@ -38,6 +38,7 @@ resource "redshift_materialized_view" "label_counts" {
   distribution {
     style = "ALL"
   }
+
   sort_key {
     columns = ["label"]
   }

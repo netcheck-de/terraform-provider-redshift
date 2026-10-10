@@ -42,6 +42,7 @@ resource "redshift_materialized_view" "revenue_by_region" {
     style = "KEY"
     key   = "region"
   }
+
   sort_key {
     columns = ["region"]
   }
@@ -199,6 +200,7 @@ auto_refresh = false      # was true
 distribution {
   style = "EVEN"
 }
+
 sort_key {
   columns = ["label"]
 }

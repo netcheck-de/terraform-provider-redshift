@@ -53,6 +53,7 @@ resource "aws_redshift_idc_application" "this" {
       condition     = contains(data.aws_ssoadmin_instances.this[0].arns, var.identity_center_instance_arn)
       error_message = "The supplied Identity Center instance must be visible in the consumer account and region."
     }
+
     precondition {
       condition     = local.identity_store_id != null
       error_message = "Supply identity_store_id when the selected instance cannot be matched to a unique discovered identity store."

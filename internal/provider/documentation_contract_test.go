@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -62,6 +63,44 @@ func TestDocsExistForEveryRegisteredType(t *testing.T) {
 		}
 	}
 }
+
+// TestTerraformSnippetsSeparateBlocks requires a blank line between a closing brace and the next block in the
+// examples and template snippets, because documentation pages render them as written and adjacent blocks run together.
+func TestTerraformSnippetsSeparateBlocks(t *testing.T) {
+	root := filepath.Join("..", "..")
+	snippets := map[string][]string{}
+	examples, err := filepath.Glob(filepath.Join(root, "examples", "*", "*", "*.tf"))
+	require.NoError(t, err)
+	complete, err := filepath.Glob(filepath.Join(root, "examples", "complete", "*.tf"))
+	require.NoError(t, err)
+	for _, file := range append(examples, complete...) {
+		content, err := os.ReadFile(file)
+		require.NoError(t, err)
+		snippets[file] = strings.Split(string(content), "\n")
+	}
+	templates, err := filepath.Glob(filepath.Join(root, "templates", "*", "*.md.tmpl"))
+	require.NoError(t, err)
+	for _, file := range templates {
+		content, err := os.ReadFile(file)
+		require.NoError(t, err)
+		for i, block := range terraformFence.FindAllStringSubmatch(string(content), -1) {
+			snippets[file+"#"+strconv.Itoa(i+1)] = strings.Split(block[1], "\n")
+		}
+	}
+	for name, lines := range snippets {
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i-1]) == "}" && blockHeader.MatchString(lines[i]) {
+				assert.Fail(t, "blocks need a blank line between them", "%s:%d: %s", name, i+1, strings.TrimSpace(lines[i]))
+			}
+		}
+	}
+}
+
+// terraformFence captures the body of fenced Terraform code in a documentation template.
+var terraformFence = regexp.MustCompile("(?ms)^```(?:terraform|hcl)\n(.*?)^```")
+
+// blockHeader matches a line that opens a block, such as `column {` or `resource "redshift_table" "events" {`.
+var blockHeader = regexp.MustCompile(`^\s*[a-z_]+(\s+"[^"]*")*\s*\{\s*$`)
 
 // sqlSummaryHeadings names the section that holds each page kind's simplified SQL block, so readers know what it shows.
 var sqlSummaryHeadings = map[string]string{

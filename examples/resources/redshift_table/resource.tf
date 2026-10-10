@@ -12,22 +12,26 @@ resource "redshift_table" "events" {
       step = 1
     }
   }
+
   column {
     name     = "account_id"
     type     = "integer"
     nullable = false
     encoding = "AZ64"
   }
+
   column {
     name     = "kind"
     type     = "varchar(32)"
     default  = "'unknown'"
     encoding = "BYTEDICT"
   }
+
   column {
     name = "payload"
     type = "super"
   }
+
   column {
     name     = "created_at"
     type     = "timestamp"
@@ -38,9 +42,11 @@ resource "redshift_table" "events" {
   primary_key {
     columns = ["event_id"]
   }
+
   unique {
     columns = ["account_id", "created_at"]
   }
+
   foreign_key {
     columns = ["account_id"]
     references {
@@ -55,6 +61,7 @@ resource "redshift_table" "events" {
   distribution {
     key = "account_id"
   }
+
   sort_key {
     columns = ["created_at"]
   }

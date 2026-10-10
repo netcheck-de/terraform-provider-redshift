@@ -32,6 +32,7 @@ resource "redshift_procedure" "purge" {
     name = "keep_days"
     type = "integer"
   }
+
   argument {
     name = "deleted"
     mode = "OUT"

@@ -37,22 +37,26 @@ resource "redshift_table" "events" {
       step = 1
     }
   }
+
   column {
     name     = "account_id"
     type     = "integer"
     nullable = false
     encoding = "AZ64"
   }
+
   column {
     name     = "kind"
     type     = "varchar(32)"
     default  = "'unknown'"
     encoding = "BYTEDICT"
   }
+
   column {
     name = "payload"
     type = "super"
   }
+
   column {
     name     = "created_at"
     type     = "timestamp"
@@ -63,9 +67,11 @@ resource "redshift_table" "events" {
   primary_key {
     columns = ["event_id"]
   }
+
   unique {
     columns = ["account_id", "created_at"]
   }
+
   foreign_key {
     columns = ["account_id"]
     references {
@@ -80,6 +86,7 @@ resource "redshift_table" "events" {
   distribution {
     key = "account_id"
   }
+
   sort_key {
     columns = ["created_at"]
   }
@@ -387,6 +394,7 @@ resource "redshift_table" "events" {
       step = 1
     }
   }
+
   column {
     name     = "label"
     type     = "varchar(64)"
@@ -397,9 +405,11 @@ resource "redshift_table" "events" {
   primary_key {
     columns = ["id"]
   }
+
   distribution {
     key = "id"
   }
+
   sort_key {
     columns = ["id"]
   }
@@ -416,11 +426,13 @@ column {
   name = "id"
   # ...
 }
+
 column {
   name     = "note"
   type     = "varchar(32)"
   encoding = "LZO"
 }
+
 column {
   name = "label"
   # ...
@@ -440,10 +452,12 @@ column {
   name = "note"
   # ...
 }
+
 column {
   name = "label"
   # ...
 }
+
 column {
   name = "id"
   # ...
@@ -493,6 +507,7 @@ its block in the same change, the keys move before the column is dropped:
 distribution {
   key = "id" # was "note"
 }
+
 sort_key {
   columns = ["id"] # was ["note"]
 }

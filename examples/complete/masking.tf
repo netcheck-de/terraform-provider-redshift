@@ -10,6 +10,7 @@ resource "redshift_table" "customers" {
     name = "id"
     type = "integer"
   }
+
   column {
     name = "email"
     type = "varchar(256)"
