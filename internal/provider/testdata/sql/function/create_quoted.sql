@@ -1,0 +1,1 @@
+CREATE FUNCTION "Odd""Schema"."F""Mixed"(integer, character varying(10), numeric(12,0)) RETURNS double precision STABLE AS $body$SELECT CASE WHEN $2 = 'it''s $$' THEN $1 ELSE 0 END -- \ path$body$ LANGUAGE sql;

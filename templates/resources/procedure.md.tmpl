@@ -1,0 +1,64 @@
+---
+subcategory: Functions and Procedures
+page_title: redshift_procedure Resource - terraform-provider-redshift
+description: Manages a PL/pgSQL stored procedure overload.
+---
+
+# redshift_procedure (Resource)
+
+Manages one PL/pgSQL stored procedure overload: its arguments, body, security and transaction modes, `SET`
+configuration, and owner. See AWS
+[CREATE PROCEDURE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_PROCEDURE.html),
+[ALTER PROCEDURE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_PROCEDURE.html), and
+[DROP PROCEDURE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_PROCEDURE.html).
+
+```sql
+CREATE [ OR REPLACE ] PROCEDURE schema.name (arguments) ... AS $$ body $$ LANGUAGE plpgsql ...;
+ALTER PROCEDURE schema.name (arguments) OWNER TO owner;
+DROP PROCEDURE schema.name (arguments);
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_procedure/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+A procedure is identified by its schema, name, and the types of its `IN` and `INOUT` arguments; `OUT` arguments are
+returned by `CALL` and are not part of the signature. Changing an argument's type, mode, or name, or adding or removing
+an argument, replaces the procedure, because Redshift requires dropping a procedure to change its signature or output
+types. Another spelling of the same type, `null` for an `IN` mode, or a name differing only in case does not.
+`SHOW PARAMETERS` reports types without their length or precision, so an imported procedure holds bare types such as
+`character varying`. A bare type in state matches the same type with a modifier, such as `varchar(64)`, and the next
+apply restates the configured modifiers with `CREATE OR REPLACE PROCEDURE` instead of replacing the procedure.
+
+`body`, `security`, `nonatomic`, and `configuration` change in place with `CREATE OR REPLACE PROCEDURE`, which keeps
+the owner and grants. A `search_path` in `configuration` is a comma-separated list of schema names, each sent as its own
+literal, because Redshift reads one quoted literal as a single schema name; any other parameter value is sent as one
+literal. `NONATOMIC` excludes `SECURITY DEFINER` and `SET`; such combinations fail validation. The body
+is sent dollar-quoted and verbatim; a tag such as `$body$` is chosen when the text contains `$$`.
+
+Reads use `pg_proc_info` for the owner, security mode, and body, and `SHOW PARAMETERS` for argument names and modes.
+Redshift does not report `nonatomic` or `configuration`, so changes made outside Terraform are not detected and an
+import leaves both `null`. State keeps the configured `body` and records `definition_fingerprint`, a hash of the catalog
+text; when the procedure is changed outside Terraform, the next refresh shows the catalog body and the plan restores
+the configuration.
+
+`owner` is applied with `ALTER PROCEDURE ... OWNER TO`, which requires a superuser. Grant `EXECUTE` separately.
+Running a procedure with `CALL` is not part of its lifecycle.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity. `arguments` holds the `IN` and `INOUT` types as
+`signature` reports them, comma-separated, and is `""` for a procedure without input arguments. The refresh after the
+import reports argument names, modes, and `OUT` arguments:
+
+{{ tffile "examples/resources/redshift_procedure/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_procedure/import.sh" }}

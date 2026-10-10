@@ -1,0 +1,29 @@
+---
+subcategory: Functions and Procedures
+page_title: redshift_procedure Data Source - terraform-provider-redshift
+description: Looks up a stored procedure overload.
+---
+
+# redshift_procedure (Data Source)
+
+Looks up one existing stored procedure overload by schema, name, and input argument types without managing it.
+
+```sql
+SELECT ... FROM pg_proc_info WHERE proname = 'name' AND oidvectortypes(proargtypes) = '...';
+SHOW PARAMETERS OF PROCEDURE schema.name (...);
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_procedure/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`arguments` selects the overload: list the `IN` and `INOUT` types; `OUT` arguments may be listed with their mode or
+omitted. The configured `arguments` are returned unchanged. `id` (String, computed) is the observed procedure's JSON
+identity, using the same warehouse, database, schema, name, and `arguments` keys as the paired resource. `body` is the
+catalog text; `nonatomic` and `configuration` are always `null` because Redshift does not report them.
+
+A missing procedure is an error.

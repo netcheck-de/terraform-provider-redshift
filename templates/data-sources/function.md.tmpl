@@ -1,0 +1,26 @@
+---
+subcategory: Functions and Procedures
+page_title: redshift_function Data Source - terraform-provider-redshift
+description: Looks up a SQL user-defined function overload.
+---
+
+# redshift_function (Data Source)
+
+Looks up one existing function overload by schema, name, and input types without managing it.
+
+```sql
+SELECT ... FROM pg_proc_info WHERE proname = 'name' AND oidvectortypes(proargtypes) = '...';
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_function/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the observed function's JSON identity, using the same warehouse, database, schema, name, and
+`arguments` keys as the paired resource. `body` is the catalog text.
+
+A missing function, including a missing overload of an existing name, is an error.

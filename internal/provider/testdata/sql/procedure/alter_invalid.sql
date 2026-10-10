@@ -1,0 +1,1 @@
+-- error: security: "OWNER" is not one of INVOKER, DEFINER

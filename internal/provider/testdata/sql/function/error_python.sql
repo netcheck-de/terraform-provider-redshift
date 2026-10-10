@@ -1,0 +1,1 @@
+-- error: language plpythonu is not supported: Amazon Redshift ends support for Python UDFs after June 30, 2026; rewrite the function as a SQL UDF (LANGUAGE sql) or a Lambda UDF

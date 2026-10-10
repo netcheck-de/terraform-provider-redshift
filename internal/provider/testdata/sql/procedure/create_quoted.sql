@@ -1,0 +1,1 @@
+CREATE PROCEDURE "Odd""Schema"."SP""Mixed"("Odd""Arg" INOUT character varying(20), IN integer, OUT refcursor) AS $body$BEGIN RAISE INFO 'it''s $$ \ %', $1; END;$body$ LANGUAGE plpgsql SECURITY INVOKER SET search_path TO 'O''Re\\illy';

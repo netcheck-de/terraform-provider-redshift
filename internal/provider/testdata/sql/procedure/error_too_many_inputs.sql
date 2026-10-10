@@ -1,0 +1,1 @@
+-- error: a procedure accepts at most 32 input and 32 output arguments

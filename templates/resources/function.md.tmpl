@@ -1,0 +1,60 @@
+---
+subcategory: Functions and Procedures
+page_title: redshift_function Resource - terraform-provider-redshift
+description: Manages a scalar SQL user-defined function overload.
+---
+
+# redshift_function (Resource)
+
+Manages one scalar SQL user-defined function (UDF) overload: its input types, return type, volatility, `SELECT` body,
+and owner. See AWS [CREATE FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_FUNCTION.html),
+[ALTER FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_FUNCTION.html), and
+[DROP FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_FUNCTION.html).
+
+```sql
+CREATE [ OR REPLACE ] FUNCTION schema.name (arguments) RETURNS return_type ... AS $$ body $$ LANGUAGE sql;
+ALTER FUNCTION schema.name (arguments) OWNER TO owner;
+DROP FUNCTION schema.name (arguments);
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_function/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+Only SQL UDFs are supported. Amazon Redshift ends support for Python UDFs (`plpythonu`) after June 30, 2026, so
+`language = "plpythonu"` fails validation; rewrite such functions in SQL or as Lambda UDFs. `language` must be the
+lowercase `sql` that the catalog reports. SQL UDF arguments have no names: refer to them as `$1`, `$2`, and so on.
+
+A function is identified by its schema, name, and input argument types, so several resources can manage overloads of
+one name. `arguments` and `return_type` compare by their canonical type, so `int` and `integer` are the same; a
+different type or a different length or precision replaces the function. The catalog keeps no length or precision for
+UDF types, so `signature` reports bare types such as `character varying`, and so does the state after an import. A bare
+type in state therefore matches the same type with a modifier, such as `varchar(64)`: the next apply updates the
+function in place and restates the configured modifiers. `body`, `volatility`, and such added modifiers change in place
+with `CREATE OR REPLACE FUNCTION`, which keeps the owner and grants. The body is sent dollar-quoted and verbatim; a tag such as `$body$` is chosen when the
+text contains `$$`.
+
+Redshift stores its own copy of the body. State keeps the configured `body` and records `definition_fingerprint`, a hash
+of the catalog text; when the function is changed outside Terraform, the next refresh shows the catalog body and the
+plan restores the configuration.
+
+`owner` is applied with `ALTER FUNCTION ... OWNER TO`, which requires a superuser. `DROP FUNCTION` never cascades, so a
+view that depends on the function blocks deletion. Grant `EXECUTE` separately; Redshift grants it to `PUBLIC` on new
+UDFs by default.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity. `arguments` holds the input types as
+`signature` reports them, comma-separated, and is `""` for a function without arguments:
+
+{{ tffile "examples/resources/redshift_function/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_function/import.sh" }}

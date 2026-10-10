@@ -1,0 +1,1 @@
+-- error: argument 2: unsupported Redshift data type "money"

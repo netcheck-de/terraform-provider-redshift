@@ -1,0 +1,1 @@
+-- error: return_type: refcursor is supported only by stored procedures

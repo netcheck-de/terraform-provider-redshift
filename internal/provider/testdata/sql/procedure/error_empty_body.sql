@@ -1,0 +1,1 @@
+-- error: body must contain a PL/pgSQL block

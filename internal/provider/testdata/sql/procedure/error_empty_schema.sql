@@ -1,0 +1,1 @@
+-- error: schema and name must be nonempty

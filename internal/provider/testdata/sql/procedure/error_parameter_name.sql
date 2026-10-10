@@ -1,0 +1,1 @@
+-- error: configuration parameter "search_path TO x; DROP" is not a valid parameter name

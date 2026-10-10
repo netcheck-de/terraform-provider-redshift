@@ -1,0 +1,1 @@
+-- error: language "SQL" is not supported; only sql, in lowercase, is
