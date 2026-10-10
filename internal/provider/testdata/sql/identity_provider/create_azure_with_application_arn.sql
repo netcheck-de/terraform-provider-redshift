@@ -1,0 +1,1 @@
+-- error: application_arn does not apply to type azure

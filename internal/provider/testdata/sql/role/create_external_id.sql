@@ -1,0 +1,1 @@
+CREATE ROLE "aad:readers" EXTERNALID "ABC123";

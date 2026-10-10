@@ -1,12 +1,12 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_role Data Source - terraform-provider-redshift
-description: Looks up an existing SQL role.
+description: Looks up an existing SQL role, its owner, and its external ID.
 ---
 
 # redshift_role (Data Source)
 
-Looks up an existing database role without taking ownership of it.
+Looks up an existing database role, its owner, and its identity-provider external ID without taking ownership of it.
 
 ```sql
 SELECT ... FROM svv_roles WHERE role_name = 'name';

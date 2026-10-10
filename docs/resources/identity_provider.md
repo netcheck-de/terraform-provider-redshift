@@ -1,14 +1,16 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_identity_provider Resource - terraform-provider-redshift
-description: Manages the SQL side of an AWS Identity Center integration.
+description: Manages the SQL side of an AWS IAM Identity Center or Microsoft Entra ID integration.
 ---
 
 # redshift_identity_provider (Resource)
 
-Manages an AWSIDC **SQL identity provider** in a Serverless warehouse. Create the managed Identity Center application,
+Manages a **SQL identity provider**: an AWS IAM Identity Center integration (`type = "awsidc"`) or native identity
+provider federation with Microsoft Entra ID (`type = "azure"`). For Identity Center, create the managed application,
 integration IAM role, role attachment to the namespace, and group assignments with the AWS provider. See AWS
-[CREATE IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_IDENTITY_PROVIDER.html).
+[CREATE IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_IDENTITY_PROVIDER.html) and
+[ALTER IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_IDENTITY_PROVIDER.html).
 
 ```sql
 CREATE IDENTITY PROVIDER name ...;
@@ -20,10 +22,29 @@ DROP IDENTITY PROVIDER name;
 
 ```terraform
 resource "redshift_identity_provider" "this" {
-  name            = "analytics-redshift-idc"
-  namespace       = "ncidc"
-  application_arn = aws_redshift_idc_application.this.idc_managed_application_arn
-  iam_role_arn    = aws_iam_role.idc.arn
+  name              = "analytics-redshift-idc"
+  namespace         = "ncidc"
+  application_arn   = aws_redshift_idc_application.this.idc_managed_application_arn
+  iam_role_arn      = aws_iam_role.idc.arn
+  auto_create_roles = false
+}
+
+# Native federation with Microsoft Entra ID. The secret is write-only; bump the version to send a new one.
+ephemeral "aws_secretsmanager_secret_version" "entra" {
+  secret_id = "redshift/entra-client-secret"
+}
+
+resource "redshift_identity_provider" "entra" {
+  name                             = "oauth_standard"
+  type                             = "azure"
+  namespace                        = "aad"
+  issuer                           = "https://login.microsoftonline.com/e40d4bb2-7670-44ae-bfb8-5db013221d73/v2.0"
+  client_id                        = "871c010f-5e61-4fb1-83ac-98610a7e9110"
+  audience                         = ["https://analysis.windows.net/powerbi/connector/AmazonRedshift"]
+  client_secret_wo                 = ephemeral.aws_secretsmanager_secret_version.entra.secret_string
+  client_secret_wo_version         = 1
+  auto_create_roles                = true
+  auto_create_roles_include_groups = "finance_%"
 }
 ```
 
@@ -33,25 +54,53 @@ resource "redshift_identity_provider" "this" {
 
 ### Required
 
-- `application_arn` (String) Identity Center managed application ARN; changing it replaces the resource.
-- `iam_role_arn` (String) IAM role attached to the Redshift namespace for Identity Center integration; updated in place.
-- `name` (String) SQL identity provider name; changing it replaces the resource.
-- `namespace` (String) Stable prefix for federated users and group roles; changing it replaces the resource.
+- `name` (String) SQL identity provider name. Changing it replaces the identity provider.
+- `namespace` (String) Prefix of federated users and group roles (`namespace:name`). Updated in place with `ALTER IDENTITY PROVIDER ... NAMESPACE`; existing users and roles keep their names, so the change is refused while federated users with the previous prefix exist. Rename or remove them first.
 
 ### Optional
 
-- `enabled` (Boolean) Whether the provider is enabled; defaults to `true`. Updated in place.
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
+- `application_arn` (String) Identity Center managed application ARN. Required for `awsidc`; not allowed for `azure`. Changing it replaces the identity provider.
+- `audience` (Set of String) Accepted token audiences (`audience` in `PARAMETERS`), for example the Power BI connector. Only for `azure`. Updated in place together with `client_secret_wo`.
+- `auto_create_roles` (Boolean) Whether Redshift creates roles for the provider's groups automatically (`AUTO_CREATE_ROLES`). Unset keeps the type default, `false` for `awsidc` and `true` for `azure`, and removing the attribute restores that default. The catalog does not report this setting, so Terraform keeps the configured value, changes made outside Terraform are not detected, and imports and lookups report null. Updated in place.
+- `auto_create_roles_exclude_groups` (String) Case-sensitive `LIKE` pattern (`EXCLUDE GROUPS LIKE`) of the identity-provider groups for which Redshift does not create roles automatically. Requires `auto_create_roles = true`; conflicts with `auto_create_roles_include_groups`. Patterns use letters, digits, and `_ % ^ * + ? { } , $`. Not reported by the catalog, like `auto_create_roles`. Updated in place.
+- `auto_create_roles_include_groups` (String) Case-sensitive `LIKE` pattern (`INCLUDE GROUPS LIKE`) of the identity-provider groups for which Redshift creates roles automatically. Requires `auto_create_roles = true`; conflicts with `auto_create_roles_exclude_groups`. Patterns use letters, digits, and `_ % ^ * + ? { } , $`. Not reported by the catalog, like `auto_create_roles`. Updated in place.
+- `client_id` (String) Application (client) ID of the Redshift application registered in Microsoft Entra ID (`client_id` in `PARAMETERS`). Required for `azure`; not allowed for `awsidc`. Updated in place together with `client_secret_wo`.
+- `client_secret_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only client secret of the Microsoft Entra ID application (requires Terraform 1.11 or later); not allowed for `awsidc`. Required to create an `azure` provider and whenever `issuer`, `client_id`, `audience`, or `client_secret_wo_version` change, because `ALTER IDENTITY PROVIDER ... PARAMETERS` replaces every parameter. Never stored in plan or state, and the catalog never returns it.
+- `client_secret_wo_version` (Number) Secret rotation trigger. Required for `azure`; not allowed for `awsidc`. Change it to send `client_secret_wo` again. An imported provider has no version in state, so setting it for the first time after an import does not send the secret.
+- `enabled` (Boolean) Whether the provider is enabled; defaults to `true`. Updated in place and reapplied on every update.
+- `iam_role_arn` (String) IAM role attached to the Redshift namespace for the Identity Center connection. Required for `awsidc`; not allowed for `azure`. Updated in place and reapplied on every update.
+- `issuer` (String) Token issuer URL of the Microsoft Entra ID tenant (`issuer` in `PARAMETERS`). Required for `azure`; not allowed for `awsidc`. Updated in place together with `client_secret_wo`.
+- `type` (String) Identity provider type: `awsidc` (AWS IAM Identity Center) or `azure` (Microsoft Entra ID, native IdP federation). Defaults to `awsidc`. Changing it replaces the identity provider.
 
 ### Read-Only
 
 - `id` (String) JSON import identity; independent of Data API execution history.
+- `identity_center_instance_arn` (String) IAM Identity Center instance ARN of an `awsidc` provider (`instance_arn` in the catalog parameters); null for `azure`.
+- `instance_id` (String) Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `awsidc` and the tenant ID for `azure`.
+- `provider_id` (Number) Catalog ID of the identity provider (`svv_identity_providers.uid`).
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 ## Lifecycle and Ownership
 
-Creation requires a Redshift database superuser. A read checks type `awsidc`, application binding, namespace, IAM role,
-and enabled status. Deletion refuses to drop the provider while namespace-prefixed federated users remain. Manage role
-grants and memberships separately; use resource dependencies so they are removed first.
+Creating, changing, and reading a provider requires a Redshift database superuser, because
+[SVV_IDENTITY_PROVIDERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_IDENTITY_PROVIDERS.html) is visible only
+to superusers. A read checks the type, namespace, enabled status, and the type's binding: the application ARN and IAM
+role for `awsidc`, and the issuer, client ID, and audience for `azure`. The catalog never returns the Azure client secret.
+
+Each changed setting is applied with its own `ALTER IDENTITY PROVIDER` statement. The IAM role and the enabled status
+are reapplied on every update. `ALTER IDENTITY PROVIDER ... PARAMETERS` replaces every Azure parameter, so changing
+`issuer`, `client_id`, `audience`, or `client_secret_wo_version` sends all of them with `client_secret_wo` from the
+configuration.
+
+`auto_create_roles` and its group filters are not reported by the catalog: Terraform applies them on change but cannot
+detect changes made outside Terraform. Removing `auto_create_roles` restores the type's default.
+
+Deletion never uses `CASCADE`, which would drop the provider's users and roles. It refuses to drop the provider while
+namespace-prefixed federated users remain. Existing users keep their names when `namespace` changes, so a namespace
+change is refused while users with the previous prefix remain; otherwise deletion would no longer find them. Manage role grants and memberships separately; use resource dependencies so
+they are removed first.
 
 ## Import
 
@@ -75,5 +124,6 @@ terraform import redshift_identity_provider.this \
   '{"workgroup_name":"warehouse","database":"admin","name":"analytics-redshift-idc"}'
 ```
 
-Refresh discovers the namespace, application ARN, IAM role ARN, and enabled state. Match configuration to that identity
-before applying a plan.
+Refresh discovers the type, namespace, and type-specific binding and the enabled state. It cannot discover
+`auto_create_roles` or the client secret, and an imported provider sends no secret when `client_secret_wo_version` is
+first set. Match configuration to the observed identity before applying a plan.

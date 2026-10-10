@@ -22,9 +22,35 @@ resource "redshift_role_grant" "reader" {
   to_user  = redshift_user.reader.name
 }
 
+# The administrator, not the Terraform identity that creates it, owns the audit role.
+resource "redshift_role" "auditors" {
+  provider = redshift.consumer
+  name     = "example_auditors"
+  owner    = var.admin_username
+}
+
+# The loader may hand the operators role to further users and roles.
+resource "redshift_role_grant" "loader_operators" {
+  provider     = redshift.consumer
+  role         = redshift_role.operators.name
+  to_user      = redshift_user.loader.name
+  admin_option = true
+}
+
 data "redshift_role" "readers" {
   provider = redshift.consumer
   name     = redshift_role.readers.name
+}
+
+data "redshift_role" "auditors" {
+  provider = redshift.consumer
+  name     = redshift_role.auditors.name
+}
+
+data "redshift_role_grant" "loader_operators" {
+  provider = redshift.consumer
+  role     = redshift_role_grant.loader_operators.role
+  to_user  = redshift_role_grant.loader_operators.to_user
 }
 
 data "redshift_role_grant" "reader" {

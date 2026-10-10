@@ -1,13 +1,14 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_role_grant Data Source - terraform-provider-redshift
-description: Checks explicit role-to-role or role-to-user membership.
+description: Checks explicit role-to-role or role-to-user membership and the admin option.
 ---
 
 # redshift_role_grant (Data Source)
 
-Checks an explicit role grant, including grants of built-in system roles. Inherited/transitive role access is not
-counted. See AWS [GRANT ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
+Checks an explicit role grant, including grants of built-in system roles, and whether a user holds it with the admin
+option. Inherited/transitive role access is not counted. See AWS
+[GRANT ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
 
 ```sql
 SELECT ... FROM svv_user_grants | svv_role_grants WHERE ...;
@@ -32,16 +33,18 @@ data "redshift_role_grant" "reader" {
 
 ### Optional
 
-- `to_role` (String) Receiving role; exactly one of to_role and to_user is required.
-- `to_user` (String) Receiving database user; exactly one of to_role and to_user is required.
+- `to_role` (String) Receiving role; exactly one of `to_role` and `to_user` is required.
+- `to_user` (String) Receiving database user; exactly one of `to_role` and `to_user` is required.
 
 ### Read-Only
 
+- `admin_option` (Boolean) Whether the receiving user holds the role `WITH ADMIN OPTION` and can grant it to other users and roles (`svv_user_grants.admin_option`). Only users hold the admin option, so `true` requires `to_user`. Defaults to `false`; changes are applied in place and keep the membership.
 - `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the relationship's JSON identity, using the same warehouse, provider database, role, and
-selected `to_user` or `to_role` keys as the paired resource. It is null when `exists` is false.
+selected `to_user` or `to_role` keys as the paired resource. It is null when `exists` is false. `admin_option` is read
+from `svv_user_grants` for users, is always `false` for role recipients, and is null when `exists` is false.
 
 Catalog errors remain errors. No role grant is created, adopted, or revoked.

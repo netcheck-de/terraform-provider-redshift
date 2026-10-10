@@ -1,0 +1,1 @@
+-- error: set at most one of auto_create_roles_include_groups and auto_create_roles_exclude_groups

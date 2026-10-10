@@ -1,14 +1,16 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_identity_provider Resource - terraform-provider-redshift
-description: Manages the SQL side of an AWS Identity Center integration.
+description: Manages the SQL side of an AWS IAM Identity Center or Microsoft Entra ID integration.
 ---
 
 # redshift_identity_provider (Resource)
 
-Manages an AWSIDC **SQL identity provider** in a Serverless warehouse. Create the managed Identity Center application,
+Manages a **SQL identity provider**: an AWS IAM Identity Center integration (`type = "awsidc"`) or native identity
+provider federation with Microsoft Entra ID (`type = "azure"`). For Identity Center, create the managed application,
 integration IAM role, role attachment to the namespace, and group assignments with the AWS provider. See AWS
-[CREATE IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_IDENTITY_PROVIDER.html).
+[CREATE IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_IDENTITY_PROVIDER.html) and
+[ALTER IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_IDENTITY_PROVIDER.html).
 
 ```sql
 CREATE IDENTITY PROVIDER name ...;
@@ -26,9 +28,23 @@ DROP IDENTITY PROVIDER name;
 
 ## Lifecycle and Ownership
 
-Creation requires a Redshift database superuser. A read checks type `awsidc`, application binding, namespace, IAM role,
-and enabled status. Deletion refuses to drop the provider while namespace-prefixed federated users remain. Manage role
-grants and memberships separately; use resource dependencies so they are removed first.
+Creating, changing, and reading a provider requires a Redshift database superuser, because
+[SVV_IDENTITY_PROVIDERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_IDENTITY_PROVIDERS.html) is visible only
+to superusers. A read checks the type, namespace, enabled status, and the type's binding: the application ARN and IAM
+role for `awsidc`, and the issuer, client ID, and audience for `azure`. The catalog never returns the Azure client secret.
+
+Each changed setting is applied with its own `ALTER IDENTITY PROVIDER` statement. The IAM role and the enabled status
+are reapplied on every update. `ALTER IDENTITY PROVIDER ... PARAMETERS` replaces every Azure parameter, so changing
+`issuer`, `client_id`, `audience`, or `client_secret_wo_version` sends all of them with `client_secret_wo` from the
+configuration.
+
+`auto_create_roles` and its group filters are not reported by the catalog: Terraform applies them on change but cannot
+detect changes made outside Terraform. Removing `auto_create_roles` restores the type's default.
+
+Deletion never uses `CASCADE`, which would drop the provider's users and roles. It refuses to drop the provider while
+namespace-prefixed federated users remain. Existing users keep their names when `namespace` changes, so a namespace
+change is refused while users with the previous prefix remain; otherwise deletion would no longer find them. Manage role grants and memberships separately; use resource dependencies so
+they are removed first.
 
 ## Import
 
@@ -40,5 +56,6 @@ Alternatively, use `terraform import`:
 
 {{ codefile "shell" "examples/resources/redshift_identity_provider/import.sh" }}
 
-Refresh discovers the namespace, application ARN, IAM role ARN, and enabled state. Match configuration to that identity
-before applying a plan.
+Refresh discovers the type, namespace, and type-specific binding and the enabled state. It cannot discover
+`auto_create_roles` or the client secret, and an imported provider sends no secret when `client_secret_wo_version` is
+first set. Match configuration to the observed identity before applying a plan.

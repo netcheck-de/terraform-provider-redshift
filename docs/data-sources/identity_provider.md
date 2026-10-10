@@ -1,12 +1,15 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_identity_provider Data Source - terraform-provider-redshift
-description: Looks up an existing AWSIDC SQL identity provider.
+description: Looks up an existing AWSIDC or Azure SQL identity provider.
 ---
 
 # redshift_identity_provider (Data Source)
 
-Looks up an existing AWSIDC SQL identity provider.
+Looks up an existing SQL identity provider of type `awsidc` or `azure`, with the details that
+[SVV_IDENTITY_PROVIDERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_IDENTITY_PROVIDERS.html) and
+[DESC IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_DESC_IDENTITY_PROVIDER.html) report. Only
+superusers can read them.
 
 ```sql
 SELECT ... FROM svv_identity_providers WHERE name = 'name';
@@ -26,18 +29,29 @@ data "redshift_identity_provider" "this" {
 
 ### Required
 
-- `name` (String) SQL identity provider name.
+- `name` (String) SQL identity provider name; a missing provider raises an error.
 
 ### Read-Only
 
-- `application_arn` (String) Managed application ARN.
+- `application_arn` (String) Identity Center managed application ARN; null for `azure`.
+- `audience` (Set of String) Accepted Microsoft Entra ID token audiences; null for `awsidc` or when none are set.
+- `auto_create_roles` (Boolean) Always null: the catalog does not report automatic role creation.
+- `auto_create_roles_exclude_groups` (String) Always null: the catalog does not report the group filter.
+- `auto_create_roles_include_groups` (String) Always null: the catalog does not report the group filter.
+- `client_id` (String) Microsoft Entra ID application (client) ID; null for `awsidc`.
 - `enabled` (Boolean) Whether the provider is enabled.
-- `iam_role_arn` (String) Integration IAM role ARN.
+- `iam_role_arn` (String) Identity Center integration IAM role ARN; null for `azure`.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
-- `namespace` (String) Federated user and group-role prefix.
+- `identity_center_instance_arn` (String) IAM Identity Center instance ARN of an `awsidc` provider; null for `azure`.
+- `instance_id` (String) Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `awsidc` and the tenant ID for `azure`.
+- `issuer` (String) Microsoft Entra ID token issuer URL; null for `awsidc`.
+- `namespace` (String) Prefix of federated users and group roles.
+- `provider_id` (Number) Catalog ID of the identity provider (`svv_identity_providers.uid`).
+- `type` (String) Identity provider type: `awsidc` or `azure`.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the observed identity provider's JSON identity, using the same warehouse, provider database,
 and name keys as the paired resource.
 
-A missing provider or one with an incompatible type or malformed catalog parameters is an error.
+A missing provider or one with an unsupported type or malformed catalog parameters is an error. The client secret is
+never exposed, and `auto_create_roles` and its group filters are always null, because the catalog does not report them.

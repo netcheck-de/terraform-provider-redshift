@@ -1,0 +1,1 @@
+-- error: type azure requires issuer

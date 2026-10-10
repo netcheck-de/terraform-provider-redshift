@@ -1,16 +1,18 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_role Resource - terraform-provider-redshift
-description: Manages a Redshift SQL role independently of its grants.
+description: Manages a Redshift SQL role, its owner, and its external ID independently of its grants.
 ---
 
 # redshift_role (Resource)
 
-Manages one database role, independently of memberships and grants. See AWS
-[CREATE ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_ROLE.html).
+Manages one database role, its owner, and its identity-provider external ID, independently of memberships and grants.
+See AWS [CREATE ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_ROLE.html) and
+[ALTER ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_ROLE.html).
 
 ```sql
-CREATE ROLE name;
+CREATE ROLE name ...;
+ALTER ROLE name ...;
 DROP ROLE name;
 ```
 
@@ -20,6 +22,18 @@ DROP ROLE name;
 resource "redshift_role" "readers" {
   name = "ncidc:analytics-readers"
 }
+
+# Hand the role to a dedicated administrator instead of the creating user.
+resource "redshift_role" "auditors" {
+  name  = "auditors"
+  owner = redshift_user.security_admin.name
+}
+
+# A role of a native identity provider carries the group's ID from Microsoft Entra ID.
+resource "redshift_role" "entra_finance" {
+  name        = "aad:finance"
+  external_id = "8c7a2f3e-0d1b-4c5e-9f6a-2b3c4d5e6f70"
+}
 ```
 
 <!-- markdownlint-disable MD013 MD022 MD033 -->
@@ -28,18 +42,27 @@ resource "redshift_role" "readers" {
 
 ### Required
 
-- `name` (String) Role name, including any identity namespace prefix; changing it replaces the resource.
+- `name` (String) Role name, including any identity namespace prefix. Changing it replaces the role.
+
+### Optional
+
+- `external_id` (String) Identifier of the role in a native third-party identity provider (`EXTERNALID`, reported as `svv_roles.external_id`). Updated in place with `ALTER ROLE ... EXTERNALID TO`. Unset keeps the current value, because `ALTER ROLE` cannot remove it.
+- `owner` (String) User that owns the role (`svv_roles.role_owner`), applied with `ALTER ROLE ... OWNER TO`. Unset keeps the current owner, which is the creating user for a new role. Updated in place.
 
 ### Read-Only
 
 - `id` (String) JSON import identity; independent of Data API execution history.
+- `role_id` (Number) Catalog role ID (`svv_roles.role_id`).
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 ## Lifecycle and Ownership
 
-A missing role is planned for creation. Deletion does not cascade; dependent grants and memberships must be removed
-first. Referencing the identity provider's namespace orders role creation, but changing that provider under the same
-namespace requires explicit replacement of dependent roles.
+A missing role is planned for creation. `CREATE ROLE` has no owner clause, so a configured `owner` is applied with
+`ALTER ROLE ... OWNER TO` right after creation. `owner` and `external_id` are read from
+[SVV_ROLES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ROLES.html); leaving either unset keeps the catalog value
+instead of resetting it. Deletion does not cascade; dependent grants and memberships must be removed first. Referencing
+the identity provider's namespace orders role creation, but changing that provider under the same namespace requires
+explicit replacement of dependent roles.
 
 ## Import
 

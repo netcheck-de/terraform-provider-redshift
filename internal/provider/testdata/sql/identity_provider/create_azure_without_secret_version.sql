@@ -1,0 +1,1 @@
+-- error: type azure requires client_secret_wo_version

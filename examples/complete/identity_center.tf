@@ -163,10 +163,13 @@ resource "redshift_identity_provider" "this" {
   provider        = redshift.consumer
   count           = local.sso_enabled ? 1 : 0
   name            = "example_redshift_idc"
+  type            = "awsidc"
   namespace       = aws_redshift_idc_application.this[0].identity_namespace
   application_arn = aws_redshift_idc_application.this[0].idc_managed_application_arn
   iam_role_arn    = aws_iam_role.consumer.arn
   enabled         = true
+  # The group roles below are managed explicitly, so Redshift must not create them at login.
+  auto_create_roles = false
 }
 
 data "redshift_identity_provider" "this" {

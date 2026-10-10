@@ -1,12 +1,15 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_identity_provider Data Source - terraform-provider-redshift
-description: Looks up an existing AWSIDC SQL identity provider.
+description: Looks up an existing AWSIDC or Azure SQL identity provider.
 ---
 
 # redshift_identity_provider (Data Source)
 
-Looks up an existing AWSIDC SQL identity provider.
+Looks up an existing SQL identity provider of type `awsidc` or `azure`, with the details that
+[SVV_IDENTITY_PROVIDERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_IDENTITY_PROVIDERS.html) and
+[DESC IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_DESC_IDENTITY_PROVIDER.html) report. Only
+superusers can read them.
 
 ```sql
 SELECT ... FROM svv_identity_providers WHERE name = 'name';
@@ -23,4 +26,5 @@ SELECT ... FROM svv_identity_providers WHERE name = 'name';
 `id` (String, computed) is the observed identity provider's JSON identity, using the same warehouse, provider database,
 and name keys as the paired resource.
 
-A missing provider or one with an incompatible type or malformed catalog parameters is an error.
+A missing provider or one with an unsupported type or malformed catalog parameters is an error. The client secret is
+never exposed, and `auto_create_roles` and its group filters are always null, because the catalog does not report them.

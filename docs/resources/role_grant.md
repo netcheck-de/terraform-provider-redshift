@@ -1,18 +1,20 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_role_grant Resource - terraform-provider-redshift
-description: Manages a SQL role grant to a user or another role.
+description: Manages a SQL role grant to a user or another role, optionally with the admin option.
 ---
 
 # redshift_role_grant (Resource)
 
 Grants one role to a receiving role or database user. For example, a group role can inherit `sys:dba`, while Grafana's
-database user can inherit `sys:monitor`. See AWS
-[GRANT ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
+database user can inherit `sys:monitor`. A user can also receive the role `WITH ADMIN OPTION` to grant it to others.
+See AWS [GRANT ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles) and
+[REVOKE ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-roles).
 
 ```sql
 GRANT ROLE role TO ...;
 REVOKE ROLE role FROM ...;
+REVOKE ADMIN OPTION FOR ROLE role FROM ...;
 ```
 
 ## Example Usage
@@ -27,6 +29,13 @@ resource "redshift_role_grant" "grafana" {
   role    = "sys:monitor"
   to_user = redshift_user.grafana.name
 }
+
+# The team lead may grant the readers role to other users and roles.
+resource "redshift_role_grant" "team_lead" {
+  role         = redshift_role.readers.name
+  to_user      = redshift_user.team_lead.name
+  admin_option = true
+}
 ```
 
 <!-- markdownlint-disable MD013 MD022 MD033 -->
@@ -35,24 +44,29 @@ resource "redshift_role_grant" "grafana" {
 
 ### Required
 
-- `role` (String) Role being granted, including built-in `sys:` roles.
+- `role` (String) Role being granted, including built-in `sys:` roles. Changing it replaces the grant.
 
 ### Optional
 
-- `to_role` (String) Receiving role; exactly one of to_role and to_user is required.
-- `to_user` (String) Receiving database user; exactly one of to_role and to_user is required.
+- `admin_option` (Boolean) Whether the receiving user holds the role `WITH ADMIN OPTION` and can grant it to other users and roles (`svv_user_grants.admin_option`). Only users hold the admin option, so `true` requires `to_user`. Defaults to `false`; changes are applied in place and keep the membership.
+- `to_role` (String) Receiving role; exactly one of `to_role` and `to_user` is required. Changing it replaces the grant.
+- `to_user` (String) Receiving database user; exactly one of `to_role` and `to_user` is required. Changing it replaces the grant.
 
 ### Read-Only
 
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-Specify exactly one of `to_role` and `to_user`. Changing any argument replaces the grant.
+Specify exactly one of `to_role` and `to_user`. Changing the role or the recipient replaces the grant; `admin_option`
+changes in place and requires `to_user`, because Redshift documents `WITH ADMIN OPTION` only for user recipients.
+Redshift documents no other recipient for roles: the role syntax lists no `GROUP`, and `PUBLIC`, which the parameter
+text mentions, appears in neither the `GRANT` nor the `REVOKE` syntax and has no catalog view to verify it.
 
 ## Lifecycle and Ownership
 
-Reads check `svv_role_grants` for roles or `svv_user_grants` for users. Deletion revokes only this relationship. A
-lifecycle trigger restores the grant after a same-name recipient replacement.
+Reads check `svv_role_grants` for roles or `svv_user_grants`, including `admin_option`, for users. Disabling the admin
+option keeps the membership. Deletion revokes only this relationship, together with its admin option. A lifecycle
+trigger restores the grant after a same-name recipient replacement.
 
 ## Import
 
@@ -77,4 +91,5 @@ terraform import redshift_role_grant.operators \
   '{"workgroup_name":"warehouse","database":"admin","role":"sys:dba","to_role":"ncidc:analytics-operators"}'
 ```
 
-To import Grafana's role grant, use `"role":"sys:monitor","to_user":"grafana"` in the JSON identity.
+To import Grafana's role grant, use `"role":"sys:monitor","to_user":"grafana"` in the JSON identity. The next refresh
+reads the admin option.

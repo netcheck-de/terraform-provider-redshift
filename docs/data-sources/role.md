@@ -1,12 +1,12 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_role Data Source - terraform-provider-redshift
-description: Looks up an existing SQL role.
+description: Looks up an existing SQL role, its owner, and its external ID.
 ---
 
 # redshift_role (Data Source)
 
-Looks up an existing database role without taking ownership of it.
+Looks up an existing database role, its owner, and its identity-provider external ID without taking ownership of it.
 
 ```sql
 SELECT ... FROM svv_roles WHERE role_name = 'name';
@@ -30,7 +30,10 @@ data "redshift_role" "readers" {
 
 ### Read-Only
 
+- `external_id` (String) Identifier of the role in a native third-party identity provider (`svv_roles.external_id`); null when unset.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `owner` (String) User that owns the role (`svv_roles.role_owner`).
+- `role_id` (Number) Catalog role ID (`svv_roles.role_id`).
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the observed role's JSON identity, using the same warehouse, provider database, and name keys
