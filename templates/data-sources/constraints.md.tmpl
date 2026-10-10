@@ -10,6 +10,8 @@ Lists the key constraints of one database's tables. Redshift does not enforce th
 them. See AWS [Defining table constraints](https://docs.aws.amazon.com/redshift/latest/dg/t_Defining_constraints.html)
 and [Querying the catalog tables](https://docs.aws.amazon.com/redshift/latest/dg/c_join_PG.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM pg_constraint WHERE contype IN ('p', 'u', 'f') ...;
 ```

@@ -8,6 +8,8 @@ description: Looks up a SQL user-defined function overload.
 
 Looks up one existing function overload by schema, name, and input types without managing it.
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM pg_proc_info WHERE proname = 'name' AND oidvectortypes(proargtypes) = '...';
 ```

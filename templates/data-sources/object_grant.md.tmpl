@@ -10,6 +10,8 @@ Reads explicit local database, schema, table (including views), function, or pro
 common to all current tables, functions, or procedures of a schema. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
 
+## Catalog Query
+
 ```sql
 SHOW GRANTS ON ...;
 SELECT ... FROM svv_function_privileges WHERE namespace_name = '...' ...;

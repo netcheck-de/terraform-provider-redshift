@@ -11,6 +11,8 @@ objects have separate ownership. See AWS
 [CREATE SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_SCHEMA.html) and
 [ALTER SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_SCHEMA.html).
 
+## SQL Statements
+
 ```sql
 CREATE SCHEMA name ...;
 ALTER SCHEMA name ...;

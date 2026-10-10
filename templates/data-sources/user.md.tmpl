@@ -9,6 +9,8 @@ description: Looks up non-secret attributes of an existing SQL user.
 Looks up an existing database user, its options, and its stored session defaults without reading its password. See
 AWS [SVV_USER_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_USER_INFO.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM pg_user WHERE usename = 'name';
 SELECT ... FROM svv_user_info WHERE user_name = 'name';

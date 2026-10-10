@@ -9,6 +9,8 @@ description: Reads explicit creator-specific default permissions for future obje
 Reads one default-privilege tuple without changing permissions on current or future objects. See AWS
 [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_default_privileges WHERE owner_name = 'owner' ...;
 ```

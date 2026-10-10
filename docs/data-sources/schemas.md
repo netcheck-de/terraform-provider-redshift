@@ -9,6 +9,8 @@ description: Lists the local, external, and datashare schemas of one database.
 Lists the schemas of one database with their owner and type. See AWS
 [SVV_ALL_SCHEMAS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ALL_SCHEMAS.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_all_schemas WHERE database_name = '...' AND schema_type = '...';
 ```

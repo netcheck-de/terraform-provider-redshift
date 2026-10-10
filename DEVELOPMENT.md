@@ -203,12 +203,12 @@ Registry pages in `docs/` are generated; do not edit them directly. Edit the tem
 in `examples/provider/`, `examples/resources/`, and `examples/data-sources/`, or the schema `MarkdownDescription`
 strings, then run `task docs` (or `go generate ./...`) to regenerate them with the pinned `tfplugindocs`.
 
-Every resource template opens with a short `sql` block of simplified statements: one line per statement kind the
-resource issues (`CREATE`, `ALTER`, `DROP`, `GRANT`, `REVOKE`, `COMMENT`, …), with only the identifying Terraform
-attribute names and `...` for all further options. Data source templates show the catalog source as
-`SELECT ... FROM <view> WHERE <key> = '...';` or the `SHOW` command. Because options are elided, adding attributes or
-clauses keeps the block valid; update it only when a type starts or stops issuing a statement kind or reads a different
-catalog source.
+After its introduction, every resource template has a `## SQL Statements` section holding only a short `sql` block of
+simplified statements: one line per statement kind the resource issues (`CREATE`, `ALTER`, `DROP`, `GRANT`, `REVOKE`,
+`COMMENT`, …), with only the identifying Terraform attribute names and `...` for all further options. Data source
+templates show the catalog source under `## Catalog Query` as `SELECT ... FROM <view> WHERE <key> = '...';` or the
+`SHOW` command. Because options are elided, adding attributes or clauses keeps the block valid; update it only when a
+type starts or stops issuing a statement kind or reads a different catalog source.
 
 Every resource template also has a `## Reconciliation` section after the usage and explanatory sections and right
 before `## Import`. It is the one place that explains changes: in-place and replacement notes belong there, while

@@ -10,6 +10,8 @@ Owns the exact column-level privileges of one grantee on one table, view, or mat
 `SELECT` and which hold `UPDATE`. See AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-column-level)
 and [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-column-level).
 
+## SQL Statements
+
 ```sql
 GRANT privilege (column, ...) ON TABLE database_name.schema_name.object_name TO ...;
 REVOKE privilege (column, ...) ON TABLE database_name.schema_name.object_name FROM ...;

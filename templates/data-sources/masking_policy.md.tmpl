@@ -9,6 +9,8 @@ description: Reads a dynamic data masking policy's inputs and expression.
 Reads one masking policy's input columns and its expression as Redshift stores it. See AWS
 [SVV_MASKING_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MASKING_POLICY.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_masking_policy WHERE policy_database = '...' AND policy_name = '...';
 ```

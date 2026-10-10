@@ -9,6 +9,8 @@ description: Manages explicit table or view membership in a datashare.
 Manages one existing table or view membership in a producer datashare schema. See AWS
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
+## SQL Statements
+
 ```sql
 ALTER DATASHARE datashare ADD TABLE schema.table;
 ALTER DATASHARE datashare REMOVE TABLE schema.table;

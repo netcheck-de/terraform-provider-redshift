@@ -9,6 +9,8 @@ description: Reads an ordinary or late-binding view's definition and owner.
 Reads an existing ordinary or late-binding view without managing it. See AWS
 [CREATE VIEW](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_VIEW.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM pg_views WHERE schemaname = '...' AND viewname = '...';
 ```

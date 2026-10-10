@@ -9,6 +9,8 @@ description: Reads a materialized view's definition, refresh setting, and owner.
 Reads an existing materialized view without managing it. See AWS
 [SVV_MV_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MV_INFO.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM pg_views WHERE schemaname = '...' AND viewname = '...';
 SELECT autorefresh FROM svv_mv_info WHERE ...;

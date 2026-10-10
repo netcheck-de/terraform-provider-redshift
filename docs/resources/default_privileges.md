@@ -9,6 +9,8 @@ description: Manages explicit default permissions for future objects created by 
 Owns default privileges for future objects created by one user in one local database, optionally restricted to a schema.
 See AWS [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
 
+## SQL Statements
+
 ```sql
 ALTER DEFAULT PRIVILEGES ... GRANT ... TO ...;
 ALTER DEFAULT PRIVILEGES ... REVOKE ... FROM ...;

@@ -9,6 +9,8 @@ description: Reads the column-level privileges of one SQL grantee on one table o
 Reads which columns of one table or view hold `SELECT` and `UPDATE` for one grantee. See AWS
 [SVV_COLUMN_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_COLUMN_PRIVILEGES.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_column_privileges WHERE namespace_name = '...' AND relation_name = '...' AND identity_name = '...';
 ```

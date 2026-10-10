@@ -14,6 +14,8 @@ The namespace must already have the IAM role the source form needs. See AWS
 [CREATE EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_SCHEMA.html) and
 [ALTER EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_EXTERNAL_SCHEMA.html).
 
+## SQL Statements
+
 ```sql
 CREATE EXTERNAL SCHEMA name FROM ...;
 ALTER EXTERNAL SCHEMA name ...;

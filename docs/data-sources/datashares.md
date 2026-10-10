@@ -9,6 +9,8 @@ description: Lists the inbound and outbound datashares of the provider's namespa
 Lists the inbound and outbound datashares visible in the provider's namespace, optionally narrowed by type or name. See
 AWS [SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_datashares ...;
 ```

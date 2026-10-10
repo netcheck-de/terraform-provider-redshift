@@ -12,6 +12,8 @@ are the only datashare permissions Redshift grants to users, roles, and groups. 
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-datashare-permissions).
 
+## SQL Statements
+
 ```sql
 GRANT privilege ON DATASHARE datashare_name TO grantee;
 REVOKE privilege ON DATASHARE datashare_name FROM grantee;

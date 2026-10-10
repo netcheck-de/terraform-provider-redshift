@@ -12,6 +12,8 @@ integration IAM role, role attachment to the namespace, and group assignments wi
 [CREATE IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_IDENTITY_PROVIDER.html) and
 [ALTER IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_IDENTITY_PROVIDER.html).
 
+## SQL Statements
+
 ```sql
 CREATE IDENTITY PROVIDER name ...;
 ALTER IDENTITY PROVIDER name ...;

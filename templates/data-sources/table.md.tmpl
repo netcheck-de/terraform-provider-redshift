@@ -9,6 +9,8 @@ description: Looks up the definition of a local Redshift table.
 Reads the definition of an existing local table without managing it, with the same catalog reads as the
 `redshift_table` resource. See AWS [CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM pg_class LEFT JOIN pg_class_info ... WHERE relname = 'name';
 SELECT ... FROM svv_redshift_columns WHERE schema_name = 'schema' AND table_name = 'name';

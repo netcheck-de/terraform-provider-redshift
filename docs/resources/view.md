@@ -11,6 +11,8 @@ Manages an ordinary or late-binding view in a local schema. See AWS
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html), and
 [DROP VIEW](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_VIEW.html).
 
+## SQL Statements
+
 ```sql
 CREATE VIEW schema.name AS query ...;
 CREATE OR REPLACE VIEW schema.name AS query ...;

@@ -11,6 +11,8 @@ Manages one partition of a partitioned
 See AWS [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html) and
 [Partitioning Redshift Spectrum external tables](https://docs.aws.amazon.com/redshift/latest/dg/c-spectrum-external-tables.html#c-spectrum-external-tables-partitioning).
 
+## SQL Statements
+
 ```sql
 ALTER TABLE schema.table ADD PARTITION (values...) LOCATION ...;
 ALTER TABLE schema.table PARTITION (values...) SET LOCATION ...;

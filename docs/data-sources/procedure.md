@@ -8,6 +8,8 @@ description: Looks up a stored procedure overload.
 
 Looks up one existing stored procedure overload by schema, name, and input argument types without managing it.
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM pg_proc_info WHERE proname = 'name' AND oidvectortypes(proargtypes) = '...';
 SHOW PARAMETERS OF PROCEDURE schema.name (...);

@@ -12,6 +12,8 @@ and whose data stays in Amazon S3. See AWS
 [CREATE EXTERNAL TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_TABLE.html) and
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html).
 
+## SQL Statements
+
 ```sql
 CREATE EXTERNAL TABLE schema.name (...) ... STORED AS ... LOCATION ...;
 ALTER TABLE schema.name ...;

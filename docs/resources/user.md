@@ -11,6 +11,8 @@ credentials or a federated identity. Role memberships and object privileges are 
 [CREATE USER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html) and
 [ALTER USER](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_USER.html).
 
+## SQL Statements
+
 ```sql
 CREATE USER name PASSWORD { '...' | DISABLE } ...;
 ALTER USER name ...;

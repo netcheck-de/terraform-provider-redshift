@@ -11,6 +11,8 @@ Looks up an existing SQL identity provider of type `awsidc` or `azure`, with the
 [DESC IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_DESC_IDENTITY_PROVIDER.html) report. Only
 superusers can read them.
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_identity_providers WHERE name = 'name';
 ```

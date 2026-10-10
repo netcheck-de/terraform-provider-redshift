@@ -10,6 +10,8 @@ Looks up the definition of an external table in an external schema, including ta
 AWS [SVV_EXTERNAL_TABLES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_TABLES.html) and
 [SVV_EXTERNAL_COLUMNS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_COLUMNS.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_external_tables WHERE schemaname = 'schema' AND tablename = 'name';
 SELECT ... FROM svv_external_columns WHERE schemaname = 'schema' AND tablename = 'name';

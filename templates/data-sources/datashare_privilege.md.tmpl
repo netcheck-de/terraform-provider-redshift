@@ -9,6 +9,8 @@ description: Reads the explicit ALTER and SHARE permissions of one SQL identity 
 Reads the explicit `ALTER` and `SHARE` permissions that one user, role, group, or `PUBLIC` holds on a producer datashare.
 See AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_datashare_privileges WHERE datashare_name = 'datashare_name' ...;
 ```

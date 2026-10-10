@@ -9,6 +9,8 @@ description: Checks whether a masking policy is attached to columns of a relatio
 Checks one masking policy attachment and reads its input mapping and priority. See AWS
 [SVV_ATTACHED_MASKING_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ATTACHED_MASKING_POLICY.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_attached_masking_policy WHERE policy_name = '...' AND schema_name = '...' AND table_name = '...';
 ```

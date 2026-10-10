@@ -12,6 +12,8 @@ types grant on every object that currently exists in a schema. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 
+## SQL Statements
+
 ```sql
 GRANT privilege ON ... TO ...;
 REVOKE privilege ON ... FROM ...;

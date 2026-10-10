@@ -11,6 +11,8 @@ Lists the relations of one database with their type, owner, and comment. See AWS
 [SVV_REDSHIFT_TABLES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_TABLES.html), and
 [SVV_MV_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MV_INFO.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_all_tables LEFT JOIN svv_redshift_tables ... WHERE database_name = '...';
 SELECT ... FROM svv_mv_info WHERE database_name = '...';

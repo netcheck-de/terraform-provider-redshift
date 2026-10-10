@@ -9,6 +9,8 @@ description: Checks whether a row-level security policy is attached to a relatio
 Checks whether one policy is attached to one relation for one user, role, or `PUBLIC`. See AWS
 [SVV_RLS_ATTACHED_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_ATTACHED_POLICY.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_rls_attached_policy WHERE polname = 'policy' AND relname = 'relation' ...;
 ```

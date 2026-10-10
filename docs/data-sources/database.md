@@ -11,6 +11,8 @@ connection limit, collation, and isolation level. See AWS
 [SHOW DATABASES](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_DATABASES.html) and
 [PG_DATABASE_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_DATABASE_INFO.html).
 
+## Catalog Query
+
 ```sql
 SHOW DATABASES LIKE 'name';
 SELECT ... FROM pg_database_info WHERE datname = 'name';

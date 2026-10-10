@@ -10,6 +10,8 @@ Manages one database role, its owner, and its identity-provider external ID, ind
 See AWS [CREATE ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_ROLE.html) and
 [ALTER ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_ROLE.html).
 
+## SQL Statements
+
 ```sql
 CREATE ROLE name ...;
 ALTER ROLE name ...;

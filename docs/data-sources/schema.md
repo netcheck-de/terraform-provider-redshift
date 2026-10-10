@@ -9,6 +9,8 @@ description: Looks up a local schema, its SQL owner, and its quota.
 Looks up an existing local schema without managing it. See AWS
 [SVV_REDSHIFT_SCHEMA_QUOTA](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_SCHEMA_QUOTA.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM pg_namespace WHERE nspname = 'name';
 SELECT ... FROM svv_redshift_schema_quota WHERE schema_name = 'name';

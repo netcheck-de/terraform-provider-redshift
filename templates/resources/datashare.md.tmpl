@@ -12,6 +12,8 @@ object from the
 datashare authorization and consumer association are managed with the AWS provider. See AWS
 [CREATE DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATASHARE.html).
 
+## SQL Statements
+
 ```sql
 CREATE DATASHARE name ...;
 ALTER DATASHARE name ...;

@@ -9,6 +9,8 @@ description: Reads the row-level security settings of a table or view.
 Reads whether row-level security is on for one table or view, its conjunction type, and its datashare setting. See AWS
 [SVV_RLS_RELATION](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_RELATION.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_rls_relation WHERE relschema = 'schema' AND relname = 'relation';
 ```

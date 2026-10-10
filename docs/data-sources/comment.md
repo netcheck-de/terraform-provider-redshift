@@ -9,6 +9,8 @@ description: Reads a local object's annotation without adopting or clearing it.
 Reads a local database, schema, table, view, column, or table constraint annotation. See AWS
 [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM pg_description ...;
 ```

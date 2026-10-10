@@ -13,6 +13,8 @@ appear in the SQL catalog, for up to five minutes or, when set, the `timeouts.cr
 [CREATE DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATABASE.html) and
 [ALTER DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATABASE.html).
 
+## SQL Statements
+
 ```sql
 CREATE DATABASE name ...;
 ALTER DATABASE name ...;

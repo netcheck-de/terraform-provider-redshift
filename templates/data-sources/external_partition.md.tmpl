@@ -9,6 +9,8 @@ description: Looks up one partition of a Redshift Spectrum external table.
 Looks up one partition of a partitioned external table by its partition values. See AWS
 [SVV_EXTERNAL_PARTITIONS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_PARTITIONS.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_external_partitions WHERE schemaname = 'schema' AND tablename = 'table';
 ```

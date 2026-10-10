@@ -8,6 +8,8 @@ description: Looks up an existing outbound datashare.
 
 Looks up an existing outbound datashare in its producer database.
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_datashares WHERE share_name = 'name' ...;
 ```

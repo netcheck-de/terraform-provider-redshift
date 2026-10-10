@@ -12,6 +12,8 @@ Manages a scalar Lambda user-defined function (UDF) that Redshift runs by invoki
 [DROP FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_FUNCTION.html), and
 [Scalar Lambda UDFs](https://docs.aws.amazon.com/redshift/latest/dg/udf-creating-a-lambda-sql-udf.html).
 
+## SQL Statements
+
 ```sql
 CREATE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;
 CREATE OR REPLACE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;

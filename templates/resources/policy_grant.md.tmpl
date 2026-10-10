@@ -11,6 +11,8 @@ policy needs when its expression reads the table. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-row-level-security) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-role-level).
 
+## SQL Statements
+
 ```sql
 GRANT SELECT ON TABLE ... TO { RLS | MASKING } POLICY policy_name;
 REVOKE SELECT ON TABLE ... FROM { RLS | MASKING } POLICY policy_name;

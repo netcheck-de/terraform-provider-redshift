@@ -11,6 +11,8 @@ overload, without managing them. See AWS
 [SHOW PARAMETERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_PARAMETERS.html) and
 [PG_PROC_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_PROC_INFO.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM pg_proc_info WHERE prokind IN ('f', 'p') AND nspname = '...' AND proname = '...';
 SHOW PARAMETERS OF { FUNCTION | PROCEDURE } database.schema.routine_name(arguments);

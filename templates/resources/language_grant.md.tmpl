@@ -11,6 +11,8 @@ user-defined functions and `USAGE ON LANGUAGE plpgsql` to create stored procedur
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 
+## SQL Statements
+
 ```sql
 GRANT USAGE ON LANGUAGE language_name TO ... [WITH GRANT OPTION];
 REVOKE [GRANT OPTION FOR] USAGE ON LANGUAGE language_name FROM ...;

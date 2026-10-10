@@ -11,6 +11,8 @@ and object-specific grants are independent. An empty `privileges` set revokes th
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 
+## SQL Statements
+
 ```sql
 GRANT privilege ... TO ...;
 REVOKE privilege ... FROM ...;

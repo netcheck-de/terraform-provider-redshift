@@ -13,6 +13,8 @@ on for the relation with `redshift_table_security`. See AWS
 [ALTER RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_RLS_POLICY.html), and
 [DROP RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_RLS_POLICY.html).
 
+## SQL Statements
+
 ```sql
 CREATE RLS POLICY name ... USING (predicate);
 ALTER RLS POLICY name USING (predicate);

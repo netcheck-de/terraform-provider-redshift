@@ -9,6 +9,8 @@ description: Lists stored procedures.
 Lists the stored procedures of one database without managing them. See AWS
 [PG_PROC_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_PROC_INFO.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM pg_proc_info WHERE prokind = 'p' AND nspname = '...' AND proname = '...';
 ```

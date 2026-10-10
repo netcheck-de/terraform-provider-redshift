@@ -9,6 +9,8 @@ description: Lists relation columns with their position, type, nullability, and 
 Lists the columns of one database's tables, views, and external tables. See AWS
 [SVV_ALL_COLUMNS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ALL_COLUMNS.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_all_columns WHERE database_name = '...' AND schema_name = '...' AND table_name = '...';
 ```

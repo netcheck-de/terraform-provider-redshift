@@ -8,6 +8,8 @@ description: Looks up an existing SQL role, its owner, and its external ID.
 
 Looks up an existing database role, its owner, and its identity-provider external ID without taking ownership of it.
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_roles WHERE role_name = 'name';
 ```

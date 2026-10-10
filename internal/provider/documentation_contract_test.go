@@ -39,6 +39,7 @@ func TestDocsExistForEveryRegisteredType(t *testing.T) {
 		{"resources", resources, []string{"resource.tf", "import.sh"}},
 		{"data-sources", dataSources, []string{"data-source.tf"}},
 	} {
+		heading := sqlSummaryHeadings[category.dir]
 		pages, err := filepath.Glob(filepath.Join(root, "docs", category.dir, "*.md"))
 		require.NoError(t, err)
 		assert.Len(t, pages, len(category.types), "docs/%s must contain exactly one page per registered type", category.dir)
@@ -54,8 +55,18 @@ func TestDocsExistForEveryRegisteredType(t *testing.T) {
 			for _, file := range files {
 				assert.FileExists(t, filepath.Join(root, file), "%s requires %s", typeName, file)
 			}
+			template, err := os.ReadFile(filepath.Join(root, "templates", category.dir, name+".md.tmpl"))
+			if assert.NoError(t, err) {
+				assert.Contains(t, string(template), heading+"\n\n```sql\n", "%s must introduce its SQL summary with %q", typeName, heading)
+			}
 		}
 	}
+}
+
+// sqlSummaryHeadings names the section that holds each page kind's simplified SQL block, so readers know what it shows.
+var sqlSummaryHeadings = map[string]string{
+	"resources":    "## SQL Statements",
+	"data-sources": "## Catalog Query",
 }
 
 // TestReconciliationSectionDocumentsEveryInput requires each resource template to explain, before its import

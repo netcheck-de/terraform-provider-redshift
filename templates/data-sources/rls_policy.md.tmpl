@@ -9,6 +9,8 @@ description: Looks up a row-level security policy definition.
 Reads one row-level security policy without managing it. See AWS
 [SVV_RLS_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_POLICY.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_rls_policy WHERE poldb = 'database' AND polname = 'name';
 ```

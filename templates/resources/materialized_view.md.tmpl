@@ -12,6 +12,8 @@ Manages a materialized view stored in Redshift. See AWS
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html), and
 [DROP MATERIALIZED VIEW](https://docs.aws.amazon.com/redshift/latest/dg/materialized-view-drop-sql-command.html).
 
+## SQL Statements
+
 ```sql
 CREATE MATERIALIZED VIEW schema.name ... AS query;
 ALTER MATERIALIZED VIEW schema.name ALTER DISTSTYLE ...;

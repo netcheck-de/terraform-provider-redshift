@@ -10,6 +10,8 @@ Lists what `SHOW GRANTS` reports, without taking ownership: either every grant o
 (including views), or every grant of one user or role in one database. See AWS
 [SHOW GRANTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_GRANTS.html).
 
+## Catalog Query
+
 ```sql
 SHOW GRANTS ON { DATABASE | SCHEMA | TABLE } ...;
 SHOW GRANTS FOR [ROLE] ... FROM DATABASE ...;

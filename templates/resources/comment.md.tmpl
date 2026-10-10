@@ -9,6 +9,8 @@ description: Manages existing local object annotations independently of object d
 Manages a comment on an existing local database, schema, table, view, column, or table constraint without owning the
 object's definition. See AWS [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
 
+## SQL Statements
+
 ```sql
 COMMENT ON ... IS 'text' | NULL;
 COMMENT ON CONSTRAINT constraint_name ON schema_name.object_name IS 'text' | NULL;

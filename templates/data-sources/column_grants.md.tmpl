@@ -10,6 +10,8 @@ Lists explicit column-level `SELECT` and `UPDATE` grants in one local database, 
 grantee, without taking ownership. See AWS
 [SVV_COLUMN_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_COLUMN_PRIVILEGES.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_column_privileges WHERE ...;
 ```

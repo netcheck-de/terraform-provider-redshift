@@ -12,6 +12,8 @@ AWS [CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html), and
 [DROP TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_TABLE.html).
 
+## SQL Statements
+
 ```sql
 CREATE TABLE schema.name (columns ...) ...;
 ALTER TABLE schema.name ...;

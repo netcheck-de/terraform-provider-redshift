@@ -9,6 +9,8 @@ description: Looks up an existing SQL user group.
 Looks up an existing SQL user group, its ID, and its members without taking ownership. See AWS
 [Groups](https://docs.aws.amazon.com/redshift/latest/dg/r_Groups.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM pg_group LEFT JOIN pg_user ... WHERE groname = 'name';
 ```

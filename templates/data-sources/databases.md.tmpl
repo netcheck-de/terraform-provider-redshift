@@ -9,6 +9,8 @@ description: Lists local and datashare databases, optionally filtered by type an
 Lists the warehouse's local databases and the databases created from datashares, with their owners and isolation
 levels. See AWS [SVV_REDSHIFT_DATABASES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_DATABASES.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_redshift_databases WHERE database_type = '...' AND database_name LIKE '...';
 ```

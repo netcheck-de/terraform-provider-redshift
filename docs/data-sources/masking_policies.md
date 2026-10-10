@@ -9,6 +9,8 @@ description: Lists dynamic data masking policies.
 Lists masking policies with their inputs and expressions, optionally of one database. See AWS
 [SVV_MASKING_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MASKING_POLICY.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_masking_policy WHERE policy_database = '...';
 ```

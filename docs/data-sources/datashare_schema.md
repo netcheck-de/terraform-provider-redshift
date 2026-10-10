@@ -9,6 +9,8 @@ description: Reads schema membership and future-object inclusion in a producer d
 Reads explicit schema membership and its actual future-object sharing policy. See AWS
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_datashare_objects WHERE share_name = 'datashare' ...;
 ```

@@ -9,6 +9,8 @@ description: Reads explicitly granted system capabilities for one SQL role.
 Reads explicit SQL system permissions, excluding capabilities inherited from other roles. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_system_privileges WHERE identity_name = 'role';
 ```

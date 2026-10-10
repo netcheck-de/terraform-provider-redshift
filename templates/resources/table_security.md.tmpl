@@ -11,6 +11,8 @@ sets how several policies combine and whether RLS also applies to datashare cons
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html) and
 [SVV_RLS_RELATION](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_RELATION.html).
 
+## SQL Statements
+
 ```sql
 ALTER TABLE schema.relation ROW LEVEL SECURITY ON ...;
 ALTER TABLE schema.relation ROW LEVEL SECURITY OFF ...;

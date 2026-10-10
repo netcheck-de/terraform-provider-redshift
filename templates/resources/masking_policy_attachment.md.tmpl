@@ -10,6 +10,8 @@ Attaches one masking policy to columns of one table or view for one user, role, 
 [ATTACH MASKING POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_ATTACH_MASKING_POLICY.html) and
 [DETACH MASKING POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_DETACH_MASKING_POLICY.html).
 
+## SQL Statements
+
 ```sql
 ATTACH MASKING POLICY policy ON schema.relation (columns) ... TO grantee ...;
 DETACH MASKING POLICY policy ON schema.relation (columns) FROM grantee;

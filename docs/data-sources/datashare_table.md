@@ -9,6 +9,8 @@ description: Checks explicit table or view membership in a producer datashare.
 Checks catalog membership of a producer table or view. See AWS
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_datashare_objects WHERE share_name = 'datashare' ...;
 ```

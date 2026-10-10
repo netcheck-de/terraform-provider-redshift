@@ -12,6 +12,8 @@ Attach it to columns with `redshift_masking_policy_attachment`, and give it acce
 [CREATE MASKING POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_MASKING_POLICY.html) and
 [Dynamic data masking](https://docs.aws.amazon.com/redshift/latest/dg/t_ddm.html).
 
+## SQL Statements
+
 ```sql
 CREATE MASKING POLICY name WITH (...) USING (expression);
 ALTER MASKING POLICY name USING (expression);

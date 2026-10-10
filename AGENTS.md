@@ -61,9 +61,10 @@ separate foundation change.
 3. In the type's tests, call `registerReplacementPolicy`, `registerParity` (or its exemption), and
    `registerLifecycleCase`; teach the `catalog` fake with `registerFakeFamily` in `fake_<type>_test.go`.
 4. Add `templates/<kind>/<name>.md.tmpl`, plus `examples/resources/redshift_<name>/{resource.tf,import.sh}` or
-   `examples/data-sources/redshift_<name>/data-source.tf`, then run `task docs`. The template opens with a ```sql block
-   of simplified statements (statement kind, identifying names, `...` for options; data sources: the catalog source),
-   as described in `DEVELOPMENT.md`.
+   `examples/data-sources/redshift_<name>/data-source.tf`, then run `task docs`. After the introduction, the template
+   has a `## SQL Statements` heading (data sources: `## Catalog Query`) with a ```sql block of simplified statements
+   (statement kind, identifying names, `...` for options; data sources: the catalog source), as described in
+   `DEVELOPMENT.md`.
    A resource template also needs a `## Reconciliation` section before `## Import` whose `| Change | Result |` table
    names every argument and block field, true to the code (see "Documentation" in `DEVELOPMENT.md`).
 5. In `examples/complete`, use it in the block's own `<block>.tf`, expose each data source in `outputs_<block>.tf`, and

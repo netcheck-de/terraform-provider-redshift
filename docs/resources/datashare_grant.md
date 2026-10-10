@@ -11,6 +11,8 @@ one of `account_id` and `namespace_id`. Cross-account sharing also requires AWS
 authorization in the producer account and association in the consumer account. See AWS
 [GRANT USAGE ON DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax).
 
+## SQL Statements
+
 ```sql
 GRANT USAGE ON DATASHARE datashare TO ...;
 REVOKE USAGE ON DATASHARE datashare FROM ...;

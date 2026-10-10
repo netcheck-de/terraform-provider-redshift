@@ -10,6 +10,8 @@ Owns the exact command set for one IAM role selector and one SQL identity. See A
 [GRANT ASSUMEROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-assumerole-permissions) and its
 [usage notes](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT-usage-notes.html#r_GRANT-usage-notes-assumerole).
 
+## SQL Statements
+
 ```sql
 GRANT ASSUMEROLE ON ... TO ... FOR ...;
 REVOKE ASSUMEROLE ON ... FROM ... FOR ...;

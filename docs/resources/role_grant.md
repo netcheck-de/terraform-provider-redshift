@@ -11,6 +11,8 @@ database user can inherit `sys:monitor`. A user can also receive the role `WITH 
 See AWS [GRANT ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles) and
 [REVOKE ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-roles).
 
+## SQL Statements
+
 ```sql
 GRANT ROLE role TO ...;
 REVOKE ROLE role FROM ...;

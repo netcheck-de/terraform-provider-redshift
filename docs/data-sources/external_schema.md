@@ -9,6 +9,8 @@ description: Looks up an external schema mapping and its source.
 Looks up an existing external schema in a local Redshift database with its source form, recorded options, and owner. See
 AWS [SVV_EXTERNAL_SCHEMAS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_SCHEMAS.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_external_schemas WHERE schemaname = 'name';
 ```

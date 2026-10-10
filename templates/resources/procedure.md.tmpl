@@ -12,6 +12,8 @@ configuration, and owner. See AWS
 [ALTER PROCEDURE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_PROCEDURE.html), and
 [DROP PROCEDURE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_PROCEDURE.html).
 
+## SQL Statements
+
 ```sql
 CREATE [ OR REPLACE ] PROCEDURE schema.name (arguments) ... AS $$ body $$ LANGUAGE plpgsql ...;
 ALTER PROCEDURE schema.name (arguments) OWNER TO owner;
