@@ -19,7 +19,7 @@ SELECT sortkey1 FROM svv_table_info WHERE "schema" = :schema AND "table" = :name
 -- params: {"name":"events","schema":"serving"}
 
 -- database: admin
-ALTER TABLE "serving"."events" ALTER DISTSTYLE EVEN;
+ALTER TABLE "serving"."events" ALTER DISTSTYLE AUTO;
 -- params: {}
 
 -- database: admin

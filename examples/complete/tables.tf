@@ -6,12 +6,23 @@ resource "redshift_table" "accounts" {
   schema   = redshift_schema.local.name
   name     = "example_accounts"
 
-  columns = [
-    { name = "account_id", type = "integer", nullable = false },
-    { name = "name", type = "varchar(128)", encoding = "ZSTD" },
-  ]
-  primary_key = ["account_id"]
-  diststyle   = "ALL"
+  column {
+    name     = "account_id"
+    type     = "integer"
+    nullable = false
+  }
+  column {
+    name     = "name"
+    type     = "varchar(128)"
+    encoding = "ZSTD"
+  }
+
+  primary_key {
+    columns = ["account_id"]
+  }
+  distribution {
+    style = "ALL"
+  }
 }
 
 resource "redshift_table" "orders" {
@@ -21,25 +32,77 @@ resource "redshift_table" "orders" {
   name     = "example_orders"
   owner    = redshift_user.loader.name
 
-  columns = [
-    { name = "order_id", type = "bigint", identity = { seed = 1, step = 1 } },
-    { name = "account_id", type = "integer", nullable = false, encoding = "AZ64" },
-    { name = "status", type = "varchar(16)", default = "'new'", encoding = "BYTEDICT" },
-    { name = "amount", type = "numeric(12,2)", encoding = "AZ64" },
-    { name = "created_at", type = "timestamp", nullable = false, default = "getdate()" },
-  ]
+  column {
+    name = "order_id"
+    type = "bigint"
+    identity {
+      seed = 1
+      step = 1
+    }
+  }
+  column {
+    name     = "account_id"
+    type     = "integer"
+    nullable = false
+    encoding = "AZ64"
+  }
+  column {
+    name     = "status"
+    type     = "varchar(16)"
+    default  = "'new'"
+    encoding = "BYTEDICT"
+  }
+  column {
+    name     = "amount"
+    type     = "numeric(12,2)"
+    encoding = "AZ64"
+  }
+  column {
+    name     = "created_at"
+    type     = "timestamp"
+    nullable = false
+    default  = "getdate()"
+  }
 
-  primary_key = ["order_id"]
-  unique      = [["account_id", "created_at"]]
-  foreign_keys = [{
-    columns            = ["account_id"]
-    references_schema  = redshift_table.accounts.schema
-    references_table   = redshift_table.accounts.name
-    references_columns = redshift_table.accounts.primary_key
-  }]
+  primary_key {
+    columns = ["order_id"]
+  }
+  unique {
+    columns = ["account_id", "created_at"]
+  }
+  foreign_key {
+    columns = ["account_id"]
+    references {
+      schema  = redshift_table.accounts.schema
+      table   = redshift_table.accounts.name
+      columns = redshift_table.accounts.primary_key.columns
+    }
+  }
 
-  distkey = "account_id"
-  sortkey = ["created_at", "order_id"]
+  distribution {
+    key = "account_id"
+  }
+  sort_key {
+    columns = ["created_at", "order_id"]
+  }
+}
+
+# Distribution and sort key are left to Redshift: without the blocks both are AUTO, and effective_distribution and
+# effective_sort_key report what Redshift chose.
+resource "redshift_table" "events" {
+  provider = redshift.consumer
+  database = redshift_schema.local.database
+  schema   = redshift_schema.local.name
+  name     = "example_events"
+
+  column {
+    name = "event_id"
+    type = "bigint"
+  }
+  column {
+    name = "payload"
+    type = "super"
+  }
 }
 
 data "redshift_table" "orders" {

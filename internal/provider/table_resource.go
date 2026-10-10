@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -15,12 +15,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
@@ -42,27 +45,27 @@ type tableModel struct {
 	Name types.String `tfsdk:"name"`
 	// Owner is the owning user, managed when configured.
 	Owner types.String `tfsdk:"owner"`
-	// Columns are the ordered column definitions.
-	Columns types.List `tfsdk:"columns"`
-	// PrimaryKey lists the primary key columns.
-	PrimaryKey types.List `tfsdk:"primary_key"`
-	// Unique holds the column lists of UNIQUE constraints.
+	// Column holds the column blocks, matched to the catalog by name.
+	Column types.List `tfsdk:"column"`
+	// PrimaryKey is the primary key block, null without one.
+	PrimaryKey types.Object `tfsdk:"primary_key"`
+	// Unique holds the UNIQUE constraint blocks.
 	Unique types.Set `tfsdk:"unique"`
-	// ForeignKeys holds the FOREIGN KEY constraints.
-	ForeignKeys types.Set `tfsdk:"foreign_keys"`
-	// DistStyle is AUTO, EVEN, KEY, or ALL.
-	DistStyle types.String `tfsdk:"diststyle"`
-	// DistKey is the DISTSTYLE KEY column.
-	DistKey types.String `tfsdk:"distkey"`
-	// SortKeyStyle is AUTO, COMPOUND, or INTERLEAVED.
-	SortKeyStyle types.String `tfsdk:"sortkey_style"`
-	// SortKey lists the sort key columns.
-	SortKey types.List `tfsdk:"sortkey"`
+	// ForeignKey holds the FOREIGN KEY constraint blocks.
+	ForeignKey types.Set `tfsdk:"foreign_key"`
+	// Distribution is the declared distribution; null means AUTO.
+	Distribution types.Object `tfsdk:"distribution"`
+	// SortKey is the declared sort key; null means AUTO.
+	SortKey types.Object `tfsdk:"sort_key"`
 	// Backup is YES or NO.
 	Backup types.String `tfsdk:"backup"`
+	// EffectiveDistribution is the distribution Redshift applies.
+	EffectiveDistribution types.Object `tfsdk:"effective_distribution"`
+	// EffectiveSortKey is the sort key Redshift applies.
+	EffectiveSortKey types.Object `tfsdk:"effective_sort_key"`
 }
 
-// tableColumnModel is one element of columns.
+// tableColumnModel is one column block.
 type tableColumnModel struct {
 	// Name is the column name.
 	Name types.String `tfsdk:"name"`
@@ -74,11 +77,11 @@ type tableColumnModel struct {
 	Nullable types.Bool `tfsdk:"nullable"`
 	// Default is the DEFAULT expression.
 	Default types.String `tfsdk:"default"`
-	// Identity holds the identity clause.
+	// Identity is the identity block, null for ordinary columns.
 	Identity types.Object `tfsdk:"identity"`
 }
 
-// tableIdentityModel is the identity clause of a column.
+// tableIdentityModel is the identity block of a column.
 type tableIdentityModel struct {
 	// Seed is the first generated value.
 	Seed types.Int64 `tfsdk:"seed"`
@@ -88,16 +91,44 @@ type tableIdentityModel struct {
 	GeneratedByDefault types.Bool `tfsdk:"generated_by_default"`
 }
 
-// tableForeignKeyModel is one element of foreign_keys.
+// tableKeyModel is a primary_key or unique block.
+type tableKeyModel struct {
+	// Columns are the constrained columns in order.
+	Columns types.List `tfsdk:"columns"`
+}
+
+// tableForeignKeyModel is one foreign_key block.
 type tableForeignKeyModel struct {
 	// Columns are the referencing columns.
 	Columns types.List `tfsdk:"columns"`
-	// ReferencesSchema contains the referenced table.
-	ReferencesSchema types.String `tfsdk:"references_schema"`
-	// ReferencesTable is the referenced table.
-	ReferencesTable types.String `tfsdk:"references_table"`
-	// ReferencesColumns are the referenced columns.
-	ReferencesColumns types.List `tfsdk:"references_columns"`
+	// References is the references block.
+	References types.Object `tfsdk:"references"`
+}
+
+// tableReferencesModel is the referenced table and columns of a foreign key.
+type tableReferencesModel struct {
+	// Schema contains the referenced table.
+	Schema types.String `tfsdk:"schema"`
+	// Table is the referenced table.
+	Table types.String `tfsdk:"table"`
+	// Columns are the referenced columns.
+	Columns types.List `tfsdk:"columns"`
+}
+
+// tableDistributionModel is the distribution block.
+type tableDistributionModel struct {
+	// Style is AUTO, EVEN, KEY, or ALL.
+	Style types.String `tfsdk:"style"`
+	// Key is the DISTSTYLE KEY column.
+	Key types.String `tfsdk:"key"`
+}
+
+// tableSortKeyModel is the sort_key block.
+type tableSortKeyModel struct {
+	// Style is AUTO, COMPOUND, INTERLEAVED, or NONE.
+	Style types.String `tfsdk:"style"`
+	// Columns are the sort key columns in order.
+	Columns types.List `tfsdk:"columns"`
 }
 
 // Attribute types of the nested values, for building them outside the schema.
@@ -107,22 +138,30 @@ var (
 		"name": types.StringType, "type": types.StringType, "encoding": types.StringType, "nullable": types.BoolType,
 		"default": types.StringType, "identity": types.ObjectType{AttrTypes: tableIdentityAttributeTypes},
 	}
+	tableKeyAttributeTypes        = map[string]attr.Type{"columns": types.ListType{ElemType: types.StringType}}
+	tableReferencesAttributeTypes = map[string]attr.Type{"schema": types.StringType, "table": types.StringType, "columns": types.ListType{ElemType: types.StringType}}
 	tableForeignKeyAttributeTypes = map[string]attr.Type{
-		"columns": types.ListType{ElemType: types.StringType}, "references_schema": types.StringType,
-		"references_table": types.StringType, "references_columns": types.ListType{ElemType: types.StringType},
+		"columns": types.ListType{ElemType: types.StringType}, "references": types.ObjectType{AttrTypes: tableReferencesAttributeTypes},
 	}
+	tableDistributionAttributeTypes          = map[string]attr.Type{"style": types.StringType, "key": types.StringType}
+	tableSortKeyAttributeTypes               = map[string]attr.Type{"style": types.StringType, "columns": types.ListType{ElemType: types.StringType}}
+	tableEffectiveDistributionAttributeTypes = map[string]attr.Type{"style": types.StringType, "key": types.StringType, "auto": types.BoolType}
+	tableEffectiveSortKeyAttributeTypes      = map[string]attr.Type{"style": types.StringType, "columns": types.ListType{ElemType: types.StringType}, "auto": types.BoolType}
 )
 
 // tableNullModel returns a model whose optional values are typed nulls, for lookups and import.
 func tableNullModel(database, schemaName, name types.String) tableModel {
 	return tableModel{
 		ID: types.StringNull(), Database: database, Schema: schemaName, Name: name, Owner: types.StringNull(),
-		Columns:     types.ListNull(types.ObjectType{AttrTypes: tableColumnAttributeTypes}),
-		PrimaryKey:  types.ListNull(types.StringType),
-		Unique:      types.SetNull(types.ListType{ElemType: types.StringType}),
-		ForeignKeys: types.SetNull(types.ObjectType{AttrTypes: tableForeignKeyAttributeTypes}),
-		DistStyle:   types.StringNull(), DistKey: types.StringNull(), SortKeyStyle: types.StringNull(),
-		SortKey: types.ListNull(types.StringType), Backup: types.StringNull(),
+		Column:                types.ListNull(types.ObjectType{AttrTypes: tableColumnAttributeTypes}),
+		PrimaryKey:            types.ObjectNull(tableKeyAttributeTypes),
+		Unique:                types.SetNull(types.ObjectType{AttrTypes: tableKeyAttributeTypes}),
+		ForeignKey:            types.SetNull(types.ObjectType{AttrTypes: tableForeignKeyAttributeTypes}),
+		Distribution:          types.ObjectNull(tableDistributionAttributeTypes),
+		SortKey:               types.ObjectNull(tableSortKeyAttributeTypes),
+		Backup:                types.StringNull(),
+		EffectiveDistribution: types.ObjectNull(tableEffectiveDistributionAttributeTypes),
+		EffectiveSortKey:      types.ObjectNull(tableEffectiveSortKeyAttributeTypes),
 	}
 }
 
@@ -143,16 +182,33 @@ const tableReplacementDescription = "Replaces the table when ALTER TABLE cannot 
 func (r *tableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	replaceList := func(attribute string) planmodifier.List {
 		return listplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.ListRequest, resp *listplanmodifier.RequiresReplaceIfFuncResponse) {
-			resp.RequiresReplace = tableRequiresReplace(ctx, req.State, req.Plan, attribute)
+			resp.RequiresReplace = tableRequiresReplace(ctx, req.Config, req.State, req.Plan, attribute)
+		}, tableReplacementDescription, tableReplacementDescription)
+	}
+	replaceObject := func(attribute string) planmodifier.Object {
+		return objectplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.ObjectRequest, resp *objectplanmodifier.RequiresReplaceIfFuncResponse) {
+			resp.RequiresReplace = tableRequiresReplace(ctx, req.Config, req.State, req.Plan, attribute)
 		}, tableReplacementDescription, tableReplacementDescription)
 	}
 	replaceString := func(attribute string) planmodifier.String {
 		return stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
-			resp.RequiresReplace = tableRequiresReplace(ctx, req.State, req.Plan, attribute)
+			resp.RequiresReplace = tableRequiresReplace(ctx, req.Config, req.State, req.Plan, attribute)
 		}, tableReplacementDescription, tableReplacementDescription)
 	}
 	names := func(description string) schema.ListAttribute {
 		return schema.ListAttribute{Required: true, ElementType: types.StringType, MarkdownDescription: description, Validators: []validator.List{listvalidator.SizeAtLeast(1)}}
+	}
+	// The framework validates the attributes of an absent single block as if it were present, so attributes a
+	// single block needs are optional and the block requires them once configured.
+	optionalNames := func(description string) schema.ListAttribute {
+		return schema.ListAttribute{Optional: true, ElementType: types.StringType, MarkdownDescription: description, Validators: []validator.List{listvalidator.SizeAtLeast(1)}}
+	}
+	requires := func(names ...string) []validator.Object {
+		expressions := make([]path.Expression, len(names))
+		for i, name := range names {
+			expressions[i] = path.MatchRelative().AtName(name)
+		}
+		return []validator.Object{objectvalidator.AlsoRequires(expressions...)}
 	}
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages the definition of a local Redshift table: columns, constraints, distribution, sort key, and owner. Rows are never managed; changes that ALTER TABLE cannot make replace the table, which drops its data.",
@@ -175,94 +231,155 @@ func (r *tableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 				MarkdownDescription: "User owning the table, in lowercase. Set it to transfer ownership with `ALTER TABLE ... OWNER TO`; omit it to keep the creating user.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"columns": schema.ListNestedAttribute{
-				Required: true,
-				MarkdownDescription: "Ordered column definitions (1 to 1600). In place, columns can be appended with `ALTER TABLE ADD COLUMN` (not identity columns, and NOT NULL columns only with a default), " +
-					"removed with `DROP COLUMN`, re-encoded with `ALTER COLUMN ... ENCODE` (not with an interleaved sort key), and VARCHAR or VARBYTE columns without a default, " +
-					"constraint, or `BYTEDICT`/`RUNLENGTH`/`TEXT255`/`TEXT32K` encoding can be widened with `ALTER COLUMN ... TYPE`. Any other change, including " +
-					"reordering, renaming, or changing a type, nullability, default, or identity, replaces the table.",
-				Validators:    []validator.List{listvalidator.SizeBetween(1, tableMaxColumns)},
-				PlanModifiers: []planmodifier.List{tableColumnDefaults{}, replaceList("columns")},
-				NestedObject: schema.NestedAttributeObject{Attributes: map[string]schema.Attribute{
-					"name": schema.StringAttribute{Required: true, MarkdownDescription: "Column name, in lowercase.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
-					"type": schema.StringAttribute{
-						Required:            true,
-						MarkdownDescription: "Redshift data type, such as `bigint`, `numeric(12,2)`, or `varchar(256)`. Aliases are compared by their canonical form, and a type without a length gets the one Redshift applies, for example `varchar` is `character varying(256)`.",
-					},
-					"encoding": schema.StringAttribute{
-						Optional: true, Computed: true,
-						MarkdownDescription: "Compression encoding: `AZ64`, `BYTEDICT`, `DELTA`, `DELTA32K`, `LZO`, `MOSTLY8`, `MOSTLY16`, `MOSTLY32`, `RAW`, `RUNLENGTH`, `TEXT255`, `TEXT32K`, or `ZSTD`. Omit it to let Redshift choose; the chosen encoding is reported. A sort key change can re-encode columns of the old and new key, for example to `RAW`: their omitted encodings are then known after apply, and configured ones are applied again.",
-						Validators:          []validator.String{stringvalidator.OneOf(tableKeywordStrings(tableEncodings)...)},
-					},
-					"nullable": schema.BoolAttribute{
-						Optional: true, Computed: true,
-						MarkdownDescription: "Whether the column accepts NULL. Omitted, it is `false` for identity and primary key columns, and otherwise `true` for a new column while an existing column keeps its nullability.",
-					},
-					"default": schema.StringAttribute{
-						Optional:            true,
-						MarkdownDescription: "DEFAULT expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default, and a change replaces the table.",
-						Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
-					},
-					"identity": schema.SingleNestedAttribute{
-						Optional:            true,
-						MarkdownDescription: "Makes an INTEGER or BIGINT column an `IDENTITY(seed, step)` column, which is always NOT NULL.",
-						Attributes: map[string]schema.Attribute{
-							"seed": schema.Int64Attribute{Required: true, MarkdownDescription: "First generated value."},
-							"step": schema.Int64Attribute{Required: true, MarkdownDescription: "Increment between generated values; must not be zero."},
-							"generated_by_default": schema.BoolAttribute{
-								Optional: true, Computed: true, Default: booldefault.StaticBool(false),
-								MarkdownDescription: "Use `GENERATED BY DEFAULT AS IDENTITY`, which lets inserts supply their own values; defaults to `false`.",
-							},
-						},
-					},
-				}},
-			},
-			"primary_key": schema.ListAttribute{
-				Optional: true, ElementType: types.StringType,
-				MarkdownDescription: "Ordered primary key columns. Redshift does not enforce it but uses it for planning. It is added and dropped with `ALTER TABLE ADD PRIMARY KEY` and `DROP CONSTRAINT`; a new primary key on an existing nullable column, or on a new column without a default, replaces the table.",
-				PlanModifiers:       []planmodifier.List{replaceList("primary_key")},
-			},
-			"unique": schema.SetAttribute{
-				Optional: true, ElementType: types.ListType{ElemType: types.StringType},
-				MarkdownDescription: "UNIQUE constraints, each an ordered list of columns. Redshift does not enforce them. Changes are applied with `ALTER TABLE ADD UNIQUE` and `DROP CONSTRAINT`.",
-			},
-			"foreign_keys": schema.SetNestedAttribute{
-				Optional:            true,
-				MarkdownDescription: "FOREIGN KEY constraints. Redshift does not enforce them. Changes are applied with `ALTER TABLE ADD FOREIGN KEY` and `DROP CONSTRAINT`.",
-				NestedObject: schema.NestedAttributeObject{Attributes: map[string]schema.Attribute{
-					"columns":            names("Referencing columns of this table."),
-					"references_schema":  schema.StringAttribute{Required: true, MarkdownDescription: "Schema of the referenced table."},
-					"references_table":   schema.StringAttribute{Required: true, MarkdownDescription: "Referenced table."},
-					"references_columns": names("Referenced columns, matched to `columns` by position; they must form a primary key or unique constraint of the referenced table."),
-				}},
-			},
-			"diststyle": schema.StringAttribute{
-				Optional: true, Computed: true,
-				MarkdownDescription: "Distribution style: `AUTO`, `EVEN`, `KEY`, or `ALL`. Omitted, it is `KEY` when `distkey` is set and `AUTO` otherwise. `AUTO` covers whatever `AUTO(ALL)`, `AUTO(EVEN)`, or `AUTO(KEY(column))` Redshift currently applies. Changes use `ALTER TABLE ALTER DISTSTYLE`; with an interleaved sort key they replace the table. A move to `AUTO` that drops the key column distributes `EVEN` until the column is dropped.",
-				Validators:          []validator.String{stringvalidator.OneOf(tableKeywordStrings(tableDistStyles)...)},
-				PlanModifiers:       []planmodifier.String{tableDerivedStyle{source: "distkey"}, replaceString("diststyle")},
-			},
-			"distkey": schema.StringAttribute{
-				Optional:            true,
-				MarkdownDescription: "Distribution key column for `diststyle = \"KEY\"`, of type BOOLEAN, REAL, DOUBLE PRECISION, SMALLINT, INTEGER, BIGINT, DECIMAL, DATE, TIME, TIMETZ, TIMESTAMP, TIMESTAMPTZ, CHAR, or VARCHAR. Changes use `ALTER TABLE ALTER DISTKEY`; with an interleaved sort key they replace the table.",
-				PlanModifiers:       []planmodifier.String{replaceString("distkey")},
-			},
-			"sortkey_style": schema.StringAttribute{
-				Optional: true, Computed: true,
-				MarkdownDescription: "Sort key style: `AUTO`, `COMPOUND`, or `INTERLEAVED`. Omitted, it is `COMPOUND` when `sortkey` is set and `AUTO` otherwise. Changes to `AUTO` or a compound key use `ALTER TABLE ALTER SORTKEY`; a move to `AUTO` from an interleaved key or off a dropped column first runs `ALTER SORTKEY NONE`. Creating or changing an interleaved sort key replaces the table. A table without sort key columns is reported as `AUTO`.",
-				Validators:          []validator.String{stringvalidator.OneOf(tableKeywordStrings(tableSortKeyStyles)...)},
-				PlanModifiers:       []planmodifier.String{tableDerivedStyle{source: "sortkey"}, replaceString("sortkey_style")},
-			},
-			"sortkey": schema.ListAttribute{
-				Optional: true, ElementType: types.StringType,
-				MarkdownDescription: "Ordered sort key columns, at most 400 for a compound and 8 for an interleaved key, of the types `distkey` allows; omit for `AUTO`.",
-				PlanModifiers:       []planmodifier.List{replaceList("sortkey")},
-			},
 			"backup": schema.StringAttribute{
 				Optional: true, Computed: true, Default: stringdefault.StaticString("YES"),
 				MarkdownDescription: "`YES` or `NO` (defaults to `YES`): whether snapshots include the table. RA3 and Serverless always back up tables. Redshift has no ALTER form, so a change replaces the table, except after import, when the value is only recorded; the setting is not read back from the catalog.",
 				Validators:          []validator.String{stringvalidator.OneOf(tableKeywordStrings(tableBackupModes)...)},
 				PlanModifiers:       []planmodifier.String{replaceString("backup")},
+			},
+			"effective_distribution": schema.SingleNestedAttribute{
+				Computed: true,
+				MarkdownDescription: "Distribution Redshift currently applies, from `PG_CLASS_INFO.releffectivediststyle` and the distribution key column in `SVV_REDSHIFT_COLUMNS`. " +
+					"Under `AUTO` it shows what Redshift picked, for example `{ style = \"KEY\", key = \"account_id\", auto = true }`. " +
+					"An explicit distribution is known during planning; an automatic one keeps its value while a plan changes nothing else and is known after apply otherwise.",
+				Attributes: map[string]schema.Attribute{
+					"style": schema.StringAttribute{Computed: true, MarkdownDescription: "`ALL`, `EVEN`, or `KEY`; null when `PG_CLASS_INFO` does not show the table to the provider's SQL identity and the table has no distribution key column."},
+					"key":   schema.StringAttribute{Computed: true, MarkdownDescription: "Distribution key column of a `KEY` distribution, including one Redshift chose."},
+					"auto":  schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether Redshift manages the distribution (`DISTSTYLE AUTO`)."},
+				},
+			},
+			"effective_sort_key": schema.SingleNestedAttribute{
+				Computed: true,
+				MarkdownDescription: "Sort key Redshift currently applies, from the sort key positions in `SVV_REDSHIFT_COLUMNS` and `SVV_TABLE_INFO.sortkey1`. " +
+					"Under `AUTO` it shows the key Redshift chose, for example `{ style = \"COMPOUND\", columns = [\"created_at\"], auto = true }`. " +
+					"An explicit sort key is known during planning; an automatic one keeps its value while a plan changes nothing else and is known after apply otherwise.",
+				Attributes: map[string]schema.Attribute{
+					"style":   schema.StringAttribute{Computed: true, MarkdownDescription: "`COMPOUND`, `INTERLEAVED`, or `NONE` when the table has no sort key columns."},
+					"columns": schema.ListAttribute{Computed: true, ElementType: types.StringType, MarkdownDescription: "Sort key columns in order; empty without a sort key."},
+					"auto": schema.BoolAttribute{
+						Computed:            true,
+						MarkdownDescription: "Whether Redshift manages the sort key (`SORTKEY AUTO`). `SVV_TABLE_INFO` lists only tables with rows that the provider's SQL identity may see; without a row, the configured style is assumed when it matches the sort key columns.",
+					},
+				},
+			},
+		},
+		Blocks: map[string]schema.Block{
+			"column": schema.ListNestedBlock{
+				MarkdownDescription: "At least one `column` block is required. Column definitions (1 to 1600), matched to the catalog by name, so reordering the blocks runs no SQL. " +
+					"In place, a new column is added with `ALTER TABLE ADD COLUMN` wherever its block appears (not an identity column, and a NOT NULL column only with a default), " +
+					"although Redshift stores it after the existing ones; a removed column is dropped with `DROP COLUMN`, never `CASCADE`; " +
+					"`ALTER COLUMN ... ENCODE` re-encodes a column (not with an interleaved sort key), and VARCHAR or VARBYTE columns without a default, " +
+					"constraint, or `BYTEDICT`/`RUNLENGTH`/`TEXT255`/`TEXT32K` encoding can be widened with `ALTER COLUMN ... TYPE`. Renaming a column drops the old " +
+					"column and adds the new one, which loses that column's data. Any other change to a column's type, nullability, default, or identity replaces the table. New columns are added before removed ones are dropped, so the existing and new columns together must not exceed 1600.",
+				Validators:    []validator.List{listvalidator.IsRequired(), listvalidator.SizeBetween(1, tableMaxColumns)},
+				PlanModifiers: []planmodifier.List{tableColumnDefaults{}, replaceList("column")},
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"name": schema.StringAttribute{Required: true, MarkdownDescription: "Column name, in lowercase.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
+						"type": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "Redshift data type, such as `bigint`, `numeric(12,2)`, or `varchar(256)`. Aliases are compared by their canonical form, and a type without a length gets the one Redshift applies, for example `varchar` is `character varying(256)`.",
+						},
+						"encoding": schema.StringAttribute{
+							Optional: true, Computed: true,
+							MarkdownDescription: "Compression encoding: `AZ64`, `BYTEDICT`, `DELTA`, `DELTA32K`, `LZO`, `MOSTLY8`, `MOSTLY16`, `MOSTLY32`, `RAW`, `RUNLENGTH`, `TEXT255`, `TEXT32K`, or `ZSTD`. Omit it to let Redshift choose; the chosen encoding is reported. A sort key change can re-encode columns of the old and new key, for example to `RAW`: their omitted encodings are then known after apply, and configured ones are applied again.",
+							Validators:          []validator.String{stringvalidator.OneOf(tableKeywordStrings(tableEncodings)...)},
+						},
+						"nullable": schema.BoolAttribute{
+							Optional: true, Computed: true,
+							MarkdownDescription: "Whether the column accepts NULL. Omitted, it is `false` for identity and primary key columns, and otherwise `true` for a new column while an existing column keeps its nullability.",
+						},
+						"default": schema.StringAttribute{
+							Optional:            true,
+							MarkdownDescription: "DEFAULT expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default, and a change replaces the table.",
+							Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
+						},
+					},
+					Blocks: map[string]schema.Block{
+						"identity": schema.SingleNestedBlock{
+							MarkdownDescription: "Makes an INTEGER or BIGINT column an `IDENTITY(seed, step)` column, which is always NOT NULL.",
+							Validators:          requires("seed", "step"),
+							Attributes: map[string]schema.Attribute{
+								"seed": schema.Int64Attribute{Optional: true, MarkdownDescription: "First generated value; required in the block."},
+								"step": schema.Int64Attribute{Optional: true, MarkdownDescription: "Increment between generated values, not zero; required in the block."},
+								"generated_by_default": schema.BoolAttribute{
+									Optional: true, Computed: true, Default: booldefault.StaticBool(false),
+									MarkdownDescription: "Use `GENERATED BY DEFAULT AS IDENTITY`, which lets inserts supply their own values; defaults to `false`.",
+								},
+							},
+						},
+					},
+				},
+			},
+			"primary_key": schema.SingleNestedBlock{
+				MarkdownDescription: "Primary key. Redshift does not enforce it but uses it for planning. It is added and dropped with `ALTER TABLE ADD PRIMARY KEY` and `DROP CONSTRAINT`; a new primary key on an existing nullable column, or on a new column without a default, replaces the table.",
+				PlanModifiers:       []planmodifier.Object{replaceObject("primary_key")},
+				Validators:          requires("columns"),
+				Attributes: map[string]schema.Attribute{
+					"columns": optionalNames("Primary key columns in order; required in the block."),
+				},
+			},
+			"unique": schema.SetNestedBlock{
+				MarkdownDescription: "UNIQUE constraint, one block per constraint. Redshift does not enforce it. Changes are applied with `ALTER TABLE ADD UNIQUE` and `DROP CONSTRAINT`.",
+				NestedObject: schema.NestedBlockObject{Attributes: map[string]schema.Attribute{
+					"columns": names("Constrained columns in order."),
+				}},
+			},
+			"foreign_key": schema.SetNestedBlock{
+				MarkdownDescription: "FOREIGN KEY constraint, one block per constraint. Redshift does not enforce it. Changes are applied with `ALTER TABLE ADD FOREIGN KEY` and `DROP CONSTRAINT`.",
+				NestedObject: schema.NestedBlockObject{
+					Attributes: map[string]schema.Attribute{
+						"columns": names("Referencing columns of this table."),
+					},
+					Blocks: map[string]schema.Block{
+						"references": schema.SingleNestedBlock{
+							MarkdownDescription: "At least one `references` block is required. Referenced table and columns.",
+							Validators:          append([]validator.Object{objectvalidator.IsRequired()}, requires("schema", "table", "columns")...),
+							Attributes: map[string]schema.Attribute{
+								"schema":  schema.StringAttribute{Optional: true, MarkdownDescription: "Schema of the referenced table; required in the block."},
+								"table":   schema.StringAttribute{Optional: true, MarkdownDescription: "Referenced table; required in the block."},
+								"columns": optionalNames("Referenced columns, matched to `columns` by position; they must form a primary key or unique constraint of the referenced table. Required in the block."),
+							},
+						},
+					},
+				},
+			},
+			"distribution": schema.SingleNestedBlock{
+				MarkdownDescription: "Declared distribution; omit the block for `AUTO`. Changes use `ALTER TABLE ALTER DISTSTYLE` or `ALTER DISTKEY`; with an interleaved sort key they replace the table. " +
+					"`ALTER DISTSTYLE AUTO` keeps the current key, so a move to `AUTO` that drops the key column, and dropping a key column Redshift chose itself, distribute `EVEN` until the column is dropped. " +
+					"Without the block, a distribution changed outside Terraform is reported here and planned back to `AUTO`.",
+				PlanModifiers: []planmodifier.Object{replaceObject("distribution")},
+				Attributes: map[string]schema.Attribute{
+					"style": schema.StringAttribute{
+						Optional: true, Computed: true,
+						MarkdownDescription: "Distribution style: `AUTO`, `EVEN`, `KEY`, or `ALL`. Omitted, it is `KEY` when `key` is set and `AUTO` otherwise. `AUTO` covers whatever `AUTO(ALL)`, `AUTO(EVEN)`, or `AUTO(KEY(column))` Redshift currently applies; see `effective_distribution`.",
+						Validators:          []validator.String{stringvalidator.OneOf(tableKeywordStrings(tableDistStyles)...)},
+						PlanModifiers:       []planmodifier.String{tableDerivedStyle{source: "key"}},
+					},
+					"key": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "Distribution key column for `style = \"KEY\"`, of type BOOLEAN, REAL, DOUBLE PRECISION, SMALLINT, INTEGER, BIGINT, DECIMAL, DATE, TIME, TIMETZ, TIMESTAMP, TIMESTAMPTZ, CHAR, or VARCHAR.",
+					},
+				},
+			},
+			"sort_key": schema.SingleNestedBlock{
+				MarkdownDescription: "Declared sort key; omit the block for `AUTO`. Changes to `AUTO`, `NONE`, or a compound key use `ALTER TABLE ALTER SORTKEY`; a move to `AUTO` from an interleaved key or off a dropped column, and dropping a sort key column Redshift chose itself, first run `ALTER SORTKEY NONE`. " +
+					"Creating or changing an interleaved sort key replaces the table. Without the block, a sort key changed outside Terraform is reported here and planned back to `AUTO`.",
+				PlanModifiers: []planmodifier.Object{replaceObject("sort_key")},
+				Attributes: map[string]schema.Attribute{
+					"style": schema.StringAttribute{
+						Optional: true, Computed: true,
+						MarkdownDescription: "Sort key style: `AUTO`, `COMPOUND`, `INTERLEAVED`, or `NONE`. Omitted, it is `COMPOUND` when `columns` is set and `AUTO` otherwise. `NONE` removes the sort key with `ALTER SORTKEY NONE`, also right after `CREATE TABLE`. " +
+							"Without sort key columns, `AUTO` and `NONE` differ only in `SVV_TABLE_INFO`, which lists tables with rows; for an empty table the configured one of the two is kept.",
+						Validators:    []validator.String{stringvalidator.OneOf(tableKeywordStrings(tableSortKeyStyles)...)},
+						PlanModifiers: []planmodifier.String{tableDerivedStyle{source: "columns"}},
+					},
+					"columns": schema.ListAttribute{
+						Optional: true, ElementType: types.StringType,
+						MarkdownDescription: "Sort key columns in order, at most 400 for a compound and 8 for an interleaved key, of the types `distribution.key` allows; omit them for `AUTO` and `NONE`.",
+						Validators:          []validator.List{listvalidator.SizeAtLeast(1)},
+					},
+				},
 			},
 		},
 	}
@@ -278,10 +395,15 @@ func tableKeywordStrings(keywords []sqlclient.Keyword) []string {
 }
 
 // tableRequiresReplace decides whether attribute's change needs a new table. Undecodable values replace, so a
-// change is never applied in place without the checks that make ALTER TABLE succeed.
-func tableRequiresReplace(ctx context.Context, state tfsdk.State, plan tfsdk.Plan, attribute string) bool {
-	var prior, planned tableModel
-	if state.Get(ctx, &prior).HasError() || plan.Get(ctx, &planned).HasError() {
+// change is never applied in place without the checks that make ALTER TABLE succeed. A configured style that is not
+// known yet counts as undecodable: the plan may still lack the style tableDerivedStyle fills in, so only the
+// configuration tells an unknown value from an omitted one, and an interleaved sort key could follow from it.
+func tableRequiresReplace(ctx context.Context, config tfsdk.Config, state tfsdk.State, plan tfsdk.Plan, attribute string) bool {
+	var configured, prior, planned tableModel
+	if config.Get(ctx, &configured).HasError() || state.Get(ctx, &prior).HasError() || plan.Get(ctx, &planned).HasError() {
+		return true
+	}
+	if tableStyleUnknown(configured.Distribution) || tableStyleUnknown(configured.SortKey) {
 		return true
 	}
 	prevSpec, err := tableSpecOf(prior)
@@ -295,10 +417,10 @@ func tableRequiresReplace(ctx context.Context, state tfsdk.State, plan tfsdk.Pla
 	return tableReplacements(prevSpec, planSpec)[attribute] != ""
 }
 
-// tableDerivedStyle fills an omitted diststyle or sortkey_style from its key attribute, as Redshift would, so the
-// plan shows the style and a drifted style is reset.
+// tableDerivedStyle fills an omitted distribution or sort key style from the block's key or columns, as Redshift
+// would, so the plan shows the style and a drifted style is reset.
 type tableDerivedStyle struct {
-	// source is distkey or sortkey.
+	// source is the sibling attribute that implies the style: key or columns.
 	source string
 }
 
@@ -316,9 +438,10 @@ func (m tableDerivedStyle) PlanModifyString(ctx context.Context, req planmodifie
 	if !req.ConfigValue.IsNull() {
 		return
 	}
-	if m.source == "distkey" {
+	sibling := req.Path.ParentPath().AtName(m.source)
+	if m.source == "key" {
 		var key types.String
-		if req.Config.GetAttribute(ctx, path.Root(m.source), &key).HasError() {
+		if req.Config.GetAttribute(ctx, sibling, &key).HasError() {
 			return
 		}
 		switch {
@@ -331,14 +454,14 @@ func (m tableDerivedStyle) PlanModifyString(ctx context.Context, req planmodifie
 		}
 		return
 	}
-	var key types.List
-	if req.Config.GetAttribute(ctx, path.Root(m.source), &key).HasError() {
+	var columns types.List
+	if req.Config.GetAttribute(ctx, sibling, &columns).HasError() {
 		return
 	}
 	switch {
-	case key.IsUnknown():
+	case columns.IsUnknown():
 		resp.PlanValue = types.StringUnknown()
-	case key.IsNull() || len(key.Elements()) == 0:
+	case columns.IsNull() || len(columns.Elements()) == 0:
 		resp.PlanValue = types.StringValue("AUTO")
 	default:
 		resp.PlanValue = types.StringValue("COMPOUND")
@@ -346,7 +469,8 @@ func (m tableDerivedStyle) PlanModifyString(ctx context.Context, req planmodifie
 }
 
 // tableColumnDefaults fills omitted computed column values: identity and primary key columns are NOT NULL, as
-// Redshift makes them, and other columns keep their encoding and nullability or, when new, accept NULL.
+// Redshift makes them, and other columns keep their encoding and nullability or, when new, accept NULL. Prior
+// values are matched by column name, because the blocks may be reordered.
 type tableColumnDefaults struct{}
 
 // Description explains the column defaults.
@@ -374,11 +498,13 @@ func (tableColumnDefaults) PlanModifyList(ctx context.Context, req planmodifier.
 			prior[column.Name.ValueString()] = column
 		}
 	}
-	var primaryKey types.List
+	var primaryKey types.Object
 	keyed := !req.Config.GetAttribute(ctx, path.Root("primary_key"), &primaryKey).HasError() && !primaryKey.IsUnknown()
 	keys := map[string]bool{}
-	if keyed {
-		for _, element := range primaryKey.Elements() {
+	if keyed && !primaryKey.IsNull() {
+		columns, ok := primaryKey.Attributes()["columns"].(types.List)
+		keyed = ok && !columns.IsUnknown()
+		for _, element := range columns.Elements() {
 			if name, ok := element.(types.String); ok {
 				keys[name.ValueString()] = true
 			}
@@ -395,7 +521,7 @@ func (tableColumnDefaults) PlanModifyList(ctx context.Context, req planmodifier.
 			continue
 		}
 		switch {
-		case !configured[i].Identity.IsNull() || keys[planned[i].Name.ValueString()]:
+		case !configured[i].Identity.IsNull() || keys[name]:
 			planned[i].Nullable = types.BoolValue(false)
 		case existed && !before.Nullable.IsUnknown() && !before.Nullable.IsNull():
 			planned[i].Nullable = before.Nullable
@@ -410,46 +536,92 @@ func (tableColumnDefaults) PlanModifyList(ctx context.Context, req planmodifier.
 	resp.PlanValue = list
 }
 
+// tableSortKeyBlock returns the style and columns a sort_key block declares: an absent block is AUTO and an
+// omitted style follows from the columns. known is false when either is not known yet.
+func tableSortKeyBlock(block types.Object) (string, []string, bool) {
+	switch {
+	case block.IsUnknown():
+		return "", nil, false
+	case block.IsNull():
+		return "AUTO", nil, true
+	}
+	var model tableSortKeyModel
+	if block.As(context.Background(), &model, basetypes.ObjectAsOptions{}).HasError() || model.Style.IsUnknown() {
+		return "", nil, false
+	}
+	columns, err := tableStringList(model.Columns, "sort_key.columns")
+	if err != nil {
+		return "", nil, false
+	}
+	switch {
+	case !model.Style.IsNull():
+		return model.Style.ValueString(), columns, true
+	case len(columns) > 0:
+		return "COMPOUND", columns, true
+	}
+	return "AUTO", columns, true
+}
+
+// tableConfiguredColumnNames returns the names of the configured column blocks, or false when they are not known.
+func tableConfiguredColumnNames(ctx context.Context, config tfsdk.Config) (map[string]bool, bool) {
+	var list types.List
+	var columns []tableColumnModel
+	if config.GetAttribute(ctx, path.Root("column"), &list).HasError() || list.IsUnknown() || list.ElementsAs(ctx, &columns, false).HasError() {
+		return nil, false
+	}
+	names := map[string]bool{}
+	for _, column := range columns {
+		if column.Name.IsUnknown() {
+			return nil, false
+		}
+		names[column.Name.ValueString()] = true
+	}
+	return names, true
+}
+
 // tableSortKeyMoves returns the columns of the prior and configured sort key when the sort key changes, because
 // ALTER SORTKEY may re-encode them: "When you alter a sort key, the compression encoding of columns in the new or
 // original sort key can change." all is true when the changed key's columns are not all known, as for an unknown
-// configuration or a key Redshift chose under AUTO. https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html
+// configuration or a key Redshift chose under AUTO. An unchanged AUTO key that loses a column Redshift chose moves
+// too, because the update removes the key with ALTER SORTKEY NONE first.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html
 func tableSortKeyMoves(ctx context.Context, config tfsdk.Config, state tfsdk.State) (map[string]bool, bool) {
 	if state.Raw.IsNull() {
 		return nil, false
 	}
-	var configStyle, stateStyle types.String
-	var configKey, stateKey types.List
-	if config.GetAttribute(ctx, path.Root("sortkey_style"), &configStyle).HasError() || config.GetAttribute(ctx, path.Root("sortkey"), &configKey).HasError() ||
-		state.GetAttribute(ctx, path.Root("sortkey_style"), &stateStyle).HasError() || state.GetAttribute(ctx, path.Root("sortkey"), &stateKey).HasError() {
+	var configured, stored, effective types.Object
+	if config.GetAttribute(ctx, path.Root("sort_key"), &configured).HasError() || state.GetAttribute(ctx, path.Root("sort_key"), &stored).HasError() ||
+		state.GetAttribute(ctx, path.Root("effective_sort_key"), &effective).HasError() {
 		return nil, false
 	}
-	if configStyle.IsUnknown() || configKey.IsUnknown() {
+	to, toNames, toKnown := tableSortKeyBlock(configured)
+	from, fromNames, fromKnown := tableSortKeyBlock(stored)
+	if !toKnown || !fromKnown {
 		return nil, true
 	}
-	style := func(configured types.String, key types.List) string {
-		switch {
-		case !configured.IsNull() && !configured.IsUnknown():
-			return configured.ValueString()
-		case len(key.Elements()) > 0:
-			return "COMPOUND"
+	if from != to || !slices.Equal(fromNames, toNames) {
+		columns := map[string]bool{}
+		for _, name := range append(fromNames, toNames...) {
+			columns[name] = true
 		}
-		return "AUTO"
+		return columns, from == "AUTO"
 	}
-	from, to := style(stateStyle, stateKey), style(configStyle, configKey)
-	fromNames, fromErr := tableStringList(stateKey, "sortkey")
-	toNames, toErr := tableStringList(configKey, "sortkey")
-	switch {
-	case fromErr != nil || toErr != nil:
+	chosen := tableEffectiveSortColumns(effective)
+	if to != "AUTO" || len(chosen) == 0 {
+		return nil, false
+	}
+	names, known := tableConfiguredColumnNames(ctx, config)
+	if !known {
 		return nil, true
-	case from == to && slices.Equal(fromNames, toNames):
+	}
+	if !slices.ContainsFunc(chosen, func(name string) bool { return !names[name] }) {
 		return nil, false
 	}
 	columns := map[string]bool{}
-	for _, name := range append(fromNames, toNames...) {
+	for _, name := range chosen {
 		columns[name] = true
 	}
-	return columns, from == "AUTO"
+	return columns, false
 }
 
 // read refreshes the table under the configured binding. It reports false when the table, its schema, or its
@@ -482,18 +654,13 @@ func (r *tableResource) read(ctx context.Context, data *tableModel) (bool, map[s
 	if err != nil {
 		return false, nil, err
 	}
-	catalog, err := tableCatalogFrom(tables[0], attributes, columns, constraints)
+	sortKeys, err := r.selectRows(ctx, database, readTableSortKeyQuery(spec))
+	if err != nil {
+		return false, nil, err
+	}
+	catalog, err := tableCatalogFrom(tables[0], attributes, columns, constraints, sortKeys)
 	if err != nil {
 		return false, nil, fmt.Errorf("table %q.%q: %w", spec.schema, spec.name, err)
-	}
-	if knownString(data.SortKeyStyle) == "AUTO" && tableCatalogCompoundSortKey(catalog) {
-		rows, err := r.selectRows(ctx, database, readTableSortKeyQuery(spec))
-		if err != nil {
-			return false, nil, err
-		}
-		// ALTER SORTKEY AUTO keeps the current key, and SVV_TABLE_INFO lists only tables with rows, so only an
-		// explicit sortkey1 proves that the key is no longer automatic.
-		catalog.autoSortKey = len(rows) == 0 || strings.HasPrefix(strings.ToUpper(strings.TrimSpace(rows[0]["sortkey1"])), "AUTO(")
 	}
 	observed, names, err := tableReconcile(*data, catalog)
 	if err != nil {
@@ -503,22 +670,47 @@ func (r *tableResource) read(ctx context.Context, data *tableModel) (bool, map[s
 	return true, names, nil
 }
 
-// tableCatalogCompoundSortKey reports sort key columns without interleaving, which SORTKEY AUTO can also produce.
-func tableCatalogCompoundSortKey(catalog tableCatalog) bool {
-	return slices.ContainsFunc(catalog.columns, func(c tableCatalogColumn) bool { return c.sortKey > 0 }) &&
-		!slices.ContainsFunc(catalog.columns, func(c tableCatalogColumn) bool { return c.sortKey < 0 })
+// tableNullOf returns the null value of a framework type.
+func tableNullOf(attributeType attr.Type) attr.Value {
+	ctx := context.Background()
+	value, err := attributeType.ValueFromTerraform(ctx, tftypes.NewValue(attributeType.TerraformType(ctx), nil))
+	if err != nil {
+		panic(fmt.Sprintf("null %s: %v", attributeType, err))
+	}
+	return value
+}
+
+// tableKnownObject replaces an unknown object, or its unknown attributes, with nulls.
+func tableKnownObject(value types.Object, attributeTypes map[string]attr.Type) types.Object {
+	switch {
+	case value.IsUnknown():
+		return types.ObjectNull(attributeTypes)
+	case value.IsNull():
+		return value
+	}
+	attributes := value.Attributes()
+	for name, attribute := range attributes {
+		if attribute.IsUnknown() {
+			attributes[name] = tableNullOf(attributeTypes[name])
+		}
+	}
+	return types.ObjectValueMust(attributeTypes, attributes)
 }
 
 // tableKnownState replaces unknown computed values with nulls, so state written before verification is complete
 // and serializable.
 func tableKnownState(data tableModel) tableModel {
-	for _, value := range []*types.String{&data.Owner, &data.DistStyle, &data.SortKeyStyle, &data.Backup} {
+	for _, value := range []*types.String{&data.Owner, &data.Backup} {
 		if value.IsUnknown() {
 			*value = types.StringNull()
 		}
 	}
+	data.Distribution = tableKnownObject(data.Distribution, tableDistributionAttributeTypes)
+	data.SortKey = tableKnownObject(data.SortKey, tableSortKeyAttributeTypes)
+	data.EffectiveDistribution = tableKnownObject(data.EffectiveDistribution, tableEffectiveDistributionAttributeTypes)
+	data.EffectiveSortKey = tableKnownObject(data.EffectiveSortKey, tableEffectiveSortKeyAttributeTypes)
 	var columns []tableColumnModel
-	if data.Columns.ElementsAs(context.Background(), &columns, false).HasError() {
+	if data.Column.ElementsAs(context.Background(), &columns, false).HasError() {
 		return data
 	}
 	for i := range columns {
@@ -530,7 +722,7 @@ func tableKnownState(data tableModel) tableModel {
 		}
 	}
 	if list, diagnostics := types.ListValueFrom(context.Background(), types.ObjectType{AttrTypes: tableColumnAttributeTypes}, columns); !diagnostics.HasError() {
-		data.Columns = list
+		data.Column = list
 	}
 	return data
 }
@@ -561,7 +753,7 @@ func (r *tableResource) verify(ctx context.Context, plan tableModel, state *tfsd
 	diagnostics.Append(state.Set(ctx, &observed)...)
 }
 
-// Create validates the definition, creates the table, transfers ownership, and verifies the catalog.
+// Create validates the definition, creates the table, finishes its sort key and ownership, and verifies the catalog.
 func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data tableModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -583,11 +775,11 @@ func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 	data.ID = r.identity(database, map[string]string{"schema": spec.schema, "name": spec.name})
-	// A failed ownership change or verification must still leave state for the created table.
+	// A failed follow-up statement or verification must still leave state for the created table.
 	known := tableKnownState(data)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &known)...)
 	if err := r.exec(ctx, database, statements[1:]...); err != nil {
-		resp.Diagnostics.AddError("Set table owner", err.Error())
+		resp.Diagnostics.AddError("Configure table", err.Error())
 		return
 	}
 	r.verify(ctx, data, &resp.State, &resp.Diagnostics, "The table is absent after creation.")
@@ -603,6 +795,63 @@ func (r *tableResource) ValidateConfig(ctx context.Context, req resource.Validat
 	if _, err := tableSpecOf(data); err != nil {
 		resp.Diagnostics.AddError("Invalid table", err.Error())
 	}
+}
+
+// ModifyPlan plans the effective distribution and sort key, which no attribute plan modifier can derive because
+// they depend on the declared layout and on whether an update runs at all.
+func (r *tableResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+	var plan tableModel
+	if req.Plan.Get(ctx, &plan).HasError() {
+		return
+	}
+	// A plan that changes nothing else runs no apply, so the recorded layout stays. Any update may observe a layout
+	// Redshift changed on its own since the plan, such as AUTO(ALL) becoming AUTO(EVEN) as rows arrive.
+	if !req.State.Raw.IsNull() {
+		var state tableModel
+		if !req.State.Get(ctx, &state).HasError() {
+			unchanged := req.Plan
+			resp.Diagnostics.Append(unchanged.SetAttribute(ctx, path.Root("effective_distribution"), state.EffectiveDistribution)...)
+			resp.Diagnostics.Append(unchanged.SetAttribute(ctx, path.Root("effective_sort_key"), state.EffectiveSortKey)...)
+			if !resp.Diagnostics.HasError() && unchanged.Raw.Equal(req.State.Raw) {
+				resp.Plan = unchanged
+				return
+			}
+		}
+	}
+	distribution, sortKey := tablePlannedEffective(plan)
+	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("effective_distribution"), distribution)...)
+	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("effective_sort_key"), sortKey)...)
+}
+
+// tablePlannedEffective returns the effective layout a create or update leads to. An explicit layout is what Redshift
+// applies; an automatic one, or a style that is not known yet, is decided during apply.
+func tablePlannedEffective(plan tableModel) (types.Object, types.Object) {
+	distribution := types.ObjectUnknown(tableEffectiveDistributionAttributeTypes)
+	sortKey := types.ObjectUnknown(tableEffectiveSortKeyAttributeTypes)
+	spec, err := tableSpecOf(plan)
+	if err != nil {
+		return distribution, sortKey
+	}
+	if spec.distStyle != "AUTO" && !tableStyleUnknown(plan.Distribution) {
+		distribution = tableEffectiveDistributionValue(string(spec.distStyle), spec.distKey, false)
+	}
+	if spec.sortStyle != "AUTO" && !tableStyleUnknown(plan.SortKey) {
+		sortKey = tableEffectiveSortKeyValue(string(spec.sortStyle), spec.sortKey, false)
+	}
+	return distribution, sortKey
+}
+
+// tableStyleUnknown reports a distribution or sort_key block whose style is not known yet. tableSpecOf derives a
+// missing style from the key or columns, which would misread a configured value that resolves only during apply.
+func tableStyleUnknown(block types.Object) bool {
+	if block.IsUnknown() {
+		return true
+	}
+	style, ok := block.Attributes()["style"].(types.String)
+	return !block.IsNull() && (!ok || style.IsUnknown())
 }
 
 // Read refreshes the definition or removes a table whose table, schema, or database is gone.
@@ -623,6 +872,18 @@ func (r *tableResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	}
 }
 
+// tableColumnNames returns the names of a model's column blocks.
+func tableColumnNames(data tableModel) map[string]bool {
+	names := map[string]bool{}
+	var columns []tableColumnModel
+	if !data.Column.IsNull() && !data.Column.IsUnknown() && !data.Column.ElementsAs(context.Background(), &columns, false).HasError() {
+		for _, column := range columns {
+			names[column.Name.ValueString()] = true
+		}
+	}
+	return names
+}
+
 // Update applies the in-place changes from the table's current catalog definition and verifies the result.
 func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan, current tableModel
@@ -635,6 +896,7 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		resp.Diagnostics.AddError("Invalid table", err.Error())
 		return
 	}
+	planned := tableColumnNames(current)
 	found, constraints, err := r.read(ctx, &current)
 	switch {
 	case err != nil:
@@ -645,6 +907,9 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		return
 	}
 	before, after, err := tableAlterStates(current, constraints, plan)
+	if err == nil {
+		err = tableStaleDrops(before.spec, after.spec, planned)
+	}
 	database := plan.Database.ValueString()
 	if err == nil {
 		err = r.exec(ctx, database, tableAlterPhaseStatements(before, after, tablePhaseDropConstraints, tablePhaseAddColumns, tablePhaseKeys)...)

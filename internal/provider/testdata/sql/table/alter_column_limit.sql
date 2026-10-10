@@ -1,0 +1,1 @@
+-- error: the change requires replacing the table: column: ALTER TABLE adds columns before it drops removed ones, so the table would hold 1601 columns, more than the 1600 Redshift allows

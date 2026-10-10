@@ -1,1 +1,1 @@
--- error: sortkey column "blob" has type varbyte(16), which Redshift does not allow in a key
+-- error: sort_key.columns column "blob" has type varbyte(16), which Redshift does not allow in a key

@@ -1,5 +1,5 @@
 -- database: admin
-SELECT c.relname AS table_name, u.usename AS owner, c.reldiststyle AS diststyle FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_user u ON u.usesysid = c.relowner WHERE n.nspname = :schema AND c.relname = :name AND c.relkind = 'r';
+SELECT c.relname AS table_name, u.usename AS owner, c.reldiststyle AS diststyle, ci.releffectivediststyle AS effective_diststyle FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_user u ON u.usesysid = c.relowner LEFT JOIN pg_class_info ci ON ci.reloid = c.oid WHERE n.nspname = :schema AND c.relname = :name AND c.relkind = 'r';
 -- params: {"name":"events","schema":"serving"}
 
 -- database: admin

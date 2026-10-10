@@ -1,1 +1,1 @@
--- error: columns[0]: column "id" default: SQL text has an unmatched ')'
+-- error: column[0]: column "id" default: SQL text has an unmatched ')'

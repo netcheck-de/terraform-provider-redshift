@@ -6,9 +6,9 @@ description: Manages the definition of a local Redshift table.
 
 # redshift_table (Resource)
 
-Manages the definition of one local table: ordered columns with types, encodings, nullability, defaults, and identity,
-primary key, unique, and foreign key constraints, distribution style and key, sort key, backup, and owner. See AWS
-[CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html),
+Manages the definition of one local table: `column` blocks with types, encodings, nullability, defaults, and
+identity, `primary_key`, `unique`, and `foreign_key` constraints, `distribution` and `sort_key`, backup, and owner. See
+AWS [CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html),
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html), and
 [DROP TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_TABLE.html).
 
@@ -26,32 +26,52 @@ DROP TABLE schema.name;
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
+## Columns
+
+`column` blocks are matched to the catalog by name, never by position:
+
+- reordering the blocks runs no SQL;
+- a new block, wherever it appears, runs `ALTER TABLE ADD COLUMN`. Redshift stores the new column after the existing
+  ones, but the state keeps the configured order;
+- a removed block runs `DROP COLUMN`, without `CASCADE`, so a view that uses the column blocks the change and the next
+  plan shows what is left;
+- renaming a column is a removal and an addition: the plan updates the table in place, and the column's data is lost
+  without a replacement that `prevent_destroy` would stop.
+
+New columns are added before removed ones are dropped, so the existing and new columns together must not exceed 1600;
+otherwise the table is replaced. An apply refuses to drop a column that was added to the table after the plan was made,
+because the plan never showed its removal; refresh and plan again.
+
 ## In-Place Changes and Replacement
 
 Terraform owns the table definition, never its rows. Changes that `ALTER TABLE` supports are applied in place, one
 statement per change, and the catalog is read again to verify the result:
 
-- appending columns at the end (`ADD COLUMN`; not identity columns, and a NOT NULL column, including a new primary key
-  column, only with a default, because existing rows would be null) and dropping columns (`DROP COLUMN`, never
-  `CASCADE`, so a view that uses the column blocks the change);
+- adding columns (`ADD COLUMN`; not identity columns, and a NOT NULL column, including a new primary key column, only
+  with a default, because existing rows would be null) and dropping columns (`DROP COLUMN`);
 - `ALTER COLUMN ... ENCODE`, except with an interleaved sort key;
 - widening a VARCHAR or VARBYTE column that has no default, belongs to no constraint, and is not encoded with
   `BYTEDICT`, `RUNLENGTH`, `TEXT255`, or `TEXT32K` (`ALTER COLUMN ... TYPE`);
-- `ALTER DISTSTYLE`, `ALTER DISTKEY`, `ALTER [COMPOUND] SORTKEY`, and `ALTER SORTKEY AUTO`, unless the table keeps or
-  gets an interleaved sort key. `ALTER SORTKEY AUTO` and `ALTER DISTSTYLE AUTO` keep the current key, so a move to
-  `AUTO` from an interleaved sort key or off a column the change drops first runs `ALTER SORTKEY NONE` or
-  `ALTER DISTSTYLE EVEN` and sets `AUTO` after the column is dropped;
+- `ALTER DISTSTYLE`, `ALTER DISTKEY`, `ALTER [COMPOUND] SORTKEY`, `ALTER SORTKEY AUTO`, and `ALTER SORTKEY NONE`, unless
+  the table keeps or gets an interleaved sort key;
 - adding and dropping primary key, unique, and foreign key constraints (`ADD` and `DROP CONSTRAINT`, using the
   constraint names the catalog reports); a new primary key on an existing nullable column is not possible in place;
 - `OWNER TO`.
 
-`ALTER [COMPOUND] SORTKEY` can re-encode columns of the old and new sort key, for example to `RAW`. Omitted encodings of
-those columns are therefore known after apply, and an update re-reads the catalog after the sort key change and
-applies configured encodings again with `ALTER COLUMN ... ENCODE`.
+`ALTER SORTKEY AUTO` and `ALTER DISTSTYLE AUTO` keep the current key, and `DROP COLUMN` refuses a distribution or sort
+key column, even one Redshift chose itself under `AUTO`. A move to `AUTO` from an interleaved sort key or off a column
+the change drops, and dropping a column that `effective_distribution` or `effective_sort_key` reports as a key Redshift
+chose, therefore first run `ALTER SORTKEY NONE` or `ALTER DISTSTYLE EVEN`, drop the column, and set `AUTO` again. With
+an interleaved sort key, `ALTER DISTSTYLE` is not possible, so dropping the distribution key Redshift chose replaces the
+table.
 
-Every other change replaces the table, which **drops all of its rows**: renaming the table or a column, reordering
-columns, inserting a column before existing ones, and changing a column's type (other than widening), nullability,
-default, or identity, the backup setting, or an interleaved sort key. Protect tables that hold data:
+`ALTER [COMPOUND] SORTKEY` and `ALTER SORTKEY NONE` can re-encode columns of the old and new sort key, for example to
+`RAW`. Omitted encodings of those columns are therefore known after apply, and an update re-reads the catalog after
+the sort key change and applies configured encodings again with `ALTER COLUMN ... ENCODE`.
+
+Every other change replaces the table, which **drops all of its rows**: renaming the table, changing a column's type
+(other than widening), nullability, default, or identity, the backup setting, or an interleaved sort key. Protect
+tables that hold data:
 
 ```terraform
 lifecycle {
@@ -62,19 +82,32 @@ lifecycle {
 `DROP TABLE` runs without `CASCADE`: views, foreign keys of other tables, and other dependent objects keep the table,
 and the deletion fails until they are removed.
 
+## Distribution and Sort Key
+
+Omitting the `distribution` or `sort_key` block leaves the choice to Redshift (`AUTO`). The blocks then stay out of
+the state while the catalog reports `AUTO`; when the layout is changed outside Terraform, the block is filled with what
+the catalog declares, and the next plan sets it back to `AUTO`. A configured block is always reported. A `style`, `key`,
+or `columns` value that is known only during apply replaces the table, because the plan cannot tell whether
+`ALTER TABLE` could make the change.
+
+`effective_distribution` and `effective_sort_key` show what Redshift applies, including the style and key it chose under
+`AUTO`. An explicit layout is known during planning. An automatic one keeps its value only while a plan changes nothing
+else; any update shows it as known after apply, because Redshift may change it on its own at any time, for example from
+`AUTO(ALL)` to `AUTO(EVEN)` as the table grows.
+
 ## Catalog Reads
 
-The definition is read from `pg_class` (owner and distribution style), `pg_attribute` (column order, `format_type()`
-types, and nullability), `SVV_REDSHIFT_COLUMNS` (defaults, encodings, and key membership), and `pg_constraint` with
-`pg_get_constraintdef()` (constraints). `SVV_TABLE_INFO` is consulted only when a table configured with
-`sortkey_style = "AUTO"` reports sort key columns, which Redshift chose itself or kept from `ALTER SORTKEY AUTO`; it
-needs superuser or a `SELECT` grant on the view. The view lists only tables with rows, so the sort key of an empty table
-stays `AUTO` until the view reports an explicit key.
+The definition is read from `pg_class` (owner and declared distribution style), `PG_CLASS_INFO` (the distribution
+Redshift applies), `pg_attribute` (column order, `format_type()` types, and nullability), `SVV_REDSHIFT_COLUMNS`
+(defaults, encodings, and distribution and sort key membership), `pg_constraint` with `pg_get_constraintdef()`
+(constraints), and `SVV_TABLE_INFO` (`sortkey1`, which tells a sort key Redshift manages from an explicit one or none).
 
-- `diststyle = "AUTO"` covers `AUTO(ALL)`, `AUTO(EVEN)`, and `AUTO(KEY(column))`, so Redshift's automatic changes
-  never show as drift.
-- A table without sort key columns is reported as `sortkey_style = "AUTO"`; `ALTER SORTKEY NONE` made outside
-  Terraform is therefore not detected.
+- `distribution.style = "AUTO"` covers `AUTO(ALL)`, `AUTO(EVEN)`, and `AUTO(KEY(column))`, so Redshift's automatic
+  changes never show as drift. `PG_CLASS_INFO` is joined with `LEFT JOIN`; when it does not show the table to the
+  provider's SQL identity, `effective_distribution.style` is null unless the table has a distribution key column.
+- `SVV_TABLE_INFO` lists only tables with rows that the provider's SQL identity may see. Without a row, a configured
+  `AUTO` sort key is kept while the sort key columns are compound, and of `AUTO` and `NONE` the configured one is kept
+  while there are no sort key columns, so changing between those two outside Terraform is not detected for such tables.
 - Types are compared by their canonical form (`int8` equals `bigint`), and a configured default is kept while the
   column has one, because Redshift stores defaults with casts such as `'n/a'::character varying`.
 - `backup` is not observable in a catalog every deployment exposes; the configured value is recorded.
@@ -97,8 +130,9 @@ Alternatively, use `terraform import`:
 
 {{ codefile "shell" "examples/resources/redshift_table/import.sh" }}
 
-After import, configure the columns in catalog order. State then holds the catalog spellings, so the first plan
-shows an in-place update that records configured type aliases, differently spelled defaults, and `backup`, and runs no
-DDL. Because `SVV_TABLE_INFO` is consulted only for a configured `AUTO` sort key, a key Redshift chose under
-`SORTKEY AUTO` is imported, and reported by the data source, as `COMPOUND`; with `sortkey_style = "AUTO"` configured,
-the first update runs `ALTER SORTKEY AUTO`, which keeps the key.
+After import, the state holds the columns in catalog order and the catalog spellings, and the `distribution` and
+`sort_key` blocks only when the catalog declares something other than `AUTO`. The first plan therefore shows an
+in-place update that records the configured column order, type aliases, differently spelled defaults, and `backup`,
+and runs no DDL. When `SVV_TABLE_INFO` does not list an imported table, a sort key Redshift chose is imported as an
+explicit `COMPOUND` key; with the `sort_key` block omitted, the first update runs `ALTER SORTKEY AUTO`, which keeps
+the key.

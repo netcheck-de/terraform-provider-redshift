@@ -10,9 +10,10 @@ Reads the definition of an existing local table without managing it, with the sa
 `redshift_table` resource. See AWS [CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html).
 
 ```sql
-SELECT ... FROM pg_class WHERE relname = 'name';
+SELECT ... FROM pg_class LEFT JOIN pg_class_info ... WHERE relname = 'name';
 SELECT ... FROM svv_redshift_columns WHERE schema_name = 'schema' AND table_name = 'name';
 SELECT ... FROM pg_constraint WHERE ...;
+SELECT sortkey1 FROM svv_table_info WHERE "schema" = 'schema' AND "table" = 'name';
 ```
 
 ## Example Usage
@@ -22,6 +23,14 @@ data "redshift_table" "events" {
   database = "warehouse"
   schema   = "serving"
   name     = "events"
+}
+
+output "events_layout" {
+  value = {
+    columns      = [for column in data.redshift_table.events.column : column.name]
+    distribution = data.redshift_table.events.distribution.style
+    applied      = data.redshift_table.events.effective_distribution
+  }
 }
 ```
 
@@ -37,55 +46,120 @@ data "redshift_table" "events" {
 
 ### Read-Only
 
-- `backup` (String) `YES` or `NO` (defaults to `YES`): whether snapshots include the table. RA3 and Serverless always back up tables. Redshift has no ALTER form, so a change replaces the table, except after import, when the value is only recorded; the setting is not read back from the catalog.
-- `columns` (Attributes List) Ordered column definitions (1 to 1600). In place, columns can be appended with `ALTER TABLE ADD COLUMN` (not identity columns, and NOT NULL columns only with a default), removed with `DROP COLUMN`, re-encoded with `ALTER COLUMN ... ENCODE` (not with an interleaved sort key), and VARCHAR or VARBYTE columns without a default, constraint, or `BYTEDICT`/`RUNLENGTH`/`TEXT255`/`TEXT32K` encoding can be widened with `ALTER COLUMN ... TYPE`. Any other change, including reordering, renaming, or changing a type, nullability, default, or identity, replaces the table. (see [below for nested schema](#nestedatt--columns))
-- `distkey` (String) Distribution key column for `diststyle = "KEY"`, of type BOOLEAN, REAL, DOUBLE PRECISION, SMALLINT, INTEGER, BIGINT, DECIMAL, DATE, TIME, TIMETZ, TIMESTAMP, TIMESTAMPTZ, CHAR, or VARCHAR. Changes use `ALTER TABLE ALTER DISTKEY`; with an interleaved sort key they replace the table.
-- `diststyle` (String) Distribution style: `AUTO`, `EVEN`, `KEY`, or `ALL`. Omitted, it is `KEY` when `distkey` is set and `AUTO` otherwise. `AUTO` covers whatever `AUTO(ALL)`, `AUTO(EVEN)`, or `AUTO(KEY(column))` Redshift currently applies. Changes use `ALTER TABLE ALTER DISTSTYLE`; with an interleaved sort key they replace the table. A move to `AUTO` that drops the key column distributes `EVEN` until the column is dropped.
-- `foreign_keys` (Attributes Set) FOREIGN KEY constraints. Redshift does not enforce them. Changes are applied with `ALTER TABLE ADD FOREIGN KEY` and `DROP CONSTRAINT`. (see [below for nested schema](#nestedatt--foreign_keys))
+- `backup` (String) Always null: whether snapshots include the table is not observable in a catalog every deployment exposes.
+- `column` (Attributes List) Columns in physical order, as `pg_attribute` and `SVV_REDSHIFT_COLUMNS` report them. (see [below for nested schema](#nestedatt--column))
+- `distribution` (Attributes) Declared distribution, always reported: `style` is `AUTO`, `EVEN`, `KEY`, or `ALL`, and `key` is set for `KEY`. See `effective_distribution` for what Redshift applies under `AUTO`. (see [below for nested schema](#nestedatt--distribution))
+- `effective_distribution` (Attributes) Distribution Redshift currently applies, from `PG_CLASS_INFO.releffectivediststyle` and the distribution key column in `SVV_REDSHIFT_COLUMNS`; under `AUTO` it shows what Redshift picked, for example `{ style = "KEY", key = "account_id", auto = true }`. (see [below for nested schema](#nestedatt--effective_distribution))
+- `effective_sort_key` (Attributes) Sort key Redshift currently applies, from the sort key positions in `SVV_REDSHIFT_COLUMNS` and `SVV_TABLE_INFO.sortkey1`; under `AUTO` it shows the key Redshift chose, for example `{ style = "COMPOUND", columns = ["created_at"], auto = true }`. (see [below for nested schema](#nestedatt--effective_sort_key))
+- `foreign_key` (Attributes Set) FOREIGN KEY constraints. (see [below for nested schema](#nestedatt--foreign_key))
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
-- `owner` (String) User owning the table, in lowercase. Set it to transfer ownership with `ALTER TABLE ... OWNER TO`; omit it to keep the creating user.
-- `primary_key` (List of String) Ordered primary key columns. Redshift does not enforce it but uses it for planning. It is added and dropped with `ALTER TABLE ADD PRIMARY KEY` and `DROP CONSTRAINT`; a new primary key on an existing nullable column, or on a new column without a default, replaces the table.
-- `sortkey` (List of String) Ordered sort key columns, at most 400 for a compound and 8 for an interleaved key, of the types `distkey` allows; omit for `AUTO`.
-- `sortkey_style` (String) Sort key style: `AUTO`, `COMPOUND`, or `INTERLEAVED`. Omitted, it is `COMPOUND` when `sortkey` is set and `AUTO` otherwise. Changes to `AUTO` or a compound key use `ALTER TABLE ALTER SORTKEY`; a move to `AUTO` from an interleaved key or off a dropped column first runs `ALTER SORTKEY NONE`. Creating or changing an interleaved sort key replaces the table. A table without sort key columns is reported as `AUTO`.
-- `unique` (Set of List of String) UNIQUE constraints, each an ordered list of columns. Redshift does not enforce them. Changes are applied with `ALTER TABLE ADD UNIQUE` and `DROP CONSTRAINT`.
+- `owner` (String) User owning the table.
+- `primary_key` (Attributes) Primary key; null without one. (see [below for nested schema](#nestedatt--primary_key))
+- `sort_key` (Attributes) Declared sort key, always reported: `style` is `AUTO`, `COMPOUND`, `INTERLEAVED`, or `NONE`, and `columns` is set for an explicit key. When `SVV_TABLE_INFO` does not list the table, because it is empty or the provider's SQL identity may not see it, a key Redshift chose is reported as `COMPOUND` and a table without sort key columns as `AUTO`. (see [below for nested schema](#nestedatt--sort_key))
+- `unique` (Attributes Set) UNIQUE constraints. (see [below for nested schema](#nestedatt--unique))
 
-<a id="nestedatt--columns"></a>
-### Nested Schema for `columns`
+<a id="nestedatt--column"></a>
+### Nested Schema for `column`
 
 Read-Only:
 
 - `default` (String) DEFAULT expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default, and a change replaces the table.
 - `encoding` (String) Compression encoding: `AZ64`, `BYTEDICT`, `DELTA`, `DELTA32K`, `LZO`, `MOSTLY8`, `MOSTLY16`, `MOSTLY32`, `RAW`, `RUNLENGTH`, `TEXT255`, `TEXT32K`, or `ZSTD`. Omit it to let Redshift choose; the chosen encoding is reported. A sort key change can re-encode columns of the old and new key, for example to `RAW`: their omitted encodings are then known after apply, and configured ones are applied again.
-- `identity` (Attributes) Makes an INTEGER or BIGINT column an `IDENTITY(seed, step)` column, which is always NOT NULL. (see [below for nested schema](#nestedatt--columns--identity))
+- `identity` (Attributes) Makes an INTEGER or BIGINT column an `IDENTITY(seed, step)` column, which is always NOT NULL. (see [below for nested schema](#nestedatt--column--identity))
 - `name` (String) Column name, in lowercase.
 - `nullable` (Boolean) Whether the column accepts NULL. Omitted, it is `false` for identity and primary key columns, and otherwise `true` for a new column while an existing column keeps its nullability.
 - `type` (String) Redshift data type, such as `bigint`, `numeric(12,2)`, or `varchar(256)`. Aliases are compared by their canonical form, and a type without a length gets the one Redshift applies, for example `varchar` is `character varying(256)`.
 
-<a id="nestedatt--columns--identity"></a>
-### Nested Schema for `columns.identity`
+<a id="nestedatt--column--identity"></a>
+### Nested Schema for `column.identity`
 
 Read-Only:
 
 - `generated_by_default` (Boolean) Use `GENERATED BY DEFAULT AS IDENTITY`, which lets inserts supply their own values; defaults to `false`.
-- `seed` (Number) First generated value.
-- `step` (Number) Increment between generated values; must not be zero.
+- `seed` (Number) First generated value; required in the block.
+- `step` (Number) Increment between generated values, not zero; required in the block.
 
 
 
-<a id="nestedatt--foreign_keys"></a>
-### Nested Schema for `foreign_keys`
+<a id="nestedatt--distribution"></a>
+### Nested Schema for `distribution`
+
+Read-Only:
+
+- `key` (String) Distribution key column for `style = "KEY"`, of type BOOLEAN, REAL, DOUBLE PRECISION, SMALLINT, INTEGER, BIGINT, DECIMAL, DATE, TIME, TIMETZ, TIMESTAMP, TIMESTAMPTZ, CHAR, or VARCHAR.
+- `style` (String) Distribution style: `AUTO`, `EVEN`, `KEY`, or `ALL`. Omitted, it is `KEY` when `key` is set and `AUTO` otherwise. `AUTO` covers whatever `AUTO(ALL)`, `AUTO(EVEN)`, or `AUTO(KEY(column))` Redshift currently applies; see `effective_distribution`.
+
+
+<a id="nestedatt--effective_distribution"></a>
+### Nested Schema for `effective_distribution`
+
+Read-Only:
+
+- `auto` (Boolean) Whether Redshift manages the distribution (`DISTSTYLE AUTO`).
+- `key` (String) Distribution key column of a `KEY` distribution, including one Redshift chose.
+- `style` (String) `ALL`, `EVEN`, or `KEY`; null when `PG_CLASS_INFO` does not show the table to the provider's SQL identity and the table has no distribution key column.
+
+
+<a id="nestedatt--effective_sort_key"></a>
+### Nested Schema for `effective_sort_key`
+
+Read-Only:
+
+- `auto` (Boolean) Whether Redshift manages the sort key (`SORTKEY AUTO`). `SVV_TABLE_INFO` lists only tables with rows that the provider's SQL identity may see; without a row, the configured style is assumed when it matches the sort key columns.
+- `columns` (List of String) Sort key columns in order; empty without a sort key.
+- `style` (String) `COMPOUND`, `INTERLEAVED`, or `NONE` when the table has no sort key columns.
+
+
+<a id="nestedatt--foreign_key"></a>
+### Nested Schema for `foreign_key`
 
 Read-Only:
 
 - `columns` (List of String) Referencing columns of this table.
-- `references_columns` (List of String) Referenced columns, matched to `columns` by position; they must form a primary key or unique constraint of the referenced table.
-- `references_schema` (String) Schema of the referenced table.
-- `references_table` (String) Referenced table.
+- `references` (Attributes) Referenced table and columns. (see [below for nested schema](#nestedatt--foreign_key--references))
+
+<a id="nestedatt--foreign_key--references"></a>
+### Nested Schema for `foreign_key.references`
+
+Read-Only:
+
+- `columns` (List of String) Referenced columns, matched to `columns` by position; they must form a primary key or unique constraint of the referenced table. Required in the block.
+- `schema` (String) Schema of the referenced table; required in the block.
+- `table` (String) Referenced table; required in the block.
+
+
+
+<a id="nestedatt--primary_key"></a>
+### Nested Schema for `primary_key`
+
+Read-Only:
+
+- `columns` (List of String) Primary key columns in order; required in the block.
+
+
+<a id="nestedatt--sort_key"></a>
+### Nested Schema for `sort_key`
+
+Read-Only:
+
+- `columns` (List of String) Sort key columns in order, at most 400 for a compound and 8 for an interleaved key, of the types `distribution.key` allows; omit them for `AUTO` and `NONE`.
+- `style` (String) Sort key style: `AUTO`, `COMPOUND`, `INTERLEAVED`, or `NONE`. Omitted, it is `COMPOUND` when `columns` is set and `AUTO` otherwise. `NONE` removes the sort key with `ALTER SORTKEY NONE`, also right after `CREATE TABLE`. Without sort key columns, `AUTO` and `NONE` differ only in `SVV_TABLE_INFO`, which lists tables with rows; for an empty table the configured one of the two is kept.
+
+
+<a id="nestedatt--unique"></a>
+### Nested Schema for `unique`
+
+Read-Only:
+
+- `columns` (List of String) Constrained columns in order.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the table's JSON identity, using the same warehouse, database, schema, and name keys as the
 paired resource.
 
-Values use catalog spellings: types as `format_type()` reports them, such as `character varying(256)`, and defaults
-with their casts. `backup` is always null because it is not observable, and a sort key that Redshift chose under
-`SORTKEY AUTO` is reported as a `COMPOUND` key. A missing table is an error.
+The resource's blocks are read-only nested attributes here: `column` is a list, `unique` and `foreign_key` are sets,
+and `primary_key`, `distribution`, and `sort_key` are objects, so `data.redshift_table.x.distribution.style` needs no
+index. Values use catalog spellings: types as `format_type()` reports them, such as `character varying(256)`, and
+defaults with their casts. `distribution` and `sort_key` are always reported, including `AUTO`; `effective_distribution`
+and `effective_sort_key` show what Redshift applies. `backup` is always null because it is not observable. A missing
+table is an error.

@@ -20,7 +20,7 @@ import (
 var (
 	tableEncodings     = []sqlclient.Keyword{"AZ64", "BYTEDICT", "DELTA", "DELTA32K", "LZO", "MOSTLY8", "MOSTLY16", "MOSTLY32", "RAW", "RUNLENGTH", "TEXT255", "TEXT32K", "ZSTD"}
 	tableDistStyles    = []sqlclient.Keyword{"AUTO", "EVEN", "KEY", "ALL"}
-	tableSortKeyStyles = []sqlclient.Keyword{"AUTO", "COMPOUND", "INTERLEAVED"}
+	tableSortKeyStyles = []sqlclient.Keyword{"AUTO", "COMPOUND", "INTERLEAVED", "NONE"}
 	tableBackupModes   = []sqlclient.Keyword{"YES", "NO"}
 	// tableEncodingsBlockingResize are the encodings whose columns ALTER COLUMN TYPE refuses to resize.
 	tableEncodingsBlockingResize = []sqlclient.Keyword{"BYTEDICT", "RUNLENGTH", "TEXT255", "TEXT32K"}
@@ -99,10 +99,16 @@ type tableSpec struct {
 	distKey string
 	// sortStyle is the resolved sort key style.
 	sortStyle sqlclient.Keyword
-	// sortKey lists the sort key columns in order; empty for AUTO.
+	// sortKey lists the sort key columns in order; empty for AUTO and NONE.
 	sortKey []string
 	// backup is "" when not configured.
 	backup sqlclient.Keyword
+	// effectiveDistKey is the column Redshift distributes on: the declared key, or under AUTO the key Redshift
+	// chose, as far as it is known; "" otherwise.
+	effectiveDistKey string
+	// effectiveSortKey lists the columns Redshift sorts on: the declared key, or under AUTO the key Redshift chose,
+	// as far as it is known.
+	effectiveSortKey []string
 }
 
 // column returns the named column.
@@ -208,12 +214,12 @@ func tableSpecOf(data tableModel) (tableSpec, error) {
 	if err := tableFolded("owner", spec.owner); err != nil {
 		return spec, err
 	}
-	if data.Columns.IsUnknown() || data.Columns.IsNull() {
-		return spec, fmt.Errorf("columns must be known")
+	if data.Column.IsUnknown() || data.Column.IsNull() {
+		return spec, fmt.Errorf("column must be known")
 	}
 	var columns []tableColumnModel
-	if diagnostics := data.Columns.ElementsAs(ctx, &columns, false); diagnostics.HasError() {
-		return spec, fmt.Errorf("columns must be known")
+	if diagnostics := data.Column.ElementsAs(ctx, &columns, false); diagnostics.HasError() {
+		return spec, fmt.Errorf("column must be known")
 	}
 	if len(columns) == 0 || len(columns) > tableMaxColumns {
 		return spec, fmt.Errorf("a table needs between 1 and %d columns", tableMaxColumns)
@@ -221,17 +227,17 @@ func tableSpecOf(data tableModel) (tableSpec, error) {
 	for index, model := range columns {
 		column, err := tableColumnSpecOf(model)
 		if err != nil {
-			return spec, fmt.Errorf("columns[%d]: %w", index, err)
+			return spec, fmt.Errorf("column[%d]: %w", index, err)
 		}
 		if _, duplicate := spec.column(column.name); duplicate {
 			return spec, fmt.Errorf("column %q is declared twice", column.name)
 		}
 		spec.columns = append(spec.columns, column)
 	}
-	if spec.primaryKey, err = tableStringList(data.PrimaryKey, "primary_key"); err != nil {
+	if spec.primaryKey, err = tablePrimaryKeyOf(data.PrimaryKey); err != nil {
 		return spec, err
 	}
-	if err := spec.checkColumns("primary_key", spec.primaryKey); err != nil {
+	if err := spec.checkColumns("primary_key.columns", spec.primaryKey); err != nil {
 		return spec, err
 	}
 	for _, name := range spec.primaryKey {
@@ -243,28 +249,50 @@ func tableSpecOf(data tableModel) (tableSpec, error) {
 		return spec, err
 	}
 	for _, unique := range spec.unique {
-		if err := spec.checkColumns("unique", unique); err != nil {
+		if err := spec.checkColumns("unique.columns", unique); err != nil {
 			return spec, err
 		}
 	}
-	if spec.foreignKeys, err = tableForeignKeysOf(data.ForeignKeys); err != nil {
+	if spec.foreignKeys, err = tableForeignKeysOf(data.ForeignKey); err != nil {
 		return spec, err
 	}
 	for _, foreignKey := range spec.foreignKeys {
-		if err := spec.checkColumns("foreign_keys.columns", foreignKey.columns); err != nil {
+		if err := spec.checkColumns("foreign_key.columns", foreignKey.columns); err != nil {
 			return spec, err
 		}
 	}
-	if err := spec.resolveDistribution(data); err != nil {
+	if err := spec.resolveDistribution(data.Distribution); err != nil {
 		return spec, err
 	}
-	if err := spec.resolveSortKey(data); err != nil {
+	if err := spec.resolveSortKey(data.SortKey); err != nil {
 		return spec, err
 	}
 	if spec.backup, err = tableKeyword(data.Backup, "backup", tableBackupModes...); err != nil {
 		return spec, err
 	}
+	spec.resolveEffective(data)
 	return spec, nil
+}
+
+// resolveEffective records the keys Redshift applies: the declared ones, or under AUTO the ones the last catalog
+// read reported, so an update can move an AUTO key off a column it drops.
+func (s *tableSpec) resolveEffective(data tableModel) {
+	switch s.distStyle {
+	case "KEY":
+		s.effectiveDistKey = s.distKey
+	case "AUTO":
+		if !data.EffectiveDistribution.IsNull() && !data.EffectiveDistribution.IsUnknown() {
+			if key, ok := data.EffectiveDistribution.Attributes()["key"].(types.String); ok {
+				s.effectiveDistKey = knownString(key)
+			}
+		}
+	}
+	switch s.sortStyle {
+	case "COMPOUND", "INTERLEAVED":
+		s.effectiveSortKey = s.sortKey
+	case "AUTO":
+		s.effectiveSortKey = tableEffectiveSortColumns(data.EffectiveSortKey)
+	}
 }
 
 // tableColumnSpecOf validates one column.
@@ -309,6 +337,9 @@ func tableColumnSpecOf(model tableColumnModel) (tableColumnSpec, error) {
 	if diagnostics := model.Identity.As(context.Background(), &identity, basetypes.ObjectAsOptions{}); diagnostics.HasError() || identity.Seed.IsUnknown() || identity.Step.IsUnknown() || identity.GeneratedByDefault.IsUnknown() {
 		return column, fmt.Errorf("column %q: identity must be known", column.name)
 	}
+	if identity.Seed.IsNull() || identity.Step.IsNull() {
+		return column, fmt.Errorf("column %q: identity needs a seed and a step", column.name)
+	}
 	column.identity = &tableIdentitySpec{seed: identity.Seed.ValueInt64(), step: identity.Step.ValueInt64(), generatedByDefault: identity.GeneratedByDefault.ValueBool()}
 	switch {
 	case column.dataType != "integer" && column.dataType != "bigint":
@@ -323,7 +354,25 @@ func tableColumnSpecOf(model tableColumnModel) (tableColumnSpec, error) {
 	return column, nil
 }
 
-// tableUniqueOf reads the UNIQUE column lists, sorted so SQL does not depend on set order.
+// tablePrimaryKeyOf reads the columns of the primary_key block; an absent block is no primary key.
+func tablePrimaryKeyOf(value types.Object) ([]string, error) {
+	switch {
+	case value.IsNull():
+		return nil, nil
+	case value.IsUnknown():
+		return nil, fmt.Errorf("primary_key must be known")
+	}
+	var model tableKeyModel
+	if diagnostics := value.As(context.Background(), &model, basetypes.ObjectAsOptions{}); diagnostics.HasError() {
+		return nil, fmt.Errorf("primary_key must be known")
+	}
+	if model.Columns.IsNull() {
+		return nil, fmt.Errorf("a primary_key block needs columns")
+	}
+	return tableStringList(model.Columns, "primary_key.columns")
+}
+
+// tableUniqueOf reads the column lists of the unique blocks, sorted so SQL does not depend on set order.
 func tableUniqueOf(value types.Set) ([][]string, error) {
 	if value.IsNull() {
 		return nil, nil
@@ -331,13 +380,13 @@ func tableUniqueOf(value types.Set) ([][]string, error) {
 	if value.IsUnknown() {
 		return nil, fmt.Errorf("unique must be known")
 	}
+	var models []tableKeyModel
+	if diagnostics := value.ElementsAs(context.Background(), &models, false); diagnostics.HasError() {
+		return nil, fmt.Errorf("unique must be known")
+	}
 	var unique [][]string
-	for _, element := range value.Elements() {
-		list, ok := element.(types.List)
-		if !ok {
-			return nil, fmt.Errorf("unique must contain column lists")
-		}
-		columns, err := tableStringList(list, "unique")
+	for _, model := range models {
+		columns, err := tableStringList(model.Columns, "unique.columns")
 		if err != nil {
 			return nil, err
 		}
@@ -350,44 +399,54 @@ func tableUniqueOf(value types.Set) ([][]string, error) {
 	return unique, nil
 }
 
-// tableForeignKeysOf reads the FOREIGN KEY constraints, sorted so SQL does not depend on set order.
+// tableForeignKeysOf reads the foreign_key blocks, sorted so SQL does not depend on set order.
 func tableForeignKeysOf(value types.Set) ([]tableForeignKeySpec, error) {
 	if value.IsNull() {
 		return nil, nil
 	}
 	if value.IsUnknown() {
-		return nil, fmt.Errorf("foreign_keys must be known")
+		return nil, fmt.Errorf("foreign_key must be known")
 	}
 	var models []tableForeignKeyModel
 	if diagnostics := value.ElementsAs(context.Background(), &models, false); diagnostics.HasError() {
-		return nil, fmt.Errorf("foreign_keys must be known")
+		return nil, fmt.Errorf("foreign_key must be known")
 	}
 	var foreignKeys []tableForeignKeySpec
 	for _, model := range models {
 		var foreignKey tableForeignKeySpec
 		var err error
-		if foreignKey.columns, err = tableStringList(model.Columns, "foreign_keys.columns"); err != nil {
+		if foreignKey.columns, err = tableStringList(model.Columns, "foreign_key.columns"); err != nil {
 			return nil, err
 		}
-		if foreignKey.refColumns, err = tableStringList(model.ReferencesColumns, "foreign_keys.references_columns"); err != nil {
+		var references tableReferencesModel
+		switch {
+		case model.References.IsUnknown():
+			return nil, fmt.Errorf("foreign_key.references must be known")
+		case model.References.IsNull():
+			return nil, fmt.Errorf("a foreign key needs a references block")
+		}
+		if diagnostics := model.References.As(context.Background(), &references, basetypes.ObjectAsOptions{}); diagnostics.HasError() {
+			return nil, fmt.Errorf("foreign_key.references must be known")
+		}
+		if foreignKey.refColumns, err = tableStringList(references.Columns, "foreign_key.references.columns"); err != nil {
 			return nil, err
 		}
-		if foreignKey.refSchema, err = tableKnownString(model.ReferencesSchema, "foreign_keys.references_schema"); err != nil {
+		if foreignKey.refSchema, err = tableKnownString(references.Schema, "foreign_key.references.schema"); err != nil {
 			return nil, err
 		}
-		if foreignKey.refTable, err = tableKnownString(model.ReferencesTable, "foreign_keys.references_table"); err != nil {
+		if foreignKey.refTable, err = tableKnownString(references.Table, "foreign_key.references.table"); err != nil {
 			return nil, err
 		}
 		switch {
 		case foreignKey.refSchema == "" || foreignKey.refTable == "":
-			return nil, fmt.Errorf("a foreign key needs a nonempty references_schema and references_table")
+			return nil, fmt.Errorf("a foreign key needs a nonempty references schema and table")
 		case len(foreignKey.refColumns) != len(foreignKey.columns):
-			return nil, fmt.Errorf("a foreign key needs as many references_columns as columns")
+			return nil, fmt.Errorf("a foreign key needs as many references columns as columns")
 		}
-		if err := tableDistinctNames("foreign_keys.references_columns", foreignKey.refColumns); err != nil {
+		if err := tableDistinctNames("foreign_key.references.columns", foreignKey.refColumns); err != nil {
 			return nil, err
 		}
-		if err := tableFolded("foreign_keys reference", append([]string{foreignKey.refSchema, foreignKey.refTable}, foreignKey.refColumns...)...); err != nil {
+		if err := tableFolded("foreign_key reference", append([]string{foreignKey.refSchema, foreignKey.refTable}, foreignKey.refColumns...)...); err != nil {
 			return nil, err
 		}
 		foreignKeys = append(foreignKeys, foreignKey)
@@ -410,8 +469,7 @@ func tableDistinctNames(what string, names []string) error {
 	return nil
 }
 
-// checkColumns requires a constraint or key list to name distinct columns of this table. A configured but empty
-// list is allowed for optional lists and means none.
+// checkColumns requires a constraint or key list to name distinct columns of this table.
 func (s tableSpec) checkColumns(what string, names []string) error {
 	if err := tableDistinctNames(what, names); err != nil {
 		return err
@@ -425,12 +483,22 @@ func (s tableSpec) checkColumns(what string, names []string) error {
 }
 
 // resolveDistribution derives the distribution style the plan modifier would choose and checks it against the key.
-func (s *tableSpec) resolveDistribution(data tableModel) error {
+// An absent distribution block is AUTO.
+func (s *tableSpec) resolveDistribution(value types.Object) error {
+	if value.IsUnknown() {
+		return fmt.Errorf("distribution must be known")
+	}
+	var model tableDistributionModel
+	if !value.IsNull() {
+		if diagnostics := value.As(context.Background(), &model, basetypes.ObjectAsOptions{}); diagnostics.HasError() {
+			return fmt.Errorf("distribution must be known")
+		}
+	}
 	var err error
-	if s.distStyle, err = tableKeyword(data.DistStyle, "diststyle", tableDistStyles...); err != nil {
+	if s.distStyle, err = tableKeyword(model.Style, "distribution.style", tableDistStyles...); err != nil {
 		return err
 	}
-	if s.distKey, err = tableKnownString(data.DistKey, "distkey"); err != nil {
+	if s.distKey, err = tableKnownString(model.Key, "distribution.key"); err != nil {
 		return err
 	}
 	if s.distStyle == "" {
@@ -441,23 +509,33 @@ func (s *tableSpec) resolveDistribution(data tableModel) error {
 	}
 	switch {
 	case s.distStyle == "KEY" && s.distKey == "":
-		return fmt.Errorf("diststyle KEY needs a distkey")
+		return fmt.Errorf("distribution style KEY needs a key")
 	case s.distStyle != "KEY" && s.distKey != "":
-		return fmt.Errorf("distkey requires diststyle KEY")
+		return fmt.Errorf("distribution key requires style KEY")
 	}
 	if s.distKey != "" {
-		return s.checkKeyColumns("distkey", []string{s.distKey})
+		return s.checkKeyColumns("distribution.key", []string{s.distKey})
 	}
 	return nil
 }
 
-// resolveSortKey derives the sort key style the plan modifier would choose and checks the column count limits.
-func (s *tableSpec) resolveSortKey(data tableModel) error {
+// resolveSortKey derives the sort key style the plan modifier would choose and checks the column count limits. An
+// absent sort_key block is AUTO.
+func (s *tableSpec) resolveSortKey(value types.Object) error {
+	if value.IsUnknown() {
+		return fmt.Errorf("sort_key must be known")
+	}
+	var model tableSortKeyModel
+	if !value.IsNull() {
+		if diagnostics := value.As(context.Background(), &model, basetypes.ObjectAsOptions{}); diagnostics.HasError() {
+			return fmt.Errorf("sort_key must be known")
+		}
+	}
 	var err error
-	if s.sortStyle, err = tableKeyword(data.SortKeyStyle, "sortkey_style", tableSortKeyStyles...); err != nil {
+	if s.sortStyle, err = tableKeyword(model.Style, "sort_key.style", tableSortKeyStyles...); err != nil {
 		return err
 	}
-	if s.sortKey, err = tableStringList(data.SortKey, "sortkey"); err != nil {
+	if s.sortKey, err = tableStringList(model.Columns, "sort_key.columns"); err != nil {
 		return err
 	}
 	if s.sortStyle == "" {
@@ -467,16 +545,16 @@ func (s *tableSpec) resolveSortKey(data tableModel) error {
 		}
 	}
 	switch {
-	case s.sortStyle == "AUTO" && len(s.sortKey) > 0:
-		return fmt.Errorf("sortkey_style AUTO lets Redshift choose the sort key; remove sortkey")
-	case s.sortStyle != "AUTO" && len(s.sortKey) == 0:
-		return fmt.Errorf("sortkey_style %s needs sortkey columns", s.sortStyle)
+	case (s.sortStyle == "AUTO" || s.sortStyle == "NONE") && len(s.sortKey) > 0:
+		return fmt.Errorf("sort key style %s takes no columns; remove sort_key.columns", s.sortStyle)
+	case s.sortStyle != "AUTO" && s.sortStyle != "NONE" && len(s.sortKey) == 0:
+		return fmt.Errorf("sort key style %s needs sort_key.columns", s.sortStyle)
 	case s.sortStyle == "COMPOUND" && len(s.sortKey) > tableMaxCompoundSortKeys:
 		return fmt.Errorf("a compound sort key has at most %d columns", tableMaxCompoundSortKeys)
 	case s.sortStyle == "INTERLEAVED" && len(s.sortKey) > tableMaxInterleavedSortKey:
 		return fmt.Errorf("an interleaved sort key has at most %d columns", tableMaxInterleavedSortKey)
 	}
-	return s.checkKeyColumns("sortkey", s.sortKey)
+	return s.checkKeyColumns("sort_key.columns", s.sortKey)
 }
 
 // checkKeyColumns requires distribution and sort key columns to exist and to have a type CREATE TABLE allows for
@@ -536,8 +614,9 @@ func tableSortKeyClause(style sqlclient.Keyword, columns []string) sqlclient.Sta
 }
 
 // createTableStatements renders CREATE TABLE with every column, constraint, and table attribute spelled out, so
-// creation never depends on server defaults, and then the owner change, because CREATE TABLE always makes the
-// executing user the owner.
+// creation never depends on server defaults, then ALTER SORTKEY NONE for a table without a sort key, because
+// CREATE TABLE has no clause for it and defaults to AUTO, and then the owner change, because CREATE TABLE always
+// makes the executing user the owner.
 func createTableStatements(spec tableSpec) ([]string, error) {
 	items := make([]sqlclient.Statement, 0, len(spec.columns)+1+len(spec.unique)+len(spec.foreignKeys))
 	for _, column := range spec.columns {
@@ -558,11 +637,16 @@ func createTableStatements(spec tableSpec) ([]string, error) {
 		When(spec.distStyle == "KEY", func(s sqlclient.Statement) sqlclient.Statement {
 			return s.Kw("DISTKEY").Paren(sqlclient.Ident(spec.distKey))
 		}).
-		Append(tableSortKeyClause(spec.sortStyle, spec.sortKey))
+		When(spec.sortStyle != "NONE", func(s sqlclient.Statement) sqlclient.Statement {
+			return s.Append(tableSortKeyClause(spec.sortStyle, spec.sortKey))
+		})
 	if err := create.Err(); err != nil {
 		return nil, err
 	}
 	statements := []string{create.String()}
+	if spec.sortStyle == "NONE" {
+		statements = append(statements, tableAlter(spec).Kw("ALTER SORTKEY NONE").String())
+	}
 	if spec.owner != "" {
 		statements = append(statements, tableAlter(spec).KwIdent("OWNER TO", spec.owner).String())
 	}
@@ -645,7 +729,7 @@ func tableDefaultsEqual(a, b sqlclient.UserSQL) bool {
 
 // tableColumnDiff lists the in-place column changes between two definitions, or why they need replacement.
 type tableColumnDiff struct {
-	// added are the new trailing columns.
+	// added are the new columns in configuration order; Redshift appends them after the existing ones.
 	added []tableColumnSpec
 	// dropped are the removed columns.
 	dropped []string
@@ -679,13 +763,14 @@ func tableIdentityEqual(a, b *tableIdentitySpec) bool {
 	return *a == *b
 }
 
-// tableColumnChanges classifies column changes against the ALTER TABLE limits: columns are added only at the end,
-// never as identity columns, and as NOT NULL only with a default, only VARCHAR and VARBYTE columns without defaults, constraints, or BYTEDICT, RUNLENGTH,
-// TEXT255, or TEXT32K encoding are widened, and encodings change only outside interleaved sort keys.
+// tableColumnChanges classifies column changes against the ALTER TABLE limits. Columns are matched by name, so the
+// configured order never matters: a new column is added wherever it is declared, because Redshift appends it
+// physically and the state keeps the configured order, but never as an identity column, and as NOT NULL only with a
+// default. Only VARCHAR and VARBYTE columns without defaults, constraints, or BYTEDICT, RUNLENGTH, TEXT255, or
+// TEXT32K encoding are widened, and encodings change only outside interleaved sort keys.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html
 func tableColumnChanges(prev, plan tableSpec) tableColumnDiff {
 	var diff tableColumnDiff
-	lastRetained := -1
 	for _, column := range plan.columns {
 		before, retained := prev.column(column.name)
 		if !retained {
@@ -702,12 +787,6 @@ func tableColumnChanges(prev, plan tableSpec) tableColumnDiff {
 			diff.added = append(diff.added, column)
 			continue
 		}
-		position := slices.IndexFunc(prev.columns, func(c tableColumnSpec) bool { return c.name == column.name })
-		if position < lastRetained || len(diff.added) > 0 {
-			diff.replace = fmt.Sprintf("columns can only be added at the end and existing columns keep their order (%q)", column.name)
-			return diff
-		}
-		lastRetained = position
 		if reason := tableColumnChange(prev, plan, before, column); reason != "" {
 			diff.replace = reason
 			return diff
@@ -719,12 +798,28 @@ func tableColumnChanges(prev, plan tableSpec) tableColumnDiff {
 			diff.encoded = append(diff.encoded, column)
 		}
 	}
+	// The add phase runs before the drop phase, so the table briefly holds every existing and new column.
+	if total := len(prev.columns) + len(diff.added); total > tableMaxColumns {
+		diff.replace = fmt.Sprintf("ALTER TABLE adds columns before it drops removed ones, so the table would hold %d columns, more than the %d Redshift allows", total, tableMaxColumns)
+		return diff
+	}
 	for _, column := range prev.columns {
 		if _, kept := plan.column(column.name); !kept {
 			diff.dropped = append(diff.dropped, column.name)
 		}
 	}
 	return diff
+}
+
+// tableStaleDrops refuses to drop a column the prior state does not know: it was added after the plan was made, so
+// the plan never showed its removal.
+func tableStaleDrops(prev, plan tableSpec, known map[string]bool) error {
+	for _, name := range tableColumnChanges(prev, plan).dropped {
+		if !known[name] {
+			return fmt.Errorf("column %q was added to the table after the plan was made, so the plan would drop it; refresh and plan again", name)
+		}
+	}
+	return nil
 }
 
 // tableColumnChange explains why a retained column cannot change in place, or returns "".
@@ -761,7 +856,7 @@ func tableColumnChange(prev, plan tableSpec, before, after tableColumnSpec) stri
 func tableReplacements(prev, plan tableSpec) map[string]string {
 	reasons := map[string]string{}
 	if reason := tableColumnChanges(prev, plan).replace; reason != "" {
-		reasons["columns"] = reason
+		reasons["column"] = reason
 	}
 	if !slices.Equal(prev.primaryKey, plan.primaryKey) {
 		for _, name := range plan.primaryKey {
@@ -774,17 +869,15 @@ func tableReplacements(prev, plan tableSpec) map[string]string {
 	// sort key; a table leaving an interleaved sort key changes it first.
 	if plan.sortStyle == "INTERLEAVED" {
 		interleaved := "ALTER TABLE cannot change distribution or create an interleaved sort key in place"
-		if prev.distStyle != plan.distStyle {
-			reasons["diststyle"] = interleaved
+		if tableDistributionChanged(prev, plan) {
+			reasons["distribution"] = interleaved
 		}
-		if prev.distKey != plan.distKey {
-			reasons["distkey"] = interleaved
+		if tableSortKeyChanged(prev, plan) {
+			reasons["sort_key"] = interleaved
 		}
-		if prev.sortStyle != plan.sortStyle {
-			reasons["sortkey_style"] = interleaved
-		}
-		if !slices.Equal(prev.sortKey, plan.sortKey) {
-			reasons["sortkey"] = interleaved
+		// The distribution stays AUTO, so its block does not change and only the column change can replace.
+		if tableDistributionDetour(prev, plan) {
+			reasons["column"] = "ALTER TABLE cannot move an automatic distribution key off a dropped column while the sort key is interleaved"
 		}
 	}
 	if prev.backup != "" && plan.backup != "" && prev.backup != plan.backup {
@@ -838,10 +931,15 @@ func tableSortKeyChanged(prev, plan tableSpec) bool {
 	return prev.sortStyle != plan.sortStyle || !slices.Equal(prev.sortKey, plan.sortKey)
 }
 
-// tableSortKeyReencodes reports a sort key change that runs ALTER COMPOUND SORTKEY or ALTER SORTKEY NONE, after
-// which the encodings of the old and new key columns are unknown; ALTER SORTKEY AUTO alone keeps the key.
+// tableDistributionChanged reports a change of the declared distribution.
+func tableDistributionChanged(prev, plan tableSpec) bool {
+	return prev.distStyle != plan.distStyle || prev.distKey != plan.distKey
+}
+
+// tableSortKeyReencodes reports an update that runs ALTER COMPOUND SORTKEY or ALTER SORTKEY NONE, after which the
+// encodings of the old and new key columns are unknown; ALTER SORTKEY AUTO alone keeps the key.
 func tableSortKeyReencodes(prev, plan tableSpec) bool {
-	return tableSortKeyChanged(prev, plan) && (plan.sortStyle != "AUTO" || tableSortKeyDetour(prev, plan))
+	return (tableSortKeyChanged(prev, plan) && plan.sortStyle != "AUTO") || tableSortKeyDetour(prev, plan)
 }
 
 // tableDropsAny reports whether the update drops one of names.
@@ -852,33 +950,35 @@ func tableDropsAny(prev, plan tableSpec, names ...string) bool {
 	})
 }
 
-// tableSortKeyDetour reports a move to SORTKEY AUTO that must first remove the sort key: ALTER SORTKEY AUTO keeps
+// tableSortKeyDetour reports an update to SORTKEY AUTO that must first remove the sort key: ALTER SORTKEY AUTO keeps
 // the current key, which can be neither interleaved, since only a compound key or none may follow one, nor on a
-// column the update drops. https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html
+// column the update drops, and DROP COLUMN refuses a sort key column even when Redshift chose it under AUTO.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html
 func tableSortKeyDetour(prev, plan tableSpec) bool {
-	return plan.sortStyle == "AUTO" && (prev.sortStyle == "INTERLEAVED" || tableDropsAny(prev, plan, prev.sortKey...))
+	return plan.sortStyle == "AUTO" && (prev.sortStyle == "INTERLEAVED" || tableDropsAny(prev, plan, prev.effectiveSortKey...))
 }
 
-// tableDistributionDetour reports a move to DISTSTYLE AUTO from a key the update drops: ALTER DISTSTYLE AUTO keeps
-// the distribution key of a large table, and DROP COLUMN refuses the distribution key.
+// tableDistributionDetour reports an update to DISTSTYLE AUTO that drops the current key column, whether declared or
+// chosen by Redshift: ALTER DISTSTYLE AUTO keeps the distribution key of a large table, and DROP COLUMN refuses the
+// distribution key.
 func tableDistributionDetour(prev, plan tableSpec) bool {
-	return plan.distStyle == "AUTO" && prev.distStyle == "KEY" && tableDropsAny(prev, plan, prev.distKey)
+	return plan.distStyle == "AUTO" && tableDropsAny(prev, plan, prev.effectiveDistKey)
 }
 
 // tableSortKeyStatements renders the sort key change of one phase; interleaved targets are replaced instead. A
 // detour removes the key with ALTER SORTKEY NONE first and sets AUTO once the columns are dropped.
 func tableSortKeyStatements(phase tableAlterPhase, prev, plan tableAlterState) []string {
-	if !tableSortKeyChanged(prev.spec, plan.spec) {
+	detour := tableSortKeyDetour(prev.spec, plan.spec)
+	if !tableSortKeyChanged(prev.spec, plan.spec) && !detour {
 		return nil
 	}
 	alter := tableAlter(plan.spec)
-	detour := tableSortKeyDetour(prev.spec, plan.spec)
 	switch {
 	case phase == tablePhaseRestoreKeys && detour:
 		return []string{alter.Kw("ALTER SORTKEY AUTO").String()}
 	case phase != tablePhaseKeys:
 		return nil
-	case detour:
+	case detour || plan.spec.sortStyle == "NONE":
 		return []string{alter.Kw("ALTER SORTKEY NONE").String()}
 	case plan.spec.sortStyle == "AUTO":
 		return []string{alter.Kw("ALTER SORTKEY AUTO").String()}
@@ -889,11 +989,11 @@ func tableSortKeyStatements(phase tableAlterPhase, prev, plan tableAlterState) [
 // tableDistributionStatements renders the distribution change of one phase. A detour distributes EVEN until the
 // old key column is dropped and sets AUTO afterwards.
 func tableDistributionStatements(phase tableAlterPhase, prev, plan tableAlterState) []string {
-	if prev.spec.distStyle == plan.spec.distStyle && prev.spec.distKey == plan.spec.distKey {
+	detour := tableDistributionDetour(prev.spec, plan.spec)
+	if !tableDistributionChanged(prev.spec, plan.spec) && !detour {
 		return nil
 	}
 	alter := tableAlter(plan.spec)
-	detour := tableDistributionDetour(prev.spec, plan.spec)
 	switch {
 	case phase == tablePhaseRestoreKeys && detour:
 		return []string{alter.Kw("ALTER DISTSTYLE AUTO").String()}
@@ -908,6 +1008,19 @@ func tableDistributionStatements(phase tableAlterPhase, prev, plan tableAlterSta
 	default:
 		return []string{alter.Kw("ALTER DISTSTYLE KEY DISTKEY").Ident(plan.spec.distKey).String()}
 	}
+}
+
+// tableKeyDetours renders the detours of keys that stay AUTO while the update drops a column Redshift chose for
+// them. Their own steps do not run, because the declared keys do not change; the column step renders them instead.
+func tableKeyDetours(phase tableAlterPhase, prev, plan tableAlterState) []string {
+	var statements []string
+	if !tableSortKeyChanged(prev.spec, plan.spec) {
+		statements = append(statements, tableSortKeyStatements(phase, prev, plan)...)
+	}
+	if !tableDistributionChanged(prev.spec, plan.spec) {
+		statements = append(statements, tableDistributionStatements(phase, prev, plan)...)
+	}
+	return statements
 }
 
 // tableConstraintChanges renders the drops or additions of one constraint kind, given each side's keyed clauses;
@@ -969,12 +1082,13 @@ func tableConstraintKey(key string) string {
 	return key
 }
 
-// tableAlterSteps returns the alter steps for one phase. Every in-place attribute has one step; a step renders only
-// the part of its change that belongs to the phase, and the constraint phases order the kinds so foreign keys go
-// first when dropped and last when added.
+// tableAlterSteps returns the alter steps for one phase. Every in-place attribute and block has one step; a step
+// renders only the part of its change that belongs to the phase, and the constraint phases order the kinds so
+// foreign keys go first when dropped and last when added. The column step follows the key steps, so a detour it
+// renders for an unchanged AUTO key still runs after a sort key leaves an interleaved key.
 func tableAlterSteps(phase tableAlterPhase) []alterStep[tableAlterState] {
 	steps := map[string]alterStep[tableAlterState]{
-		"columns": {attribute: "columns", value: func(s tableAlterState) attr.Value { return s.model.Columns }, render: func(prev, plan tableAlterState) []string {
+		"column": {attribute: "column", value: func(s tableAlterState) attr.Value { return s.model.Column }, render: func(prev, plan tableAlterState) []string {
 			diff := tableColumnChanges(prev.spec, plan.spec)
 			alter := tableAlter(plan.spec)
 			var statements []string
@@ -983,6 +1097,8 @@ func tableAlterSteps(phase tableAlterPhase) []alterStep[tableAlterState] {
 				for _, column := range diff.added {
 					statements = append(statements, alter.Kw("ADD COLUMN").Append(tableColumnDefinition(column)).String())
 				}
+			case tablePhaseKeys, tablePhaseRestoreKeys:
+				statements = tableKeyDetours(phase, prev, plan)
 			case tablePhaseAlterColumns:
 				for _, column := range diff.widened {
 					statements = append(statements, alter.Kw("ALTER COLUMN").Ident(column.name).Kw("TYPE", column.dataType).String())
@@ -1003,25 +1119,19 @@ func tableAlterSteps(phase tableAlterPhase) []alterStep[tableAlterState] {
 		"unique": {attribute: "unique", value: func(s tableAlterState) attr.Value { return s.model.Unique }, render: func(prev, plan tableAlterState) []string {
 			return tableConstraintChanges(phase, prev, plan, tableUniqueClauses(prev.spec), tableUniqueClauses(plan.spec))
 		}},
-		"foreign_keys": {attribute: "foreign_keys", value: func(s tableAlterState) attr.Value { return s.model.ForeignKeys }, render: func(prev, plan tableAlterState) []string {
+		"foreign_key": {attribute: "foreign_key", value: func(s tableAlterState) attr.Value { return s.model.ForeignKey }, render: func(prev, plan tableAlterState) []string {
 			return tableConstraintChanges(phase, prev, plan, tableForeignKeyClauses(prev.spec), tableForeignKeyClauses(plan.spec))
 		}},
-		// Style and columns are one statement; the style step renders it, and the column step only when the
-		// style is unchanged, so a change of both is not issued twice.
-		"sortkey_style": {attribute: "sortkey_style", value: func(s tableAlterState) attr.Value { return s.model.SortKeyStyle }, render: func(prev, plan tableAlterState) []string {
-			return tableSortKeyStatements(phase, prev, plan)
-		}},
-		"sortkey": {attribute: "sortkey", value: func(s tableAlterState) attr.Value { return s.model.SortKey }, render: func(prev, plan tableAlterState) []string {
-			if prev.spec.sortStyle != plan.spec.sortStyle {
+		// A block can differ while the declared key stays, as for an omitted block and an explicit AUTO; only a
+		// declared change renders here, and the column step renders detours of an unchanged key.
+		"sort_key": {attribute: "sort_key", value: func(s tableAlterState) attr.Value { return s.model.SortKey }, render: func(prev, plan tableAlterState) []string {
+			if !tableSortKeyChanged(prev.spec, plan.spec) {
 				return nil
 			}
 			return tableSortKeyStatements(phase, prev, plan)
 		}},
-		"diststyle": {attribute: "diststyle", value: func(s tableAlterState) attr.Value { return s.model.DistStyle }, render: func(prev, plan tableAlterState) []string {
-			return tableDistributionStatements(phase, prev, plan)
-		}},
-		"distkey": {attribute: "distkey", value: func(s tableAlterState) attr.Value { return s.model.DistKey }, render: func(prev, plan tableAlterState) []string {
-			if prev.spec.distStyle != plan.spec.distStyle {
+		"distribution": {attribute: "distribution", value: func(s tableAlterState) attr.Value { return s.model.Distribution }, render: func(prev, plan tableAlterState) []string {
+			if !tableDistributionChanged(prev.spec, plan.spec) {
 				return nil
 			}
 			return tableDistributionStatements(phase, prev, plan)
@@ -1036,9 +1146,9 @@ func tableAlterSteps(phase tableAlterPhase) []alterStep[tableAlterState] {
 		// as after import, and then nothing needs to run.
 		"backup": {attribute: "backup", value: func(s tableAlterState) attr.Value { return s.model.Backup }, render: func(_, _ tableAlterState) []string { return nil }},
 	}
-	order := []string{"foreign_keys", "unique", "primary_key", "columns", "sortkey_style", "sortkey", "diststyle", "distkey", "owner", "backup"}
+	order := []string{"foreign_key", "unique", "primary_key", "sort_key", "distribution", "column", "owner", "backup"}
 	if phase == tablePhaseAddConstraints {
-		order = []string{"primary_key", "unique", "foreign_keys", "columns", "sortkey_style", "sortkey", "diststyle", "distkey", "owner", "backup"}
+		order = []string{"primary_key", "unique", "foreign_key", "sort_key", "distribution", "column", "owner", "backup"}
 	}
 	ordered := make([]alterStep[tableAlterState], 0, len(order))
 	for _, name := range order {
@@ -1096,12 +1206,15 @@ func alterTableStatements(prev tableModel, constraints map[string]string, plan t
 	return tableAlterPhaseStatements(before, after, tableAlterPhases...), nil
 }
 
-// readTableQuery reads the table's owner and declared distribution style from pg_class. reldiststyle is 0 for
-// EVEN, 1 for KEY, 8 for ALL, and 9 for AUTO, whatever AUTO(ALL), AUTO(EVEN), or AUTO(KEY) Redshift currently
-// applies. https://docs.aws.amazon.com/redshift/latest/dg/r_PG_CLASS_INFO.html
+// readTableQuery reads the table's owner and declared distribution style from pg_class, and the distribution
+// Redshift applies from PG_CLASS_INFO. reldiststyle is 0 for EVEN, 1 for KEY, 8 for ALL, and 9 for AUTO, whatever
+// AUTO(ALL), AUTO(EVEN), or AUTO(KEY) Redshift currently applies; releffectivediststyle reports those as 10, 11, and
+// 12. The join is a LEFT JOIN, so a PG_CLASS_INFO row the SQL identity may not see leaves only the effective style
+// null. https://docs.aws.amazon.com/redshift/latest/dg/r_PG_CLASS_INFO.html
 func readTableQuery(spec tableSpec) sqlclient.Query {
-	return sqlclient.Select("c.relname AS table_name", "u.usename AS owner", "c.reldiststyle AS diststyle").
-		From("pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_user u ON u.usesysid = c.relowner").
+	return sqlclient.Select("c.relname AS table_name", "u.usename AS owner", "c.reldiststyle AS diststyle", "ci.releffectivediststyle AS effective_diststyle").
+		From("pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_user u ON u.usesysid = c.relowner "+
+			"LEFT JOIN pg_class_info ci ON ci.reloid = c.oid").
 		Where("n.nspname = :schema", sqlclient.Bind("schema", spec.schema)).
 		Where("c.relname = :name", sqlclient.Bind("name", spec.name)).
 		Where("c.relkind = 'r'")
@@ -1142,9 +1255,9 @@ func readTableConstraintsQuery(spec tableSpec) sqlclient.Query {
 		OrderBy("con.conname")
 }
 
-// readTableSortKeyQuery asks SVV_TABLE_INFO whether a sort key is still automatic (AUTO(SORTKEY(column))). The view
-// requires superuser or a SELECT grant, so read consults it only when a table configured with AUTO reports sort key
-// columns; it lists only tables with rows, so a missing row keeps AUTO.
+// readTableSortKeyQuery asks SVV_TABLE_INFO whether the sort key is automatic: sortkey1 is AUTO(SORTKEY) or
+// AUTO(SORTKEY(column)) under SORTKEY AUTO, the first key column of an explicit key, and empty without a sort key.
+// The view lists only tables with rows that the SQL identity may see, so a missing row decides nothing.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_TABLE_INFO.html
 func readTableSortKeyQuery(spec tableSpec) sqlclient.Query {
 	return sqlclient.Select("sortkey1").From("svv_table_info").

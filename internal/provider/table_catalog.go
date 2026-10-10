@@ -58,14 +58,20 @@ type tableCatalogConstraint struct {
 type tableCatalog struct {
 	// owner is the owning user.
 	owner string
-	// distStyle is AUTO, EVEN, KEY, or ALL.
+	// distStyle is the declared AUTO, EVEN, KEY, or ALL.
 	distStyle string
+	// effectiveDistStyle is the EVEN, KEY, or ALL distribution Redshift applies, or "" when PG_CLASS_INFO does not
+	// report it.
+	effectiveDistStyle string
 	// columns are in attnum order.
 	columns []tableCatalogColumn
 	// constraints are in name order.
 	constraints []tableCatalogConstraint
-	// autoSortKey reports that Redshift chose the sort key columns under SORTKEY AUTO.
-	autoSortKey bool
+	// sortKeyListed reports that SVV_TABLE_INFO lists the table, which it does only for tables with rows that the
+	// SQL identity may see.
+	sortKeyListed bool
+	// sortKey1 is SVV_TABLE_INFO.sortkey1 of a listed table.
+	sortKey1 string
 }
 
 // tableCatalogBool reads a boolean as the Data API and pgx transports spell it.
@@ -79,6 +85,10 @@ func tableCatalogBool(value string) bool {
 
 // tableDistStyleNames maps pg_class.reldiststyle to the configured style; 9 covers every AUTO(...) form.
 var tableDistStyleNames = map[string]string{"0": "EVEN", "1": "KEY", "8": "ALL", "9": "AUTO"}
+
+// tableEffectiveDistStyleNames maps PG_CLASS_INFO.releffectivediststyle to the style Redshift applies; 10, 11, and
+// 12 are AUTO(ALL), AUTO(EVEN), and AUTO(KEY).
+var tableEffectiveDistStyleNames = map[string]string{"0": "EVEN", "1": "KEY", "8": "ALL", "10": "ALL", "11": "EVEN", "12": "KEY"}
 
 // tableEncodingName maps the catalog spelling to the CREATE TABLE keyword; the catalog reports RAW as none.
 func tableEncodingName(value string) string {
@@ -103,9 +113,9 @@ func tableParseIdentity(defaultText string) *tableIdentitySpec {
 	return &tableIdentitySpec{seed: seed, step: step, generatedByDefault: match[1] == "default_identity"}
 }
 
-// tableCatalogFrom combines the table, pg_attribute, SVV_REDSHIFT_COLUMNS, and pg_constraint rows. It fails on
-// rows that disagree, because a partial definition would plan a destructive replacement.
-func tableCatalogFrom(table sqlclient.Row, attributes, columns, constraints []sqlclient.Row) (tableCatalog, error) {
+// tableCatalogFrom combines the table, pg_attribute, SVV_REDSHIFT_COLUMNS, pg_constraint, and SVV_TABLE_INFO rows.
+// It fails on rows that disagree, because a partial definition would plan a destructive replacement.
+func tableCatalogFrom(table sqlclient.Row, attributes, columns, constraints, sortKeys []sqlclient.Row) (tableCatalog, error) {
 	catalog := tableCatalog{owner: strings.TrimSpace(table["owner"])}
 	if catalog.owner == "" {
 		return catalog, fmt.Errorf("the catalog reports no owner")
@@ -115,6 +125,10 @@ func tableCatalogFrom(table sqlclient.Row, attributes, columns, constraints []sq
 		return catalog, fmt.Errorf("unsupported distribution style %q", table["diststyle"])
 	}
 	catalog.distStyle = style
+	catalog.effectiveDistStyle = tableEffectiveDistStyleNames[strings.TrimSpace(table["effective_diststyle"])]
+	if len(sortKeys) > 0 {
+		catalog.sortKeyListed, catalog.sortKey1 = true, strings.TrimSpace(sortKeys[0]["sortkey1"])
+	}
 	details := map[string]sqlclient.Row{}
 	for _, row := range columns {
 		details[row["column_name"]] = row
@@ -233,37 +247,129 @@ func tableStringListValue(values []string) types.List {
 	return types.ListValueMust(types.StringType, elements)
 }
 
-// tableKeepEmpty reports an absent catalog list as the prior value when that was null or empty, so a configured
-// empty list and an omitted one both stay as written.
-func tableKeepEmpty[V interface {
-	attr.Value
-	Elements() []attr.Value
-}](prior, null V) V {
+// tableOptionalString returns null for an empty string.
+func tableOptionalString(value string) types.String {
+	if value == "" {
+		return types.StringNull()
+	}
+	return types.StringValue(value)
+}
+
+// tableEffectiveDistributionValue builds an effective_distribution value; empty strings are null.
+func tableEffectiveDistributionValue(style, key string, auto bool) types.Object {
+	return types.ObjectValueMust(tableEffectiveDistributionAttributeTypes, map[string]attr.Value{
+		"style": tableOptionalString(style), "key": tableOptionalString(key), "auto": types.BoolValue(auto),
+	})
+}
+
+// tableEffectiveSortKeyValue builds an effective_sort_key value; a table without a sort key has no columns.
+func tableEffectiveSortKeyValue(style string, columns []string, auto bool) types.Object {
+	return types.ObjectValueMust(tableEffectiveSortKeyAttributeTypes, map[string]attr.Value{
+		"style": tableOptionalString(style), "columns": tableStringListValue(columns), "auto": types.BoolValue(auto),
+	})
+}
+
+// tableEffectiveSortColumns returns the columns of a known effective_sort_key value.
+func tableEffectiveSortColumns(value types.Object) []string {
+	if value.IsNull() || value.IsUnknown() {
+		return nil
+	}
+	list, ok := value.Attributes()["columns"].(types.List)
+	if !ok {
+		return nil
+	}
+	columns, err := tableStringList(list, "effective_sort_key.columns")
+	if err != nil {
+		return nil
+	}
+	return columns
+}
+
+// tableKeepEmpty reports an absent catalog set as the prior value when that was null or empty, so both spellings of
+// no constraints stay as they were.
+func tableKeepEmpty(prior, null types.Set) types.Set {
 	if !prior.IsNull() && !prior.IsUnknown() && len(prior.Elements()) == 0 {
 		return prior
 	}
 	return null
 }
 
+// tableColumnOrder orders the catalog's column names by the prior state's or plan's names, with columns they do not
+// know appended in physical order. Redshift appends every added column, so physical order would show a column
+// declared in the middle as moved and fail Terraform's check that the applied list keeps the planned order.
+func tableColumnOrder(prior, physical []string) []string {
+	present := map[string]bool{}
+	for _, name := range physical {
+		present[name] = true
+	}
+	ordered := make([]string, 0, len(physical))
+	seen := map[string]bool{}
+	for _, name := range append(slices.Clone(prior), physical...) {
+		if present[name] && !seen[name] {
+			ordered = append(ordered, name)
+			seen[name] = true
+		}
+	}
+	return ordered
+}
+
+// tablePriorSortStyle returns the sort key style the prior state declares: AUTO for an omitted block, and "" when
+// nothing was configured, as after import or in a lookup.
+func tablePriorSortStyle(prior tableModel) string {
+	if prior.Column.IsNull() || prior.Column.IsUnknown() {
+		return ""
+	}
+	style, _, known := tableSortKeyBlock(prior.SortKey)
+	if !known {
+		return ""
+	}
+	return style
+}
+
+// tableDeclaredSortStyle decides the declared sort key style. Sort key positions cannot tell a key Redshift chose
+// under AUTO from an explicit one, nor AUTO without a chosen key from NONE; SVV_TABLE_INFO.sortkey1 can, but only
+// for tables it lists. Without a row, the prior style is kept where it matches the positions: AUTO for a compound
+// key, and AUTO or NONE without one.
+func tableDeclaredSortStyle(catalog tableCatalog, columns []string, interleaved bool, prior string) string {
+	auto := strings.HasPrefix(strings.ToUpper(catalog.sortKey1), "AUTO(")
+	switch {
+	case interleaved:
+		return "INTERLEAVED"
+	case catalog.sortKeyListed && auto:
+		return "AUTO"
+	case len(columns) == 0 && (catalog.sortKeyListed || prior == "NONE"):
+		return "NONE"
+	case len(columns) == 0:
+		return "AUTO"
+	case !catalog.sortKeyListed && prior == "AUTO":
+		return "AUTO"
+	}
+	return "COMPOUND"
+}
+
 // tableReconcile turns the catalog into Terraform values. Configured spellings are kept where the catalog spells
 // the same thing differently: a type alias with the same canonical form, any default while the catalog still has
-// one, and empty lists. backup is not observable in a catalog every deployment exposes, so the prior value stays.
-// It also returns the constraint names keyed for DROP CONSTRAINT.
+// one, and an empty set of constraints. Columns keep the prior order, matched by name. The distribution and
+// sort_key blocks are reported when the prior state had them or the catalog declares something other than AUTO, so
+// an omitted block stays omitted until the layout drifts. backup is not observable in a catalog every deployment
+// exposes, so the prior value stays. It also returns the constraint names keyed for DROP CONSTRAINT.
 func tableReconcile(prior tableModel, catalog tableCatalog) (tableModel, map[string]string, error) {
 	ctx := context.Background()
 	observed := prior
 	observed.Owner = types.StringValue(catalog.owner)
 	priorColumns := map[string]tableColumnModel{}
-	if !prior.Columns.IsNull() && !prior.Columns.IsUnknown() {
+	var priorOrder []string
+	if !prior.Column.IsNull() && !prior.Column.IsUnknown() {
 		var columns []tableColumnModel
-		if diagnostics := prior.Columns.ElementsAs(ctx, &columns, false); !diagnostics.HasError() {
+		if diagnostics := prior.Column.ElementsAs(ctx, &columns, false); !diagnostics.HasError() {
 			for _, column := range columns {
 				priorColumns[column.Name.ValueString()] = column
+				priorOrder = append(priorOrder, column.Name.ValueString())
 			}
 		}
 	}
-	var columns []tableColumnModel
-	var sortKey []string
+	models := map[string]tableColumnModel{}
+	var physical, sortKey []string
 	interleaved := false
 	distKey := ""
 	type position struct {
@@ -294,7 +400,8 @@ func tableReconcile(prior tableModel, catalog tableCatalog) (tableModel, map[str
 				"seed": types.Int64Value(identity.seed), "step": types.Int64Value(identity.step), "generated_by_default": types.BoolValue(identity.generatedByDefault),
 			})
 		}
-		columns = append(columns, model)
+		models[column.name] = model
+		physical = append(physical, column.name)
 		if column.distKey {
 			distKey = column.name
 		}
@@ -310,55 +417,94 @@ func tableReconcile(prior tableModel, catalog tableCatalog) (tableModel, map[str
 	for _, entry := range sortPositions {
 		sortKey = append(sortKey, entry.name)
 	}
+	columns := make([]tableColumnModel, 0, len(physical))
+	for _, name := range tableColumnOrder(priorOrder, physical) {
+		columns = append(columns, models[name])
+	}
 	list, diagnostics := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: tableColumnAttributeTypes}, columns)
 	if diagnostics.HasError() {
 		return observed, nil, fmt.Errorf("convert columns: %v", diagnostics)
 	}
-	observed.Columns = list
-	observed.DistStyle, observed.DistKey = types.StringValue(catalog.distStyle), types.StringNull()
+	observed.Column = list
+
+	declaredKey := ""
 	if catalog.distStyle == "KEY" {
 		if distKey == "" {
 			return observed, nil, fmt.Errorf("the catalog reports DISTSTYLE KEY without a distribution key column")
 		}
-		observed.DistKey = types.StringValue(distKey)
+		declaredKey = distKey
 	}
+	observed.Distribution = types.ObjectNull(tableDistributionAttributeTypes)
+	if !prior.Distribution.IsNull() || catalog.distStyle != "AUTO" {
+		observed.Distribution = types.ObjectValueMust(tableDistributionAttributeTypes, map[string]attr.Value{
+			"style": types.StringValue(catalog.distStyle), "key": tableOptionalString(declaredKey),
+		})
+	}
+	effectiveStyle := catalog.distStyle
+	if effectiveStyle == "AUTO" {
+		effectiveStyle = catalog.effectiveDistStyle
+		if effectiveStyle == "" && distKey != "" {
+			effectiveStyle = "KEY"
+		}
+	}
+	effectiveKey := ""
+	if effectiveStyle == "KEY" {
+		effectiveKey = distKey
+	}
+	observed.EffectiveDistribution = tableEffectiveDistributionValue(effectiveStyle, effectiveKey, catalog.distStyle == "AUTO")
+
+	declared := tableDeclaredSortStyle(catalog, sortKey, interleaved, tablePriorSortStyle(prior))
+	observed.SortKey = types.ObjectNull(tableSortKeyAttributeTypes)
+	if !prior.SortKey.IsNull() || declared != "AUTO" {
+		declaredColumns := types.ListNull(types.StringType)
+		if declared == "COMPOUND" || declared == "INTERLEAVED" {
+			declaredColumns = tableStringListValue(sortKey)
+		}
+		observed.SortKey = types.ObjectValueMust(tableSortKeyAttributeTypes, map[string]attr.Value{
+			"style": types.StringValue(declared), "columns": declaredColumns,
+		})
+	}
+	physicalSort := "NONE"
 	switch {
-	case len(sortKey) == 0 || catalog.autoSortKey && !interleaved:
-		observed.SortKeyStyle, observed.SortKey = types.StringValue("AUTO"), tableKeepEmpty(prior.SortKey, types.ListNull(types.StringType))
 	case interleaved:
-		observed.SortKeyStyle, observed.SortKey = types.StringValue("INTERLEAVED"), tableStringListValue(sortKey)
-	default:
-		observed.SortKeyStyle, observed.SortKey = types.StringValue("COMPOUND"), tableStringListValue(sortKey)
+		physicalSort = "INTERLEAVED"
+	case len(sortKey) > 0:
+		physicalSort = "COMPOUND"
 	}
+	observed.EffectiveSortKey = tableEffectiveSortKeyValue(physicalSort, sortKey, declared == "AUTO")
+
 	names := map[string]string{}
-	observed.PrimaryKey = tableKeepEmpty(prior.PrimaryKey, types.ListNull(types.StringType))
+	observed.PrimaryKey = types.ObjectNull(tableKeyAttributeTypes)
 	var unique []attr.Value
 	var foreignKeys []attr.Value
+	keyType := types.ObjectType{AttrTypes: tableKeyAttributeTypes}
 	foreignKeyType := types.ObjectType{AttrTypes: tableForeignKeyAttributeTypes}
 	for _, constraint := range catalog.constraints {
+		columns := map[string]attr.Value{"columns": tableStringListValue(constraint.columns)}
 		switch constraint.kind {
 		case "p":
-			observed.PrimaryKey = tableStringListValue(constraint.columns)
+			observed.PrimaryKey = types.ObjectValueMust(tableKeyAttributeTypes, columns)
 			names[tablePrimaryKeyKey] = constraint.name
 		case "u":
-			unique = append(unique, tableStringListValue(constraint.columns))
+			unique = append(unique, types.ObjectValueMust(tableKeyAttributeTypes, columns))
 			names[tableUniqueKey(constraint.columns)] = constraint.name
 		case "f":
 			foreignKeys = append(foreignKeys, types.ObjectValueMust(tableForeignKeyAttributeTypes, map[string]attr.Value{
-				"columns": tableStringListValue(constraint.columns), "references_schema": types.StringValue(constraint.refSchema),
-				"references_table": types.StringValue(constraint.refTable), "references_columns": tableStringListValue(constraint.refColumns),
+				"columns": tableStringListValue(constraint.columns),
+				"references": types.ObjectValueMust(tableReferencesAttributeTypes, map[string]attr.Value{
+					"schema": types.StringValue(constraint.refSchema), "table": types.StringValue(constraint.refTable), "columns": tableStringListValue(constraint.refColumns),
+				}),
 			}))
 			names[tableForeignKeyKey(tableForeignKeySpec{columns: constraint.columns, refSchema: constraint.refSchema, refTable: constraint.refTable, refColumns: constraint.refColumns})] = constraint.name
 		}
 	}
-	uniqueType := types.ListType{ElemType: types.StringType}
-	observed.Unique = tableKeepEmpty(prior.Unique, types.SetNull(uniqueType))
+	observed.Unique = tableKeepEmpty(prior.Unique, types.SetNull(keyType))
 	if len(unique) > 0 {
-		observed.Unique = types.SetValueMust(uniqueType, unique)
+		observed.Unique = types.SetValueMust(keyType, unique)
 	}
-	observed.ForeignKeys = tableKeepEmpty(prior.ForeignKeys, types.SetNull(foreignKeyType))
+	observed.ForeignKey = tableKeepEmpty(prior.ForeignKey, types.SetNull(foreignKeyType))
 	if len(foreignKeys) > 0 {
-		observed.ForeignKeys = types.SetValueMust(foreignKeyType, foreignKeys)
+		observed.ForeignKey = types.SetValueMust(foreignKeyType, foreignKeys)
 	}
 	if observed.Backup.IsUnknown() {
 		observed.Backup = types.StringNull()
@@ -366,17 +512,19 @@ func tableReconcile(prior tableModel, catalog tableCatalog) (tableModel, map[str
 	return observed, names, nil
 }
 
-// tableConverged checks that the catalog holds what the plan requested; values the plan leaves to Redshift,
-// such as unknown encodings, are not compared.
+// tableConverged checks that the catalog holds what the plan requested, matching columns by name; values the plan
+// leaves to Redshift, such as unknown encodings, are not compared.
 func tableConverged(plan, observed tableSpec) error {
 	if len(plan.columns) != len(observed.columns) {
 		return fmt.Errorf("the table has %d columns instead of %d", len(observed.columns), len(plan.columns))
 	}
-	for i, want := range plan.columns {
-		got := observed.columns[i]
+	for _, want := range plan.columns {
+		got, found := observed.column(want.name)
 		switch {
-		case got.name != want.name || got.dataType != want.dataType:
-			return fmt.Errorf("column %d is %q %s instead of %q %s", i+1, got.name, got.dataType, want.name, want.dataType)
+		case !found:
+			return fmt.Errorf("column %q is missing", want.name)
+		case got.dataType != want.dataType:
+			return fmt.Errorf("column %q has type %s instead of %s", want.name, got.dataType, want.dataType)
 		case want.encoding != "" && got.encoding != want.encoding:
 			return fmt.Errorf("column %q has encoding %s instead of %s", want.name, got.encoding, want.encoding)
 		case want.nullable != nil && got.nullable != nil && *got.nullable != *want.nullable:

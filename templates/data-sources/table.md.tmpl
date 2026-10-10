@@ -10,9 +10,10 @@ Reads the definition of an existing local table without managing it, with the sa
 `redshift_table` resource. See AWS [CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html).
 
 ```sql
-SELECT ... FROM pg_class WHERE relname = 'name';
+SELECT ... FROM pg_class LEFT JOIN pg_class_info ... WHERE relname = 'name';
 SELECT ... FROM svv_redshift_columns WHERE schema_name = 'schema' AND table_name = 'name';
 SELECT ... FROM pg_constraint WHERE ...;
+SELECT sortkey1 FROM svv_table_info WHERE "schema" = 'schema' AND "table" = 'name';
 ```
 
 ## Example Usage
@@ -26,6 +27,9 @@ SELECT ... FROM pg_constraint WHERE ...;
 `id` (String, computed) is the table's JSON identity, using the same warehouse, database, schema, and name keys as the
 paired resource.
 
-Values use catalog spellings: types as `format_type()` reports them, such as `character varying(256)`, and defaults
-with their casts. `backup` is always null because it is not observable, and a sort key that Redshift chose under
-`SORTKEY AUTO` is reported as a `COMPOUND` key. A missing table is an error.
+The resource's blocks are read-only nested attributes here: `column` is a list, `unique` and `foreign_key` are sets,
+and `primary_key`, `distribution`, and `sort_key` are objects, so `data.redshift_table.x.distribution.style` needs no
+index. Values use catalog spellings: types as `format_type()` reports them, such as `character varying(256)`, and
+defaults with their casts. `distribution` and `sort_key` are always reported, including `AUTO`; `effective_distribution`
+and `effective_sort_key` show what Redshift applies. `backup` is always null because it is not observable. A missing
+table is an error.

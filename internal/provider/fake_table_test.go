@@ -37,12 +37,42 @@ type tableFakeTable struct {
 	owner string
 	// distStyle is the pg_class.reldiststyle code.
 	distStyle string
+	// autoDistStyle is the PG_CLASS_INFO.releffectivediststyle code under DISTSTYLE AUTO; "" hides the row, as for a
+	// SQL identity that may not see it.
+	autoDistStyle string
 	// columns are in attnum order.
 	columns []tableFakeColumn
 	// constraints are in name order.
 	constraints []tableFakeConstraint
-	// autoSortKey makes svv_table_info report AUTO(SORTKEY(...)) instead of the explicit first key column.
+	// autoSortKey makes svv_table_info report AUTO(SORTKEY...) instead of the explicit first key column.
 	autoSortKey bool
+	// unlisted keeps the table out of svv_table_info, as for an empty table.
+	unlisted bool
+}
+
+// effectiveDistStyle is the releffectivediststyle code PG_CLASS_INFO reports.
+func (t *tableFakeTable) effectiveDistStyle() string {
+	if t.distStyle == "9" {
+		return t.autoDistStyle
+	}
+	return t.distStyle
+}
+
+// sortKey1 is the svv_table_info.sortkey1 value of the table.
+func (t *tableFakeTable) sortKey1() string {
+	first := ""
+	for _, column := range t.columns {
+		if column.sortKey == 1 || column.sortKey == -1 {
+			first = column.name
+		}
+	}
+	switch {
+	case !t.autoSortKey:
+		return first
+	case first == "":
+		return "AUTO(SORTKEY)"
+	}
+	return "AUTO(SORTKEY(" + first + "))"
 }
 
 // clone copies the table so templates and tables never share slices.
@@ -223,7 +253,8 @@ func (t *tableFakeTable) alter(table, clause string) (bool, error) {
 	case strings.HasPrefix(clause, "ALTER DISTSTYLE "):
 		code, ok := map[string]string{"EVEN": "0", "ALL": "8", "AUTO": "9"}[strings.TrimPrefix(clause, "ALTER DISTSTYLE ")]
 		if ok {
-			t.distStyle = code
+			// The fake's AUTO always starts out as AUTO(EVEN).
+			t.distStyle, t.autoDistStyle = code, "11"
 			for i := range t.columns {
 				t.columns[i].distKey = false
 			}
@@ -310,7 +341,7 @@ func (f *tableFake) query(_ *catalog, _ dataapi.Connection, sql string, paramete
 		if table == nil {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{"table_name": parameters["name"], "owner": table.owner, "diststyle": table.distStyle}}, true, nil
+		return []dataapi.Row{{"table_name": parameters["name"], "owner": table.owner, "diststyle": table.distStyle, "effective_diststyle": table.effectiveDistStyle()}}, true, nil
 	case strings.HasPrefix(sql, "SELECT a.attnum AS position"):
 		var rows []dataapi.Row
 		for i, column := range tableFakeColumns(table) {
@@ -332,13 +363,10 @@ func (f *tableFake) query(_ *catalog, _ dataapi.Connection, sql string, paramete
 		}
 		return rows, true, nil
 	case strings.HasPrefix(sql, "SELECT sortkey1 FROM svv_table_info"):
-		switch {
-		case table == nil:
+		if table == nil || table.unlisted {
 			return nil, true, nil
-		case table.autoSortKey:
-			return []dataapi.Row{{"sortkey1": "AUTO(SORTKEY(id))"}}, true, nil
 		}
-		return []dataapi.Row{{"sortkey1": "id"}}, true, nil
+		return []dataapi.Row{{"sortkey1": table.sortKey1()}}, true, nil
 	case strings.HasPrefix(sql, "CREATE TABLE "):
 		name, _, ok := tableFakeQualified(strings.TrimPrefix(sql, "CREATE TABLE "))
 		template, known := f.templates[name]

@@ -1,1 +1,1 @@
--- error: columns[0]: column name "Mixed\"Case" contains uppercase letters, which Redshift folds to lowercase; use the lowercase name
+-- error: column[0]: column name "Mixed\"Case" contains uppercase letters, which Redshift folds to lowercase; use the lowercase name

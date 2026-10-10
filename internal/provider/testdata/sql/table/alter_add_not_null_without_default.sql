@@ -1,1 +1,1 @@
--- error: the change requires replacing the table: columns: ALTER TABLE ADD COLUMN cannot add the NOT NULL column "code" without a default
+-- error: the change requires replacing the table: column: ALTER TABLE ADD COLUMN cannot add the NOT NULL column "code" without a default
