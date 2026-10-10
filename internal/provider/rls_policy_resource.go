@@ -30,8 +30,8 @@ type rlsPolicyModel struct {
 	Database types.String `tfsdk:"database"`
 	// Name identifies the policy within its database.
 	Name types.String `tfsdk:"name"`
-	// Columns are the WITH columns the predicate reads from attached relations.
-	Columns types.List `tfsdk:"columns"`
+	// Column lists the WITH columns the predicate reads from attached relations, one block each.
+	Column types.List `tfsdk:"column"`
 	// Alias is the relation alias of the WITH clause.
 	Alias types.String `tfsdk:"alias"`
 	// Predicate is the USING expression as configured, or the catalog text after an outside change or import.
@@ -64,16 +64,8 @@ func (r *rlsPolicyResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Required: true, MarkdownDescription: "Policy name, unique within the database. Changing it replaces the policy.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
-			"columns": schema.ListNestedAttribute{
-				Optional: true, MarkdownDescription: "Ordered `WITH` columns the predicate reads from each attached relation, which must have all of them. Omit it only when the predicate references no relation column. Names compare without case and types in canonical form, so respelling `VARCHAR(64)` as the catalog's `character varying(64)`, or importing the policy, plans no change. `ALTER RLS POLICY` cannot change the `WITH` clause, and `DROP RLS POLICY` refuses a policy that is still attached, so give each attachment `replace_triggered_by` on `columns` and `alias`. Changing it replaces the policy.",
-				PlanModifiers: []planmodifier.List{rlsPolicyColumnsEquivalent{}, listplanmodifier.RequiresReplace()},
-				NestedObject: schema.NestedAttributeObject{Attributes: map[string]schema.Attribute{
-					"name": schema.StringAttribute{Required: true, MarkdownDescription: "Column name in the attached relations."},
-					"type": schema.StringAttribute{Required: true, MarkdownDescription: "Redshift data type, such as `VARCHAR(64)` or `INTEGER`; compared with the catalog in canonical form."},
-				}},
-			},
 			"alias": schema.StringAttribute{
-				Optional: true, Computed: true, MarkdownDescription: "Relation alias of the `WITH` clause (`AS alias`), which the predicate may use to qualify columns; requires `columns`. All policies attached to one relation must use the same alias. It compares without case, as Redshift folds identifiers. Removing it from configuration keeps the current alias. Like `columns`, a change needs `replace_triggered_by` on the attachments. Changing it replaces the policy.",
+				Optional: true, Computed: true, MarkdownDescription: "Relation alias of the `WITH` clause (`AS alias`), which the predicate may use to qualify columns; requires a `column` block. All policies attached to one relation must use the same alias. It compares without case, as Redshift folds identifiers. Removing it from configuration keeps the current alias. Like `column`, a change needs `replace_triggered_by` on the attachments. Changing it replaces the policy.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown(), rlsPolicyAliasEquivalent{}, stringplanmodifier.RequiresReplace()},
 			},
 			"predicate": schema.StringAttribute{
@@ -81,13 +73,24 @@ func (r *rlsPolicyResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 			"definition_fingerprint": definitionFingerprintAttribute(),
 		},
+		Blocks: map[string]schema.Block{
+			"column": schema.ListNestedBlock{
+				MarkdownDescription: "Ordered `WITH` columns the predicate reads from each attached relation, which must have all of them. Omit the blocks only when the predicate references no relation column. Names compare without case and types in canonical form, so respelling `VARCHAR(64)` as the catalog's `character varying(64)`, or importing the policy, plans no change. `ALTER RLS POLICY` cannot change the `WITH` clause, and `DROP RLS POLICY` refuses a policy that is still attached, so give each attachment `replace_triggered_by` on `column` and `alias`. Changing it replaces the policy.",
+				PlanModifiers:       []planmodifier.List{rlsPolicyColumnsEquivalent{}, listplanmodifier.RequiresReplace()},
+				NestedObject: schema.NestedBlockObject{Attributes: map[string]schema.Attribute{
+					"name": schema.StringAttribute{Required: true, MarkdownDescription: "Column name in the attached relations."},
+					"type": schema.StringAttribute{Required: true, MarkdownDescription: "Redshift data type, such as `VARCHAR(64)` or `INTEGER`; compared with the catalog in canonical form."},
+				}},
+			},
+		},
 	}
 }
 
 // rlsPolicyColumnsEquivalent plans the prior columns when the configuration only respells them. RequiresReplace
 // compares raw values, so without it an import (which stores the catalog spelling) or a respelled type would plan
 // a replacement that DROP RLS POLICY refuses while the policy is attached. Terraform accepts a planned value equal
-// to the prior state for a non-computed attribute as the provider's statement that both are equivalent.
+// to the prior state for a non-computed attribute of a block element as the provider's statement that both are
+// equivalent; equivalent columns have the same count, so the planned blocks still match the configured ones.
 type rlsPolicyColumnsEquivalent struct{}
 
 // Description explains the modifier in plain text.
@@ -161,8 +164,8 @@ func (r *rlsPolicyResource) read(ctx context.Context, data *rlsPolicyModel) (boo
 	if err != nil {
 		return false, "", err
 	}
-	if configured, err := rlsPolicyColumns(data.Columns); err != nil || !rlsPolicyColumnsMatch(configured, catalogColumns) {
-		data.Columns = rlsPolicyColumnsList(catalogColumns)
+	if configured, err := rlsPolicyColumns(data.Column); err != nil || !rlsPolicyColumnsMatch(configured, catalogColumns) {
+		data.Column = rlsPolicyColumnsList(catalogColumns)
 	}
 	if alias := row["polalias"]; !strings.EqualFold(knownString(data.Alias), alias) || data.Alias.IsUnknown() {
 		data.Alias = types.StringNull()
@@ -183,8 +186,8 @@ func (r *rlsPolicyResource) verify(ctx context.Context, data *rlsPolicyModel, pl
 		return err
 	case !found:
 		return fmt.Errorf("the RLS policy is absent after the change")
-	case !planned.Columns.IsUnknown() && !data.Columns.Equal(planned.Columns):
-		return fmt.Errorf("the catalog reports WITH columns %s instead of the planned %s", data.Columns, planned.Columns)
+	case !planned.Column.IsUnknown() && !data.Column.Equal(planned.Column):
+		return fmt.Errorf("the catalog reports WITH columns %s instead of the planned %s", data.Column, planned.Column)
 	case !planned.Alias.IsUnknown() && !data.Alias.Equal(planned.Alias):
 		return fmt.Errorf("the catalog reports alias %s instead of the planned %s", data.Alias, planned.Alias)
 	}
@@ -336,7 +339,7 @@ func rlsPolicyFromRow(row sqlclient.Row) (rlsPolicyModel, error) {
 		alias = types.StringValue(row["polalias"])
 	}
 	return rlsPolicyModel{
-		Database: types.StringValue(row["poldb"]), Name: types.StringValue(row["polname"]), Columns: rlsPolicyColumnsList(columns),
+		Database: types.StringValue(row["poldb"]), Name: types.StringValue(row["polname"]), Column: rlsPolicyColumnsList(columns),
 		Alias: alias, Predicate: types.StringValue(row["polqual"]), DefinitionFingerprint: types.StringValue(definitionFingerprint(row["polqual"])),
 	}, nil
 }

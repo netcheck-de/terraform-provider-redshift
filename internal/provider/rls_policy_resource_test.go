@@ -28,7 +28,7 @@ import (
 // rlsPolicyLifecycleModel matches the policy the rls fake family holds.
 func rlsPolicyLifecycleModel() rlsPolicyModel {
 	return rlsPolicyModel{
-		Database: types.StringValue("admin"), Name: types.StringValue("region_filter"), Columns: rlsPolicyColumnsValue("region", "VARCHAR(64)"),
+		Database: types.StringValue("admin"), Name: types.StringValue("region_filter"), Column: rlsPolicyColumnsValue("region", "VARCHAR(64)"),
 		Alias: types.StringNull(), Predicate: types.StringValue(rlsFakePredicate), DefinitionFingerprint: types.StringValue(definitionFingerprint(rlsFakePredicate)),
 	}
 }
@@ -47,7 +47,7 @@ var (
 	_ = registerReplacementPolicy("redshift_rls_policy", map[string]replaceRule{
 		"database":  replaceAlways,
 		"name":      replaceAlways,
-		"columns":   replaceAlways,
+		"column":    replaceAlways,
 		"alias":     replaceAlways,
 		"predicate": replaceNever,
 	})
@@ -148,18 +148,18 @@ func TestRlsPolicyReadAdoptsCatalogShape(t *testing.T) {
 	})
 	r := &rlsPolicyResource{testResourceClient(client)}
 	data := rlsPolicyLifecycleModel()
-	data.Columns, data.Alias = rlsPolicyColumnsValue("REGION", "varchar(64)"), types.StringValue("T")
+	data.Column, data.Alias = rlsPolicyColumnsValue("REGION", "varchar(64)"), types.StringValue("T")
 	found, predicate, err := r.read(context.Background(), &data)
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, `"t"."region" = current_user`, predicate)
-	assert.Equal(t, rlsPolicyColumnsValue("REGION", "varchar(64)"), data.Columns, "equivalent configuration keeps its spelling")
+	assert.Equal(t, rlsPolicyColumnsValue("REGION", "varchar(64)"), data.Column, "equivalent configuration keeps its spelling")
 	assert.Equal(t, types.StringValue("T"), data.Alias)
 
-	data.Columns, data.Alias = rlsPolicyColumnsValue("region", "integer"), types.StringNull()
+	data.Column, data.Alias = rlsPolicyColumnsValue("region", "integer"), types.StringNull()
 	_, _, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
-	assert.Equal(t, rlsPolicyColumnsValue("region", "character varying(64)"), data.Columns, "differing columns surface the catalog")
+	assert.Equal(t, rlsPolicyColumnsValue("region", "character varying(64)"), data.Column, "differing columns surface the catalog")
 	assert.Equal(t, types.StringValue("t"), data.Alias)
 
 	for _, rows := range [][]sqlclient.Row{
@@ -251,7 +251,7 @@ func TestRlsPolicyImport(t *testing.T) {
 	var data rlsPolicyModel
 	require.False(t, resp.State.Get(ctx, &data).HasError())
 	assert.Equal(t, rlsFakePredicate, data.Predicate.ValueString())
-	assert.Equal(t, rlsPolicyColumnsValue("region", "character varying(64)"), data.Columns)
+	assert.Equal(t, rlsPolicyColumnsValue("region", "character varying(64)"), data.Column)
 	assert.True(t, data.Alias.IsNull())
 	assert.Equal(t, definitionFingerprint(rlsFakePredicate), data.DefinitionFingerprint.ValueString())
 	assert.Empty(t, c.writes)
@@ -269,8 +269,9 @@ func TestRlsPolicyDeleteKeepsAttachedPolicy(t *testing.T) {
 	assert.Empty(t, c.writes)
 }
 
-// rlsPolicyPlanAttribute runs one attribute's plan modifiers in schema order, carrying each planned value into the
-// next modifier as the framework does, starting from the initial plan, and returns the final plan and whether any modifier requires replacement.
+// rlsPolicyPlanAttribute runs the plan modifiers of one attribute or block in schema order, carrying each planned
+// value into the next modifier as the framework does, starting from the initial plan, and returns the final plan and
+// whether any modifier requires replacement.
 func rlsPolicyPlanAttribute(t *testing.T, name string, prior, configured, initial attr.Value) (attr.Value, bool) {
 	t.Helper()
 	ctx := context.Background()
@@ -279,10 +280,14 @@ func rlsPolicyPlanAttribute(t *testing.T, name string, prior, configured, initia
 	existing := tftypes.NewValue(tftypes.Object{}, map[string]tftypes.Value{})
 	state, plan, config := tfsdk.State{Raw: existing}, tfsdk.Plan{Raw: existing}, tfsdk.Config{Raw: existing}
 	replace := false
-	switch attribute := response.Schema.Attributes[name].(type) {
-	case schema.ListNestedAttribute:
+	input := any(response.Schema.Attributes[name])
+	if block, ok := response.Schema.Blocks[name]; ok {
+		input = block
+	}
+	switch input := input.(type) {
+	case schema.ListNestedBlock:
 		planned := initial.(types.List)
-		for _, modifier := range attribute.PlanModifiers {
+		for _, modifier := range input.PlanModifiers {
 			request := planmodifier.ListRequest{Path: path.Root(name), State: state, Plan: plan, Config: config, StateValue: prior.(types.List), ConfigValue: configured.(types.List), PlanValue: planned}
 			result := planmodifier.ListResponse{PlanValue: planned}
 			modifier.PlanModifyList(ctx, request, &result)
@@ -292,7 +297,7 @@ func rlsPolicyPlanAttribute(t *testing.T, name string, prior, configured, initia
 		return planned, replace
 	case schema.StringAttribute:
 		planned := initial.(types.String)
-		for _, modifier := range attribute.PlanModifiers {
+		for _, modifier := range input.PlanModifiers {
 			request := planmodifier.StringRequest{Path: path.Root(name), State: state, Plan: plan, Config: config, StateValue: prior.(types.String), ConfigValue: configured.(types.String), PlanValue: planned}
 			result := planmodifier.StringResponse{PlanValue: planned}
 			modifier.PlanModifyString(ctx, request, &result)
@@ -301,7 +306,7 @@ func rlsPolicyPlanAttribute(t *testing.T, name string, prior, configured, initia
 		}
 		return planned, replace
 	default:
-		t.Fatalf("no plan helper for attribute %s", name)
+		t.Fatalf("no plan helper for input %s", name)
 		return nil, false
 	}
 }
@@ -324,7 +329,7 @@ func TestRlsPolicyEquivalentSpellingPlansNoReplacement(t *testing.T) {
 		"unknown":                   {prior: imported, configured: types.ListUnknown(rlsPolicyColumnType), replace: true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			planned, replace := rlsPolicyPlanAttribute(t, "columns", test.prior, test.configured, test.configured)
+			planned, replace := rlsPolicyPlanAttribute(t, "column", test.prior, test.configured, test.configured)
 			assert.Equal(t, test.replace, replace)
 			if test.replace {
 				assert.Equal(t, test.configured, planned, "a real change plans the configuration")
@@ -378,9 +383,9 @@ import {
 resource "redshift_rls_policy" "own_region" {
   database = "admin"
   name = "region_filter"
-  columns = [%s]
-  alias = %q
+  alias = %[2]q
   predicate = "t.region = current_user"
+  %[1]s
 }
 resource "redshift_rls_policy_attachment" "everyone" {
   policy = redshift_rls_policy.own_region.name
@@ -390,11 +395,19 @@ resource "redshift_rls_policy_attachment" "everyone" {
   grantee = "public"
   grantee_type = "PUBLIC"
   lifecycle {
-    replace_triggered_by = [redshift_rls_policy.own_region.columns, redshift_rls_policy.own_region.alias]
+    replace_triggered_by = [redshift_rls_policy.own_region.column, redshift_rls_policy.own_region.alias]
   }
 }`, columns, alias)
 	}
-	region := `{ name = "region", type = "VARCHAR(64)" }`
+	region := `column {
+    name = "region"
+    type = "VARCHAR(64)"
+  }`
+	added := `
+  column {
+    name = "id"
+    type = "INTEGER"
+  }`
 	testresource.UnitTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})},
 		Steps: []testresource.TestStep{
@@ -403,9 +416,12 @@ resource "redshift_rls_policy_attachment" "everyone" {
 				plancheck.ExpectResourceAction("redshift_rls_policy_attachment.everyone", plancheck.ResourceActionCreate),
 			}}},
 			{Config: configuration(region, "t"), PlanOnly: true},
-			{Config: configuration(`{ name = "REGION", type = "varchar(64)" }`, "T"), PlanOnly: true},
+			{Config: configuration(`column {
+    name = "REGION"
+    type = "varchar(64)"
+  }`, "T"), PlanOnly: true},
 			{
-				Config: configuration(region+`, { name = "id", type = "INTEGER" }`, "t"),
+				Config: configuration(region+added, "t"),
 				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
 					plancheck.ExpectResourceAction("redshift_rls_policy.own_region", plancheck.ResourceActionDestroyBeforeCreate),
 					plancheck.ExpectResourceAction("redshift_rls_policy_attachment.everyone", plancheck.ResourceActionDestroyBeforeCreate),
@@ -417,7 +433,61 @@ resource "redshift_rls_policy_attachment" "everyone" {
 					return nil
 				},
 			},
-			{Config: configuration(region+`, { name = "id", type = "INTEGER" }`, "t"), PlanOnly: true},
+			{Config: configuration(region+added, "t"), PlanOnly: true},
+		},
+	})
+}
+
+// TestRlsPolicyColumnBlocksConverge runs Terraform against the fake catalog: a policy created with or without column
+// blocks plans no change afterwards, so absent blocks and a catalog without WITH columns both read as no blocks, and
+// adding or removing the blocks replaces the policy.
+func TestRlsPolicyColumnBlocksConverge(t *testing.T) {
+	c := &catalog{identity: true, privileges: map[string]bool{}}
+	configuration := func(columns string) string {
+		return fmt.Sprintf(`
+provider "redshift" {
+  region = "eu-central-1"
+  workgroup_name = "warehouse"
+  database = "admin"
+}
+resource "redshift_rls_policy" "auditor" {
+  database = "admin"
+  name = "region_filter"
+  predicate = "current_user = 'auditor'"
+  %s
+}`, columns)
+	}
+	columns := `column {
+    name = "region"
+    type = "VARCHAR(64)"
+  }
+  column {
+    name = "tenant_id"
+    type = "INTEGER"
+  }`
+	replaced := testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+		plancheck.ExpectResourceAction("redshift_rls_policy.auditor", plancheck.ResourceActionDestroyBeforeCreate),
+	}}
+	testresource.UnitTest(t, testresource.TestCase{
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})},
+		Steps: []testresource.TestStep{
+			{Config: configuration(""), Check: testresource.TestCheckResourceAttr("redshift_rls_policy.auditor", "column.#", "0")},
+			{Config: configuration(""), PlanOnly: true},
+			{
+				Config: configuration(columns), ConfigPlanChecks: replaced,
+				Check: testresource.ComposeAggregateTestCheckFunc(
+					testresource.TestCheckResourceAttr("redshift_rls_policy.auditor", "column.1.name", "tenant_id"),
+					func(*terraform.State) error {
+						if f := rlsFakeOf(c); !strings.Contains(f.columns, `"tenant_id"`) {
+							return fmt.Errorf("the catalog lacks the configured WITH columns: %+v", *f)
+						}
+						return nil
+					},
+				),
+			},
+			{Config: configuration(columns), PlanOnly: true},
+			{Config: configuration(""), ConfigPlanChecks: replaced},
+			{Config: configuration(""), PlanOnly: true},
 		},
 	})
 }

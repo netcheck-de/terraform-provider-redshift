@@ -23,7 +23,7 @@ func rlsPolicyColumnsValue(pairs ...string) types.List {
 func rlsPolicySample() rlsPolicyModel {
 	return rlsPolicyModel{
 		Database: types.StringValue("analytics"), Name: types.StringValue("region_filter"),
-		Columns: rlsPolicyColumnsValue("region", "VARCHAR(64)"), Alias: types.StringNull(),
+		Column: rlsPolicyColumnsValue("region", "VARCHAR(64)"), Alias: types.StringNull(),
 		Predicate: types.StringValue("region = current_user"), DefinitionFingerprint: types.StringNull(),
 	}
 }
@@ -49,7 +49,7 @@ func TestRlsPolicySQL(t *testing.T) {
 	}
 	quoted := with(func(d *rlsPolicyModel) {
 		d.Name = types.StringValue(`Odd"Policy`)
-		d.Columns = rlsPolicyColumnsValue(`Odd"Region`, "varchar", "tenant_id", "int4")
+		d.Column = rlsPolicyColumnsValue(`Odd"Region`, "varchar", "tenant_id", "int4")
 		d.Alias = types.StringValue(`T"Alias`)
 		d.Predicate = types.StringValue(`"T""Alias"."Odd""Region" = 'O''Brien \ path' AND tenant_id > 0`)
 	})
@@ -57,7 +57,7 @@ func TestRlsPolicySQL(t *testing.T) {
 	checkSQL(t, "rls_policy", []sqlCase{
 		{"create", create(rlsPolicySample())},
 		{"create_without_columns", create(with(func(d *rlsPolicyModel) {
-			d.Columns = types.ListNull(rlsPolicyColumnType)
+			d.Column = types.ListNull(rlsPolicyColumnType)
 			d.Predicate = types.StringValue("current_user = 'auditor'")
 		}))},
 		{"create_alias", create(with(func(d *rlsPolicyModel) {
@@ -67,11 +67,11 @@ func TestRlsPolicySQL(t *testing.T) {
 		{"create_quoted", create(quoted)},
 		{"create_trailing_comment", create(with(func(d *rlsPolicyModel) { d.Predicate = types.StringValue("region = current_user -- own rows") }))},
 		{"create_alias_without_columns", create(with(func(d *rlsPolicyModel) {
-			d.Columns = types.ListNull(rlsPolicyColumnType)
+			d.Column = types.ListNull(rlsPolicyColumnType)
 			d.Alias = types.StringValue("t")
 		}))},
-		{"create_invalid_type", create(with(func(d *rlsPolicyModel) { d.Columns = rlsPolicyColumnsValue("region", "VARCHAR(64); DROP TABLE x") }))},
-		{"create_empty_column_name", create(with(func(d *rlsPolicyModel) { d.Columns = rlsPolicyColumnsValue("", "INTEGER") }))},
+		{"create_invalid_type", create(with(func(d *rlsPolicyModel) { d.Column = rlsPolicyColumnsValue("region", "VARCHAR(64); DROP TABLE x") }))},
+		{"create_empty_column_name", create(with(func(d *rlsPolicyModel) { d.Column = rlsPolicyColumnsValue("", "INTEGER") }))},
 		{"create_statement_in_predicate", create(with(func(d *rlsPolicyModel) { d.Predicate = types.StringValue("true; DROP RLS POLICY other") }))},
 		{"create_unterminated_predicate", create(with(func(d *rlsPolicyModel) { d.Predicate = types.StringValue("region = 'eu") }))},
 		{"create_empty_name", create(with(func(d *rlsPolicyModel) { d.Name = types.StringValue("") }))},

@@ -1,1 +1,1 @@
--- error: alias requires at least one entry in columns, because it is part of the WITH clause
+-- error: alias requires at least one column block, because it is part of the WITH clause

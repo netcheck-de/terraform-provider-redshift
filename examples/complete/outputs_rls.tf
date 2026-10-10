@@ -4,7 +4,7 @@ output "row_level_security" {
     policy = {
       id          = data.redshift_rls_policy.own_region.id
       predicate   = data.redshift_rls_policy.own_region.predicate
-      columns     = data.redshift_rls_policy.own_region.columns
+      column      = data.redshift_rls_policy.own_region.column
       fingerprint = data.redshift_rls_policy.own_region.definition_fingerprint
     }
     attached = data.redshift_rls_policy_attachment.readers.exists

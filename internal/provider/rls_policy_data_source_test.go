@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
@@ -23,11 +24,32 @@ var (
 // TestRlsPolicyLookup observes the catalog definition, absence, and failures without writing.
 func TestRlsPolicyLookup(t *testing.T) {
 	exerciseCatalogLookup(t, newRlsPolicyDataSource, map[string]string{"database": "admin", "name": "region_filter"}, map[string]attr.Value{
-		"columns":                rlsPolicyColumnsValue("region", "character varying(64)"),
+		"column":                 rlsPolicyColumnsValue("region", "character varying(64)"),
 		"alias":                  types.StringNull(),
 		"predicate":              types.StringValue(rlsFakePredicate),
 		"definition_fingerprint": types.StringValue(definitionFingerprint(rlsFakePredicate)),
 	}, fullCatalog())
+}
+
+// TestRlsPolicyLookupDescriptions keeps the resource's block and replace_triggered_by advice out of both read-only
+// views of a policy, where column is an observed attribute rather than a configurable block.
+func TestRlsPolicyLookupDescriptions(t *testing.T) {
+	for _, source := range []func() datasource.DataSource{newRlsPolicyDataSource, newRlsPoliciesDataSource} {
+		var response datasource.SchemaResponse
+		source().Schema(context.Background(), datasource.SchemaRequest{}, &response)
+		descriptions := nestedDescriptions(response.Schema.Attributes)
+		prefix := ""
+		if _, ok := response.Schema.Attributes["rls_policies"]; ok {
+			prefix = "rls_policies."
+		}
+		for path, expected := range rlsPolicyLookupDescriptions {
+			assert.Equal(t, expected, descriptions[prefix+path], prefix+path)
+		}
+		for path, description := range descriptions {
+			assert.NotContains(t, description, "replace_triggered_by", path)
+			assert.NotContains(t, description, "block", path)
+		}
+	}
 }
 
 // TestRlsPolicyAttachmentLookup reports an existing attachment and exists = false for a missing one.
@@ -75,9 +97,9 @@ func TestRlsPoliciesListing(t *testing.T) {
 	require.Len(t, items, 2)
 	open, filtered := items[0].(types.Object).Attributes(), items[1].(types.Object).Attributes()
 	assert.Equal(t, types.StringValue("open"), open["name"])
-	assert.True(t, open["columns"].IsNull())
+	assert.True(t, open["column"].IsNull())
 	assert.True(t, open["alias"].IsNull())
-	assert.Equal(t, rlsPolicyColumnsValue("region", "character varying(64)"), filtered["columns"])
+	assert.Equal(t, rlsPolicyColumnsValue("region", "character varying(64)"), filtered["column"])
 	assert.Equal(t, types.StringValue("t"), filtered["alias"])
 	assert.Equal(t, types.StringValue(definitionFingerprint(`"t"."region" = current_user`)), filtered["definition_fingerprint"])
 

@@ -6,9 +6,9 @@ description: Manages one row-level security policy definition.
 
 # redshift_rls_policy (Resource)
 
-Manages one **row-level security (RLS) policy**: its `WITH` columns, optional relation alias, and `USING` predicate. A
-policy filters nothing on its own; attach it with `redshift_rls_policy_attachment` and turn RLS on for the relation with
-`redshift_table_security`. See AWS
+Manages one **row-level security (RLS) policy**: its `WITH` columns (one `column` block each), optional relation alias,
+and `USING` predicate. A policy filters nothing on its own; attach it with `redshift_rls_policy_attachment` and turn RLS
+on for the relation with `redshift_table_security`. See AWS
 [CREATE RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_RLS_POLICY.html),
 [ALTER RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_RLS_POLICY.html), and
 [DROP RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_RLS_POLICY.html).
@@ -23,25 +23,27 @@ DROP RLS POLICY name;
 
 ```terraform
 resource "redshift_rls_policy" "own_region" {
-  database = "analytics"
-  name     = "own_region"
-
-  columns = [
-    { name = "region", type = "VARCHAR(64)" },
-  ]
+  database  = "analytics"
+  name      = "own_region"
   predicate = "region = current_user"
+
+  column {
+    name = "region"
+    type = "VARCHAR(64)"
+  }
 }
 
 # An alias lets the predicate qualify the columns of the protected relation.
 resource "redshift_rls_policy" "tenant" {
-  database = "analytics"
-  name     = "tenant_rows"
-
-  columns = [
-    { name = "tenant_id", type = "INTEGER" },
-  ]
+  database  = "analytics"
+  name      = "tenant_rows"
   alias     = "t"
   predicate = "t.tenant_id = CAST(current_setting('app.tenant_id', FALSE) AS INTEGER)"
+
+  column {
+    name = "tenant_id"
+    type = "INTEGER"
+  }
 }
 ```
 
@@ -57,16 +59,16 @@ resource "redshift_rls_policy" "tenant" {
 
 ### Optional
 
-- `alias` (String) Relation alias of the `WITH` clause (`AS alias`), which the predicate may use to qualify columns; requires `columns`. All policies attached to one relation must use the same alias. It compares without case, as Redshift folds identifiers. Removing it from configuration keeps the current alias. Like `columns`, a change needs `replace_triggered_by` on the attachments. Changing it replaces the policy.
-- `columns` (Attributes List) Ordered `WITH` columns the predicate reads from each attached relation, which must have all of them. Omit it only when the predicate references no relation column. Names compare without case and types in canonical form, so respelling `VARCHAR(64)` as the catalog's `character varying(64)`, or importing the policy, plans no change. `ALTER RLS POLICY` cannot change the `WITH` clause, and `DROP RLS POLICY` refuses a policy that is still attached, so give each attachment `replace_triggered_by` on `columns` and `alias`. Changing it replaces the policy. (see [below for nested schema](#nestedatt--columns))
+- `alias` (String) Relation alias of the `WITH` clause (`AS alias`), which the predicate may use to qualify columns; requires a `column` block. All policies attached to one relation must use the same alias. It compares without case, as Redshift folds identifiers. Removing it from configuration keeps the current alias. Like `column`, a change needs `replace_triggered_by` on the attachments. Changing it replaces the policy.
+- `column` (Block List) Ordered `WITH` columns the predicate reads from each attached relation, which must have all of them. Omit the blocks only when the predicate references no relation column. Names compare without case and types in canonical form, so respelling `VARCHAR(64)` as the catalog's `character varying(64)`, or importing the policy, plans no change. `ALTER RLS POLICY` cannot change the `WITH` clause, and `DROP RLS POLICY` refuses a policy that is still attached, so give each attachment `replace_triggered_by` on `column` and `alias`. Changing it replaces the policy. (see [below for nested schema](#nestedblock--column))
 
 ### Read-Only
 
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
 - `id` (String) JSON import identity; independent of Data API execution history.
 
-<a id="nestedatt--columns"></a>
-### Nested Schema for `columns`
+<a id="nestedblock--column"></a>
+### Nested Schema for `column`
 
 Required:
 
@@ -77,10 +79,10 @@ Required:
 ## Lifecycle and Ownership
 
 Creating, altering, and dropping policies requires a superuser or the `sys:secadmin` role. Only the predicate changes in
-place: `ALTER RLS POLICY` cannot change the `WITH` clause, so a change to `columns` or `alias` replaces the policy.
-Column names and the alias compare without case, and column types in canonical form, so respelling `VARCHAR(64)` as
-`varchar(64)` or the catalog's `character varying(64)` plans no change. Policies have no SQL owner, so the resource has
-no `owner` attribute.
+place: `ALTER RLS POLICY` cannot change the `WITH` clause, so a change to the `column` blocks or `alias` replaces the
+policy. Column names and the alias compare without case, and column types in canonical form, so respelling
+`VARCHAR(64)` as `varchar(64)` or the catalog's `character varying(64)` plans no change. Policies have no SQL owner, so
+the resource has no `owner` attribute.
 
 Redshift stores the predicate in a rewritten form (`svv_rls_policy.polqual`). State keeps the configured text together
 with `definition_fingerprint`, a hash of the catalog text with whitespace collapsed. When the catalog predicate changes
@@ -89,7 +91,7 @@ outside Terraform, refresh reports the catalog text, and the next apply restores
 Deletion runs `DROP RLS POLICY` without `CASCADE`, so Redshift refuses to drop a policy that is still attached.
 Referencing the policy from its attachments makes Terraform detach them first when everything is destroyed, but a
 replacement keeps the policy name, so those references do not change and the attachments would stay attached. Give
-every attachment `replace_triggered_by` on the policy's `columns` and `alias`, as in the
+every attachment `replace_triggered_by` on the policy's `column` and `alias`, as in the
 `redshift_rls_policy_attachment` example: Terraform then detaches the attachments, replaces the policy, and attaches
 them again. Referencing the whole policy instead would also replace the attachments on every predicate change. A
 policy that uses lookup tables also needs `GRANT SELECT ... TO RLS POLICY` on them.

@@ -14,21 +14,30 @@ var (
 	_ = registerDataSource(newRlsPoliciesDataSource)
 )
 
+// rlsPolicyLookupDescriptions replaces the resource's configuration and replacement advice, which does not apply to
+// the read-only columns and alias that the lookup and the listing observe.
+var rlsPolicyLookupDescriptions = map[string]string{
+	"column":      "Ordered `WITH` columns of the policy in the spelling that `svv_rls_policy` reports. Null when the policy has no `WITH` clause.",
+	"column.type": "Redshift data type in the catalog's canonical form, such as `character varying(64)`.",
+	"alias":       "Relation alias of the `WITH` clause (`AS alias`) that the predicate may use to qualify columns, or null.",
+	"predicate":   "Filter expression of the `USING ( ... )` clause in the rewritten form that Redshift stores.",
+}
+
 // newRlsPolicyDataSource reads one RLS policy definition without taking ownership of it.
 func newRlsPolicyDataSource() datasource.DataSource {
-	return newCatalogDataSource(catalogSpec{name: "rls_policy", factory: newRlsPolicyResource, computed: []string{"columns", "alias", "predicate"}, identityFields: []string{"name"}, identityDatabase: "database", lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
+	return lookupDescriptions(newCatalogDataSource(catalogSpec{name: "rls_policy", factory: newRlsPolicyResource, computed: []string{"alias", "predicate"}, identityFields: []string{"name"}, identityDatabase: "database", lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
 		attributes := data.Attributes()
-		model := rlsPolicyModel{Database: attributes["database"].(types.String), Name: attributes["name"].(types.String), Columns: types.ListNull(rlsPolicyColumnType), Alias: types.StringNull(), Predicate: types.StringNull()}
+		model := rlsPolicyModel{Database: attributes["database"].(types.String), Name: attributes["name"].(types.String), Column: types.ListNull(rlsPolicyColumnType), Alias: types.StringNull(), Predicate: types.StringNull()}
 		found, predicate, err := (&rlsPolicyResource{*client}).read(ctx, &model)
 		if err == nil && found {
 			model.Predicate, model.DefinitionFingerprint = reconcileDefinition(model.Predicate, types.StringNull(), predicate)
-			lookupValue(data, "columns", model.Columns)
+			lookupValue(data, "column", model.Column)
 			lookupValue(data, "alias", model.Alias)
 			lookupValue(data, "predicate", model.Predicate)
 			lookupValue(data, "definition_fingerprint", model.DefinitionFingerprint)
 		}
 		return found, err
-	}})
+	}}), rlsPolicyLookupDescriptions)
 }
 
 // newRlsPoliciesDataSource lists the RLS policies of one database.
@@ -39,7 +48,7 @@ func newRlsPoliciesDataSource() datasource.DataSource {
 		filters: map[string]schema.Attribute{
 			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database whose policies are listed; defaults to the provider database."},
 		},
-		element: collectionElement(newRlsPolicyResource, "database", "name", "columns", "alias", "predicate", "definition_fingerprint"),
+		element: describedOutputs(collectionElement(newRlsPolicyResource, "database", "name", "column", "alias", "predicate", "definition_fingerprint"), rlsPolicyLookupDescriptions),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
 			database := client.database.ValueString()
 			if selected := objectString(filters, "database"); selected != "" {
@@ -56,7 +65,7 @@ func newRlsPoliciesDataSource() datasource.DataSource {
 					return nil, err
 				}
 				items = append(items, map[string]attr.Value{
-					"database": policy.Database, "name": policy.Name, "columns": policy.Columns, "alias": policy.Alias,
+					"database": policy.Database, "name": policy.Name, "column": policy.Column, "alias": policy.Alias,
 					"predicate": policy.Predicate, "definition_fingerprint": policy.DefinitionFingerprint,
 				})
 			}

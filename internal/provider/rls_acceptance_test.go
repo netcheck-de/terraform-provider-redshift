@@ -41,9 +41,12 @@ resource "redshift_role" "reader" { name = %q }
 resource "redshift_rls_policy" "own_region" {
   database = redshift_database.local.name
   name = "own_region"
-  columns = [{ name = "region", type = "VARCHAR(64)" }]
   alias = "t"
   predicate = %q
+  column {
+    name = "region"
+    type = "VARCHAR(64)"
+  }
 }
 resource "redshift_rls_policy_attachment" "reader" {
   policy = redshift_rls_policy.own_region.name
@@ -53,7 +56,7 @@ resource "redshift_rls_policy_attachment" "reader" {
   grantee = redshift_role.reader.name
   grantee_type = "ROLE"
   lifecycle {
-    replace_triggered_by = [redshift_rls_policy.own_region.columns, redshift_rls_policy.own_region.alias]
+    replace_triggered_by = [redshift_rls_policy.own_region.column, redshift_rls_policy.own_region.alias]
   }
 }
 data "redshift_rls_policies" "local" { database = redshift_database.local.name }
@@ -93,7 +96,13 @@ data "redshift_rls_policy" "own_region" {
 		return strings.Replace(configuration, `type = "VARCHAR(64)"`, `type = "character varying(64)"`, 1)
 	}
 	widened := func(configuration string) string {
-		return strings.Replace(configuration, `type = "VARCHAR(64)" }]`, `type = "VARCHAR(64)" }, { name = "id", type = "INTEGER" }]`, 1)
+		return strings.Replace(configuration, `type = "VARCHAR(64)"
+  }`, `type = "VARCHAR(64)"
+  }
+  column {
+    name = "id"
+    type = "INTEGER"
+  }`, 1)
 	}
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
@@ -136,7 +145,7 @@ resource "redshift_database" "local" { name = "` + name + `" }`},
 					resource.TestCheckResourceAttr("data.redshift_table_security.fixture", "row_level_security", "true"),
 					resource.TestCheckResourceAttr("data.redshift_table_security.fixture", "conjunction_type", "AND"),
 					resource.TestCheckResourceAttr("data.redshift_rls_policy_attachment.reader", "exists", "true"),
-					resource.TestCheckResourceAttr("data.redshift_rls_policy.own_region", "columns.0.type", "character varying(64)"),
+					resource.TestCheckResourceAttr("data.redshift_rls_policy.own_region", "column.0.type", "character varying(64)"),
 					resource.TestCheckResourceAttrSet("redshift_rls_policy.own_region", "definition_fingerprint"),
 				),
 			},
@@ -144,9 +153,9 @@ resource "redshift_database" "local" { name = "` + name + `" }`},
 			{Config: respelled(configuration("t.region = current_user", "AND", true)), PlanOnly: true},
 			{ResourceName: "redshift_rls_policy_attachment.reader", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_table_security.fixture", ImportState: true, ImportStateVerify: true},
-			// The imported predicate is the catalog's rewritten text and the imported columns use the catalog spelling,
+			// The imported predicate is the catalog's rewritten text and the imported column blocks use the catalog spelling,
 			// which plans no change (see the respelled step), so only the identity attributes are compared.
-			{ResourceName: "redshift_rls_policy.own_region", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"predicate", "columns"}},
+			{ResourceName: "redshift_rls_policy.own_region", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"predicate", "column"}},
 			{
 				Config: configuration("t.region = current_user OR t.region IS NULL", "OR", true),
 				Check:  resource.TestCheckResourceAttr("data.redshift_table_security.fixture", "conjunction_type", "OR"),

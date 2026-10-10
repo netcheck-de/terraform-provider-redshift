@@ -6,9 +6,9 @@ description: Manages one row-level security policy definition.
 
 # redshift_rls_policy (Resource)
 
-Manages one **row-level security (RLS) policy**: its `WITH` columns, optional relation alias, and `USING` predicate. A
-policy filters nothing on its own; attach it with `redshift_rls_policy_attachment` and turn RLS on for the relation with
-`redshift_table_security`. See AWS
+Manages one **row-level security (RLS) policy**: its `WITH` columns (one `column` block each), optional relation alias,
+and `USING` predicate. A policy filters nothing on its own; attach it with `redshift_rls_policy_attachment` and turn RLS
+on for the relation with `redshift_table_security`. See AWS
 [CREATE RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_RLS_POLICY.html),
 [ALTER RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_RLS_POLICY.html), and
 [DROP RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_RLS_POLICY.html).
@@ -30,10 +30,10 @@ DROP RLS POLICY name;
 ## Lifecycle and Ownership
 
 Creating, altering, and dropping policies requires a superuser or the `sys:secadmin` role. Only the predicate changes in
-place: `ALTER RLS POLICY` cannot change the `WITH` clause, so a change to `columns` or `alias` replaces the policy.
-Column names and the alias compare without case, and column types in canonical form, so respelling `VARCHAR(64)` as
-`varchar(64)` or the catalog's `character varying(64)` plans no change. Policies have no SQL owner, so the resource has
-no `owner` attribute.
+place: `ALTER RLS POLICY` cannot change the `WITH` clause, so a change to the `column` blocks or `alias` replaces the
+policy. Column names and the alias compare without case, and column types in canonical form, so respelling
+`VARCHAR(64)` as `varchar(64)` or the catalog's `character varying(64)` plans no change. Policies have no SQL owner, so
+the resource has no `owner` attribute.
 
 Redshift stores the predicate in a rewritten form (`svv_rls_policy.polqual`). State keeps the configured text together
 with `definition_fingerprint`, a hash of the catalog text with whitespace collapsed. When the catalog predicate changes
@@ -42,7 +42,7 @@ outside Terraform, refresh reports the catalog text, and the next apply restores
 Deletion runs `DROP RLS POLICY` without `CASCADE`, so Redshift refuses to drop a policy that is still attached.
 Referencing the policy from its attachments makes Terraform detach them first when everything is destroyed, but a
 replacement keeps the policy name, so those references do not change and the attachments would stay attached. Give
-every attachment `replace_triggered_by` on the policy's `columns` and `alias`, as in the
+every attachment `replace_triggered_by` on the policy's `column` and `alias`, as in the
 `redshift_rls_policy_attachment` example: Terraform then detaches the attachments, replaces the policy, and attaches
 them again. Referencing the whole policy instead would also replace the attachments on every predicate change. A
 policy that uses lookup tables also needs `GRANT SELECT ... TO RLS POLICY` on them.

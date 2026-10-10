@@ -8,7 +8,7 @@ resource "redshift_rls_policy_attachment" "analysts" {
 
   # DROP RLS POLICY refuses an attached policy, so a change that replaces the policy must detach it first.
   lifecycle {
-    replace_triggered_by = [redshift_rls_policy.own_region.columns, redshift_rls_policy.own_region.alias]
+    replace_triggered_by = [redshift_rls_policy.own_region.column, redshift_rls_policy.own_region.alias]
   }
 }
 
@@ -21,6 +21,6 @@ resource "redshift_rls_policy_attachment" "everyone" {
   grantee_type = "PUBLIC"
 
   lifecycle {
-    replace_triggered_by = [redshift_rls_policy.own_region.columns, redshift_rls_policy.own_region.alias]
+    replace_triggered_by = [redshift_rls_policy.own_region.column, redshift_rls_policy.own_region.alias]
   }
 }

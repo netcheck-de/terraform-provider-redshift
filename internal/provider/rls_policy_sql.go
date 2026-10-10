@@ -10,7 +10,7 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
-// rlsPolicyColumnType is the element type of the policy's WITH column list.
+// rlsPolicyColumnType is the element type of the policy's column blocks.
 var rlsPolicyColumnType = types.ObjectType{AttrTypes: map[string]attr.Type{"name": types.StringType, "type": types.StringType}}
 
 // rlsPolicyColumn is one WITH column with its data type canonicalized as the catalog reports it.
@@ -21,8 +21,8 @@ type rlsPolicyColumn struct {
 	dataType sqlclient.Keyword
 }
 
-// rlsPolicyColumns validates the configured WITH columns. A null or unknown list yields none, so the WITH
-// clause is omitted.
+// rlsPolicyColumns validates the configured column blocks. Absent blocks (a null list) or an unknown list yield
+// none, so the WITH clause is omitted.
 func rlsPolicyColumns(value types.List) ([]rlsPolicyColumn, error) {
 	if value.IsNull() || value.IsUnknown() {
 		return nil, nil
@@ -31,15 +31,15 @@ func rlsPolicyColumns(value types.List) ([]rlsPolicyColumn, error) {
 	for index, element := range value.Elements() {
 		object, ok := element.(types.Object)
 		if !ok || object.IsNull() || object.IsUnknown() {
-			return nil, fmt.Errorf("columns[%d] must be a known object", index)
+			return nil, fmt.Errorf("column[%d] must be a known object", index)
 		}
 		name, dataType := objectString(object, "name"), objectString(object, "type")
 		if name == "" {
-			return nil, fmt.Errorf("columns[%d] needs a nonempty name", index)
+			return nil, fmt.Errorf("column[%d] needs a nonempty name", index)
 		}
 		canonical, err := sqlclient.ColumnType(dataType)
 		if err != nil {
-			return nil, fmt.Errorf("columns[%d] (%s): %w", index, name, err)
+			return nil, fmt.Errorf("column[%d] (%s): %w", index, name, err)
 		}
 		columns = append(columns, rlsPolicyColumn{name: name, dataType: canonical})
 	}
@@ -66,7 +66,7 @@ func parseRlsPolicyColumns(polatts string) ([]rlsPolicyCatalogColumn, error) {
 	return columns, nil
 }
 
-// rlsPolicyColumnsList converts catalog columns to the Terraform list, null when the policy has none.
+// rlsPolicyColumnsList converts catalog columns to column blocks, null (no blocks) when the policy has none.
 func rlsPolicyColumnsList(columns []rlsPolicyCatalogColumn) types.List {
 	if len(columns) == 0 {
 		return types.ListNull(rlsPolicyColumnType)
@@ -78,7 +78,7 @@ func rlsPolicyColumnsList(columns []rlsPolicyCatalogColumn) types.List {
 	return types.ListValueMust(rlsPolicyColumnType, elements)
 }
 
-// rlsPolicyCatalogColumnsOf reads a columns list back as name/type pairs, so prior state compares like catalog rows.
+// rlsPolicyCatalogColumnsOf reads column blocks back as name/type pairs, so prior state compares like catalog rows.
 func rlsPolicyCatalogColumnsOf(value types.List) []rlsPolicyCatalogColumn {
 	if value.IsNull() || value.IsUnknown() {
 		return nil
@@ -131,13 +131,13 @@ func createRlsPolicyStatement(data rlsPolicyModel) (string, error) {
 	if data.Name.ValueString() == "" {
 		return "", fmt.Errorf("RLS policy requires a nonempty name")
 	}
-	columns, err := rlsPolicyColumns(data.Columns)
+	columns, err := rlsPolicyColumns(data.Column)
 	if err != nil {
 		return "", err
 	}
 	alias := knownString(data.Alias)
 	if alias != "" && len(columns) == 0 {
-		return "", fmt.Errorf("alias requires at least one entry in columns, because it is part of the WITH clause")
+		return "", fmt.Errorf("alias requires at least one column block, because it is part of the WITH clause")
 	}
 	predicate, err := rlsPolicyPredicate(data)
 	if err != nil {

@@ -28,7 +28,7 @@ resource "redshift_rls_policy_attachment" "analysts" {
 
   # DROP RLS POLICY refuses an attached policy, so a change that replaces the policy must detach it first.
   lifecycle {
-    replace_triggered_by = [redshift_rls_policy.own_region.columns, redshift_rls_policy.own_region.alias]
+    replace_triggered_by = [redshift_rls_policy.own_region.column, redshift_rls_policy.own_region.alias]
   }
 }
 
@@ -41,7 +41,7 @@ resource "redshift_rls_policy_attachment" "everyone" {
   grantee_type = "PUBLIC"
 
   lifecycle {
-    replace_triggered_by = [redshift_rls_policy.own_region.columns, redshift_rls_policy.own_region.alias]
+    replace_triggered_by = [redshift_rls_policy.own_region.column, redshift_rls_policy.own_region.alias]
   }
 }
 ```
@@ -66,9 +66,9 @@ resource "redshift_rls_policy_attachment" "everyone" {
 
 Changing any argument replaces the attachment.
 
-A change to the policy's `columns` or `alias` replaces the policy under the same name, which leaves these arguments
-unchanged. Because `DROP RLS POLICY` refuses an attached policy, add
-`lifecycle { replace_triggered_by = [redshift_rls_policy.<name>.columns, redshift_rls_policy.<name>.alias] }`, as in the
+A change to the policy's `column` blocks or `alias` replaces the policy under the same name, which leaves these
+arguments unchanged. Because `DROP RLS POLICY` refuses an attached policy, add
+`lifecycle { replace_triggered_by = [redshift_rls_policy.<name>.column, redshift_rls_policy.<name>.alias] }`, as in the
 example, so Terraform detaches the policy before the replacement and attaches it again afterwards.
 
 ## Lifecycle and Ownership

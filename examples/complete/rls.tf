@@ -15,13 +15,15 @@ resource "aws_redshiftdata_statement" "rls_table" {
 
 # Readers see only the rows whose region equals their SQL user name.
 resource "redshift_rls_policy" "own_region" {
-  provider = redshift.consumer
-  database = redshift_database.local.name
-  name     = "example_own_region"
-  columns = [
-    { name = "region", type = "VARCHAR(64)" },
-  ]
+  provider  = redshift.consumer
+  database  = redshift_database.local.name
+  name      = "example_own_region"
   predicate = "region = current_user"
+
+  column {
+    name = "region"
+    type = "VARCHAR(64)"
+  }
 }
 
 resource "redshift_rls_policy_attachment" "readers" {
@@ -37,7 +39,7 @@ resource "redshift_rls_policy_attachment" "readers" {
 
   # Replacing the policy (a WITH change) must detach it first, because DROP RLS POLICY refuses an attached policy.
   lifecycle {
-    replace_triggered_by = [redshift_rls_policy.own_region.columns, redshift_rls_policy.own_region.alias]
+    replace_triggered_by = [redshift_rls_policy.own_region.column, redshift_rls_policy.own_region.alias]
   }
 }
 
