@@ -13,6 +13,7 @@ output "routines" {
       signature = data.redshift_procedure.scale.signature
       security  = data.redshift_procedure.scale.security
       owner     = data.redshift_procedure.scale.owner
+      outputs   = [for argument in data.redshift_procedure.scale.argument : argument.name if argument.mode == "OUT"]
     }
   }
 }

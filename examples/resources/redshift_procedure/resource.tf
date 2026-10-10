@@ -2,10 +2,17 @@ resource "redshift_procedure" "purge" {
   database = "analytics"
   schema   = "reporting"
   name     = "sp_purge_events"
-  arguments = [
-    { name = "keep_days", type = "integer" },
-    { name = "deleted", mode = "OUT", type = "bigint" },
-  ]
+
+  argument {
+    name = "keep_days"
+    type = "integer"
+  }
+  argument {
+    name = "deleted"
+    mode = "OUT"
+    type = "bigint"
+  }
+
   security      = "DEFINER"
   configuration = { search_path = "reporting" }
   body          = <<-SQL

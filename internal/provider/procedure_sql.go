@@ -73,7 +73,7 @@ type procedureSpec struct {
 	settings []procedureSetting
 }
 
-// procedureArgumentModel is one configured procedure argument.
+// procedureArgumentModel is one argument block.
 type procedureArgumentModel struct {
 	// Name is the optional argument name.
 	Name types.String `tfsdk:"name"`
@@ -97,7 +97,7 @@ func procedureArguments(value types.List) []procedureArgumentModel {
 	return arguments
 }
 
-// procedureArgumentList builds the arguments attribute; an empty list is null, as an omitted attribute is.
+// procedureArgumentList builds the argument blocks; none is null, as the framework reads an absent block.
 func procedureArgumentList(arguments []procedureArgumentModel) types.List {
 	elementType := types.ObjectType{AttrTypes: procedureArgumentTypes}
 	if len(arguments) == 0 {
@@ -272,12 +272,12 @@ func procedureAlter(data procedureModel) sqlclient.Statement {
 // https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_PROCEDURE.html
 var procedureOwnerStep = routineOwnerStep(func(data procedureModel) types.String { return data.Owner }, procedureAlter)
 
-// procedureAlterSteps changes the definition with CREATE OR REPLACE and the owner with ALTER PROCEDURE. arguments
-// replace the procedure unless only their spelling changes, which needs no statement, or modifiers are added to a
-// type stored without them, as after an import, which CREATE OR REPLACE restates.
+// procedureAlterSteps changes the definition with CREATE OR REPLACE and the owner with ALTER PROCEDURE. Argument
+// blocks replace the procedure unless only their spelling changes, which needs no statement, or modifiers are added
+// to a type stored without them, as after an import, which CREATE OR REPLACE restates.
 func procedureAlterSteps(spec procedureSpec) []alterStep[procedureModel] {
 	steps := routineRedefinitionSteps(createProcedureStatement(spec, true),
-		routineDefinitionAttribute[procedureModel]{name: "arguments", value: procedureDeclaredTypes},
+		routineDefinitionAttribute[procedureModel]{name: "argument", value: procedureDeclaredTypes},
 		routineDefinitionAttribute[procedureModel]{name: "body", value: func(data procedureModel) attr.Value { return data.Body }},
 		routineDefinitionAttribute[procedureModel]{name: "security", value: func(data procedureModel) attr.Value { return data.Security }},
 		routineDefinitionAttribute[procedureModel]{name: "nonatomic", value: func(data procedureModel) attr.Value { return data.Nonatomic }},

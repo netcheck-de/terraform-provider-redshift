@@ -24,11 +24,22 @@ resource "redshift_procedure" "scale" {
   database = redshift_schema.local.database
   schema   = redshift_schema.local.name
   name     = "sp_example_scale"
-  arguments = [
-    { name = "factor", type = "integer" },
-    { name = "amount", mode = "INOUT", type = "bigint" },
-    { name = "label", mode = "OUT", type = "varchar(64)" },
-  ]
+
+  argument {
+    name = "factor"
+    type = "integer"
+  }
+  argument {
+    name = "amount"
+    mode = "INOUT"
+    type = "bigint"
+  }
+  argument {
+    name = "label"
+    mode = "OUT"
+    type = "varchar(64)"
+  }
+
   configuration = { search_path = redshift_schema.local.name }
   body          = <<-SQL
     BEGIN
@@ -41,10 +52,12 @@ resource "redshift_procedure" "scale" {
   depends_on = [redshift_function.label]
 }
 
+# The lookup selects the overload by its IN and INOUT types, as OUT arguments are not part of the signature, and
+# reports every argument.
 data "redshift_procedure" "scale" {
   provider  = redshift.consumer
   database  = redshift_procedure.scale.database
   schema    = redshift_procedure.scale.schema
   name      = redshift_procedure.scale.name
-  arguments = [for argument in redshift_procedure.scale.arguments : { type = argument.type, mode = argument.mode } if argument.mode != "OUT"]
+  arguments = [for argument in redshift_procedure.scale.argument : argument.type if argument.mode != "OUT"]
 }

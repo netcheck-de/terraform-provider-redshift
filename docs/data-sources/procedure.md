@@ -20,7 +20,11 @@ data "redshift_procedure" "purge" {
   database  = "analytics"
   schema    = "reporting"
   name      = "sp_purge_events"
-  arguments = [{ type = "integer" }]
+  arguments = ["integer"]
+}
+
+output "purge_outputs" {
+  value = [for argument in data.redshift_procedure.purge.argument : argument.name if argument.mode == "OUT"]
 }
 ```
 
@@ -36,10 +40,11 @@ data "redshift_procedure" "purge" {
 
 ### Optional
 
-- `arguments` (Attributes List) Ordered arguments, at most 32 input (`IN`, `INOUT`) and 32 output (`OUT`, `INOUT`) arguments. Omit for a procedure without arguments. The input types identify the procedure; another spelling of the same types, a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `varchar(64)` added to a bare type in state, as after an import, is restated in place. (see [below for nested schema](#nestedatt--arguments))
+- `arguments` (List of String) Ordered `IN` and `INOUT` argument types selecting the overload, at most 32, as `signature` and the import identity hold them; `OUT` arguments are not part of it. Another spelling of the same type, such as `int` for `integer`, selects the same overload, and modifiers such as `varchar(64)` are ignored. Omit for a procedure without input arguments.
 
 ### Read-Only
 
+- `argument` (Attributes List) Every argument in order, including `OUT` arguments, as `SHOW PARAMETERS` reports it. (see [below for nested schema](#nestedatt--argument))
 - `body` (String) PL/pgSQL block, usually `BEGIN ... END;` with an optional `DECLARE` section, sent dollar-quoted and verbatim. Changed in place with `CREATE OR REPLACE PROCEDURE`. A body changed outside Terraform appears here as the catalog text.
 - `configuration` (Map of String) One configuration parameter set while the procedure runs, rendered as `SET <name> TO '<value>'`, for example `{ search_path = "analytics, public" }`. A `search_path` value is a comma-separated list of schema names, each rendered as its own literal, such as `SET search_path TO 'analytics', 'public'`; any other value is one literal. Not supported with `nonatomic`. Redshift does not report it in its catalog, so drift is not detected and an import leaves it `null`. Changed in place with `CREATE OR REPLACE PROCEDURE`.
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
@@ -49,22 +54,22 @@ data "redshift_procedure" "purge" {
 - `security` (String) `INVOKER` (default) runs with the caller's privileges, `DEFINER` with the owner's. `DEFINER` is not supported with `nonatomic`. Changed in place with `CREATE OR REPLACE PROCEDURE`.
 - `signature` (String) Canonical `IN` and `INOUT` argument types without modifiers, as `ALTER PROCEDURE`, `DROP PROCEDURE`, and `GRANT ... ON PROCEDURE` identify the procedure, for example `integer, character varying`.
 
-<a id="nestedatt--arguments"></a>
-### Nested Schema for `arguments`
+<a id="nestedatt--argument"></a>
+### Nested Schema for `argument`
 
-Required:
+Read-Only:
 
-- `type` (String) Argument data type, such as `integer`, `varchar(256)`, or `refcursor`.
-
-Optional:
-
-- `mode` (String) `IN` (when omitted), `OUT`, or `INOUT`. `OUT` arguments are returned by `CALL` and are not part of the signature.
-- `name` (String) Argument name used in `body`; omit to reference the argument as `$n`.
+- `mode` (String) `OUT` or `INOUT`, or `null` for an `IN` argument. `OUT` arguments are returned by `CALL` and are not part of the signature.
+- `name` (String) Argument name; `null` when the catalog does not keep it, as for an unnamed argument.
+- `type` (String) Argument data type without length or precision, such as `integer` or `character varying`.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-`arguments` selects the overload: list the `IN` and `INOUT` types; `OUT` arguments may be listed with their mode or
-omitted. The configured `arguments` are returned unchanged. `id` (String, computed) is the observed procedure's JSON
-identity, using the same warehouse, database, schema, name, and `arguments` keys as the paired resource. `body` is the
-catalog text; `nonatomic` and `configuration` are always `null` because Redshift does not report them.
+`arguments` selects the overload by its `IN` and `INOUT` types, as the `arguments` key of the paired resource's import
+identity holds them, and is returned unchanged. A managed procedure's types come from its `argument` blocks with
+`[for a in redshift_procedure.x.argument : a.type if a.mode != "OUT"]`. `argument` reports every argument as
+`SHOW PARAMETERS` lists it, including `OUT` arguments, with types without length or precision; it is empty for a
+procedure without arguments. `id` (String, computed) is the observed procedure's JSON identity, using the same
+warehouse, database, schema, name, and `arguments` keys as the paired resource. `body` is the catalog text; `nonatomic`
+and `configuration` are always `null` because Redshift does not report them.
 
 A missing procedure is an error.

@@ -21,9 +21,12 @@ SHOW PARAMETERS OF PROCEDURE schema.name (...);
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-`arguments` selects the overload: list the `IN` and `INOUT` types; `OUT` arguments may be listed with their mode or
-omitted. The configured `arguments` are returned unchanged. `id` (String, computed) is the observed procedure's JSON
-identity, using the same warehouse, database, schema, name, and `arguments` keys as the paired resource. `body` is the
-catalog text; `nonatomic` and `configuration` are always `null` because Redshift does not report them.
+`arguments` selects the overload by its `IN` and `INOUT` types, as the `arguments` key of the paired resource's import
+identity holds them, and is returned unchanged. A managed procedure's types come from its `argument` blocks with
+`[for a in redshift_procedure.x.argument : a.type if a.mode != "OUT"]`. `argument` reports every argument as
+`SHOW PARAMETERS` lists it, including `OUT` arguments, with types without length or precision; it is empty for a
+procedure without arguments. `id` (String, computed) is the observed procedure's JSON identity, using the same
+warehouse, database, schema, name, and `arguments` keys as the paired resource. `body` is the catalog text; `nonatomic`
+and `configuration` are always `null` because Redshift does not report them.
 
 A missing procedure is an error.

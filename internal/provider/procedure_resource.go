@@ -39,8 +39,8 @@ type procedureModel struct {
 	Schema types.String `tfsdk:"schema"`
 	// Name is the procedure name; overloads share it.
 	Name types.String `tfsdk:"name"`
-	// Arguments are the ordered arguments with names and modes.
-	Arguments types.List `tfsdk:"arguments"`
+	// Arguments are the ordered argument blocks with names and modes.
+	Arguments types.List `tfsdk:"argument"`
 	// Signature is the canonical bare IN and INOUT types identifying the overload.
 	Signature types.String `tfsdk:"signature"`
 	// Body is the configured PL/pgSQL block.
@@ -95,21 +95,6 @@ func (r *procedureResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
-			"arguments": schema.ListNestedAttribute{
-				Optional: true,
-				MarkdownDescription: "Ordered arguments, at most 32 input (`IN`, `INOUT`) and 32 output (`OUT`, `INOUT`) arguments. Omit for a procedure without arguments. The input types identify the procedure; another spelling of the same types, " +
-					"a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `varchar(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the procedure.",
-				PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplaceIf(procedureArgumentsChanged, "Changing the arguments replaces the procedure.", "Changing the arguments replaces the procedure.")},
-				Validators:    []validator.List{listvalidator.SizeAtMost(2 * routineMaxArguments)},
-				NestedObject: schema.NestedAttributeObject{Attributes: map[string]schema.Attribute{
-					"name": schema.StringAttribute{Optional: true, MarkdownDescription: "Argument name used in `body`; omit to reference the argument as `$n`."},
-					"mode": schema.StringAttribute{
-						Optional: true, MarkdownDescription: "`IN` (when omitted), `OUT`, or `INOUT`. `OUT` arguments are returned by `CALL` and are not part of the signature.",
-						Validators: []validator.String{stringvalidator.OneOf("IN", "OUT", "INOUT")},
-					},
-					"type": schema.StringAttribute{Required: true, MarkdownDescription: "Argument data type, such as `integer`, `varchar(256)`, or `refcursor`."},
-				}},
-			},
 			"signature": schema.StringAttribute{
 				Computed: true, MarkdownDescription: "Canonical `IN` and `INOUT` argument types without modifiers, as `ALTER PROCEDURE`, `DROP PROCEDURE`, and `GRANT ... ON PROCEDURE` identify the procedure, for example `integer, character varying`.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
@@ -135,6 +120,22 @@ func (r *procedureResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			"owner": schema.StringAttribute{
 				Optional: true, Computed: true, MarkdownDescription: "SQL user owning the procedure. When set, applied with `ALTER PROCEDURE ... OWNER TO`, which requires a superuser; when omitted, the catalog owner is reported.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+		},
+		Blocks: map[string]schema.Block{
+			"argument": schema.ListNestedBlock{
+				MarkdownDescription: "One block per argument, in order: at most 32 input (`IN`, `INOUT`) and 32 output (`OUT`, `INOUT`) arguments. Omit for a procedure without arguments. The input types identify the procedure; another spelling of the same types, " +
+					"a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `varchar(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the procedure.",
+				PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplaceIf(procedureArgumentsChanged, "Changing the arguments replaces the procedure.", "Changing the arguments replaces the procedure.")},
+				Validators:    []validator.List{listvalidator.SizeAtMost(2 * routineMaxArguments)},
+				NestedObject: schema.NestedBlockObject{Attributes: map[string]schema.Attribute{
+					"name": schema.StringAttribute{Optional: true, MarkdownDescription: "Argument name used in `body`; omit to reference the argument as `$n`."},
+					"mode": schema.StringAttribute{
+						Optional: true, MarkdownDescription: "`IN` (when omitted), `OUT`, or `INOUT`. `OUT` arguments are returned by `CALL` and are not part of the signature.",
+						Validators: []validator.String{stringvalidator.OneOf("IN", "OUT", "INOUT")},
+					},
+					"type": schema.StringAttribute{Required: true, MarkdownDescription: "Argument data type, such as `integer`, `varchar(256)`, or `refcursor`."},
+				}},
 			},
 		},
 	}
@@ -415,7 +416,7 @@ func (r *procedureResource) Delete(ctx context.Context, req resource.DeleteReque
 }
 
 // ImportState restores the overload from its JSON identity. The identity holds only the input types, so they are
-// imported as IN arguments, and the refresh reports the actual names, modes, and OUT arguments.
+// imported as IN argument blocks, and the refresh reports the actual names, modes, and OUT arguments.
 func (r *procedureResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importIdentity(ctx, req, resp, "database", "schema", "name")
 	if resp.Diagnostics.HasError() {
@@ -430,6 +431,6 @@ func (r *procedureResource) ImportState(ctx context.Context, req resource.Import
 	for i, input := range inputs {
 		arguments[i] = procedureArgumentModel{Name: types.StringNull(), Mode: types.StringNull(), Type: types.StringValue(input)}
 	}
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("arguments"), procedureArgumentList(arguments))...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("argument"), procedureArgumentList(arguments))...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("signature"), string(signature))...)
 }

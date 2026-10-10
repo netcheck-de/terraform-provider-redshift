@@ -25,10 +25,17 @@ resource "redshift_procedure" "purge" {
   database = "analytics"
   schema   = "reporting"
   name     = "sp_purge_events"
-  arguments = [
-    { name = "keep_days", type = "integer" },
-    { name = "deleted", mode = "OUT", type = "bigint" },
-  ]
+
+  argument {
+    name = "keep_days"
+    type = "integer"
+  }
+  argument {
+    name = "deleted"
+    mode = "OUT"
+    type = "bigint"
+  }
+
   security      = "DEFINER"
   configuration = { search_path = "reporting" }
   body          = <<-SQL
@@ -53,7 +60,7 @@ resource "redshift_procedure" "purge" {
 
 ### Optional
 
-- `arguments` (Attributes List) Ordered arguments, at most 32 input (`IN`, `INOUT`) and 32 output (`OUT`, `INOUT`) arguments. Omit for a procedure without arguments. The input types identify the procedure; another spelling of the same types, a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `varchar(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the procedure. (see [below for nested schema](#nestedatt--arguments))
+- `argument` (Block List) One block per argument, in order: at most 32 input (`IN`, `INOUT`) and 32 output (`OUT`, `INOUT`) arguments. Omit for a procedure without arguments. The input types identify the procedure; another spelling of the same types, a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `varchar(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the procedure. (see [below for nested schema](#nestedblock--argument))
 - `configuration` (Map of String) One configuration parameter set while the procedure runs, rendered as `SET <name> TO '<value>'`, for example `{ search_path = "analytics, public" }`. A `search_path` value is a comma-separated list of schema names, each rendered as its own literal, such as `SET search_path TO 'analytics', 'public'`; any other value is one literal. Not supported with `nonatomic`. Redshift does not report it in its catalog, so drift is not detected and an import leaves it `null`. Changed in place with `CREATE OR REPLACE PROCEDURE`.
 - `nonatomic` (Boolean) Creates the procedure in `NONATOMIC` transaction mode, which commits each statement automatically. Redshift does not report the mode in its catalog, so drift is not detected and an import leaves it `null`. Changed in place with `CREATE OR REPLACE PROCEDURE`.
 - `owner` (String) SQL user owning the procedure. When set, applied with `ALTER PROCEDURE ... OWNER TO`, which requires a superuser; when omitted, the catalog owner is reported.
@@ -65,8 +72,8 @@ resource "redshift_procedure" "purge" {
 - `id` (String) JSON import identity; independent of Data API execution history.
 - `signature` (String) Canonical `IN` and `INOUT` argument types without modifiers, as `ALTER PROCEDURE`, `DROP PROCEDURE`, and `GRANT ... ON PROCEDURE` identify the procedure, for example `integer, character varying`.
 
-<a id="nestedatt--arguments"></a>
-### Nested Schema for `arguments`
+<a id="nestedblock--argument"></a>
+### Nested Schema for `argument`
 
 Required:
 
@@ -81,9 +88,10 @@ Optional:
 ## Lifecycle and Ownership
 
 A procedure is identified by its schema, name, and the types of its `IN` and `INOUT` arguments; `OUT` arguments are
-returned by `CALL` and are not part of the signature. Changing an argument's type, mode, or name, or adding or removing
-an argument, replaces the procedure, because Redshift requires dropping a procedure to change its signature or output
-types. Another spelling of the same type, `null` for an `IN` mode, or a name differing only in case does not.
+returned by `CALL` and are not part of the signature. Each argument is one `argument` block, in declaration order.
+Changing an argument's type, mode, or name, or adding, removing, or reordering a block, replaces the procedure, because
+Redshift requires dropping a procedure to change its signature or output types. Another spelling of the same type,
+`null` for an `IN` mode, or a name differing only in case does not.
 `SHOW PARAMETERS` reports types without their length or precision, so an imported procedure holds bare types such as
 `character varying`. A bare type in state matches the same type with a modifier, such as `varchar(64)`, and the next
 apply restates the configured modifiers with `CREATE OR REPLACE PROCEDURE` instead of replacing the procedure.
@@ -106,8 +114,8 @@ Running a procedure with `CALL` is not part of its lifecycle.
 ## Import
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity. `arguments` holds the `IN` and `INOUT` types as
-`signature` reports them, comma-separated, and is `""` for a procedure without input arguments. The refresh after the
-import reports argument names, modes, and `OUT` arguments:
+`signature` reports them, comma-separated, and is `""` for a procedure without input arguments. They are imported as
+`argument` blocks, and the refresh after the import reports argument names, modes, and `OUT` arguments:
 
 ```terraform
 import {

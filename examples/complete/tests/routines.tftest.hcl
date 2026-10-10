@@ -27,6 +27,8 @@ mock_provider "redshift" { alias = "producer_direct_password" }
 mock_provider "redshift" { alias = "consumer_direct_password" }
 
 # Observed overloads report canonical signatures and catalog owners that differ from the configured spellings.
+# Terraform mocks cannot override the elements of a nested attribute list, so the procedure lookup's argument output
+# stays empty here; the provider's unit tests cover its contents.
 override_data {
   target = data.redshift_function.label
   values = {
@@ -69,8 +71,8 @@ run "routines_apply" {
   assert {
     condition = (
       redshift_procedure.scale.schema == redshift_schema.local.name &&
-      length(redshift_procedure.scale.arguments) == 3 &&
-      redshift_procedure.scale.arguments[2].mode == "OUT" &&
+      length(redshift_procedure.scale.argument) == 3 &&
+      redshift_procedure.scale.argument[2].mode == "OUT" &&
       redshift_procedure.scale.configuration["search_path"] == redshift_schema.local.name &&
       strcontains(redshift_procedure.scale.body, "f_example_label(")
     )
@@ -78,11 +80,9 @@ run "routines_apply" {
   }
   assert {
     condition = (
-      length(data.redshift_procedure.scale.arguments) == 2 &&
-      data.redshift_procedure.scale.arguments[1].mode == "INOUT" &&
-      data.redshift_procedure.scale.arguments[0].type == "integer"
+      data.redshift_procedure.scale.arguments == tolist(["integer", "bigint"])
     )
-    error_message = "The procedure lookup must select the overload by its IN and INOUT types only."
+    error_message = "The procedure lookup must select the overload by the IN and INOUT types of the argument blocks only."
   }
   assert {
     condition = (

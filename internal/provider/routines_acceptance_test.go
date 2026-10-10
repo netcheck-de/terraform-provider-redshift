@@ -63,11 +63,20 @@ resource "redshift_procedure" "scale" {
   database = redshift_schema.local.database
   schema = redshift_schema.local.name
   name = "sp_acc_scale"
-  arguments = [
-    { name = "factor", type = "integer" },
-    { name = "amount", mode = "INOUT", type = "bigint" },
-    { name = "label", mode = "OUT", type = "varchar(64)" },
-  ]
+  argument {
+    name = "factor"
+    type = "integer"
+  }
+  argument {
+    name = "amount"
+    mode = "INOUT"
+    type = "bigint"
+  }
+  argument {
+    name = "label"
+    mode = "OUT"
+    type = "varchar(64)"
+  }
   security = %q
   body = <<-SQL
     BEGIN
@@ -87,7 +96,7 @@ data "redshift_procedure" "scale" {
   database = redshift_procedure.scale.database
   schema = redshift_procedure.scale.schema
   name = redshift_procedure.scale.name
-  arguments = [{ type = "int" }, { type = "int8", mode = "INOUT" }]
+  arguments = [for argument in redshift_procedure.scale.argument : argument.type if argument.mode != "OUT"]
 }
 `, region, profile, workgroup, database, name, volatility, functionBody, security)
 	}
@@ -112,11 +121,14 @@ data "redshift_procedure" "scale" {
 				resource.TestCheckResourceAttr("data.redshift_function.label", "return_type", "character varying"),
 				resource.TestCheckResourceAttr("redshift_procedure.scale", "signature", "integer, bigint"),
 				resource.TestCheckResourceAttr("data.redshift_procedure.scale", "security", "INVOKER"),
+				resource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.#", "3"),
+				resource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.2.mode", "OUT"),
+				resource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.2.type", "character varying"),
 			)},
 			{Config: configuration("SELECT $2 || '-' || $1::varchar", "IMMUTABLE", "INVOKER"), PlanOnly: true},
 			// Imports report canonical catalog spellings and the catalog body, and cannot observe nonatomic or SET.
 			{ResourceName: "redshift_function.label", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"arguments", "return_type", "body"}},
-			{ResourceName: "redshift_procedure.scale", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"arguments", "body", "nonatomic", "configuration"}},
+			{ResourceName: "redshift_procedure.scale", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"argument", "body", "nonatomic", "configuration"}},
 			// Imported state holds types without their modifiers; planning the original configuration against it must
 			// update in place rather than replace a routine that grants or views may depend on.
 			{ResourceName: "redshift_function.label", ImportState: true, ImportStatePersist: true},
