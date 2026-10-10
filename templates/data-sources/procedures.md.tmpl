@@ -1,0 +1,26 @@
+---
+subcategory: Routines
+page_title: redshift_procedures Data Source - terraform-provider-redshift
+description: Lists stored procedures.
+---
+
+# redshift_procedures (Data Source)
+
+Lists the stored procedures of one database without managing them. See AWS
+[PG_PROC_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_PROC_INFO.html).
+
+```sql
+SELECT ... FROM pg_proc_info WHERE prokind = 'p' AND nspname = '...' AND proname = '...';
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_procedures/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+The listing reads the catalog of the selected database, so it shows only procedures the provider's SQL identity can
+see. `arguments` holds the input (`IN` and `INOUT`) types that identify each overload; use
+`redshift_routine_parameters` for every parameter and its mode. An empty `items` list means that nothing matches.

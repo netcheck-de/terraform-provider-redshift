@@ -1,0 +1,1 @@
+-- error: argument 2: data type "super" is not supported by Lambda UDFs

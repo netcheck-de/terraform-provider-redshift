@@ -1,0 +1,1 @@
+CREATE OR REPLACE EXTERNAL FUNCTION "serving"."f_exfunc_upper"(character varying) RETURNS character varying STABLE LAMBDA 'arn:aws:lambda:eu-central-1:123456789012:function:exfunc_upper_v2' IAM_ROLE 'arn:aws:iam::123456789012:role/lambda-udf';

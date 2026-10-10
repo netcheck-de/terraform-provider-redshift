@@ -1,0 +1,57 @@
+---
+subcategory: Routines
+page_title: redshift_external_function Resource - terraform-provider-redshift
+description: Manages a scalar Lambda user-defined function.
+---
+
+# redshift_external_function (Resource)
+
+Manages a scalar Lambda user-defined function (UDF) that Redshift runs by invoking an AWS Lambda function. See AWS
+[CREATE EXTERNAL FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_FUNCTION.html),
+[ALTER FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_FUNCTION.html),
+[DROP FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_FUNCTION.html), and
+[Scalar Lambda UDFs](https://docs.aws.amazon.com/redshift/latest/dg/udf-creating-a-lambda-sql-udf.html).
+
+```sql
+CREATE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;
+CREATE OR REPLACE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;
+ALTER FUNCTION schema.name(arguments) OWNER TO owner;
+DROP FUNCTION schema.name(arguments);
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_external_function/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+The Lambda function, its execution role, and the IAM role that lets the warehouse invoke it belong to the AWS
+provider; associate that role with the cluster or namespace, or use `iam_role = "default"`. Creating the function
+requires superuser or the `CREATE [ OR REPLACE ] EXTERNAL FUNCTION` privilege and `USAGE ON LANGUAGE exfunc`.
+
+`name` and the canonical `arguments` identify the overload. Changing them, the database, the schema, or the base
+type of `return_type` replaces the function. Every other definition option changes in place with
+`CREATE OR REPLACE EXTERNAL FUNCTION`, which redefines the existing overload instead of dropping it but requires a
+superuser. `owner`
+changes with `ALTER FUNCTION ... OWNER TO`, which also requires a superuser.
+
+Redshift reports the signature, result type, volatility, language, and owner in `pg_proc`, which refresh reads. No
+documented catalog view reports `lambda_function`, `iam_role`, or the retry and batch options, so Terraform keeps them
+from configuration: changes made outside Terraform are not detected, and an import leaves them unset until the next
+apply restates the definition. `DROP FUNCTION` does **not** cascade; remove dependent views first.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity. `arguments` is the canonical signature
+Create records: the argument types as the catalog spells them, without length or precision, separated by `", "`, and
+`""` for a function without arguments.
+
+{{ tffile "examples/resources/redshift_external_function/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_external_function/import.sh" }}

@@ -1,0 +1,26 @@
+---
+subcategory: Routines
+page_title: redshift_functions Data Source - terraform-provider-redshift
+description: Lists user-defined scalar functions, including Lambda UDFs.
+---
+
+# redshift_functions (Data Source)
+
+Lists the user-defined scalar functions of one database without managing them: SQL, Python, and Lambda UDFs (language
+`exfunc`). See AWS [PG_PROC_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_PROC_INFO.html).
+
+```sql
+SELECT ... FROM pg_proc_info WHERE prokind = 'f' AND nspname = '...' AND proname = '...';
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_functions/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+The listing reads the catalog of the selected database, so it shows only functions the provider's SQL identity can see.
+Built-in functions in `pg_*` schemas and `information_schema` are excluded. An empty `items` list means that nothing
+matches; a missing database or a catalog failure is an error.

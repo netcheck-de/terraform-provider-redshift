@@ -1,0 +1,1 @@
+-- error: iam_role must be default or comma-separated IAM role ARNs without spaces, got "role"

@@ -1,0 +1,1 @@
+CREATE OR REPLACE EXTERNAL FUNCTION "serving"."f_exfunc_upper"(integer, character varying(10), numeric(10,2), timestamp without time zone, boolean) RETURNS character varying STABLE LAMBDA 'exfunc_upper' IAM_ROLE 'arn:aws:iam::123456789012:role/lambda-udf';

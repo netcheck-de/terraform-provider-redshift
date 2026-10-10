@@ -1,0 +1,1 @@
+-- error: "AGGREGATE" is not one of FUNCTION, PROCEDURE

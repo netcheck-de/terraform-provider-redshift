@@ -1,0 +1,1 @@
+-- error: max_batch_size must be between 1 KB and 5 MB, got 6 MB

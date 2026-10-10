@@ -1,0 +1,1 @@
+CREATE OR REPLACE EXTERNAL FUNCTION "serving"."f_exfunc_upper"(character varying) RETURNS character varying VOLATILE LAMBDA 'exfunc_upper' IAM_ROLE default RETRY_TIMEOUT 3000 MAX_BATCH_ROWS 50 MAX_BATCH_SIZE 1 MB;

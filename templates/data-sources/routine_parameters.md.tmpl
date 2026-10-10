@@ -1,0 +1,29 @@
+---
+subcategory: Routines
+page_title: redshift_routine_parameters Data Source - terraform-provider-redshift
+description: Lists the parameters of functions and stored procedures.
+---
+
+# redshift_routine_parameters (Data Source)
+
+Lists the parameters of user-defined functions and stored procedures in one database, one item per parameter and
+overload, without managing them. See AWS
+[SHOW PARAMETERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_PARAMETERS.html) and
+[PG_PROC_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_PROC_INFO.html).
+
+```sql
+SELECT ... FROM pg_proc_info WHERE prokind IN ('f', 'p') AND nspname = '...' AND proname = '...';
+SHOW PARAMETERS OF { FUNCTION | PROCEDURE } database.schema.routine_name(arguments);
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_routine_parameters/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+The listing first finds the matching overloads in `pg_proc_info` and then runs `SHOW PARAMETERS` once per overload, so
+narrow it with `schema` and `routine_name`. Functions add a `RETURN` row at position `0` for their result. Viewing a
+routine requires superuser, ownership, or `USAGE` on its schema and `EXECUTE` on the routine.
