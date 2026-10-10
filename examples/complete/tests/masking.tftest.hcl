@@ -42,8 +42,8 @@ run "masking_apply" {
   assert {
     condition = (
       redshift_masking_policy.email.database == redshift_database.local.name &&
-      length(redshift_masking_policy.email.input_columns) == 1 &&
-      redshift_masking_policy.email.input_columns[0].type == "VARCHAR(256)" &&
+      length(redshift_masking_policy.email.input_column) == 1 &&
+      redshift_masking_policy.email.input_column[0].type == "VARCHAR(256)" &&
       strcontains(redshift_masking_policy.email.expression, "public.${local.masking_lookup_name}")
     )
     error_message = "The masking policy must live in the consumer-local database and read its lookup table."

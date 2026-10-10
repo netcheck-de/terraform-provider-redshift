@@ -36,17 +36,17 @@ data "redshift_masking_policy" "email" {
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
 - `expression` (String) SQL expression of the `USING` clause that computes the masked value from the input columns, for example `'XXXX'::VARCHAR(256)` or a `CASE` over the inputs. A constant must be cast to the input type. Updated in place with `ALTER MASKING POLICY`. Redshift stores its own rendering, so refresh keeps the configured text while `definition_fingerprint` matches and shows the catalog text after a change made outside Terraform.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
-- `input_columns` (Attributes List) Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached. Redshift cannot alter them, so changing a name or type replaces the policy; another spelling of the same type, such as `TEXT` for `VARCHAR(256)`, does not. (see [below for nested schema](#nestedatt--input_columns))
+- `input_column` (Attributes List) Ordered input columns of the `WITH` clause that the expression reads. (see [below for nested schema](#nestedatt--input_column))
 
-<a id="nestedatt--input_columns"></a>
-### Nested Schema for `input_columns`
+<a id="nestedatt--input_column"></a>
+### Nested Schema for `input_column`
 
 Read-Only:
 
 - `name` (String) Input column name used in `expression`; it does not have to match the masked column's name.
-- `type` (String) Redshift data type, such as `VARCHAR(256)` or `INTEGER`. A type without length gets the length a column would get, so `VARCHAR` means `VARCHAR(256)`.
+- `type` (String) Data type as the catalog reports it, such as `character varying(256)` for a configured `VARCHAR(256)`.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the policy's JSON identity, using the paired resource's warehouse, `database`, and `name`
 keys. Only superusers and `sys:secadmin` members can see policies; for others, and for a missing database or policy, the
-lookup fails. `expression` is the catalog rendering, and `input_columns` report the catalog's type names.
+lookup fails. `expression` is the catalog rendering, and `input_column` reports the catalog's type names.

@@ -13,7 +13,7 @@ Attach it to columns with `redshift_masking_policy_attachment`, and give it acce
 [Dynamic data masking](https://docs.aws.amazon.com/redshift/latest/dg/t_ddm.html).
 
 ```sql
-CREATE MASKING POLICY name WITH (input_columns) USING (expression);
+CREATE MASKING POLICY name WITH (...) USING (expression);
 ALTER MASKING POLICY name USING (expression);
 DROP MASKING POLICY name;
 ```
@@ -53,7 +53,7 @@ Alternatively, use `terraform import`:
 
 {{ codefile "shell" "examples/resources/redshift_masking_policy/import.sh" }}
 
-Import reads `input_columns` and `expression` from the catalog in Redshift's spelling, for example
+Import reads the `input_column` blocks and `expression` from the catalog in Redshift's spelling, for example
 `character varying(256)`. The first plan therefore shows an in-place update of `expression` unless the configuration
-repeats the catalog text, and of `input_columns` when the configuration spells an input type differently; neither
+repeats the catalog text, and of `input_column` when the configuration spells an input type differently; neither
 replaces the policy, and only the `expression` update runs `ALTER MASKING POLICY`.

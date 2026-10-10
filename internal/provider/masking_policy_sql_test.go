@@ -16,7 +16,7 @@ func maskingTestPolicy(name, expression string, columns ...maskingPolicyColumn) 
 	}
 	return maskingPolicyModel{
 		ID: types.StringNull(), Database: types.StringValue("admin"), Name: types.StringValue(name),
-		InputColumns: maskingPolicyColumnList(columns), Expression: types.StringValue(expression), DefinitionFingerprint: types.StringNull(),
+		InputColumn: maskingPolicyColumnList(columns), Expression: types.StringValue(expression), DefinitionFingerprint: types.StringNull(),
 	}
 }
 
@@ -67,21 +67,21 @@ func TestMaskingPolicySQL(t *testing.T) {
 		{"read", maskingQuerySQL(readMaskingPolicyQuery(quoted))},
 		{"list_all", maskingQuerySQL(listMaskingPoliciesQuery(""))},
 		{"list_database", maskingQuerySQL(listMaskingPoliciesQuery("analytics"))},
-		{"error_no_columns", invalid(func(m *maskingPolicyModel) { m.InputColumns = maskingPolicyColumnList(nil) })},
+		{"error_no_columns", invalid(func(m *maskingPolicyModel) { m.InputColumn = maskingPolicyColumnList(nil) })},
 		{"error_duplicate_column", invalid(func(m *maskingPolicyModel) {
-			m.InputColumns = maskingPolicyColumnList([]maskingPolicyColumn{{Name: "email", Type: "TEXT"}, {Name: "EMAIL", Type: "TEXT"}})
+			m.InputColumn = maskingPolicyColumnList([]maskingPolicyColumn{{Name: "email", Type: "TEXT"}, {Name: "EMAIL", Type: "TEXT"}})
 		})},
 		{"error_empty_column", invalid(func(m *maskingPolicyModel) {
-			m.InputColumns = maskingPolicyColumnList([]maskingPolicyColumn{{Name: "", Type: "TEXT"}})
+			m.InputColumn = maskingPolicyColumnList([]maskingPolicyColumn{{Name: "", Type: "TEXT"}})
 		})},
 		{"error_type", invalid(func(m *maskingPolicyModel) {
-			m.InputColumns = maskingPolicyColumnList([]maskingPolicyColumn{{Name: "email", Type: "TEXT; DROP TABLE users"}})
+			m.InputColumn = maskingPolicyColumnList([]maskingPolicyColumn{{Name: "email", Type: "TEXT; DROP TABLE users"}})
 		})},
 		{"error_type_anyelement", invalid(func(m *maskingPolicyModel) {
-			m.InputColumns = maskingPolicyColumnList([]maskingPolicyColumn{{Name: "email", Type: "ANYELEMENT"}})
+			m.InputColumn = maskingPolicyColumnList([]maskingPolicyColumn{{Name: "email", Type: "ANYELEMENT"}})
 		})},
 		{"error_type_refcursor", invalid(func(m *maskingPolicyModel) {
-			m.InputColumns = maskingPolicyColumnList([]maskingPolicyColumn{{Name: "email", Type: "refcursor"}})
+			m.InputColumn = maskingPolicyColumnList([]maskingPolicyColumn{{Name: "email", Type: "refcursor"}})
 		})},
 		{"error_statement_separator", invalid(func(m *maskingPolicyModel) { m.Expression = types.StringValue("'x'; DROP TABLE users") })},
 		{"error_unterminated_literal", invalid(func(m *maskingPolicyModel) { m.Expression = types.StringValue("'it''s") })},

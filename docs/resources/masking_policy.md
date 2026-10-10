@@ -13,7 +13,7 @@ Attach it to columns with `redshift_masking_policy_attachment`, and give it acce
 [Dynamic data masking](https://docs.aws.amazon.com/redshift/latest/dg/t_ddm.html).
 
 ```sql
-CREATE MASKING POLICY name WITH (input_columns) USING (expression);
+CREATE MASKING POLICY name WITH (...) USING (expression);
 ALTER MASKING POLICY name USING (expression);
 DROP MASKING POLICY name;
 ```
@@ -22,25 +22,30 @@ DROP MASKING POLICY name;
 
 ```terraform
 resource "redshift_masking_policy" "email" {
-  database = redshift_database.warehouse.name
-  name     = "mask_email"
-
-  input_columns = [
-    { name = "email", type = "VARCHAR(256)" },
-  ]
+  database   = redshift_database.warehouse.name
+  name       = "mask_email"
   expression = "REGEXP_REPLACE(email, '^[^@]+', '***')"
+
+  input_column {
+    name = "email"
+    type = "VARCHAR(256)"
+  }
 }
 
 # A conditional policy reads a second column, which the attachment maps through input_columns.
 resource "redshift_masking_policy" "card" {
-  database = redshift_database.warehouse.name
-  name     = "mask_card"
-
-  input_columns = [
-    { name = "is_fraud", type = "BOOLEAN" },
-    { name = "pan", type = "VARCHAR(16)" },
-  ]
+  database   = redshift_database.warehouse.name
+  name       = "mask_card"
   expression = "CASE WHEN is_fraud THEN pan ELSE NULL END"
+
+  input_column {
+    name = "is_fraud"
+    type = "BOOLEAN"
+  }
+  input_column {
+    name = "pan"
+    type = "VARCHAR(16)"
+  }
 }
 ```
 
@@ -52,16 +57,19 @@ resource "redshift_masking_policy" "card" {
 
 - `database` (String) Local database that holds the policy; the policy can only be attached to relations in this database. Changing it replaces the policy.
 - `expression` (String) SQL expression of the `USING` clause that computes the masked value from the input columns, for example `'XXXX'::VARCHAR(256)` or a `CASE` over the inputs. A constant must be cast to the input type. Updated in place with `ALTER MASKING POLICY`. Redshift stores its own rendering, so refresh keeps the configured text while `definition_fingerprint` matches and shows the catalog text after a change made outside Terraform.
-- `input_columns` (Attributes List) Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached. Redshift cannot alter them, so changing a name or type replaces the policy; another spelling of the same type, such as `TEXT` for `VARCHAR(256)`, does not. (see [below for nested schema](#nestedatt--input_columns))
 - `name` (String) Policy name, unique among the masking policies of the database. Changing it replaces the policy.
+
+### Optional
+
+- `input_column` (Block List) At least one `input_column` block is required. Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached. Redshift cannot alter them, so changing a name or type replaces the policy; another spelling of the same type, such as `TEXT` for `VARCHAR(256)`, does not. (see [below for nested schema](#nestedblock--input_column))
 
 ### Read-Only
 
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
 - `id` (String) JSON import identity; independent of Data API execution history.
 
-<a id="nestedatt--input_columns"></a>
-### Nested Schema for `input_columns`
+<a id="nestedblock--input_column"></a>
+### Nested Schema for `input_column`
 
 Required:
 
@@ -108,7 +116,7 @@ terraform import redshift_masking_policy.email \
   '{"workgroup_name":"warehouse","database":"warehouse","name":"mask_email"}'
 ```
 
-Import reads `input_columns` and `expression` from the catalog in Redshift's spelling, for example
+Import reads the `input_column` blocks and `expression` from the catalog in Redshift's spelling, for example
 `character varying(256)`. The first plan therefore shows an in-place update of `expression` unless the configuration
-repeats the catalog text, and of `input_columns` when the configuration spells an input type differently; neither
+repeats the catalog text, and of `input_column` when the configuration spells an input type differently; neither
 replaces the policy, and only the `expression` update runs `ALTER MASKING POLICY`.

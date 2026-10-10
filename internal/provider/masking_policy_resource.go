@@ -29,8 +29,8 @@ type maskingPolicyModel struct {
 	Database types.String `tfsdk:"database"`
 	// Name identifies the policy within its database.
 	Name types.String `tfsdk:"name"`
-	// InputColumns are the typed inputs of the masking expression, in order.
-	InputColumns types.List `tfsdk:"input_columns"`
+	// InputColumn holds the input_column blocks: the typed inputs of the masking expression, in order.
+	InputColumn types.List `tfsdk:"input_column"`
 	// Expression is the configured masking expression; Read replaces it with the catalog text after drift.
 	Expression types.String `tfsdk:"expression"`
 	// DefinitionFingerprint hashes the catalog expression to detect changes made outside Terraform.
@@ -64,21 +64,23 @@ func (r *maskingPolicyResource) Schema(_ context.Context, _ resource.SchemaReque
 				MarkdownDescription: "Policy name, unique among the masking policies of the database. Changing it replaces the policy.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
-			"input_columns": schema.ListNestedAttribute{
-				Required: true, Validators: []validator.List{listvalidator.SizeAtLeast(1)},
-				MarkdownDescription: "Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached. Redshift cannot alter them, so changing a name or type replaces the policy; another spelling of the same type, such as `TEXT` for `VARCHAR(256)`, does not.",
-				PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplaceIf(maskingPolicyInputsReplacement,
-					"Replaces the policy when an input column's name or type changes.", "Replaces the policy when an input column's name or type changes.")},
-				NestedObject: schema.NestedAttributeObject{Attributes: map[string]schema.Attribute{
-					"name": schema.StringAttribute{Required: true, Validators: nonEmpty, MarkdownDescription: "Input column name used in `expression`; it does not have to match the masked column's name."},
-					"type": schema.StringAttribute{Required: true, Validators: nonEmpty, MarkdownDescription: "Redshift data type, such as `VARCHAR(256)` or `INTEGER`. A type without length gets the length a column would get, so `VARCHAR` means `VARCHAR(256)`."},
-				}},
-			},
 			"expression": schema.StringAttribute{
 				Required: true, Validators: nonEmpty,
 				MarkdownDescription: "SQL expression of the `USING` clause that computes the masked value from the input columns, for example `'XXXX'::VARCHAR(256)` or a `CASE` over the inputs. A constant must be cast to the input type. Updated in place with `ALTER MASKING POLICY`. Redshift stores its own rendering, so refresh keeps the configured text while `definition_fingerprint` matches and shows the catalog text after a change made outside Terraform.",
 			},
 			"definition_fingerprint": definitionFingerprintAttribute(),
+		},
+		Blocks: map[string]schema.Block{
+			"input_column": schema.ListNestedBlock{
+				Validators:          []validator.List{listvalidator.IsRequired(), listvalidator.SizeAtLeast(1)},
+				MarkdownDescription: "At least one `input_column` block is required. Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached. Redshift cannot alter them, so changing a name or type replaces the policy; another spelling of the same type, such as `TEXT` for `VARCHAR(256)`, does not.",
+				PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplaceIf(maskingPolicyInputsReplacement,
+					"Replaces the policy when an input column's name or type changes.", "Replaces the policy when an input column's name or type changes.")},
+				NestedObject: schema.NestedBlockObject{Attributes: map[string]schema.Attribute{
+					"name": schema.StringAttribute{Required: true, Validators: nonEmpty, MarkdownDescription: "Input column name used in `expression`; it does not have to match the masked column's name."},
+					"type": schema.StringAttribute{Required: true, Validators: nonEmpty, MarkdownDescription: "Redshift data type, such as `VARCHAR(256)` or `INTEGER`. A type without length gets the length a column would get, so `VARCHAR` means `VARCHAR(256)`."},
+				}},
+			},
 		},
 	}
 }
@@ -113,22 +115,22 @@ func (r *maskingPolicyResource) read(ctx context.Context, data *maskingPolicyMod
 		return "", false, err
 	}
 	// Keep the configured spelling of equivalent types, so VARCHAR(256) does not drift to character varying(256).
-	if !maskingPolicyColumnsMatch(maskingPolicyColumns(data.InputColumns), columns) {
-		data.InputColumns = maskingPolicyColumnList(columns)
+	if !maskingPolicyColumnsMatch(maskingPolicyColumns(data.InputColumn), columns) {
+		data.InputColumn = maskingPolicyColumnList(columns)
 	}
 	return maskingPolicyExpressionText(rows[0]["policy_expression"]), true, nil
 }
 
 // verify re-reads the policy after Create or Update and records the catalog fingerprint of the configured text.
 func (r *maskingPolicyResource) verify(ctx context.Context, data *maskingPolicyModel) error {
-	planned := data.InputColumns
+	planned := data.InputColumn
 	text, found, err := r.read(ctx, data)
 	switch {
 	case err != nil:
 		return err
 	case !found:
 		return fmt.Errorf("the masking policy is absent after the change")
-	case !data.InputColumns.Equal(planned):
+	case !data.InputColumn.Equal(planned):
 		return fmt.Errorf("the masking policy's input columns differ from the configuration")
 	}
 	data.Expression, data.DefinitionFingerprint = recordDefinition(data.Expression, text)
@@ -139,7 +141,8 @@ func (r *maskingPolicyResource) verify(ctx context.Context, data *maskingPolicyM
 func (r *maskingPolicyResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data maskingPolicyModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	// The schema's IsRequired validator already reports absent input_column blocks; repeating it doubles the error.
+	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() || data.InputColumn.IsNull() {
 		return
 	}
 	if err := maskingPolicyValidate(data); err != nil {

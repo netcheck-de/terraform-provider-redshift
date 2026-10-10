@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +24,7 @@ var _ = registerParity(parityCase{source: newMaskingPoliciesDataSource, resource
 func TestMaskingPolicyLookup(t *testing.T) {
 	text := "CAST('***' AS TEXT)"
 	exerciseCatalogLookup(t, newMaskingPolicyDataSource, map[string]string{"database": "admin", "name": "mask_email"}, map[string]attr.Value{
-		"input_columns":          maskingPolicyColumnList([]maskingPolicyColumn{{Name: "email", Type: "character varying(256)"}}),
+		"input_column":           maskingPolicyColumnList([]maskingPolicyColumn{{Name: "email", Type: "character varying(256)"}}),
 		"expression":             types.StringValue(text),
 		"definition_fingerprint": types.StringValue(definitionFingerprint(text)),
 	}, fullCatalog())
@@ -110,5 +112,26 @@ func TestMaskingPoliciesListingFailures(t *testing.T) {
 			_, diagnostics := readSource(t, source, collectionConfig(t, source, nil), client)
 			assert.True(t, diagnostics.HasError())
 		})
+	}
+}
+
+// TestMaskingPolicyOutputsDescribeCatalogSpelling gives the lookup and the listing element the same catalog-facing
+// descriptions of the inputs, instead of the resource's rules for configured spellings.
+func TestMaskingPolicyOutputsDescribeCatalogSpelling(t *testing.T) {
+	inputs := func(source datasource.DataSource, collection string) schema.ListNestedAttribute {
+		var response datasource.SchemaResponse
+		source.Schema(context.Background(), datasource.SchemaRequest{}, &response)
+		attributes := response.Schema.Attributes
+		if collection != "" {
+			attributes = attributes[collection].(schema.ListNestedAttribute).NestedObject.Attributes
+		}
+		return attributes["input_column"].(schema.ListNestedAttribute)
+	}
+	for name, column := range map[string]schema.ListNestedAttribute{
+		"lookup":  inputs(newMaskingPolicyDataSource(), ""),
+		"listing": inputs(newMaskingPoliciesDataSource(), "masking_policies"),
+	} {
+		assert.Equal(t, maskingPolicyOutputDescriptions["input_column"], column.MarkdownDescription, name)
+		assert.Equal(t, maskingPolicyOutputDescriptions["input_column.type"], column.NestedObject.Attributes["type"].GetMarkdownDescription(), name)
 	}
 }

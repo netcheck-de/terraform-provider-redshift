@@ -23,14 +23,15 @@ resource "aws_redshiftdata_statement" "masking_lookup" {
 }
 
 resource "redshift_masking_policy" "email" {
-  provider = redshift.consumer
-  database = redshift_database.local.name
-  name     = "example_mask_email"
-
-  input_columns = [
-    { name = "email", type = "VARCHAR(256)" },
-  ]
+  provider   = redshift.consumer
+  database   = redshift_database.local.name
+  name       = "example_mask_email"
   expression = "CASE WHEN email IN (SELECT email FROM public.${local.masking_lookup_name}) THEN email ELSE REGEXP_REPLACE(email, '^[^@]+', '***') END"
+
+  input_column {
+    name = "email"
+    type = "VARCHAR(256)"
+  }
 
   depends_on = [aws_redshiftdata_statement.masking_lookup]
 }

@@ -19,7 +19,7 @@ func newMaskingPoliciesDataSource() datasource.DataSource {
 		filters: map[string]schema.Attribute{
 			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Only policies of this database; all databases when omitted."},
 		},
-		element: collectionElement(newMaskingPolicyResource, "database", "name", "input_columns", "expression", "definition_fingerprint"),
+		element: describedOutputs(collectionElement(newMaskingPolicyResource, "database", "name", "input_column", "expression", "definition_fingerprint"), maskingPolicyOutputDescriptions),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
 			rows, err := client.selectRows(ctx, client.database.ValueString(), listMaskingPoliciesQuery(objectString(filters, "database")))
 			if err != nil {
@@ -34,7 +34,7 @@ func newMaskingPoliciesDataSource() datasource.DataSource {
 				text := maskingPolicyExpressionText(row["policy_expression"])
 				items = append(items, map[string]attr.Value{
 					"database": types.StringValue(row["policy_database"]), "name": types.StringValue(row["policy_name"]),
-					"input_columns": maskingPolicyColumnList(columns), "expression": types.StringValue(text),
+					"input_column": maskingPolicyColumnList(columns), "expression": types.StringValue(text),
 					"definition_fingerprint": types.StringValue(definitionFingerprint(text)),
 				})
 			}

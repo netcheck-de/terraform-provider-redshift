@@ -19,7 +19,7 @@ type maskingPolicyColumn struct {
 	Type string
 }
 
-// maskingPolicyColumnType is the element type of input_columns.
+// maskingPolicyColumnType is the element type of the input_column blocks.
 var maskingPolicyColumnType = types.ObjectType{AttrTypes: map[string]attr.Type{"name": types.StringType, "type": types.StringType}}
 
 // maskingPolicyColumns returns the known input columns of a list, in order; unknown elements are skipped, so callers
@@ -55,9 +55,9 @@ func maskingPolicyValidate(data maskingPolicyModel) error {
 	if knownString(data.Name) == "" {
 		return fmt.Errorf("name must not be empty")
 	}
-	columns := maskingPolicyColumns(data.InputColumns)
+	columns := maskingPolicyColumns(data.InputColumn)
 	if len(columns) == 0 {
-		return fmt.Errorf("input_columns needs at least one column")
+		return fmt.Errorf("at least one input_column block is required")
 	}
 	seen := map[string]bool{}
 	for _, column := range columns {
@@ -122,7 +122,7 @@ func createMaskingPolicyStatement(data maskingPolicyModel) (string, error) {
 	if err := maskingPolicyValidate(data); err != nil {
 		return "", err
 	}
-	inputs, err := maskingPolicyInputs(maskingPolicyColumns(data.InputColumns))
+	inputs, err := maskingPolicyInputs(maskingPolicyColumns(data.InputColumn))
 	if err != nil {
 		return "", err
 	}

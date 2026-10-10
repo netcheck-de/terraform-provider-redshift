@@ -3,17 +3,22 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
+	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -32,10 +37,10 @@ var _ = registerLifecycleCase(lifecycleCase{
 })
 
 var _ = registerReplacementPolicy("redshift_masking_policy", map[string]replaceRule{
-	"database":      replaceAlways,
-	"name":          replaceAlways,
-	"input_columns": replaceConditional("TestMaskingPolicyInputsReplacement"),
-	"expression":    replaceNever,
+	"database":     replaceAlways,
+	"name":         replaceAlways,
+	"input_column": replaceConditional("TestMaskingPolicyInputsReplacement"),
+	"expression":   replaceNever,
 })
 
 var _ = registerValidateConfigCase("masking_policy", validateConfigCase{
@@ -114,7 +119,7 @@ func TestMaskingPolicyReadReconcilesDefinition(t *testing.T) {
 			require.False(t, resp.State.Get(context.Background(), &observed).HasError())
 			assert.Equal(t, test.expression, observed.Expression.ValueString())
 			assert.Equal(t, definitionFingerprint(catalogText), observed.DefinitionFingerprint.ValueString())
-			assert.True(t, observed.InputColumns.Equal(maskingLifecyclePolicy.InputColumns), "equivalent type spellings keep the configured one")
+			assert.True(t, observed.InputColumn.Equal(maskingLifecyclePolicy.InputColumn), "equivalent type spellings keep the configured one")
 		})
 	}
 	r := newMaskingPolicyResource()
@@ -125,7 +130,7 @@ func TestMaskingPolicyReadReconcilesDefinition(t *testing.T) {
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 	var observed maskingPolicyModel
 	require.False(t, resp.State.Get(context.Background(), &observed).HasError())
-	assert.Equal(t, []maskingPolicyColumn{{Name: "email", Type: "integer"}}, maskingPolicyColumns(observed.InputColumns), "changed inputs surface to plan a replacement")
+	assert.Equal(t, []maskingPolicyColumn{{Name: "email", Type: "integer"}}, maskingPolicyColumns(observed.InputColumn), "changed inputs surface to plan a replacement")
 }
 
 // TestMaskingPolicyCatalogFailures reports unreadable, ambiguous, or diverging catalog rows instead of guessing.
@@ -163,6 +168,24 @@ func TestMaskingPolicyCreateRejectsInvalidBeforeState(t *testing.T) {
 	assert.True(t, invoke(t, r, "update", model, false).HasError(), "update validates before ALTER")
 }
 
+// TestMaskingPolicyAbsentInputsReportedOnce leaves absent input_column blocks to the schema's IsRequired validator
+// at plan time, so the user sees one error, while Create still rejects them before the first State.Set.
+func TestMaskingPolicyAbsentInputsReportedOnce(t *testing.T) {
+	r := newMaskingPolicyResource()
+	configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+		return nil, fmt.Errorf("unexpected SQL %q", sql)
+	}))
+	model := maskingLifecyclePolicy
+	model.InputColumn = types.ListNull(maskingPolicyColumnType)
+	var validated resource.ValidateConfigResponse
+	r.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, model))}, &validated)
+	assert.False(t, validated.Diagnostics.HasError(), "%v", validated.Diagnostics)
+	resp := resource.CreateResponse{State: emptyState(t, r)}
+	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(testState(t, r, model))}, &resp)
+	require.True(t, resp.Diagnostics.HasError())
+	assert.True(t, resp.State.Raw.IsNull(), "a policy without inputs must not be recorded in state")
+}
+
 // TestMaskingPolicyImport accepts the JSON identity Create records and rejects incomplete ones.
 func TestMaskingPolicyImport(t *testing.T) {
 	r := newMaskingPolicyResource()
@@ -198,17 +221,17 @@ func TestMaskingPolicyInputsReplacement(t *testing.T) {
 	require.False(t, refreshed.Diagnostics.HasError(), "%v", refreshed.Diagnostics)
 	var state maskingPolicyModel
 	require.False(t, refreshed.State.Get(ctx, &state).HasError())
-	require.Equal(t, []maskingPolicyColumn{{Name: "email", Type: "character varying(256)"}}, maskingPolicyColumns(state.InputColumns))
+	require.Equal(t, []maskingPolicyColumn{{Name: "email", Type: "character varying(256)"}}, maskingPolicyColumns(state.InputColumn))
 
 	var response resource.SchemaResponse
 	r.Schema(ctx, resource.SchemaRequest{}, &response)
-	modifiers := response.Schema.Attributes["input_columns"].(schema.ListNestedAttribute).PlanModifiers
+	modifiers := response.Schema.Blocks["input_column"].(schema.ListNestedBlock).PlanModifiers
 	unknownType := types.ObjectValueMust(maskingPolicyColumnType.AttrTypes, map[string]attr.Value{"name": types.StringValue("email"), "type": types.StringUnknown()})
 	for name, test := range map[string]struct {
 		planned types.List
 		replace bool
 	}{
-		"configured spelling": {maskingLifecyclePolicy.InputColumns, false},
+		"configured spelling": {maskingLifecyclePolicy.InputColumn, false},
 		"folded name":         {maskingPolicyColumnList([]maskingPolicyColumn{{Name: "EMAIL", Type: "TEXT"}}), false},
 		"changed type":        {maskingPolicyColumnList([]maskingPolicyColumn{{Name: "email", Type: "VARCHAR(100)"}}), true},
 		"renamed input":       {maskingPolicyColumnList([]maskingPolicyColumn{{Name: "address", Type: "VARCHAR(256)"}}), true},
@@ -218,15 +241,15 @@ func TestMaskingPolicyInputsReplacement(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			planned := state
-			planned.InputColumns, planned.Expression = test.planned, maskingLifecyclePolicy.Expression
+			planned.InputColumn, planned.Expression = test.planned, maskingLifecyclePolicy.Expression
 			plan := tfsdk.Plan(testState(t, r, planned))
 			if test.planned.IsUnknown() || name == "unknown type" {
 				// testState cannot encode unknown values, and RequiresReplaceIf reads only the attribute values.
 				plan = tfsdk.Plan(testState(t, r, state))
 			}
 			request := planmodifier.ListRequest{
-				Path: path.Root("input_columns"), State: refreshed.State, Plan: plan,
-				StateValue: state.InputColumns, PlanValue: test.planned, ConfigValue: test.planned,
+				Path: path.Root("input_column"), State: refreshed.State, Plan: plan,
+				StateValue: state.InputColumn, PlanValue: test.planned, ConfigValue: test.planned,
 			}
 			replace := false
 			for _, modifier := range modifiers {
@@ -241,16 +264,60 @@ func TestMaskingPolicyInputsReplacement(t *testing.T) {
 	// The in-place update renders no statement for the inputs and keeps the configured spelling.
 	statements, err := alterMaskingPolicyStatements(state, func() maskingPolicyModel {
 		planned := state
-		planned.InputColumns = maskingLifecyclePolicy.InputColumns
+		planned.InputColumn = maskingLifecyclePolicy.InputColumn
 		return planned
 	}())
 	require.NoError(t, err)
 	assert.Empty(t, statements)
 	planned := state
-	planned.InputColumns = maskingLifecyclePolicy.InputColumns
+	planned.InputColumn = maskingLifecyclePolicy.InputColumn
 	updated, diagnostics := applyOperation(t, r, "update", state, planned, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	var observed maskingPolicyModel
 	require.False(t, updated.Get(ctx, &observed).HasError())
-	assert.True(t, observed.InputColumns.Equal(maskingLifecyclePolicy.InputColumns), "the update records the configured spelling")
+	assert.True(t, observed.InputColumn.Equal(maskingLifecyclePolicy.InputColumn), "the update records the configured spelling")
+}
+
+// TestMaskingPolicyBlockPlan drives input_column blocks through real plans, which the model-level tests skip: the
+// required-block validator, the empty plan after apply, and the in-place update for another spelling of a type.
+func TestMaskingPolicyBlockPlan(t *testing.T) {
+	c := &catalog{identity: true, privileges: map[string]bool{}}
+	configuration := func(blocks string) string {
+		return fmt.Sprintf(`
+provider "redshift" {
+  region = "eu-central-1"
+  workgroup_name = "warehouse"
+  database = "admin"
+}
+resource "redshift_masking_policy" "email" {
+  database = "admin"
+  name = "mask_email"
+  expression = "'***'::VARCHAR(256)"
+%s
+}`, blocks)
+	}
+	varchar := configuration(`  input_column {
+    name = "email"
+    type = "VARCHAR(256)"
+  }`)
+	text := configuration(`  input_column {
+    name = "email"
+    type = "TEXT"
+  }`)
+	testresource.UnitTest(t, testresource.TestCase{
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})},
+		Steps: []testresource.TestStep{
+			{Config: configuration(""), ExpectError: regexp.MustCompile(`Block input_column must have a configuration value`), PlanOnly: true},
+			{Config: varchar, Check: testresource.TestCheckResourceAttr("redshift_masking_policy.email", "input_column.0.type", "VARCHAR(256)")},
+			{Config: varchar, PlanOnly: true},
+			{
+				Config: text,
+				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("redshift_masking_policy.email", plancheck.ResourceActionUpdate),
+				}},
+				Check: testresource.TestCheckResourceAttr("redshift_masking_policy.email", "input_column.0.type", "TEXT"),
+			},
+			{Config: text, PlanOnly: true},
+		},
+	})
 }

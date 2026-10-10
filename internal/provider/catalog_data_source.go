@@ -296,10 +296,17 @@ func newCatalogDataSource(spec catalogSpec) datasource.DataSource {
 // read-only lookup does not have.
 func lookupDescriptions(source datasource.DataSource, descriptions map[string]string) datasource.DataSource {
 	lookup := source.(*catalogDataSource)
-	for name, description := range descriptions {
-		lookup.attributes = describedAttributes(lookup.attributes, strings.Split(name, "."), name, description)
-	}
+	lookup.attributes = describedOutputs(lookup.attributes, descriptions)
 	return lookup
+}
+
+// describedOutputs applies lookupDescriptions' dotted-path overrides to an attribute map, so a collection element
+// can describe catalog values with the same text as its single lookup.
+func describedOutputs(attributes map[string]schema.Attribute, descriptions map[string]string) map[string]schema.Attribute {
+	for name, description := range descriptions {
+		attributes = describedAttributes(attributes, strings.Split(name, "."), name, description)
+	}
+	return attributes
 }
 
 // describedAttributes returns a copy of attributes whose attribute at path carries description, so nested maps that

@@ -37,8 +37,11 @@ resource "redshift_role" "readers" { name = "%[5]s_readers" }
 resource "redshift_masking_policy" "email" {
   database = redshift_database.local.name
   name = "%[5]s_email"
-  input_columns = [{ name = "email", type = "VARCHAR(256)" }]
   expression = %[6]q
+  input_column {
+    name = "email"
+    type = "VARCHAR(256)"
+  }
 }
 resource "redshift_policy_grant" "lookup" {
   database_name = redshift_database.local.name
@@ -114,14 +117,14 @@ resource "redshift_database" "local" { name = %q }
 				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachment.email", "exists", "true"),
 				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachment.email", "priority", "10"),
 				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachment.email", "input_columns.0", "email"),
-				resource.TestCheckResourceAttr("data.redshift_masking_policy.email", "input_columns.0.type", "character varying(256)"),
+				resource.TestCheckResourceAttr("data.redshift_masking_policy.email", "input_column.0.type", "character varying(256)"),
 				resource.TestCheckResourceAttr("data.redshift_masking_policies.local", "masking_policies.#", "1"),
 			)},
 			{Config: initial, PlanOnly: true},
 			{ResourceName: "redshift_masking_policy_attachment.email", ImportState: true, ImportStateVerify: true},
 			// Import cannot read a grant to a policy, so it records no privileges.
 			{ResourceName: "redshift_policy_grant.lookup", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"privileges"}},
-			{ResourceName: "redshift_masking_policy.email", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"expression", "input_columns"}},
+			{ResourceName: "redshift_masking_policy.email", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"expression", "input_column"}},
 			{Config: updated, Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_masking_policy_attachment.email", "priority", "20"),
 				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachment.email", "priority", "20"),
