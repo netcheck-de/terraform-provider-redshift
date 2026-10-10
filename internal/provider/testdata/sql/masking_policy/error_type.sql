@@ -1,0 +1,1 @@
+-- error: input column "email": unsupported Redshift data type "TEXT; DROP TABLE users"

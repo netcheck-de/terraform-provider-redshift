@@ -1,0 +1,25 @@
+---
+subcategory: Identity and Access
+page_title: redshift_masking_policies Data Source - terraform-provider-redshift
+description: Lists dynamic data masking policies.
+---
+
+# redshift_masking_policies (Data Source)
+
+Lists masking policies with their inputs and expressions, optionally of one database. See AWS
+[SVV_MASKING_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MASKING_POLICY.html).
+
+```sql
+SELECT ... FROM svv_masking_policy WHERE policy_database = '...';
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_masking_policies/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+Items are ordered by database and name. Only superusers and `sys:secadmin` members see policies; for other identities
+the list is empty. `id` combines the warehouse binding with the `database` filter, or the provider database without one.

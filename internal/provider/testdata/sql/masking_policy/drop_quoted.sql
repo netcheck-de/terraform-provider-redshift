@@ -1,0 +1,1 @@
+DROP MASKING POLICY "Odd""Policy";

@@ -1,0 +1,1 @@
+-- error: input_columns needs at least one column

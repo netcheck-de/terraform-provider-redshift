@@ -1,0 +1,59 @@
+---
+subcategory: Identity and Access
+page_title: redshift_masking_policy Resource - terraform-provider-redshift
+description: Manages a dynamic data masking policy.
+---
+
+# redshift_masking_policy (Resource)
+
+Manages one dynamic data masking policy: its typed input columns and the expression that computes the masked value.
+Attach it to columns with `redshift_masking_policy_attachment`, and give it access to lookup tables with
+`redshift_policy_grant`. See AWS
+[CREATE MASKING POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_MASKING_POLICY.html) and
+[Dynamic data masking](https://docs.aws.amazon.com/redshift/latest/dg/t_ddm.html).
+
+```sql
+CREATE MASKING POLICY name WITH (input_columns) USING (expression);
+ALTER MASKING POLICY name USING (expression);
+DROP MASKING POLICY name;
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_masking_policy/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+The provider must connect as a superuser or a member of `sys:secadmin`, the only identities that can create masking
+policies and read `SVV_MASKING_POLICY`. Statements run in `database`, so the policy name stays unqualified.
+
+`expression` updates in place with `ALTER MASKING POLICY`, which keeps the policy's attachments. `ALTER` cannot change
+the input columns or their types, so changing an input column's name or type replaces the policy; Redshift refuses to
+drop a policy that is still attached, so replace or remove its attachments first. Deletion never cascades.
+
+Redshift stores the expression in its own rendering, for example with the input columns qualified. State keeps the
+configured `expression` while the catalog still matches `definition_fingerprint`, the hash recorded at apply time.
+When the policy is altered outside Terraform, refresh shows the catalog text in `expression` and the next apply restores
+the configured one. Equivalent input types, such as `TEXT` and `VARCHAR(256)`, do not count as a change, neither on
+refresh nor in a plan: switching between them updates the state in place without running SQL. A type without length
+gets the length Redshift gives a column, so `VARCHAR` means `VARCHAR(256)`. The routine pseudo-types `ANYELEMENT` and
+`REFCURSOR` are rejected, because no column has them.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_masking_policy/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_masking_policy/import.sh" }}
+
+Import reads `input_columns` and `expression` from the catalog in Redshift's spelling, for example
+`character varying(256)`. The first plan therefore shows an in-place update of `expression` unless the configuration
+repeats the catalog text, and of `input_columns` when the configuration spells an input type differently; neither
+replaces the policy, and only the `expression` update runs `ALTER MASKING POLICY`.

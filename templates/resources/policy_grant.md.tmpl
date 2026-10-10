@@ -1,0 +1,53 @@
+---
+subcategory: Identity and Access
+page_title: redshift_policy_grant Resource - terraform-provider-redshift
+description: Grants SELECT on a lookup table to a row-level security or masking policy.
+---
+
+# redshift_policy_grant (Resource)
+
+Owns `SELECT` on one lookup table for one row-level security (`RLS`) or dynamic data masking (`MASKING`) policy, which a
+policy needs when its expression reads the table. See AWS
+[GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-row-level-security) and
+[REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-role-level).
+
+```sql
+GRANT SELECT ON TABLE ... TO { RLS | MASKING } POLICY policy_name;
+REVOKE SELECT ON TABLE ... FROM { RLS | MASKING } POLICY policy_name;
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_policy_grant/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+All identity arguments require replacement when changed; `privileges` updates in place and accepts only `SELECT`.
+Before each change the resource checks that the database, schema, table, and policy exist (`SVV_RLS_POLICY` or
+`SVV_MASKING_POLICY`); a missing parent removes the resource from state. Deleting the resource revokes the grant.
+Policies cannot hold grant options.
+
+**Redshift does not report grants to policies.** The AWS reference lists only users, roles, groups, and `PUBLIC` as the
+identities that [SHOW GRANTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_GRANTS.html) and
+[SVV_RELATION_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RELATION_PRIVILEGES.html) return, so
+the provider cannot read the grant back. State records what Terraform granted: Create and Update run `GRANT` or `REVOKE`
+for the difference between the recorded and the configured `privileges`, refresh keeps the recorded value, and Delete
+revokes it. A grant revoked or added outside Terraform is not detected; change `privileges` or replace the resource to
+apply it again. For the same reason there is no `redshift_policy_grant` data source.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_policy_grant/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_policy_grant/import.sh" }}
+
+Import cannot read the grant, so the imported state records no privileges and the next apply runs `GRANT` for the
+configured ones.

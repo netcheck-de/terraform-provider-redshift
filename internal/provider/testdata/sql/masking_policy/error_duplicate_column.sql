@@ -1,0 +1,1 @@
+-- error: input column "EMAIL" is declared twice

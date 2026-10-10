@@ -1,0 +1,1 @@
+-- error: expression: SQL text must be a single statement or expression without ';'

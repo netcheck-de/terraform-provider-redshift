@@ -1,0 +1,1 @@
+-- error: input column "email": data type "ANYELEMENT" is a routine pseudo-type that no column can have

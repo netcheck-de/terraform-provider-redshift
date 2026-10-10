@@ -1,0 +1,1 @@
+-- error: expression: SQL text has an unterminated string literal

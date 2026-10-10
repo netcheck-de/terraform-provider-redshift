@@ -1,0 +1,55 @@
+---
+subcategory: Identity and Access
+page_title: redshift_masking_policy_attachment Resource - terraform-provider-redshift
+description: Attaches a dynamic data masking policy to columns of a relation for a user, role, or PUBLIC.
+---
+
+# redshift_masking_policy_attachment (Resource)
+
+Attaches one masking policy to columns of one table or view for one user, role, or `PUBLIC`. See AWS
+[ATTACH MASKING POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_ATTACH_MASKING_POLICY.html) and
+[DETACH MASKING POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_DETACH_MASKING_POLICY.html).
+
+```sql
+ATTACH MASKING POLICY policy ON schema.relation (columns) ... TO grantee ...;
+DETACH MASKING POLICY policy ON schema.relation (columns) FROM grantee;
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_masking_policy_attachment/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+The provider must connect as a superuser or a member of `sys:secadmin`. The policy and the relation must be in the
+same `database`. `columns` lists the masked output columns, one per policy output; `input_columns` maps relation columns
+to the policy's input columns in order and defaults to `columns`. A recipient cannot hold two policies on one column,
+and two policies on one column cannot share a `priority`, even for different recipients; the highest priority applies.
+
+Attaching a policy masks the columns immediately; it does not depend on any table-level switch. Refresh reads
+`SVV_ATTACHED_MASKING_POLICY` and removes the resource when the attachment, its policy, its relation, or its database is
+gone.
+
+Redshift documents no command that changes an attachment, so a new `priority` detaches and re-attaches the policy.
+**Between the two statements the recipient sees the columns under the next applicable policy, or unmasked if no other
+policy applies.** Plan priority changes for a maintenance window, or attach a replacement policy at a higher priority
+first. Before it detaches anything, the update reads `SVV_ATTACHED_MASKING_POLICY` and fails if another policy already
+holds the new priority on one of the columns, which `ATTACH` would reject. If the re-attach still fails, the update
+re-attaches the policy with the priority and inputs it had and reports the error; only when that also fails do the
+columns stay unmasked for the recipient until the next apply, and the error says so. Changing any other argument
+replaces the attachment with the same detach-then-attach window. Update compares with the catalog, so it also repairs a
+priority changed outside Terraform.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity; `columns` is a JSON list inside the identity:
+
+{{ tffile "examples/resources/redshift_masking_policy_attachment/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_masking_policy_attachment/import.sh" }}

@@ -1,0 +1,1 @@
+-- error: policy_type: "ROLE" is not one of RLS, MASKING

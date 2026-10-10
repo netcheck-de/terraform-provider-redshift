@@ -1,0 +1,1 @@
+-- error: columns must name distinct, nonempty columns

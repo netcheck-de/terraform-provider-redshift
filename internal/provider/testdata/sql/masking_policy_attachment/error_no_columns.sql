@@ -1,0 +1,1 @@
+-- error: columns needs at least one column

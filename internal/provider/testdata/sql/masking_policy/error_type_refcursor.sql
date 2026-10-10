@@ -1,0 +1,1 @@
+-- error: input column "email": data type "refcursor" is a routine pseudo-type that no column can have
