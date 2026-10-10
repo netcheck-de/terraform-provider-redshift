@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -31,9 +33,8 @@ var _ = registerReplacementPolicy("redshift_materialized_view", map[string]repla
 	"name":         replaceAlways,
 	"query":        replaceAlways,
 	"backup":       replaceAlways,
-	"diststyle":    replaceNever,
-	"distkey":      replaceNever,
-	"sortkey":      replaceNever,
+	"distribution": replaceNever,
+	"sort_key":     replaceNever,
 	"auto_refresh": replaceNever,
 	"owner":        replaceNever,
 })
@@ -43,12 +44,12 @@ var _ = registerValidateConfigCase("materialized view", validateConfigCase{
 	valid: testMaterializedViewModel(),
 	invalid: func() materializedViewModel {
 		data := testMaterializedViewModel()
-		data.DistStyle, data.DistKey = types.StringValue("ALL"), types.StringValue("label")
+		data.Distribution = materializedViewDistributionBlock("ALL", "label")
 		return data
 	}(),
 	unknown: func() materializedViewModel {
 		data := testMaterializedViewModel()
-		data.DistStyle, data.DistKey = types.StringValue("KEY"), types.StringUnknown()
+		data.Distribution = types.ObjectValueMust(materializedViewDistributionTypes, map[string]attr.Value{"style": types.StringValue("KEY"), "key": types.StringUnknown()})
 		return data
 	}(),
 })
@@ -111,7 +112,7 @@ func TestMaterializedViewImportAdoptsConfiguration(t *testing.T) {
 	assert.Equal(t, definitionFingerprint(views.get(fakeMaterializedViewName).definition()), data.DefinitionFingerprint.ValueString())
 
 	planned := testMaterializedViewModel()
-	planned.ID, planned.Backup, planned.SortKey = data.ID, types.BoolValue(false), materializedViewSortKeyValue("label")
+	planned.ID, planned.Backup, planned.SortKey = data.ID, types.BoolValue(false), materializedViewSortKeyBlock("label")
 	state, diagnostics := applyOperation(t, r, "update", data, planned, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	adopted := decodeMaterializedViewState(t, state)
@@ -180,12 +181,82 @@ resource "redshift_materialized_view" "summary" {
 			{Config: configuration(`backup = false`), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: testresource.TestCheckResourceAttr(address, "query", fakeMaterializedQuery)},
 			{Config: configuration(`backup = false`), PlanOnly: true},
 			{Config: configuration(`backup = true`), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
-			{Config: configuration("backup = true\n  sortkey = [\"label\"]"), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate)},
-			{Config: configuration("backup = true\n  sortkey = [\"label\"]"), PlanOnly: true},
-			{Config: configuration("backup = true\n  diststyle = \"ALL\""), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate)},
-			{Config: configuration("backup = true\n  diststyle = \"ALL\""), PlanOnly: true},
+			{Config: configuration("backup = true\n  sort_key {\n    columns = [\"label\"]\n  }"), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate)},
+			{Config: configuration("backup = true\n  sort_key {\n    columns = [\"label\"]\n  }"), PlanOnly: true},
+			{Config: configuration("backup = true\n  distribution {\n    style = \"ALL\"\n  }"), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate)},
+			{Config: configuration("backup = true\n  distribution {\n    style = \"ALL\"\n  }"), PlanOnly: true},
 		},
 	})
+}
+
+// TestMaterializedViewStorageBlockPlans runs Terraform against the fake catalog: a view created with the
+// distribution and sort_key blocks plans no change afterwards, changing or removing the blocks alters the view in
+// place, and an empty distribution block is rejected before apply.
+func TestMaterializedViewStorageBlockPlans(t *testing.T) {
+	c := fullCatalog()
+	configuration := func(storage string) string {
+		return fmt.Sprintf(`
+provider "redshift" {
+  region = "eu-central-1"
+  workgroup_name = "warehouse"
+  database = "admin"
+}
+resource "redshift_materialized_view" "rollup" {
+  database = "admin"
+  schema = %q
+  name = "sales_rollup"
+  query = %q
+  %s
+}`, fakeViewSchema, fakeMaterializedQuery, storage)
+	}
+	pendingOwner := "\nresource \"terraform_data\" \"owner\" {}"
+	address := "redshift_materialized_view.rollup"
+	expect := func(action plancheck.ResourceActionType) testresource.ConfigPlanChecks {
+		return testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, action)}}
+	}
+	keyed := configuration(`distribution {
+    key = "label"
+  }
+  sort_key {
+    columns = ["label"]
+  }`)
+	even := configuration(`distribution {
+    style = "EVEN"
+  }
+  sort_key {
+    columns = ["label", "sales"]
+  }`)
+	testresource.UnitTest(t, testresource.TestCase{
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})},
+		Steps: []testresource.TestStep{
+			{Config: keyed, Check: testresource.ComposeAggregateTestCheckFunc(
+				testresource.TestCheckResourceAttr(address, "distribution.key", "label"),
+				testresource.TestCheckNoResourceAttr(address, "distribution.style"),
+				testresource.TestCheckResourceAttr(address, "sort_key.columns.#", "1"),
+			)},
+			{Config: keyed, PlanOnly: true},
+			{Config: even, ConfigPlanChecks: expect(plancheck.ResourceActionUpdate)},
+			{Config: even, PlanOnly: true},
+			{Config: configuration("distribution {}"), PlanOnly: true, ExpectError: regexp.MustCompile(`requires a style or a key`)},
+			{Config: configuration("sort_key {}"), PlanOnly: true, ExpectError: regexp.MustCompile(`requires columns`)},
+			// An unknown owner leaves the configuration partly unknown, which must not defer the empty-block checks to apply.
+			{Config: configuration("owner = terraform_data.owner.id\n  distribution {}") + pendingOwner, PlanOnly: true, ExpectError: regexp.MustCompile(`requires a style or a key`)},
+			{Config: configuration("owner = terraform_data.owner.id\n  sort_key {}") + pendingOwner, PlanOnly: true, ExpectError: regexp.MustCompile(`requires columns`)},
+			// The last configuration is also the one the harness destroys with, so it must stay valid.
+			{Config: configuration(""), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: testresource.ComposeAggregateTestCheckFunc(
+				testresource.TestCheckNoResourceAttr(address, "distribution.style"),
+				testresource.TestCheckNoResourceAttr(address, "sort_key.columns.#"),
+			)},
+			{Config: configuration(""), PlanOnly: true},
+		},
+	})
+	var storage []string
+	for _, write := range c.writes {
+		if strings.HasPrefix(write, `ALTER MATERIALIZED VIEW "serving"."sales_rollup"`) {
+			storage = append(storage, strings.TrimPrefix(write, `ALTER MATERIALIZED VIEW "serving"."sales_rollup" `))
+		}
+	}
+	assert.Equal(t, []string{`ALTER DISTSTYLE EVEN`, `ALTER COMPOUND SORTKEY ("label", "sales")`, `ALTER DISTSTYLE EVEN`, `ALTER SORTKEY NONE`}, storage)
 }
 
 // materializedViewHiddenRefresh answers SVV_MV_INFO with no rows, as Redshift does for a regular user that
@@ -288,7 +359,7 @@ func TestMaterializedViewRejectsInvalidConfigurationBeforeSQL(t *testing.T) {
 		return nil, errors.New("unexpected SQL " + sql)
 	}))
 	invalid := testMaterializedViewModel()
-	invalid.DistStyle = types.StringValue("KEY")
+	invalid.Distribution = materializedViewDistributionBlock("KEY", "")
 	state, diagnostics := applyOperation(t, r, "create", nil, invalid, nil)
 	require.True(t, diagnostics.HasError())
 	assert.True(t, state.Raw.IsNull(), "a rejected view must not be recorded in state")
@@ -331,8 +402,8 @@ func TestMaterializedViewTranscripts(t *testing.T) {
 	}
 	runTranscripts(t, "materialized_view_transcript", newMaterializedViewResource, []transcriptCase{
 		{name: "create_all_options", operation: "create", catalog: catalogWith(func(c *catalog) { c.family("view").(*viewFamily).remove(fakeMaterializedViewName) }), planned: with(func(data *materializedViewModel) {
-			data.Backup, data.DistStyle, data.DistKey = types.BoolValue(false), types.StringValue("KEY"), types.StringValue("label")
-			data.SortKey, data.AutoRefresh, data.Owner = materializedViewSortKeyValue("label"), types.BoolValue(false), types.StringUnknown()
+			data.Backup, data.Distribution = types.BoolValue(false), materializedViewDistributionBlock("KEY", "label")
+			data.SortKey, data.AutoRefresh, data.Owner = materializedViewSortKeyBlock("label"), types.BoolValue(false), types.StringUnknown()
 		})},
 		{name: "update_auto_refresh", operation: "update", catalog: catalogWith(), prior: testMaterializedViewModel(), planned: with(func(data *materializedViewModel) {
 			data.AutoRefresh = types.BoolValue(false)
@@ -341,9 +412,9 @@ func TestMaterializedViewTranscripts(t *testing.T) {
 			data.Owner = types.StringValue("reporter")
 		})},
 		{name: "update_storage", operation: "update", catalog: catalogWith(), prior: with(func(data *materializedViewModel) {
-			data.DistStyle, data.SortKey = types.StringValue("ALL"), materializedViewSortKeyValue("label")
+			data.Distribution, data.SortKey = materializedViewDistributionBlock("ALL", ""), materializedViewSortKeyBlock("label")
 		}), planned: with(func(data *materializedViewModel) {
-			data.DistKey, data.SortKey, data.Owner = types.StringValue("label"), materializedViewSortKeyValue("label", "sales"), types.StringValue("reporter")
+			data.Distribution, data.SortKey, data.Owner = materializedViewDistributionBlock("", "label"), materializedViewSortKeyBlock("label", "sales"), types.StringValue("reporter")
 		})},
 	})
 }

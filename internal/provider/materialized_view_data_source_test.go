@@ -22,9 +22,8 @@ func TestMaterializedViewLookup(t *testing.T) {
 		"owner":                  types.StringValue(fakeViewOwner),
 		"definition_fingerprint": types.StringValue(definitionFingerprint(definition)),
 		"backup":                 types.BoolNull(),
-		"diststyle":              types.StringNull(),
-		"distkey":                types.StringNull(),
-		"sortkey":                types.ListNull(types.StringType),
+		"distribution":           types.ObjectNull(materializedViewDistributionTypes),
+		"sort_key":               types.ObjectNull(materializedViewSortKeyTypes),
 	}, c)
 	assert.Empty(t, c.writes)
 }
@@ -40,9 +39,8 @@ func TestMaterializedViewLookupHiddenRefreshSetting(t *testing.T) {
 		"owner":                  types.StringValue(fakeViewOwner),
 		"definition_fingerprint": types.StringValue(definitionFingerprint(definition)),
 		"backup":                 types.BoolNull(),
-		"diststyle":              types.StringNull(),
-		"distkey":                types.StringNull(),
-		"sortkey":                types.ListNull(types.StringType),
+		"distribution":           types.ObjectNull(materializedViewDistributionTypes),
+		"sort_key":               types.ObjectNull(materializedViewSortKeyTypes),
 	}, materializedViewHiddenRefresh(c))
 }
 

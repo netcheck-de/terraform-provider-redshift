@@ -19,6 +19,42 @@ func materializedViewRelation(data materializedViewModel) (sqlclient.Statement, 
 	return viewRelation(data.Schema.ValueString(), data.Name.ValueString())
 }
 
+// materializedViewDistributionModel is the distribution block's style and key.
+type materializedViewDistributionModel struct {
+	// Style is EVEN, ALL, or KEY; null leaves it to the key or the server default.
+	Style types.String
+	// Key is the DISTKEY column.
+	Key types.String
+}
+
+// materializedViewDistribution returns the distribution block's attributes: null when the block is absent and
+// unknown while the whole block is, so callers handle the block like two optional attributes.
+func materializedViewDistribution(data materializedViewModel) materializedViewDistributionModel {
+	switch {
+	case data.Distribution.IsUnknown():
+		return materializedViewDistributionModel{Style: types.StringUnknown(), Key: types.StringUnknown()}
+	case data.Distribution.IsNull():
+		return materializedViewDistributionModel{Style: types.StringNull(), Key: types.StringNull()}
+	}
+	attributes := data.Distribution.Attributes()
+	style, _ := attributes["style"].(types.String)
+	key, _ := attributes["key"].(types.String)
+	return materializedViewDistributionModel{Style: style, Key: key}
+}
+
+// materializedViewSortKeyColumns returns the sort_key block's columns: null when the block is absent and unknown
+// while the whole block is.
+func materializedViewSortKeyColumns(data materializedViewModel) types.List {
+	switch {
+	case data.SortKey.IsUnknown():
+		return types.ListUnknown(types.StringType)
+	case data.SortKey.IsNull():
+		return types.ListNull(types.StringType)
+	}
+	columns, _ := data.SortKey.Attributes()["columns"].(types.List)
+	return columns
+}
+
 // materializedViewSortKey returns the sort key columns in configured order, which defines the compound key.
 func materializedViewSortKey(value types.List) ([]string, error) {
 	if value.IsNull() || value.IsUnknown() {
@@ -31,7 +67,7 @@ func materializedViewSortKey(value types.List) ([]string, error) {
 			continue
 		}
 		if strings.TrimSpace(column.ValueString()) == "" {
-			return nil, fmt.Errorf("sortkey columns must be nonempty")
+			return nil, fmt.Errorf("sort_key.columns must be nonempty")
 		}
 		columns = append(columns, column.ValueString())
 	}
@@ -39,20 +75,29 @@ func materializedViewSortKey(value types.List) ([]string, error) {
 }
 
 // materializedViewAttributes renders table_attributes. DISTKEY implies DISTSTYLE KEY, so a distribution key with
-// another style, or KEY without a key, is rejected before Redshift would.
+// another style, or KEY without a key, is rejected before Redshift would. So are empty blocks, which would
+// otherwise mean the same as absent ones; the schema cannot require their attributes, because the framework
+// enforces Required inside a single block even when the block is absent.
 func materializedViewAttributes(data materializedViewModel) (sqlclient.Statement, error) {
-	style, err := optOneOf(data.DistStyle, materializedViewDistStyles...)
+	distribution := materializedViewDistribution(data)
+	style, err := optOneOf(distribution.Style, materializedViewDistStyles...)
 	if err != nil {
-		return sqlclient.Statement{}, fmt.Errorf("diststyle: %w", err)
+		return sqlclient.Statement{}, fmt.Errorf("distribution.style: %w", err)
 	}
-	distKey := knownString(data.DistKey)
+	distKey := knownString(distribution.Key)
 	switch {
 	case distKey != "" && style != "" && style != "KEY":
-		return sqlclient.Statement{}, fmt.Errorf("distkey requires diststyle KEY or no diststyle, not %s", style)
-	case style == "KEY" && distKey == "" && !data.DistKey.IsUnknown():
-		return sqlclient.Statement{}, fmt.Errorf("diststyle KEY requires distkey")
+		return sqlclient.Statement{}, fmt.Errorf("distribution.key requires distribution.style KEY or no style, not %s", style)
+	case style == "KEY" && distKey == "" && !distribution.Key.IsUnknown():
+		return sqlclient.Statement{}, fmt.Errorf("distribution.style KEY requires distribution.key")
+	case !data.Distribution.IsNull() && distribution.Style.IsNull() && distribution.Key.IsNull():
+		return sqlclient.Statement{}, fmt.Errorf("the distribution block requires a style or a key")
 	}
-	sortKey, err := materializedViewSortKey(data.SortKey)
+	sortKeyColumns := materializedViewSortKeyColumns(data)
+	if !data.SortKey.IsNull() && sortKeyColumns.IsNull() {
+		return sqlclient.Statement{}, fmt.Errorf("the sort_key block requires columns")
+	}
+	sortKey, err := materializedViewSortKey(sortKeyColumns)
 	if err != nil {
 		return sqlclient.Statement{}, err
 	}
@@ -94,14 +139,15 @@ func createMaterializedViewStatements(data materializedViewModel) ([]string, err
 	return statements, create.Err()
 }
 
-// materializedViewDistribution is the distribution an update compares: the key column, the style, or null when
-// neither is configured. DISTKEY implies KEY, so adding or removing an explicit KEY next to a key runs nothing.
-func materializedViewDistribution(data materializedViewModel) attr.Value {
-	if data.DistStyle.IsUnknown() || data.DistKey.IsUnknown() {
+// materializedViewDistributionValue is the distribution an update compares: the key column, the style, or null
+// when neither is configured. DISTKEY implies KEY, so adding or removing an explicit KEY next to a key runs nothing.
+func materializedViewDistributionValue(data materializedViewModel) attr.Value {
+	distribution := materializedViewDistribution(data)
+	if distribution.Style.IsUnknown() || distribution.Key.IsUnknown() {
 		return types.StringUnknown()
 	}
-	style, _ := optOneOf(data.DistStyle, materializedViewDistStyles...) // alterMaterializedViewStatements validated it first.
-	switch distKey := knownString(data.DistKey); {
+	style, _ := optOneOf(distribution.Style, materializedViewDistStyles...) // alterMaterializedViewStatements validated it first.
+	switch distKey := knownString(distribution.Key); {
 	case distKey != "":
 		return types.StringValue("KEY\x00" + distKey)
 	case style != "":
@@ -116,14 +162,15 @@ func materializedViewDistribution(data materializedViewModel) attr.Value {
 // https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_MATERIALIZED_VIEW.html
 var materializedViewAlterSteps = []alterStep[materializedViewModel]{
 	{
-		// distkey has no step of its own: Redshift alters the style and key in one clause.
-		attribute: "diststyle",
-		value:     materializedViewDistribution,
+		// Redshift alters the style and key in one clause, so the block has a single step.
+		attribute: "distribution",
+		value:     materializedViewDistributionValue,
 		render: func(_, plan materializedViewModel) []string {
 			relation, _ := materializedViewRelation(plan) // alterMaterializedViewStatements validated it first.
-			style, _ := optOneOf(plan.DistStyle, materializedViewDistStyles...)
+			distribution := materializedViewDistribution(plan)
+			style, _ := optOneOf(distribution.Style, materializedViewDistStyles...)
 			statement := sqlclient.Stmt("ALTER MATERIALIZED VIEW").Append(relation).Kw("ALTER DISTSTYLE")
-			switch distKey := knownString(plan.DistKey); {
+			switch distKey := knownString(distribution.Key); {
 			case distKey != "":
 				statement = statement.Kw("KEY DISTKEY").Ident(distKey)
 			case style == "ALL":
@@ -136,11 +183,11 @@ var materializedViewAlterSteps = []alterStep[materializedViewModel]{
 		},
 	},
 	{
-		attribute: "sortkey",
-		value:     func(data materializedViewModel) attr.Value { return data.SortKey },
+		attribute: "sort_key",
+		value:     func(data materializedViewModel) attr.Value { return materializedViewSortKeyColumns(data) },
 		render: func(_, plan materializedViewModel) []string {
 			relation, _ := materializedViewRelation(plan) // alterMaterializedViewStatements validated it first.
-			columns, _ := materializedViewSortKey(plan.SortKey)
+			columns, _ := materializedViewSortKey(materializedViewSortKeyColumns(plan))
 			statement := sqlclient.Stmt("ALTER MATERIALIZED VIEW").Append(relation)
 			if len(columns) == 0 {
 				return []string{statement.Kw("ALTER SORTKEY NONE").String()}

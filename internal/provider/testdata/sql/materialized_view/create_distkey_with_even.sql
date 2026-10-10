@@ -1,1 +1,1 @@
--- error: distkey requires diststyle KEY or no diststyle, not EVEN
+-- error: distribution.key requires distribution.style KEY or no style, not EVEN

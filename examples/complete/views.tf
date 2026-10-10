@@ -32,10 +32,15 @@ resource "redshift_materialized_view" "label_counts" {
   database     = redshift_schema.local.database
   schema       = redshift_schema.local.name
   name         = "label_counts"
-  diststyle    = "ALL"
-  sortkey      = ["label"]
   auto_refresh = true
   query        = "SELECT label, COUNT(*) AS events FROM public.${local.local_table_name} GROUP BY label"
+
+  distribution {
+    style = "ALL"
+  }
+  sort_key {
+    columns = ["label"]
+  }
 
   depends_on = [aws_redshiftdata_statement.local_table]
 }

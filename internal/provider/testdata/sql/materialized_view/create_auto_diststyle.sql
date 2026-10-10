@@ -1,1 +1,1 @@
--- error: diststyle: "AUTO" is not one of EVEN, ALL, KEY
+-- error: distribution.style: "AUTO" is not one of EVEN, ALL, KEY

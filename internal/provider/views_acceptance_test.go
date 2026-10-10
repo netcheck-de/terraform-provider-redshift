@@ -43,9 +43,17 @@ resource "redshift_schema" "local" {
 		}
 		// Turning auto refresh off also moves the materialized view to key distribution and a longer sort key, which
 		// ALTER MATERIALIZED VIEW applies in place.
-		storage := map[bool]string{true: `diststyle = "ALL"
-  sortkey = ["label"]`, false: `distkey = "label"
-  sortkey = ["label", "events"]`}[autoRefresh]
+		storage := map[bool]string{true: `distribution {
+    style = "ALL"
+  }
+  sort_key {
+    columns = ["label"]
+  }`, false: `distribution {
+    key = "label"
+  }
+  sort_key {
+    columns = ["label", "events"]
+  }`}[autoRefresh]
 		return base + fmt.Sprintf(`
 resource "redshift_view" "ordinary" {
   database = redshift_schema.local.database
@@ -116,7 +124,7 @@ data "redshift_materialized_view" "counts" {
 			{Config: configuration("label", true, true), PlanOnly: true},
 			{ResourceName: "redshift_view.ordinary", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"query"}},
 			{ResourceName: "redshift_view.late", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"query"}},
-			{ResourceName: "redshift_materialized_view.counts", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"query", "diststyle", "distkey", "sortkey"}},
+			{ResourceName: "redshift_materialized_view.counts", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"query", "distribution", "sort_key"}},
 			// The new query keeps the column names and types, so CREATE OR REPLACE VIEW succeeds in place.
 			{
 				Config: configuration("UPPER(label)", false, true),

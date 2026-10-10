@@ -1,1 +1,1 @@
--- error: diststyle KEY requires distkey
+-- error: distribution.style KEY requires distribution.key

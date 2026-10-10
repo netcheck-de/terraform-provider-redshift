@@ -38,12 +38,10 @@ type materializedViewModel struct {
 	Query types.String `tfsdk:"query"`
 	// Backup selects BACKUP YES or NO; null leaves the server default.
 	Backup types.Bool `tfsdk:"backup"`
-	// DistStyle is the configured distribution style.
-	DistStyle types.String `tfsdk:"diststyle"`
-	// DistKey is the configured distribution key column.
-	DistKey types.String `tfsdk:"distkey"`
-	// SortKey lists the compound sort key columns in order.
-	SortKey types.List `tfsdk:"sortkey"`
+	// Distribution is the configured distribution block, with style and key; null when the block is absent.
+	Distribution types.Object `tfsdk:"distribution"`
+	// SortKey is the configured compound sort key block, with its columns in order; null when the block is absent.
+	SortKey types.Object `tfsdk:"sort_key"`
 	// AutoRefresh selects AUTO REFRESH YES or NO.
 	AutoRefresh types.Bool `tfsdk:"auto_refresh"`
 	// Owner is the materialized view's SQL owner.
@@ -122,25 +120,6 @@ func (r *materializedViewResource) Schema(_ context.Context, _ resource.SchemaRe
 					resp.RequiresReplace = materializedViewReplaces(ctx, req.StateValue, req.Private)
 				}, materializedViewReplaceDescription, materializedViewReplaceDescription)},
 			},
-			"diststyle": schema.StringAttribute{
-				Optional: true,
-				MarkdownDescription: "Distribution style: `EVEN`, `ALL`, or `KEY`; unset uses the server default, `EVEN`. `KEY` requires `distkey`. " +
-					"Changed in place with `ALTER MATERIALIZED VIEW ... ALTER DISTSTYLE`; removing it and `distkey` returns the view to `EVEN`. " +
-					"Not read back, so changes made outside Terraform are not detected.",
-				Validators: []validator.String{stringvalidator.OneOf("EVEN", "ALL", "KEY")},
-			},
-			"distkey": schema.StringAttribute{
-				Optional: true,
-				MarkdownDescription: "Distribution key column; implies `KEY` distribution. Changed in place with " +
-					"`ALTER MATERIALIZED VIEW ... ALTER DISTSTYLE KEY DISTKEY`. Not read back.",
-				Validators: []validator.String{stringvalidator.LengthAtLeast(1)},
-			},
-			"sortkey": schema.ListAttribute{
-				Optional: true, ElementType: types.StringType,
-				MarkdownDescription: "Compound sort key columns in order. Changed in place with `ALTER MATERIALIZED VIEW ... ALTER COMPOUND SORTKEY`; " +
-					"removing it runs `ALTER SORTKEY NONE`. Not read back.",
-				Validators: []validator.List{listvalidator.SizeAtLeast(1), listvalidator.ValueStringsAre(stringvalidator.LengthAtLeast(1))},
-			},
 			"auto_refresh": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(false),
 				MarkdownDescription: "Refresh automatically when base tables change (`AUTO REFRESH YES`). Changed in place with `ALTER MATERIALIZED VIEW`. " +
@@ -148,6 +127,37 @@ func (r *materializedViewResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 			"owner":                  materializedViewOwnerAttribute(),
 			"definition_fingerprint": definitionFingerprintAttribute(),
+		},
+		Blocks: map[string]schema.Block{
+			"distribution": schema.SingleNestedBlock{
+				MarkdownDescription: "Distribution of the rows across the compute nodes; omitted uses the server default, `EVEN`. Changed in place " +
+					"with `ALTER MATERIALIZED VIEW ... ALTER DISTSTYLE`; removing the block returns the view to `EVEN`. Not read back, so " +
+					"changes made outside Terraform are not detected.",
+				Attributes: map[string]schema.Attribute{
+					"style": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "Distribution style: `EVEN`, `ALL`, or `KEY`. Omitted, it is `KEY` when `key` is set. `KEY` requires `key`.",
+						Validators:          []validator.String{stringvalidator.OneOf("EVEN", "ALL", "KEY")},
+					},
+					"key": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "Distribution key column; implies `KEY` distribution. Changed with `ALTER DISTSTYLE KEY DISTKEY`.",
+						Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
+					},
+				},
+			},
+			"sort_key": schema.SingleNestedBlock{
+				MarkdownDescription: "Compound sort key. Changed in place with `ALTER MATERIALIZED VIEW ... ALTER COMPOUND SORTKEY`; removing the " +
+					"block runs `ALTER SORTKEY NONE`. Not read back, so changes made outside Terraform are not detected.",
+				Attributes: map[string]schema.Attribute{
+					// materializedViewAttributes requires it in a present block; see there why the schema cannot.
+					"columns": schema.ListAttribute{
+						Optional: true, ElementType: types.StringType,
+						MarkdownDescription: "Sort key columns in order; required in the block.",
+						Validators:          []validator.List{listvalidator.SizeAtLeast(1), listvalidator.ValueStringsAre(stringvalidator.LengthAtLeast(1))},
+					},
+				},
+			},
 		},
 	}
 }
@@ -278,11 +288,20 @@ func (r *materializedViewResource) Create(ctx context.Context, req resource.Crea
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// ValidateConfig reports a definition or storage option Create would reject, once the configuration is known.
+// ValidateConfig reports a definition or storage option Create would reject. The storage blocks are checked even
+// while other attributes are unknown, because their rendering skips unknown values, so an empty block fails at
+// plan time instead of at apply; the query and name checks wait for a fully known configuration.
 func (r *materializedViewResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data materializedViewModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if _, err := materializedViewAttributes(data); err != nil {
+		resp.Diagnostics.AddError("Invalid materialized view", err.Error())
+		return
+	}
+	if !req.Config.Raw.IsFullyKnown() {
 		return
 	}
 	if _, err := createMaterializedViewStatements(data); err != nil {

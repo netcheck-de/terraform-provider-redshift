@@ -29,15 +29,20 @@ resource "redshift_materialized_view" "revenue_by_region" {
   schema       = redshift_schema.reporting.name
   name         = "revenue_by_region"
   backup       = false
-  diststyle    = "KEY"
-  distkey      = "region"
-  sortkey      = ["region"]
   auto_refresh = true
   query        = <<-SQL
     SELECT region, SUM(amount) AS revenue
     FROM reporting.sales
     GROUP BY region
   SQL
+
+  distribution {
+    style = "KEY"
+    key   = "region"
+  }
+  sort_key {
+    columns = ["region"]
+  }
 }
 ```
 
@@ -56,15 +61,30 @@ resource "redshift_materialized_view" "revenue_by_region" {
 
 - `auto_refresh` (Boolean) Refresh automatically when base tables change (`AUTO REFRESH YES`). Changed in place with `ALTER MATERIALIZED VIEW`. Redshift rejects it for queries with mutable functions, external tables, or other materialized views. Defaults to `false`.
 - `backup` (Boolean) Include the materialized view in snapshots (`BACKUP YES`) or not (`BACKUP NO`); unset uses the server default, `YES`. Not reported by a documented catalog view, so it is not read back. Changing it replaces the view. An import leaves it unset; the first apply after an import records the configured value without replacing the view and warns with the catalog definition, which it cannot compare.
-- `distkey` (String) Distribution key column; implies `KEY` distribution. Changed in place with `ALTER MATERIALIZED VIEW ... ALTER DISTSTYLE KEY DISTKEY`. Not read back.
-- `diststyle` (String) Distribution style: `EVEN`, `ALL`, or `KEY`; unset uses the server default, `EVEN`. `KEY` requires `distkey`. Changed in place with `ALTER MATERIALIZED VIEW ... ALTER DISTSTYLE`; removing it and `distkey` returns the view to `EVEN`. Not read back, so changes made outside Terraform are not detected.
+- `distribution` (Block, Optional) Distribution of the rows across the compute nodes; omitted uses the server default, `EVEN`. Changed in place with `ALTER MATERIALIZED VIEW ... ALTER DISTSTYLE`; removing the block returns the view to `EVEN`. Not read back, so changes made outside Terraform are not detected. (see [below for nested schema](#nestedblock--distribution))
 - `owner` (String) SQL user owning the materialized view. When set, it is applied with `ALTER TABLE ... OWNER TO`; when unset, the creating user owns the materialized view and the attribute reports the catalog owner. `SVV_MV_INFO` shows a regular user only the materialized views it owns, so after a provider identity that is not a superuser transfers ownership away, `auto_refresh` is no longer read back, and changing or dropping the view needs privileges that the new owner grants.
-- `sortkey` (List of String) Compound sort key columns in order. Changed in place with `ALTER MATERIALIZED VIEW ... ALTER COMPOUND SORTKEY`; removing it runs `ALTER SORTKEY NONE`. Not read back.
+- `sort_key` (Block, Optional) Compound sort key. Changed in place with `ALTER MATERIALIZED VIEW ... ALTER COMPOUND SORTKEY`; removing the block runs `ALTER SORTKEY NONE`. Not read back, so changes made outside Terraform are not detected. (see [below for nested schema](#nestedblock--sort_key))
 
 ### Read-Only
 
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
 - `id` (String) JSON import identity; independent of Data API execution history.
+
+<a id="nestedblock--distribution"></a>
+### Nested Schema for `distribution`
+
+Optional:
+
+- `key` (String) Distribution key column; implies `KEY` distribution. Changed with `ALTER DISTSTYLE KEY DISTKEY`.
+- `style` (String) Distribution style: `EVEN`, `ALL`, or `KEY`. Omitted, it is `KEY` when `key` is set. `KEY` requires `key`.
+
+
+<a id="nestedblock--sort_key"></a>
+### Nested Schema for `sort_key`
+
+Optional:
+
+- `columns` (List of String) Sort key columns in order; required in the block.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 ## Definition and Storage Changes
@@ -73,16 +93,17 @@ Redshift cannot alter a materialized view's query or its `BACKUP` setting, so ch
 view: Terraform drops it and creates it again, which recomputes its data and removes its grants. `DROP MATERIALIZED
 VIEW` does not cascade, so a materialized view that other objects depend on cannot be replaced until they are removed.
 
-`diststyle`, `distkey`, `sortkey`, `auto_refresh`, and `owner` change in place with `ALTER MATERIALIZED VIEW` and
-`ALTER TABLE ... OWNER TO`. Removing `diststyle` and `distkey` runs `ALTER DISTSTYLE EVEN`, the creation default, and
-removing `sortkey` runs `ALTER SORTKEY NONE`. Redshift redistributes or re-sorts the stored data for these changes, and
-they fail while a `VACUUM` runs on the view.
+The `distribution` and `sort_key` blocks, `auto_refresh`, and `owner` change in place with `ALTER MATERIALIZED VIEW`
+and `ALTER TABLE ... OWNER TO`. A `distribution` block sets `style`, `key`, or both; a `key` alone implies `KEY`.
+Removing the `distribution` block runs `ALTER DISTSTYLE EVEN`, the creation default, and removing the `sort_key` block
+runs `ALTER SORTKEY NONE`. An empty block is rejected. Redshift redistributes or re-sorts the stored data for these
+changes, and they fail while a `VACUUM` runs on the view.
 
 The provider compares definitions by `definition_fingerprint`, a hash of the `pg_views` text with whitespace collapsed.
 State keeps the configured `query` while the fingerprint matches; when the view is recreated outside Terraform with a
 different query, refresh replaces `query` with the catalog text and the next plan replaces the view.
 
-`backup`, `diststyle`, `distkey`, and `sortkey` are not read back, so the provider cannot detect their drift: no
+`backup`, `distribution`, and `sort_key` are not read back, so the provider cannot detect their drift: no
 catalog view reports `BACKUP`, and `SVV_TABLE_INFO`, which reports the distribution and first sort key column, is
 visible only to superusers and omits materialized views without rows.
 
@@ -124,6 +145,6 @@ terraform import redshift_materialized_view.revenue_by_region \
 Import reads `owner` and `auto_refresh` but leaves `query` and the storage options unset, and marks the state as
 imported in Terraform's private resource state. The first apply afterwards records the configured `query` and `backup`
 without replacing the view and warns with the catalog definition, which it cannot compare with the configuration; use
-`terraform apply -replace` when they differ. Configured `diststyle`, `distkey`, and `sortkey` are applied in place.
+`terraform apply -replace` when they differ. Configured `distribution` and `sort_key` blocks are applied in place.
 Later changes to `query` or `backup` replace the view as usual, including setting `backup` when it was not configured
 before.

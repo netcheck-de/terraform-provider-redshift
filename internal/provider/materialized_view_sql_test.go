@@ -13,18 +13,36 @@ import (
 func testMaterializedViewModel() materializedViewModel {
 	return materializedViewModel{
 		ID: types.StringNull(), Database: types.StringValue("admin"), Schema: types.StringValue(fakeViewSchema), Name: types.StringValue(fakeMaterializedViewName),
-		Query: types.StringValue(fakeMaterializedQuery), Backup: types.BoolNull(), DistStyle: types.StringNull(), DistKey: types.StringNull(),
-		SortKey: types.ListNull(types.StringType), AutoRefresh: types.BoolValue(true), Owner: types.StringValue(fakeViewOwner), DefinitionFingerprint: types.StringNull(),
+		Query: types.StringValue(fakeMaterializedQuery), Backup: types.BoolNull(), Distribution: types.ObjectNull(materializedViewDistributionTypes),
+		SortKey: types.ObjectNull(materializedViewSortKeyTypes), AutoRefresh: types.BoolValue(true), Owner: types.StringValue(fakeViewOwner), DefinitionFingerprint: types.StringNull(),
 	}
 }
 
-// materializedViewSortKeyValue builds a sort key list.
-func materializedViewSortKeyValue(columns ...string) types.List {
+// materializedViewDistributionTypes and materializedViewSortKeyTypes are the attribute types of the distribution and
+// sort_key blocks.
+var (
+	materializedViewDistributionTypes = map[string]attr.Type{"style": types.StringType, "key": types.StringType}
+	materializedViewSortKeyTypes      = map[string]attr.Type{"columns": types.ListType{ElemType: types.StringType}}
+)
+
+// materializedViewDistributionBlock builds a distribution block; an empty style or key is left unset.
+func materializedViewDistributionBlock(style, key string) types.Object {
+	optional := func(value string) attr.Value {
+		if value == "" {
+			return types.StringNull()
+		}
+		return types.StringValue(value)
+	}
+	return types.ObjectValueMust(materializedViewDistributionTypes, map[string]attr.Value{"style": optional(style), "key": optional(key)})
+}
+
+// materializedViewSortKeyBlock builds a sort_key block with the columns in order.
+func materializedViewSortKeyBlock(columns ...string) types.Object {
 	elements := make([]attr.Value, len(columns))
 	for i, column := range columns {
 		elements[i] = types.StringValue(column)
 	}
-	return types.ListValueMust(types.StringType, elements)
+	return types.ObjectValueMust(materializedViewSortKeyTypes, map[string]attr.Value{"columns": types.ListValueMust(types.StringType, elements)})
 }
 
 // TestMaterializedViewSQL pins every materialized view statement, including clause order, quoting, and the
@@ -37,7 +55,7 @@ func TestMaterializedViewSQL(t *testing.T) {
 	}
 	quoted := with(func(data *materializedViewModel) {
 		data.Schema, data.Name, data.Owner = types.StringValue(`Odd"Schema`), types.StringValue(`My"Summary`), types.StringValue(`Owner"X`)
-		data.DistKey, data.SortKey = types.StringValue(`Label"Col`), materializedViewSortKeyValue(`Label"Col`, "ID")
+		data.Distribution, data.SortKey = materializedViewDistributionBlock("", `Label"Col`), materializedViewSortKeyBlock(`Label"Col`, "ID")
 		data.Query = types.StringValue(`SELECT "Label""Col", 'it''s \new' AS note, id AS "ID" FROM "Odd""Schema".t`)
 	})
 	create := func(data materializedViewModel) func() ([]string, error) {
@@ -52,20 +70,24 @@ func TestMaterializedViewSQL(t *testing.T) {
 			data.AutoRefresh, data.Owner = types.BoolValue(false), types.StringUnknown()
 		}))},
 		{"create_all_options", create(with(func(data *materializedViewModel) {
-			data.Backup, data.DistStyle, data.DistKey = types.BoolValue(false), types.StringValue("KEY"), types.StringValue("label")
-			data.SortKey = materializedViewSortKeyValue("label", "sales")
+			data.Backup, data.Distribution = types.BoolValue(false), materializedViewDistributionBlock("KEY", "label")
+			data.SortKey = materializedViewSortKeyBlock("label", "sales")
 		}))},
 		{"create_backup_yes_diststyle_all", create(with(func(data *materializedViewModel) {
-			data.Backup, data.DistStyle = types.BoolValue(true), types.StringValue("all")
+			data.Backup, data.Distribution = types.BoolValue(true), materializedViewDistributionBlock("all", "")
 		}))},
-		{"create_distkey_without_style", create(with(func(data *materializedViewModel) { data.DistKey = types.StringValue("label") }))},
+		{"create_distkey_without_style", create(with(func(data *materializedViewModel) { data.Distribution = materializedViewDistributionBlock("", "label") }))},
 		{"create_quoted", create(quoted)},
 		{"create_distkey_with_even", create(with(func(data *materializedViewModel) {
-			data.DistStyle, data.DistKey = types.StringValue("EVEN"), types.StringValue("label")
+			data.Distribution = materializedViewDistributionBlock("EVEN", "label")
 		}))},
-		{"create_key_without_distkey", create(with(func(data *materializedViewModel) { data.DistStyle = types.StringValue("KEY") }))},
-		{"create_auto_diststyle", create(with(func(data *materializedViewModel) { data.DistStyle = types.StringValue("AUTO") }))},
-		{"create_empty_sortkey_column", create(with(func(data *materializedViewModel) { data.SortKey = materializedViewSortKeyValue("label", " ") }))},
+		{"create_key_without_distkey", create(with(func(data *materializedViewModel) { data.Distribution = materializedViewDistributionBlock("KEY", "") }))},
+		{"create_auto_diststyle", create(with(func(data *materializedViewModel) { data.Distribution = materializedViewDistributionBlock("AUTO", "") }))},
+		{"create_empty_distribution", create(with(func(data *materializedViewModel) { data.Distribution = materializedViewDistributionBlock("", "") }))},
+		{"create_empty_sort_key", create(with(func(data *materializedViewModel) {
+			data.SortKey = types.ObjectValueMust(materializedViewSortKeyTypes, map[string]attr.Value{"columns": types.ListNull(types.StringType)})
+		}))},
+		{"create_empty_sortkey_column", create(with(func(data *materializedViewModel) { data.SortKey = materializedViewSortKeyBlock("label", " ") }))},
 		{"create_semicolon", create(with(func(data *materializedViewModel) { data.Query = types.StringValue("SELECT 1; SELECT 2") }))},
 		{"create_empty_name", create(with(func(data *materializedViewModel) { data.Name = types.StringValue("") }))},
 		{"alter_unchanged", alter(testMaterializedViewModel(), testMaterializedViewModel())},
@@ -74,31 +96,35 @@ func TestMaterializedViewSQL(t *testing.T) {
 			data.Schema, data.Name, data.AutoRefresh = quoted.Schema, quoted.Name, types.BoolValue(false)
 		}), quoted)},
 		{"alter_adopts_imported_options", alter(with(func(data *materializedViewModel) { data.Query = types.StringNull() }), with(func(data *materializedViewModel) {
-			data.Backup, data.SortKey = types.BoolValue(false), materializedViewSortKeyValue("label")
+			data.Backup, data.SortKey = types.BoolValue(false), materializedViewSortKeyBlock("label")
 		}))},
-		{"alter_diststyle_all", alter(testMaterializedViewModel(), with(func(data *materializedViewModel) { data.DistStyle = types.StringValue("ALL") }))},
+		{"alter_diststyle_all", alter(testMaterializedViewModel(), with(func(data *materializedViewModel) { data.Distribution = materializedViewDistributionBlock("ALL", "") }))},
 		{"alter_distkey_quoted", alter(with(func(data *materializedViewModel) {
-			data.Schema, data.Name, data.DistStyle = quoted.Schema, quoted.Name, types.StringValue("ALL")
+			data.Schema, data.Name, data.Distribution = quoted.Schema, quoted.Name, materializedViewDistributionBlock("ALL", "")
 		}), with(func(data *materializedViewModel) {
-			data.Schema, data.Name, data.DistKey = quoted.Schema, quoted.Name, quoted.DistKey
+			data.Schema, data.Name, data.Distribution = quoted.Schema, quoted.Name, quoted.Distribution
 		}))},
 		{"alter_distribution_removed", alter(with(func(data *materializedViewModel) {
-			data.DistStyle, data.DistKey = types.StringValue("KEY"), types.StringValue("label")
+			data.Distribution = materializedViewDistributionBlock("KEY", "label")
 		}), testMaterializedViewModel())},
-		{"alter_explicit_key_style_unchanged", alter(with(func(data *materializedViewModel) { data.DistKey = types.StringValue("label") }), with(func(data *materializedViewModel) {
-			data.DistStyle, data.DistKey = types.StringValue("KEY"), types.StringValue("label")
+		{"alter_explicit_key_style_unchanged", alter(with(func(data *materializedViewModel) { data.Distribution = materializedViewDistributionBlock("", "label") }), with(func(data *materializedViewModel) {
+			data.Distribution = materializedViewDistributionBlock("KEY", "label")
+		}))},
+		{"alter_distribution_unknown", alter(testMaterializedViewModel(), with(func(data *materializedViewModel) {
+			data.Distribution, data.SortKey = types.ObjectUnknown(materializedViewDistributionTypes), types.ObjectUnknown(materializedViewSortKeyTypes)
 		}))},
 		{"alter_distkey_with_all", alter(testMaterializedViewModel(), with(func(data *materializedViewModel) {
-			data.DistStyle, data.DistKey = types.StringValue("ALL"), types.StringValue("label")
+			data.Distribution = materializedViewDistributionBlock("ALL", "label")
 		}))},
 		{"alter_sortkey_quoted", alter(with(func(data *materializedViewModel) {
 			data.Schema, data.Name = quoted.Schema, quoted.Name
 		}), with(func(data *materializedViewModel) {
 			data.Schema, data.Name, data.SortKey = quoted.Schema, quoted.Name, quoted.SortKey
 		}))},
-		{"alter_sortkey_removed", alter(with(func(data *materializedViewModel) { data.SortKey = materializedViewSortKeyValue("label") }), testMaterializedViewModel())},
+		{"alter_sortkey_removed", alter(with(func(data *materializedViewModel) { data.SortKey = materializedViewSortKeyBlock("label") }), testMaterializedViewModel())},
 		{"alter_storage_then_owner", alter(testMaterializedViewModel(), with(func(data *materializedViewModel) {
-			data.DistStyle, data.SortKey, data.AutoRefresh, data.Owner = types.StringValue("EVEN"), materializedViewSortKeyValue("label"), types.BoolValue(false), types.StringValue("reporter")
+			data.Distribution, data.SortKey = materializedViewDistributionBlock("EVEN", ""), materializedViewSortKeyBlock("label")
+			data.AutoRefresh, data.Owner = types.BoolValue(false), types.StringValue("reporter")
 		}))},
 		{"alter_owner_unset", alter(testMaterializedViewModel(), with(func(data *materializedViewModel) { data.Owner = types.StringNull() }))},
 		{"alter_empty_schema", alter(testMaterializedViewModel(), with(func(data *materializedViewModel) { data.Schema = types.StringValue("") }))},
@@ -120,15 +146,18 @@ func TestMaterializedViewSQL(t *testing.T) {
 	})
 }
 
-// TestMaterializedViewAlterCoverage keeps an update step for every in-place materialized view attribute.
+// TestMaterializedViewAlterCoverage keeps an update step for every in-place materialized view attribute and block.
 func TestMaterializedViewAlterCoverage(t *testing.T) {
-	// The diststyle step also renders distkey, because Redshift alters the style and key in one clause.
-	assertAlterCoverage(t, newMaterializedViewResource(), materializedViewAlterSteps, "distkey")
+	assertAlterCoverage(t, newMaterializedViewResource(), materializedViewAlterSteps)
 }
 
 // TestMaterializedViewSortKeySkipsUnknownColumns keeps the configured order and leaves unknown columns, which
 // only occur before apply, to the later validation.
 func TestMaterializedViewSortKeySkipsUnknownColumns(t *testing.T) {
+	data := testMaterializedViewModel()
+	assert.True(t, materializedViewSortKeyColumns(data).IsNull(), "an absent block has no columns")
+	data.SortKey = types.ObjectUnknown(materializedViewSortKeyTypes)
+	assert.True(t, materializedViewSortKeyColumns(data).IsUnknown(), "an unknown block has unknown columns")
 	columns, err := materializedViewSortKey(types.ListValueMust(types.StringType, []attr.Value{types.StringValue("z"), types.StringUnknown(), types.StringValue("a")}))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"z", "a"}, columns)

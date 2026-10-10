@@ -1,0 +1,1 @@
+-- error: the distribution block requires a style or a key

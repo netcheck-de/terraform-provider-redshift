@@ -39,18 +39,34 @@ data "redshift_materialized_view" "revenue_by_region" {
 - `auto_refresh` (Boolean) Whether the materialized view refreshes automatically, from `SVV_MV_INFO`. Null when `SVV_MV_INFO` hides the view from a provider identity that neither owns it nor is a superuser.
 - `backup` (Boolean) Always null: no catalog view that every user can read reports it.
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; equals the paired resource's `definition_fingerprint` for the same definition.
-- `distkey` (String) Always null: no catalog view that every user can read reports it.
-- `diststyle` (String) Always null: no catalog view that every user can read reports it.
+- `distribution` (Attributes) Always null: no catalog view that every user can read reports it. (see [below for nested schema](#nestedatt--distribution))
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `owner` (String) SQL user owning the materialized view.
 - `query` (String) Catalog definition from `pg_views`: the complete `CREATE MATERIALIZED VIEW` statement as Redshift prints it.
-- `sortkey` (List of String) Always null: no catalog view that every user can read reports it.
+- `sort_key` (Attributes) Always null: no catalog view that every user can read reports it. (see [below for nested schema](#nestedatt--sort_key))
+
+<a id="nestedatt--distribution"></a>
+### Nested Schema for `distribution`
+
+Read-Only:
+
+- `key` (String) Distribution key column.
+- `style` (String) Distribution style: `EVEN`, `ALL`, or `KEY`.
+
+
+<a id="nestedatt--sort_key"></a>
+### Nested Schema for `sort_key`
+
+Read-Only:
+
+- `columns` (List of String) Compound sort key columns in order.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the observed view's JSON identity, using the same warehouse, database, schema, and name keys
 as the paired resource.
 
-`query` is the catalog's complete `CREATE MATERIALIZED VIEW` statement. `backup`, `diststyle`, `distkey`, and `sortkey`
-are always null: no catalog view reports `BACKUP`, and `SVV_TABLE_INFO` is visible only to superusers and omits
-materialized views without rows. `auto_refresh` is null when `SVV_MV_INFO`, which shows regular users only their own
-materialized views, hides the view. A missing view, a missing database, or an ordinary view is an error.
+`query` is the catalog's complete `CREATE MATERIALIZED VIEW` statement. `backup`, `distribution`, and `sort_key` are
+always null: no catalog view reports `BACKUP`, and `SVV_TABLE_INFO` is visible only to superusers and omits
+materialized views without rows. The resource's blocks are nested attributes here, so `distribution.style` needs no
+`[0]`. `auto_refresh` is null when `SVV_MV_INFO`, which shows regular users only their own materialized views, hides
+the view. A missing view, a missing database, or an ordinary view is an error.

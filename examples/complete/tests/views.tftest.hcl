@@ -64,8 +64,9 @@ run "views_apply" {
     condition = (
       redshift_materialized_view.label_counts.database == redshift_database.local.name &&
       redshift_materialized_view.label_counts.schema == redshift_schema.local.name &&
-      redshift_materialized_view.label_counts.diststyle == "ALL" &&
-      redshift_materialized_view.label_counts.sortkey == tolist(["label"]) &&
+      redshift_materialized_view.label_counts.distribution.style == "ALL" &&
+      redshift_materialized_view.label_counts.distribution.key == null &&
+      redshift_materialized_view.label_counts.sort_key.columns == tolist(["label"]) &&
       redshift_materialized_view.label_counts.auto_refresh &&
       strcontains(redshift_materialized_view.label_counts.query, "GROUP BY label")
     )
