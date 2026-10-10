@@ -1,5 +1,5 @@
 ---
-subcategory: Row-Level Security
+subcategory: Row-Level Security and Masking
 page_title: redshift_rls_policy_attachment Data Source - terraform-provider-redshift
 description: Checks whether a row-level security policy is attached to a relation for a recipient.
 ---

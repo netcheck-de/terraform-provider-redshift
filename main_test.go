@@ -14,6 +14,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// The registered type counts are pinned so that adding or dropping a type is a deliberate change that also updates the
+// provider index, the README, and the complete example's coverage.
+const (
+	wantResources   = 36
+	wantDataSources = 47
+)
+
 // documentedTypes counts the generated documentation pages of one kind, so registering a type without
 // regenerating docs fails here instead of shipping an undocumented type.
 func documentedTypes(t *testing.T, kind string) int {
@@ -41,8 +48,10 @@ func TestMainEntrypoint(t *testing.T) {
 				served = true
 				assert.Equal(t, "registry.terraform.io/netcheck-de/redshift", options.Address)
 				assert.Equal(t, name == "debug", options.Debug)
-				require.Len(t, factory().Resources(ctx), documentedTypes(t, "resources"))
-				require.Len(t, factory().DataSources(ctx), documentedTypes(t, "data-sources"))
+				require.Len(t, factory().Resources(ctx), wantResources)
+				require.Len(t, factory().DataSources(ctx), wantDataSources)
+				assert.Equal(t, wantResources, documentedTypes(t, "resources"))
+				assert.Equal(t, wantDataSources, documentedTypes(t, "data-sources"))
 				if name == "error" {
 					return wantError
 				}

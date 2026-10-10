@@ -44,7 +44,7 @@ run "masking_apply" {
       redshift_masking_policy.email.database == redshift_database.local.name &&
       length(redshift_masking_policy.email.input_column) == 1 &&
       redshift_masking_policy.email.input_column[0].type == "VARCHAR(256)" &&
-      strcontains(redshift_masking_policy.email.expression, "public.${local.masking_lookup_name}")
+      strcontains(redshift_masking_policy.email.expression, "${redshift_schema.local.name}.example_masking_exempt")
     )
     error_message = "The masking policy must live in the consumer-local database and read its lookup table."
   }
@@ -53,7 +53,8 @@ run "masking_apply" {
     condition = (
       redshift_policy_grant.masking_lookup.policy_type == "MASKING" &&
       redshift_policy_grant.masking_lookup.policy_name == redshift_masking_policy.email.name &&
-      redshift_policy_grant.masking_lookup.object_name == local.masking_lookup_name &&
+      redshift_policy_grant.masking_lookup.schema_name == redshift_table.masking_exempt.schema &&
+      redshift_policy_grant.masking_lookup.object_name == redshift_table.masking_exempt.name &&
       redshift_policy_grant.masking_lookup.privileges == toset(["SELECT"])
     )
     error_message = "The policy must hold SELECT on its own lookup table."
@@ -62,13 +63,23 @@ run "masking_apply" {
   assert {
     condition = (
       redshift_masking_policy_attachment.email_readers.policy == redshift_masking_policy.email.name &&
-      redshift_masking_policy_attachment.email_readers.relation == local.masking_table_name &&
+      redshift_masking_policy_attachment.email_readers.schema == redshift_schema.local.name &&
+      redshift_masking_policy_attachment.email_readers.relation == redshift_table.customers.name &&
       redshift_masking_policy_attachment.email_readers.columns == tolist(["email"]) &&
       redshift_masking_policy_attachment.email_readers.grantee == redshift_role.readers.name &&
       redshift_masking_policy_attachment.email_readers.grantee_type == "ROLE" &&
       redshift_masking_policy_attachment.email_readers.priority == 10
     )
-    error_message = "The attachment must mask the fixture's email column for the readers role."
+    error_message = "The attachment must mask the managed customers table's email column for the readers role."
+  }
+
+  assert {
+    condition = (
+      redshift_table.customers.schema == redshift_schema.local.name && redshift_table.masking_exempt.schema == redshift_schema.local.name &&
+      [for column in redshift_table.customers.column : column.name] == ["id", "email"] &&
+      lower(redshift_table.customers.column[1].type) == lower(redshift_masking_policy.email.input_column[0].type)
+    )
+    error_message = "The masked table and the lookup table must be managed tables in the workspace schema."
   }
 
   assert {

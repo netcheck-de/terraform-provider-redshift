@@ -58,6 +58,18 @@ run "permissions_apply" {
 
   assert {
     condition = (
+      redshift_column_grant.group_orders.database_name == redshift_table.orders.database &&
+      redshift_column_grant.group_orders.schema_name == redshift_table.orders.schema &&
+      redshift_column_grant.group_orders.object_name == redshift_table.orders.name &&
+      redshift_column_grant.group_orders.grantee == redshift_group.readers.name &&
+      redshift_column_grant.group_orders.privileges["SELECT"] == toset(["order_id", "account_id", "status", "created_at"]) &&
+      length(redshift_column_grant.group_orders.privileges) == 1
+    )
+    error_message = "The readers group must see every column of the managed orders table except amount."
+  }
+
+  assert {
+    condition = (
       redshift_language_grant.operator_procedures.language_name == "plpgsql" &&
       redshift_language_grant.operator_procedures.grantee == redshift_role.operators.name &&
       redshift_language_grant.operator_procedures.privileges == toset(["USAGE"]) &&

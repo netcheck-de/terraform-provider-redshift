@@ -1,46 +1,51 @@
-# Dynamic data masking on block-owned fixtures in the consumer-local database's public schema, so dropping the
-# database removes the tables. The provider's admin identity is a superuser, which may manage masking policies.
-locals {
-  masking_table_name  = "example_customers"
-  masking_lookup_name = "example_masking_exempt"
-}
+# Dynamic data masking on Terraform-managed tables in the consumer-local workspace schema; Terraform drops them before
+# the schema. The provider's admin identity is a superuser, which may manage masking policies.
+resource "redshift_table" "customers" {
+  provider = redshift.consumer
+  database = redshift_schema.local.database
+  schema   = redshift_schema.local.name
+  name     = "example_customers"
 
-resource "aws_redshiftdata_statement" "masking_table" {
-  provider       = aws.consumer
-  workgroup_name = aws_redshiftserverless_workgroup.consumer.workgroup_name
-  database       = redshift_database.local.name
-  secret_arn     = aws_redshiftserverless_namespace.consumer.admin_password_secret_arn
-  sql            = "CREATE TABLE IF NOT EXISTS public.${local.masking_table_name} (id INTEGER, email VARCHAR(256))"
+  column {
+    name = "id"
+    type = "integer"
+  }
+  column {
+    name = "email"
+    type = "varchar(256)"
+  }
 }
 
 # Addresses listed here stay readable; the masking expression reads the table through the policy grant below.
-resource "aws_redshiftdata_statement" "masking_lookup" {
-  provider       = aws.consumer
-  workgroup_name = aws_redshiftserverless_workgroup.consumer.workgroup_name
-  database       = redshift_database.local.name
-  secret_arn     = aws_redshiftserverless_namespace.consumer.admin_password_secret_arn
-  sql            = "CREATE TABLE IF NOT EXISTS public.${local.masking_lookup_name} (email VARCHAR(256))"
+resource "redshift_table" "masking_exempt" {
+  provider = redshift.consumer
+  database = redshift_schema.local.database
+  schema   = redshift_schema.local.name
+  name     = "example_masking_exempt"
+
+  column {
+    name = "email"
+    type = "varchar(256)"
+  }
 }
 
 resource "redshift_masking_policy" "email" {
   provider   = redshift.consumer
-  database   = redshift_database.local.name
+  database   = redshift_table.masking_exempt.database
   name       = "example_mask_email"
-  expression = "CASE WHEN email IN (SELECT email FROM public.${local.masking_lookup_name}) THEN email ELSE REGEXP_REPLACE(email, '^[^@]+', '***') END"
+  expression = "CASE WHEN email IN (SELECT email FROM ${redshift_table.masking_exempt.schema}.${redshift_table.masking_exempt.name}) THEN email ELSE REGEXP_REPLACE(email, '^[^@]+', '***') END"
 
   input_column {
     name = "email"
     type = "VARCHAR(256)"
   }
-
-  depends_on = [aws_redshiftdata_statement.masking_lookup]
 }
 
 resource "redshift_policy_grant" "masking_lookup" {
   provider      = redshift.consumer
   database_name = redshift_masking_policy.email.database
-  schema_name   = "public"
-  object_name   = local.masking_lookup_name
+  schema_name   = redshift_table.masking_exempt.schema
+  object_name   = redshift_table.masking_exempt.name
   policy_type   = "MASKING"
   policy_name   = redshift_masking_policy.email.name
   privileges    = ["SELECT"]
@@ -50,15 +55,15 @@ resource "redshift_masking_policy_attachment" "email_readers" {
   provider     = redshift.consumer
   database     = redshift_masking_policy.email.database
   policy       = redshift_masking_policy.email.name
-  schema       = "public"
-  relation     = local.masking_table_name
+  schema       = redshift_table.customers.schema
+  relation     = redshift_table.customers.name
   columns      = ["email"]
   grantee      = redshift_role.readers.name
   grantee_type = "ROLE"
   priority     = 10
 
   # The policy reads its lookup table only once the grant exists.
-  depends_on = [aws_redshiftdata_statement.masking_table, redshift_policy_grant.masking_lookup]
+  depends_on = [redshift_policy_grant.masking_lookup]
 }
 
 data "redshift_masking_policy" "email" {

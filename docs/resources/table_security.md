@@ -1,5 +1,5 @@
 ---
-subcategory: Row-Level Security
+subcategory: Row-Level Security and Masking
 page_title: redshift_table_security Resource - terraform-provider-redshift
 description: Turns row-level security on or off for a table or view.
 ---

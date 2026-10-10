@@ -111,3 +111,14 @@ data "redshift_table" "orders" {
   schema   = redshift_table.orders.schema
   name     = redshift_table.orders.name
 }
+
+# Redshift names an unnamed primary key <table>_pkey. The comment owns only the annotation; the key stays with the table.
+resource "redshift_comment" "orders_key" {
+  provider        = redshift.consumer
+  database_name   = redshift_table.orders.database
+  object_type     = "CONSTRAINT"
+  schema_name     = redshift_table.orders.schema
+  object_name     = redshift_table.orders.name
+  constraint_name = "${redshift_table.orders.name}_pkey"
+  text            = "Surrogate key of an example order."
+}

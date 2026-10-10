@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_system_grant Data Source - terraform-provider-redshift
 description: Reads explicitly granted system capabilities for one SQL role.
 ---

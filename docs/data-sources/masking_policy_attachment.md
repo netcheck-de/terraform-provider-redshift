@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Row-Level Security and Masking
 page_title: redshift_masking_policy_attachment Data Source - terraform-provider-redshift
 description: Checks whether a masking policy is attached to columns of a relation for a recipient.
 ---

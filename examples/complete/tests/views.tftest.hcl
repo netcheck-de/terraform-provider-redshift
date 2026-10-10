@@ -62,6 +62,15 @@ run "views_apply" {
   }
   assert {
     condition = (
+      redshift_view.order_totals.late_binding &&
+      redshift_view.order_totals.database == redshift_table.orders.database &&
+      redshift_view.order_totals.schema == redshift_table.orders.schema &&
+      strcontains(redshift_view.order_totals.query, "FROM ${redshift_schema.local.name}.example_orders GROUP BY account_id")
+    )
+    error_message = "The late-binding view must aggregate the managed orders table by its schema-qualified name."
+  }
+  assert {
+    condition = (
       redshift_materialized_view.label_counts.database == redshift_database.local.name &&
       redshift_materialized_view.label_counts.schema == redshift_schema.local.name &&
       redshift_materialized_view.label_counts.distribution.style == "ALL" &&

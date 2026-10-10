@@ -1,5 +1,5 @@
 ---
-subcategory: Row-Level Security
+subcategory: Row-Level Security and Masking
 page_title: redshift_rls_policy_attachment Resource - terraform-provider-redshift
 description: Attaches a row-level security policy to a relation for a user, role, or PUBLIC.
 ---

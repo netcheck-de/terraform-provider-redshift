@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_grants Data Source - terraform-provider-redshift
 description: Lists the grants on one database, schema, or table, or the grants of one user or role.
 ---

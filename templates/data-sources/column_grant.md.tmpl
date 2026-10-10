@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_column_grant Data Source - terraform-provider-redshift
 description: Reads the column-level privileges of one SQL grantee on one table or view.
 ---

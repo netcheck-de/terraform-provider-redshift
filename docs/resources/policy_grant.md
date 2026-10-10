@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Row-Level Security and Masking
 page_title: redshift_policy_grant Resource - terraform-provider-redshift
 description: Grants SELECT on a lookup table to a row-level security or masking policy.
 ---

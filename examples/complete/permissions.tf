@@ -30,6 +30,20 @@ resource "redshift_column_grant" "group_event_labels" {
   depends_on = [aws_redshiftdata_statement.local_view]
 }
 
+# The readers group sees every column of the managed orders table except the amount, including columns added later.
+# It holds no table-level SELECT on the table, which would cover every column.
+resource "redshift_column_grant" "group_orders" {
+  provider      = redshift.consumer
+  database_name = redshift_table.orders.database
+  schema_name   = redshift_table.orders.schema
+  object_name   = redshift_table.orders.name
+  grantee       = redshift_group.readers.name
+  grantee_type  = "GROUP"
+  privileges = {
+    SELECT = [for column in redshift_table.orders.column : column.name if column.name != "amount"]
+  }
+}
+
 # Operators may create stored procedures in the local database.
 resource "redshift_language_grant" "operator_procedures" {
   provider      = redshift.consumer

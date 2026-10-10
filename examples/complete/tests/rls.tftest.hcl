@@ -32,7 +32,7 @@ override_data {
   target = data.redshift_rls_policy.own_region
   values = {
     id                     = "rls-policy-lookup-identity"
-    predicate              = "\"region\" = CAST(current_user AS TEXT)"
+    predicate              = "\"region\" IN (SELECT \"region\" FROM example_schema.example_rls_regions WHERE \"reader\" = CAST(current_user AS TEXT))"
     definition_fingerprint = "observed-fingerprint"
   }
 }
@@ -51,17 +51,26 @@ run "rls_apply" {
   assert {
     condition = (
       redshift_rls_policy.own_region.database == redshift_database.local.name &&
-      redshift_rls_policy.own_region.predicate == "region = current_user" &&
+      strcontains(redshift_rls_policy.own_region.predicate, "FROM ${redshift_schema.local.name}.example_rls_regions WHERE reader = current_user") &&
       redshift_rls_policy.own_region.column[0].name == "region" &&
       redshift_rls_policy_attachment.readers.policy == redshift_rls_policy.own_region.name &&
-      redshift_rls_policy_attachment.readers.relation == local.rls_table_name &&
-      redshift_rls_policy_attachment.readers.schema == "public" &&
+      redshift_rls_policy_attachment.readers.schema == redshift_schema.local.name &&
+      redshift_rls_policy_attachment.readers.relation == redshift_table.rls_events.name &&
       redshift_rls_policy_attachment.readers.grantee == redshift_role.readers.name &&
       redshift_rls_policy_attachment.readers.grantee_type == "ROLE" &&
-      aws_redshiftdata_statement.rls_table.database == redshift_database.local.name &&
-      strcontains(aws_redshiftdata_statement.rls_table.sql, "public.${local.rls_table_name} (id INTEGER, region VARCHAR(64))")
+      [for column in redshift_table.rls_events.column : column.name] == ["id", "region"]
     )
-    error_message = "The policy must filter its own fixture table in the owned local database and be attached to the reader role."
+    error_message = "The policy must filter its own managed table in the owned local database and be attached to the reader role."
+  }
+  assert {
+    condition = (
+      redshift_policy_grant.rls_regions.policy_type == "RLS" &&
+      redshift_policy_grant.rls_regions.policy_name == redshift_rls_policy.own_region.name &&
+      redshift_policy_grant.rls_regions.schema_name == redshift_table.rls_regions.schema &&
+      redshift_policy_grant.rls_regions.object_name == redshift_table.rls_regions.name &&
+      redshift_policy_grant.rls_regions.privileges == toset(["SELECT"])
+    )
+    error_message = "The policy must hold SELECT on the managed lookup table its predicate reads."
   }
   assert {
     condition = (
@@ -77,7 +86,7 @@ run "rls_apply" {
   assert {
     condition = (
       output.row_level_security.policy.id == "rls-policy-lookup-identity" &&
-      output.row_level_security.policy.predicate == "\"region\" = CAST(current_user AS TEXT)" &&
+      startswith(output.row_level_security.policy.predicate, "\"region\" IN (SELECT") &&
       output.row_level_security.policy.fingerprint == "observed-fingerprint" &&
       output.row_level_security.attached &&
       output.row_level_security.table.row_level_security &&

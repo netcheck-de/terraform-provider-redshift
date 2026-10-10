@@ -70,6 +70,18 @@ run "routines_apply" {
   }
   assert {
     condition = (
+      redshift_object_grant.loader_label.object_type == "FUNCTION" &&
+      redshift_object_grant.loader_label.schema_name == redshift_function.label.schema &&
+      redshift_object_grant.loader_label.object_name == redshift_function.label.name &&
+      redshift_object_grant.loader_label.arguments == "int, varchar(64)" &&
+      redshift_object_grant.loader_label.grantee == redshift_user.loader.name &&
+      redshift_object_grant.loader_label.privileges == toset(["EXECUTE"]) &&
+      redshift_object_grant.loader_label.grant_option_privileges == toset(["EXECUTE"])
+    )
+    error_message = "The loader must hold EXECUTE with grant option on exactly the managed function overload."
+  }
+  assert {
+    condition = (
       redshift_procedure.scale.schema == redshift_schema.local.name &&
       length(redshift_procedure.scale.argument) == 3 &&
       redshift_procedure.scale.argument[2].mode == "OUT" &&

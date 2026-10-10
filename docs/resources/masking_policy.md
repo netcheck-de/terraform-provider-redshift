@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Row-Level Security and Masking
 page_title: redshift_masking_policy Resource - terraform-provider-redshift
 description: Manages a dynamic data masking policy.
 ---

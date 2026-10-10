@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_object_grant Resource - terraform-provider-redshift
 description: Manages explicit privileges on one local database object, or on all current objects of a schema, for one SQL grantee.
 ---

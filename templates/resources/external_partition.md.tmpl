@@ -1,5 +1,5 @@
 ---
-subcategory: Databases and Schemas
+subcategory: Tables and Views
 page_title: redshift_external_partition Resource - terraform-provider-redshift
 description: Manages one partition of a Redshift Spectrum external table.
 ---

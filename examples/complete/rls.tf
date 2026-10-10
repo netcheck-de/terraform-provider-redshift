@@ -1,24 +1,44 @@
-locals {
-  # Row-level security gets its own fixture table, so turning RLS on never hides rows other examples verify.
-  rls_table_name = "example_rls_events"
+# Row-level security on Terraform-managed tables in the consumer-local workspace schema. The policy gets its own table,
+# so turning RLS on never hides rows other examples verify; Terraform drops both tables before the schema.
+resource "redshift_table" "rls_events" {
+  provider = redshift.consumer
+  database = redshift_schema.local.database
+  schema   = redshift_schema.local.name
+  name     = "example_rls_events"
+
+  column {
+    name = "id"
+    type = "integer"
+  }
+  column {
+    name = "region"
+    type = "varchar(64)"
+  }
 }
 
-# The fixture lives in the owned database's public schema like the other consumer-local fixtures, so dropping the
-# database removes it and no example depends on a managed table resource.
-resource "aws_redshiftdata_statement" "rls_table" {
-  provider       = aws.consumer
-  workgroup_name = aws_redshiftserverless_workgroup.consumer.workgroup_name
-  database       = redshift_database.local.name
-  secret_arn     = aws_redshiftserverless_namespace.consumer.admin_password_secret_arn
-  sql            = "CREATE TABLE IF NOT EXISTS public.${local.rls_table_name} (id INTEGER, region VARCHAR(64))"
+# Maps SQL users to the regions they may read. The policy reads it through the policy grant below.
+resource "redshift_table" "rls_regions" {
+  provider = redshift.consumer
+  database = redshift_schema.local.database
+  schema   = redshift_schema.local.name
+  name     = "example_rls_regions"
+
+  column {
+    name = "reader"
+    type = "varchar(128)"
+  }
+  column {
+    name = "region"
+    type = "varchar(64)"
+  }
 }
 
-# Readers see only the rows whose region equals their SQL user name.
+# Readers see only the rows of the regions the lookup table assigns to their SQL user.
 resource "redshift_rls_policy" "own_region" {
   provider  = redshift.consumer
-  database  = redshift_database.local.name
+  database  = redshift_table.rls_regions.database
   name      = "example_own_region"
-  predicate = "region = current_user"
+  predicate = "region IN (SELECT region FROM ${redshift_table.rls_regions.schema}.${redshift_table.rls_regions.name} WHERE reader = current_user)"
 
   column {
     name = "region"
@@ -26,16 +46,33 @@ resource "redshift_rls_policy" "own_region" {
   }
 }
 
+# Without SELECT on its lookup table the policy cannot evaluate its predicate, so the grant exists before RLS applies.
+resource "redshift_policy_grant" "rls_regions" {
+  provider      = redshift.consumer
+  database_name = redshift_table.rls_regions.database
+  schema_name   = redshift_table.rls_regions.schema
+  object_name   = redshift_table.rls_regions.name
+  policy_type   = "RLS"
+  policy_name   = redshift_rls_policy.own_region.name
+  privileges    = ["SELECT"]
+
+  # A replaced policy is a new catalog object without this grant, and Redshift does not report policy grants, so only a
+  # replacement of the grant gives it back.
+  lifecycle {
+    replace_triggered_by = [redshift_rls_policy.own_region.column, redshift_rls_policy.own_region.alias]
+  }
+}
+
 resource "redshift_rls_policy_attachment" "readers" {
   provider     = redshift.consumer
   policy       = redshift_rls_policy.own_region.name
   database     = redshift_rls_policy.own_region.database
-  schema       = "public"
-  relation     = local.rls_table_name
+  schema       = redshift_table.rls_events.schema
+  relation     = redshift_table.rls_events.name
   grantee      = redshift_role.readers.name
   grantee_type = "ROLE"
 
-  depends_on = [aws_redshiftdata_statement.rls_table]
+  depends_on = [redshift_policy_grant.rls_regions]
 
   # Replacing the policy (a WITH change) must detach it first, because DROP RLS POLICY refuses an attached policy.
   lifecycle {

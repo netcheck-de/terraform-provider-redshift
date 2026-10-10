@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_default_privileges Resource - terraform-provider-redshift
 description: Manages explicit default permissions for future objects created by one SQL user.
 ---

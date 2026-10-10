@@ -1,5 +1,5 @@
 ---
-subcategory: Routines
+subcategory: Functions and Procedures
 page_title: redshift_functions Data Source - terraform-provider-redshift
 description: Lists user-defined scalar functions, including Lambda UDFs.
 ---

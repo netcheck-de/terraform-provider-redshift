@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_assumerole_grant Data Source - terraform-provider-redshift
 description: Reads explicit IAM role command permissions for one SQL identity.
 ---

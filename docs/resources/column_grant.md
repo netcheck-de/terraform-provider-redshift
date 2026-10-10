@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_column_grant Resource - terraform-provider-redshift
 description: Manages column-level SELECT and UPDATE privileges of one SQL grantee on one table or view.
 ---

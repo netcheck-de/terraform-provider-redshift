@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_language_grant Data Source - terraform-provider-redshift
 description: Reads explicit USAGE on the sql or plpgsql language for one SQL identity.
 ---

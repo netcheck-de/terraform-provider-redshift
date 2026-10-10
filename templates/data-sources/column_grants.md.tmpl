@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_column_grants Data Source - terraform-provider-redshift
 description: Lists explicit column-level privileges in one database.
 ---

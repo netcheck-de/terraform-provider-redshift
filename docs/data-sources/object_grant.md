@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_object_grant Data Source - terraform-provider-redshift
 description: Reads explicit permissions on one local object, or common to all current objects of a schema, for one SQL identity.
 ---

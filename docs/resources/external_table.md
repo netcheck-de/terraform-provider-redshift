@@ -1,5 +1,5 @@
 ---
-subcategory: Databases and Schemas
+subcategory: Tables and Views
 page_title: redshift_external_table Resource - terraform-provider-redshift
 description: Manages a Redshift Spectrum external table in an external schema.
 ---

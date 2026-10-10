@@ -1,5 +1,5 @@
 ---
-subcategory: Databases and Schemas
+subcategory: Tables and Views
 page_title: redshift_external_table Data Source - terraform-provider-redshift
 description: Looks up a Redshift Spectrum external table.
 ---

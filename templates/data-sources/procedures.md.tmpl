@@ -1,5 +1,5 @@
 ---
-subcategory: Routines
+subcategory: Functions and Procedures
 page_title: redshift_procedures Data Source - terraform-provider-redshift
 description: Lists stored procedures.
 ---

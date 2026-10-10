@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_grant Resource - terraform-provider-redshift
 description: Manages role, user, or producer datashare privileges within a database or schema scope.
 ---

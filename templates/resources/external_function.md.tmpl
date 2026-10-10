@@ -1,5 +1,5 @@
 ---
-subcategory: Routines
+subcategory: Functions and Procedures
 page_title: redshift_external_function Resource - terraform-provider-redshift
 description: Manages a scalar Lambda user-defined function.
 ---

@@ -61,3 +61,18 @@ data "redshift_procedure" "scale" {
   name      = redshift_procedure.scale.name
   arguments = [for argument in redshift_procedure.scale.argument : argument.type if argument.mode != "OUT"]
 }
+
+# The loader may run the function and pass that right on. Redshift also grants EXECUTE to PUBLIC on creation; this
+# tuple owns only the loader's explicit privileges on this overload.
+resource "redshift_object_grant" "loader_label" {
+  provider                = redshift.consumer
+  database_name           = redshift_function.label.database
+  schema_name             = redshift_function.label.schema
+  object_name             = redshift_function.label.name
+  object_type             = "FUNCTION"
+  arguments               = join(", ", redshift_function.label.arguments)
+  grantee                 = redshift_user.loader.name
+  grantee_type            = "USER"
+  privileges              = ["EXECUTE"]
+  grant_option_privileges = ["EXECUTE"]
+}

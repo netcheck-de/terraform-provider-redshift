@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_default_privileges Data Source - terraform-provider-redshift
 description: Reads explicit creator-specific default permissions for future objects.
 ---

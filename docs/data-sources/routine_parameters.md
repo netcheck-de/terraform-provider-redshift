@@ -1,5 +1,5 @@
 ---
-subcategory: Routines
+subcategory: Functions and Procedures
 page_title: redshift_routine_parameters Data Source - terraform-provider-redshift
 description: Lists the parameters of functions and stored procedures.
 ---

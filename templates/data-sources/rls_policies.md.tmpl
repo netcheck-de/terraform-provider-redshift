@@ -1,5 +1,5 @@
 ---
-subcategory: Row-Level Security
+subcategory: Row-Level Security and Masking
 page_title: redshift_rls_policies Data Source - terraform-provider-redshift
 description: Lists the row-level security policies of a database.
 ---

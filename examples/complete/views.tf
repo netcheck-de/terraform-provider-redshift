@@ -51,3 +51,15 @@ data "redshift_materialized_view" "label_counts" {
   schema   = redshift_materialized_view.label_counts.schema
   name     = redshift_materialized_view.label_counts.name
 }
+
+# A view over a Terraform-managed table. Late binding keeps the table's own changes possible: Redshift refuses DROP
+# COLUMN and DROP TABLE on a table that an ordinary view depends on, and the provider never cascades. Referencing the
+# table still creates the view after it and drops the view first.
+resource "redshift_view" "order_totals" {
+  provider     = redshift.consumer
+  database     = redshift_table.orders.database
+  schema       = redshift_table.orders.schema
+  name         = "order_totals"
+  late_binding = true
+  query        = "SELECT account_id, COUNT(*) AS orders, SUM(amount) AS amount FROM ${redshift_table.orders.schema}.${redshift_table.orders.name} GROUP BY account_id"
+}

@@ -1,5 +1,5 @@
 ---
-subcategory: Row-Level Security
+subcategory: Row-Level Security and Masking
 page_title: redshift_rls_policy Resource - terraform-provider-redshift
 description: Manages one row-level security policy definition.
 ---

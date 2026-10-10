@@ -1,5 +1,5 @@
 ---
-subcategory: Databases and Schemas
+subcategory: Tables and Views
 page_title: redshift_external_partition Data Source - terraform-provider-redshift
 description: Looks up one partition of a Redshift Spectrum external table.
 ---

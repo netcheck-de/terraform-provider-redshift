@@ -44,8 +44,8 @@ The provider grows in parallel work blocks, so a new type adds files instead of 
 
 - **Registration.** Each type file registers itself with `var _ = registerResource(newX)` or
   `var _ = registerDataSource(newX)` (`registry.go`); `provider.go` returns clones of the registry, and `main_test.go`
-  derives the expected counts from the generated `docs/` pages. The type's test files register its cross-cutting
-  cases next to the code they cover:
+  pins the exact resource and data-source counts and checks them against the generated `docs/` pages. The type's test
+  files register its cross-cutting cases next to the code they cover:
   - `registerReplacementPolicy(type, rules)` declares, per attribute and block, whether a change never, always, or
     conditionally replaces the object; `replacement_policy_test.go` checks the schema against it, and every block
     counts as an input.
@@ -99,7 +99,9 @@ The provider grows in parallel work blocks, so a new type adds files instead of 
   `data_source_parity_test.go`, `documentation_contract_test.go`, `example_contract_test.go`,
   `privilege_resource_test.go`), `examples/complete/tests/composition.tftest.hcl`, `examples/complete/outputs.tf`,
   `templates/index.md.tmpl`, `README.md`, `TODO.md`, or `go.mod`. A block that needs a new hook reports it, and the hook
-  lands as a separate foundation change first.
+  lands as a separate foundation change first. After the blocks merge, one integration change raises the pinned
+  counts in `main_test.go` and updates the type tables and ownership matrix in `templates/index.md.tmpl`, `README.md`,
+  and `TODO.md`.
 - **Examples.** A block adds its objects to `examples/complete/<block>.tf` (access control lives in
   `access_users.tf`, `access_roles.tf`, and `access_grants.tf`), exposes each lookup in `outputs_<block>.tf`, and
   asserts them in `tests/<block>.tftest.hcl`. `example_contract_test.go` requires every type in the example and every

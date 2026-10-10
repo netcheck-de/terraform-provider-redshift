@@ -1,5 +1,5 @@
 ---
-subcategory: Row-Level Security
+subcategory: Row-Level Security and Masking
 page_title: redshift_table_security Data Source - terraform-provider-redshift
 description: Reads the row-level security settings of a table or view.
 ---

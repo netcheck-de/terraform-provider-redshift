@@ -75,6 +75,17 @@ run "tables_apply" {
   }
   assert {
     condition = (
+      redshift_comment.orders_key.object_type == "CONSTRAINT" &&
+      redshift_comment.orders_key.database_name == redshift_table.orders.database &&
+      redshift_comment.orders_key.schema_name == redshift_table.orders.schema &&
+      redshift_comment.orders_key.object_name == redshift_table.orders.name &&
+      redshift_comment.orders_key.constraint_name == "example_orders_pkey" &&
+      redshift_comment.orders_key.column_name == null
+    )
+    error_message = "The constraint comment must annotate the primary key Redshift names after the managed orders table."
+  }
+  assert {
+    condition = (
       redshift_table.events.distribution == null && redshift_table.events.sort_key == null &&
       output.events_table_layout.distribution.style == "EVEN" && output.events_table_layout.distribution.auto &&
       output.events_table_layout.sort_key.style == "NONE" && output.events_table_layout.sort_key.auto

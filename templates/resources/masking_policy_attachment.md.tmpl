@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Row-Level Security and Masking
 page_title: redshift_masking_policy_attachment Resource - terraform-provider-redshift
 description: Attaches a dynamic data masking policy to columns of a relation for a user, role, or PUBLIC.
 ---

@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_language_grant Resource - terraform-provider-redshift
 description: Manages USAGE on the sql or plpgsql language for one SQL grantee in one database.
 ---

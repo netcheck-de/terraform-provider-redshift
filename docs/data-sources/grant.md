@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_grant Data Source - terraform-provider-redshift
 description: Reads explicit role, user, or datashare permissions within one database or schema scope.
 ---
