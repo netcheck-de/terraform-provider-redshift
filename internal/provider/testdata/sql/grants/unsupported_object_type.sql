@@ -1,0 +1,1 @@
+-- error: unsupported object_type: "FUNCTION" is not one of DATABASE, SCHEMA, TABLE

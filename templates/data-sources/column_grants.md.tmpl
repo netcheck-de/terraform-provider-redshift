@@ -1,0 +1,27 @@
+---
+subcategory: Identity and Access
+page_title: redshift_column_grants Data Source - terraform-provider-redshift
+description: Lists explicit column-level privileges in one database.
+---
+
+# redshift_column_grants (Data Source)
+
+Lists explicit column-level `SELECT` and `UPDATE` grants in one local database, one element per column, privilege, and
+grantee, without taking ownership. See AWS
+[SVV_COLUMN_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_COLUMN_PRIVILEGES.html).
+
+```sql
+SELECT ... FROM svv_column_privileges WHERE ...;
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_column_grants/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+All filters are optional and combine with AND; an empty result is an empty list. The view shows only grants visible
+to the provider's identity (superusers and users with `ACCESS SYSTEM TABLE` see all). Column grants have no grant
+option. `id` is the listing's JSON identity: the warehouse binding, the provider database, and the configured filters.

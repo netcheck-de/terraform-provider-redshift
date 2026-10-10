@@ -1,0 +1,30 @@
+---
+subcategory: Identity and Access
+page_title: redshift_language_grant Data Source - terraform-provider-redshift
+description: Reads explicit USAGE on the sql or plpgsql language for one SQL identity.
+---
+
+# redshift_language_grant (Data Source)
+
+Reads whether one grantee holds `USAGE` on `sql` or `plpgsql` in one local database, and whether a user holds it with
+grant option. See AWS [SVV_LANGUAGE_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_LANUGAGE_PRIVILEGES.html).
+
+```sql
+SELECT ... FROM svv_language_privileges WHERE language_name = '...' AND identity_name = '...';
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_language_grant/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the tuple's JSON identity, using the paired resource's warehouse, provider database,
+`database_name`, `language_name`, `grantee`, and `grantee_type` keys.
+
+No explicit grant returns empty sets; a missing database or grantee raises an error. No grants are adopted, revoked,
+or added. The view lists only explicit grants, so Redshift's built-in `USAGE` for `PUBLIC` on `sql` and `plpgsql` may
+not appear: an empty set for the `PUBLIC` tuple does not prove that `PUBLIC` lacks `USAGE` until the default has been
+revoked, for example by a `redshift_language_grant` resource for `PUBLIC` without `USAGE`.

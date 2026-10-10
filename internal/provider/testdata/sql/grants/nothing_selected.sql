@@ -1,0 +1,1 @@
+-- error: set object_type, or grantee and grantee_type, to select what SHOW GRANTS lists

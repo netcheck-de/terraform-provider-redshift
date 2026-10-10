@@ -123,6 +123,8 @@ standard acceptance environment plus `REDSHIFT_ACC_DIRECT=1`:
   and direct cleanup in an isolated database.
 - `TestAccDirectPasswordPrivileges`: a disposable non-superuser password identity can read its granted fixture but
   cannot insert; the fixture database and user are removed afterwards.
+- `TestAccLanguageGrantPublicDefault`: a disposable non-superuser can create a procedure until a `PUBLIC`
+  `redshift_language_grant` without `USAGE` revokes the built-in default, and still cannot after destroy.
 
 Set `REDSHIFT_ACC_SSLMODE` (for example `require`) to override the default `verify-full` for direct tests; on macOS
 this is needed for Serverless endpoints, whose certificates lack Certificate Transparency timestamps.

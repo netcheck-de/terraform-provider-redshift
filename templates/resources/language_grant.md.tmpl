@@ -1,0 +1,56 @@
+---
+subcategory: Identity and Access
+page_title: redshift_language_grant Resource - terraform-provider-redshift
+description: Manages USAGE on the sql or plpgsql language for one SQL grantee in one database.
+---
+
+# redshift_language_grant (Resource)
+
+Owns `USAGE` on one language in one local database for one grantee. `USAGE ON LANGUAGE sql` is required to create SQL
+user-defined functions and `USAGE ON LANGUAGE plpgsql` to create stored procedures. See AWS
+[GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
+[REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
+
+```sql
+GRANT USAGE ON LANGUAGE language_name TO ... [WITH GRANT OPTION];
+REVOKE [GRANT OPTION FOR] USAGE ON LANGUAGE language_name FROM ...;
+```
+
+An empty `privileges` set revokes `USAGE`. Deleting the resource revokes what it owns.
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_language_grant/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+All identity arguments require replacement when changed; `privileges` and `grant_option_privileges` update in place.
+`plpythonu` is not supported, because Redshift no longer supports Python UDFs.
+
+## Lifecycle and Ownership
+
+The resource checks the grantee and the local database, then reads
+[SVV_LANGUAGE_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_LANUGAGE_PRIVILEGES.html) in that
+database, including `admin_option` for grant options. It revokes before it grants and re-reads the catalog to verify
+convergence. A missing grantee or database removes the resource from state.
+
+Redshift grants `USAGE` on `sql` and `plpgsql` to `PUBLIC` by default, and `SVV_LANGUAGE_PRIVILEGES` lists only
+explicit grants, so the default may have no catalog row. To restrict who can create functions or procedures, manage the
+`PUBLIC` tuple with an empty `privileges` set and grant `USAGE` to specific users, roles, or groups. Because the
+default can be invisible, every create, update, and destroy of a `PUBLIC` tuple without `USAGE` sends
+`REVOKE USAGE ON LANGUAGE ... FROM PUBLIC`, which changes nothing once the grant is gone. Importing such a tuple plans
+no change, so create it instead of importing it. Destroying any `PUBLIC` tuple leaves `PUBLIC` without `USAGE`; the
+default is never restored. To give it back, apply `privileges = ["USAGE"]`, then remove the resource with a `removed`
+block whose `lifecycle { destroy = false }` keeps that grant.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_language_grant/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_language_grant/import.sh" }}

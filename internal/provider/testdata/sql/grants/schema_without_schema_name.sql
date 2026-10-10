@@ -1,0 +1,1 @@
+-- error: SCHEMA requires schema_name and does not accept object_name

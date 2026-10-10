@@ -66,6 +66,9 @@ type privilegeTarget struct {
 	allowed []sqlclient.Keyword
 	// filter optionally excludes rows belonging to other grantees or scopes.
 	filter func(sqlclient.Row) bool
+	// implicit lists privileges the grantee may hold by default without a catalog row, such as PUBLIC's USAGE on
+	// sql and plpgsql; reconcile revokes each one that is not desired, because the read cannot see it.
+	implicit []string
 }
 
 // privilegeString defines an immutable nonempty permission identity field.
@@ -291,8 +294,15 @@ func (r *privilegeResource) reconcile(ctx context.Context, data types.Object) er
 	desired := data.Attributes()["privileges"].(types.Set)
 	current := actual.Attributes()["privileges"].(types.Set)
 	desiredOptions := grantOptionPrivileges(data)
+	held := knownStrings(current)
+	for _, privilege := range target.implicit {
+		// REVOKE of a privilege the grantee does not hold changes nothing, so revoking an unseen default is safe.
+		if !slices.Contains(held, privilege) && !slices.Contains(knownStrings(desired), privilege) {
+			held = append(held, privilege)
+		}
+	}
 	statements, err := privilegeOptionStatements(target.grant, target.allowed,
-		privilegeSets{privileges: knownStrings(current), options: grantOptionPrivileges(actual)},
+		privilegeSets{privileges: held, options: grantOptionPrivileges(actual)},
 		privilegeSets{privileges: knownStrings(desired), options: desiredOptions})
 	if err != nil {
 		return err

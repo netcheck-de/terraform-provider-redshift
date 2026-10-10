@@ -1,0 +1,1 @@
+-- error: query parameter :schema is empty
