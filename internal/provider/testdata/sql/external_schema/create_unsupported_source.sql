@@ -1,0 +1,1 @@
+-- error: unsupported external schema source_type "KAFKA"

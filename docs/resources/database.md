@@ -6,13 +6,16 @@ description: Manages a local or datashare-backed Redshift database.
 
 # redshift_database (Resource)
 
-Creates a local database, or a consumer database from an **already associated** producer datashare. Datashare
-authorization and the namespace-scoped consumer association are AWS resources and must precede shared database creation.
-The provider waits up to five minutes for the inbound share to appear in the SQL catalog. See AWS
-[CREATE DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATABASE.html).
+Creates a local database with an optional owner, connection limit, collation, and isolation level, or a consumer
+database from an **already associated** producer datashare. Datashare authorization and the namespace-scoped consumer
+association are AWS resources and must precede shared database creation. The provider waits up to five minutes for the
+inbound share to appear in the SQL catalog. See AWS
+[CREATE DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATABASE.html) and
+[ALTER DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATABASE.html).
 
 ```sql
 CREATE DATABASE name ...;
+ALTER DATABASE name ...;
 DROP DATABASE name;
 ```
 
@@ -25,7 +28,11 @@ resource "redshift_database" "analytics" {
 }
 
 resource "redshift_database" "local" {
-  name = "warehouse"
+  name             = "warehouse"
+  owner            = "etl"
+  connection_limit = 50
+  collation        = "CASE_INSENSITIVE"
+  isolation_level  = "SNAPSHOT"
 }
 ```
 
@@ -35,11 +42,15 @@ resource "redshift_database" "local" {
 
 ### Required
 
-- `name` (String) Database name; changing it replaces the resource.
+- `name` (String) Database name. Changing it replaces the database.
 
 ### Optional
 
-- `datashare_arn` (String) Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database. Changing it replaces the resource.
+- `collation` (String) `CASE_SENSITIVE` (the Redshift default) or `CASE_INSENSITIVE` string comparison for a local database, set with `COLLATE` at creation. It is read with `DB_COLLATION()`, which needs a session inside the database, only at creation and import, so a `connection_limit` does not block later refreshes; when that session is refused, the value is kept with a warning. Omit it to keep and report the current collation. Not supported for shared databases, where it is null. Changing it replaces the database.
+- `connection_limit` (Number) Maximum number of concurrent connections to a local database; `-1` means `UNLIMITED`, the Redshift default. Superusers are exempt. Updated in place with `ALTER DATABASE ... CONNECTION LIMIT`. Omit it to keep and report the current limit. Not supported for shared databases, where it is null.
+- `datashare_arn` (String) Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database. Changing it replaces the database.
+- `isolation_level` (String) `SERIALIZABLE` or `SNAPSHOT` (the Redshift default) isolation for a local database. Updated in place with `ALTER DATABASE ... ISOLATION LEVEL`, which fails while other sessions are connected to the database. Omit it to keep and report the current level. Not supported for shared databases, where it is null.
+- `owner` (String) SQL user owning a local database. Set with `OWNER` at creation and changed in place with `ALTER DATABASE ... OWNER TO`, which requires a superuser. Omit it to keep and report the current owner. Not supported for shared databases, where it is null.
 - `with_permissions` (Boolean) Require object-level grants for a shared database; defaults to `true`. Changing it replaces a shared database (`datashare_arn` set); ignored for local databases.
 
 ### Read-Only
@@ -50,6 +61,24 @@ resource "redshift_database" "local" {
 - `producer_namespace` (String) Producer namespace ID; null for local databases.
 - `share_name` (String) Producer share name; null for local databases.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Local Database Options
+
+`owner`, `connection_limit`, `collation`, and `isolation_level` apply to local databases only; configuring any of them
+together with `datashare_arn` is rejected at plan time, and they are null for shared databases. Omitted options are
+reported from the catalog and left unmanaged, so removing one from configuration keeps its current value.
+
+| Attribute          | Created with       | Changed with                              | Read from                                   |
+|--------------------|--------------------|-------------------------------------------|---------------------------------------------|
+| `owner`            | `OWNER`            | `ALTER DATABASE ... OWNER TO` (superuser) | `PG_DATABASE_INFO.datdba`                   |
+| `connection_limit` | `CONNECTION LIMIT` | `ALTER DATABASE ... CONNECTION LIMIT`     | `PG_DATABASE_INFO.datconnlimit`             |
+| `collation`        | `COLLATE`          | replacement                               | `DB_COLLATION()` inside the database        |
+| `isolation_level`  | `ISOLATION LEVEL`  | `ALTER DATABASE ... ISOLATION LEVEL`      | `SHOW DATABASES` `database_isolation_level` |
+
+`connection_limit = -1` renders `UNLIMITED`; superusers are not limited. Changing the isolation level fails while other
+sessions are connected to the database, and the `dev` database cannot be changed. Changes apply to new sessions.
+`ALTER DATABASE ... COLLATE` exists but is restricted by Redshift, so a collation change replaces the database instead.
+Create and Update re-read every option and fail when the catalog does not hold the planned value.
 
 ## Lifecycle and Ownership
 
@@ -86,4 +115,4 @@ terraform import redshift_database.analytics \
 ```
 
 For a local database, omit `datashare_arn` from the import ID. For a shared database it must match the existing producer
-binding. `with_permissions` is discovered on refresh.
+binding. `with_permissions` and the local database options are discovered on refresh.

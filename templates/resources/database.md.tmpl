@@ -6,13 +6,16 @@ description: Manages a local or datashare-backed Redshift database.
 
 # redshift_database (Resource)
 
-Creates a local database, or a consumer database from an **already associated** producer datashare. Datashare
-authorization and the namespace-scoped consumer association are AWS resources and must precede shared database creation.
-The provider waits up to five minutes for the inbound share to appear in the SQL catalog. See AWS
-[CREATE DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATABASE.html).
+Creates a local database with an optional owner, connection limit, collation, and isolation level, or a consumer
+database from an **already associated** producer datashare. Datashare authorization and the namespace-scoped consumer
+association are AWS resources and must precede shared database creation. The provider waits up to five minutes for the
+inbound share to appear in the SQL catalog. See AWS
+[CREATE DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATABASE.html) and
+[ALTER DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATABASE.html).
 
 ```sql
 CREATE DATABASE name ...;
+ALTER DATABASE name ...;
 DROP DATABASE name;
 ```
 
@@ -23,6 +26,24 @@ DROP DATABASE name;
 <!-- markdownlint-disable MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Local Database Options
+
+`owner`, `connection_limit`, `collation`, and `isolation_level` apply to local databases only; configuring any of them
+together with `datashare_arn` is rejected at plan time, and they are null for shared databases. Omitted options are
+reported from the catalog and left unmanaged, so removing one from configuration keeps its current value.
+
+| Attribute          | Created with       | Changed with                              | Read from                                   |
+|--------------------|--------------------|-------------------------------------------|---------------------------------------------|
+| `owner`            | `OWNER`            | `ALTER DATABASE ... OWNER TO` (superuser) | `PG_DATABASE_INFO.datdba`                   |
+| `connection_limit` | `CONNECTION LIMIT` | `ALTER DATABASE ... CONNECTION LIMIT`     | `PG_DATABASE_INFO.datconnlimit`             |
+| `collation`        | `COLLATE`          | replacement                               | `DB_COLLATION()` inside the database        |
+| `isolation_level`  | `ISOLATION LEVEL`  | `ALTER DATABASE ... ISOLATION LEVEL`      | `SHOW DATABASES` `database_isolation_level` |
+
+`connection_limit = -1` renders `UNLIMITED`; superusers are not limited. Changing the isolation level fails while other
+sessions are connected to the database, and the `dev` database cannot be changed. Changes apply to new sessions.
+`ALTER DATABASE ... COLLATE` exists but is restricted by Redshift, so a collation change replaces the database instead.
+Create and Update re-read every option and fail when the catalog does not hold the planned value.
 
 ## Lifecycle and Ownership
 
@@ -46,4 +67,4 @@ Alternatively, use `terraform import`:
 {{ codefile "shell" "examples/resources/redshift_database/import.sh" }}
 
 For a local database, omit `datashare_arn` from the import ID. For a shared database it must match the existing producer
-binding. `with_permissions` is discovered on refresh.
+binding. `with_permissions` and the local database options are discovered on refresh.

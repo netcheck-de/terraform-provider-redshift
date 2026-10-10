@@ -3,6 +3,14 @@ SELECT n.nspname AS schema_name, u.usename AS owner FROM pg_namespace n JOIN pg_
 -- params: {"name":"serving"}
 
 -- database: admin
+SELECT quota FROM svv_redshift_schema_quota WHERE TRIM(database_name) = :database AND TRIM(schema_name) = :name;
+-- params: {"database":"admin","name":"serving"}
+
+-- database: admin
+SELECT usename AS name, usesuper AS superuser FROM pg_user WHERE usename = current_user;
+-- params: {}
+
+-- database: admin
 DROP SCHEMA "serving";
 -- params: {}
 

@@ -4,5 +4,9 @@ resource "redshift_database" "analytics" {
 }
 
 resource "redshift_database" "local" {
-  name = "warehouse"
+  name             = "warehouse"
+  owner            = "etl"
+  connection_limit = 50
+  collation        = "CASE_INSENSITIVE"
+  isolation_level  = "SNAPSHOT"
 }

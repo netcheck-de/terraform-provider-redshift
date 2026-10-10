@@ -1,0 +1,1 @@
+-- error: shared databases do not accept owner; remove it or datashare_arn

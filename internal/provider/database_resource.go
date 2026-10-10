@@ -3,18 +3,26 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
@@ -43,6 +51,14 @@ type databaseModel struct {
 	ProducerAccount types.String `tfsdk:"producer_account"`
 	// ProducerNamespace identifies the backing share's warehouse namespace.
 	ProducerNamespace types.String `tfsdk:"producer_namespace"`
+	// Owner is the SQL user owning a local database; null for shared databases.
+	Owner types.String `tfsdk:"owner"`
+	// ConnectionLimit caps concurrent connections to a local database; -1 means UNLIMITED.
+	ConnectionLimit types.Int64 `tfsdk:"connection_limit"`
+	// Collation is the create-only case sensitivity of a local database.
+	Collation types.String `tfsdk:"collation"`
+	// IsolationLevel is the SERIALIZABLE or SNAPSHOT isolation of a local database.
+	IsolationLevel types.String `tfsdk:"isolation_level"`
 }
 
 // shareSource is the producer identity encoded by a datashare ARN.
@@ -90,7 +106,7 @@ func (r *databaseResource) Metadata(_ context.Context, req resource.MetadataRequ
 	resp.TypeName = req.ProviderTypeName + "_database"
 }
 
-// Schema defines database identity, optional share binding, and permission mode.
+// Schema defines database identity, optional share binding, permission mode, and local database options.
 func (r *databaseResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a local database or a consumer database bound to a producer datashare.",
@@ -101,11 +117,11 @@ func (r *databaseResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			"producer_account":   schema.StringAttribute{Computed: true, MarkdownDescription: "Producer account ID; null for local databases."},
 			"producer_namespace": schema.StringAttribute{Computed: true, MarkdownDescription: "Producer namespace ID; null for local databases."},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Database name; changing it replaces the resource.",
+				Required: true, MarkdownDescription: "Database name. Changing it replaces the database.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"datashare_arn": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database. Changing it replaces the resource.",
+				Optional: true, MarkdownDescription: "Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database. Changing it replaces the database.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"with_permissions": schema.BoolAttribute{
@@ -115,7 +131,69 @@ func (r *databaseResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 					sharedDatabaseReplacement, "Replaces shared databases; ignored for local databases.", "Replaces shared databases; ignored for local databases.",
 				)},
 			},
+			"owner": schema.StringAttribute{
+				Optional: true, Computed: true,
+				MarkdownDescription: "SQL user owning a local database. Set with `OWNER` at creation and changed in place with `ALTER DATABASE ... OWNER TO`, which requires a superuser. Omit it to keep and report the current owner. Not supported for shared databases, where it is null.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
+			},
+			"connection_limit": schema.Int64Attribute{
+				Optional: true, Computed: true,
+				MarkdownDescription: "Maximum number of concurrent connections to a local database; `-1` means `UNLIMITED`, the Redshift default. Superusers are exempt. Updated in place with `ALTER DATABASE ... CONNECTION LIMIT`. Omit it to keep and report the current limit. Not supported for shared databases, where it is null.",
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+				Validators:          []validator.Int64{int64validator.AtLeast(databaseUnlimited)},
+			},
+			"collation": schema.StringAttribute{
+				Optional: true, Computed: true,
+				MarkdownDescription: "`CASE_SENSITIVE` (the Redshift default) or `CASE_INSENSITIVE` string comparison for a local database, set with `COLLATE` at creation. It is read with `DB_COLLATION()`, which needs a session inside the database, only at creation and import, so a `connection_limit` does not block later refreshes; when that session is refused, the value is kept with a warning. Omit it to keep and report the current collation. Not supported for shared databases, where it is null. Changing it replaces the database.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown(), stringplanmodifier.RequiresReplace()},
+				Validators:          []validator.String{stringvalidator.OneOf("CASE_SENSITIVE", "CASE_INSENSITIVE")},
+			},
+			"isolation_level": schema.StringAttribute{
+				Optional: true, Computed: true,
+				MarkdownDescription: "`SERIALIZABLE` or `SNAPSHOT` (the Redshift default) isolation for a local database. Updated in place with `ALTER DATABASE ... ISOLATION LEVEL`, which fails while other sessions are connected to the database. Omit it to keep and report the current level. Not supported for shared databases, where it is null.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				Validators:          []validator.String{stringvalidator.OneOf("SERIALIZABLE", "SNAPSHOT")},
+			},
 		},
+	}
+}
+
+// databaseLocalOptions lists the configured options that only a local database accepts; CREATE DATABASE ...
+// FROM DATASHARE has no OWNER, CONNECTION LIMIT, COLLATE or ISOLATION LEVEL clause.
+func databaseLocalOptions(data databaseModel) []string {
+	var configured []string
+	for _, option := range []struct {
+		name  string
+		value attr.Value
+	}{{"owner", data.Owner}, {"connection_limit", data.ConnectionLimit}, {"collation", data.Collation}, {"isolation_level", data.IsolationLevel}} {
+		if !option.value.IsNull() && !option.value.IsUnknown() {
+			configured = append(configured, option.name)
+		}
+	}
+	return configured
+}
+
+// validateDatabase rejects local-only options on a shared database before Create writes state, and at plan time.
+func validateDatabase(data databaseModel) error {
+	if data.DatashareARN.IsNull() || data.DatashareARN.IsUnknown() {
+		return nil
+	}
+	if conflicts := databaseLocalOptions(data); len(conflicts) > 0 {
+		return fmt.Errorf("shared databases do not accept %s; remove it or datashare_arn", strings.Join(conflicts, ", "))
+	}
+	return nil
+}
+
+// ValidateConfig surfaces local-only options on shared databases at plan time; unknown values are checked at apply.
+func (r *databaseResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data databaseModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+		return
+	}
+	if err := validateDatabase(data); err != nil {
+		resp.Diagnostics.AddError("Invalid database options", err.Error())
 	}
 }
 
@@ -151,6 +229,10 @@ func (r *resourceClient) databaseMetadata(ctx context.Context, name string) (dat
 	data := databaseModel{
 		Name: types.StringValue(row["database_name"]), DatabaseType: types.StringValue(row["database_type"]),
 		WithPermissions: types.BoolValue(false),
+		Owner:           types.StringNull(), ConnectionLimit: types.Int64Null(), Collation: types.StringNull(), IsolationLevel: types.StringNull(),
+	}
+	if row["database_type"] == "local" {
+		return data, true, r.databaseLocalMetadata(ctx, &data, row["database_isolation_level"])
 	}
 	if row["database_type"] == "shared" {
 		var options sharedDatabaseOptions
@@ -171,6 +253,114 @@ func (r *resourceClient) databaseMetadata(ctx context.Context, name string) (dat
 	return data, true, nil
 }
 
+// databaseLocalMetadata fills the options only local databases have from the administration database: the
+// isolation level from SHOW DATABASES and the owner and limit from PG_DATABASE_INFO. The collation is left to
+// databaseReadCollation, because it needs a session inside the database itself.
+func (r *resourceClient) databaseLocalMetadata(ctx context.Context, data *databaseModel, isolation string) error {
+	name := data.Name.ValueString()
+	level, err := databaseIsolationLevel(isolation)
+	if err != nil {
+		return fmt.Errorf("database %q: %w", name, err)
+	}
+	rows, err := r.selectRows(ctx, r.database.ValueString(), readDatabaseOptionsQuery(name))
+	if err != nil {
+		return err
+	}
+	if len(rows) != 1 || strings.TrimSpace(rows[0]["owner"]) == "" {
+		return fmt.Errorf("database %q has no unique owner in pg_database_info", name)
+	}
+	limit, err := databaseConnectionLimitValue(rows[0]["connection_limit"])
+	if err != nil {
+		return fmt.Errorf("database %q: %w", name, err)
+	}
+	data.Owner, data.ConnectionLimit = types.StringValue(strings.TrimSpace(rows[0]["owner"])), types.Int64Value(limit)
+	data.IsolationLevel = types.StringValue(level)
+	return nil
+}
+
+// databaseCollation runs DB_COLLATION() in a session inside the database, because no catalog view reports the
+// collation of another database.
+func (r *resourceClient) databaseCollation(ctx context.Context, name string) (string, error) {
+	rows, err := r.selectRows(ctx, name, readDatabaseCollationQuery())
+	if err != nil {
+		return "", err
+	}
+	if len(rows) != 1 {
+		return "", fmt.Errorf("database %q returned no collation", name)
+	}
+	collation := strings.ToUpper(strings.TrimSpace(rows[0]["collation"]))
+	if _, err := sqlclient.OneOf(collation, databaseCollations...); err != nil {
+		return "", fmt.Errorf("database %q has unsupported collation %q", name, rows[0]["collation"])
+	}
+	return collation, nil
+}
+
+// databaseReadCollation stores the collation of a local database. A session in the database is not always
+// available: CONNECTION LIMIT is enforced for non-superusers, and a limit of 0 or one used up by other sessions
+// refuses the connection. The collation is supplementary, so a failed read is a warning that keeps the current
+// value rather than an error that would block every refresh of a database that exists.
+func (r *resourceClient) databaseReadCollation(ctx context.Context, data *databaseModel, diagnostics *diag.Diagnostics) {
+	if data.DatabaseType.ValueString() != "local" {
+		return
+	}
+	collation, err := r.databaseCollation(ctx, data.Name.ValueString())
+	if err != nil {
+		if data.Collation.IsUnknown() {
+			data.Collation = types.StringNull()
+		}
+		diagnostics.AddWarning("Read database collation", fmt.Sprintf(
+			"DB_COLLATION() could not run in a session inside database %q, so the collation stays %s: %v. "+
+				"Non-superusers are subject to the database's CONNECTION LIMIT.", data.Name.ValueString(), data.Collation, err))
+		return
+	}
+	data.Collation = types.StringValue(collation)
+}
+
+// databaseIsolationLevel maps the catalog's "Snapshot Isolation" and "Serializable" to the configuration keywords.
+func databaseIsolationLevel(catalog string) (string, error) {
+	switch value := strings.ToLower(catalog); {
+	case strings.Contains(value, "snapshot"):
+		return "SNAPSHOT", nil
+	case strings.Contains(value, "serializable"):
+		return "SERIALIZABLE", nil
+	default:
+		return "", fmt.Errorf("unrecognized isolation level %q", catalog)
+	}
+}
+
+// databaseConnectionLimitValue parses PG_DATABASE_INFO.datconnlimit, a text column that holds UNLIMITED or -1
+// for no limit and a number otherwise.
+func databaseConnectionLimitValue(catalog string) (int64, error) {
+	value := strings.TrimSpace(catalog)
+	if strings.EqualFold(value, "UNLIMITED") {
+		return databaseUnlimited, nil
+	}
+	limit, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || limit < databaseUnlimited {
+		return 0, fmt.Errorf("unrecognized connection limit %q", catalog)
+	}
+	return limit, nil
+}
+
+// databaseConverged reports the first configured option the catalog does not hold after Create or Update.
+func databaseConverged(expected, observed databaseModel) error {
+	for _, option := range []struct {
+		name               string
+		expected, observed attr.Value
+	}{
+		{"with_permissions", expected.WithPermissions, observed.WithPermissions},
+		{"owner", expected.Owner, observed.Owner},
+		{"connection_limit", expected.ConnectionLimit, observed.ConnectionLimit},
+		{"collation", expected.Collation, observed.Collation},
+		{"isolation_level", expected.IsolationLevel, observed.IsolationLevel},
+	} {
+		if !option.expected.IsNull() && !option.expected.IsUnknown() && !option.expected.Equal(option.observed) {
+			return fmt.Errorf("%s is %s in the catalog, not the planned %s", option.name, option.observed, option.expected)
+		}
+	}
+	return nil
+}
+
 // read verifies local/shared database identity and refreshes its catalog-backed metadata.
 func (r *databaseResource) read(ctx context.Context, data *databaseModel) (bool, error) {
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
@@ -184,6 +374,12 @@ func (r *databaseResource) read(ctx context.Context, data *databaseModel) (bool,
 	if data.DatashareARN.IsNull() {
 		if observed.DatabaseType.ValueString() != "local" {
 			return false, fmt.Errorf("database %q is not a local database; migrate it explicitly", data.Name.ValueString())
+		}
+		// Collation is create-only and needs a session inside the database, so it is read only at creation,
+		// import, or while it is still null, and otherwise kept.
+		observed.Collation = data.Collation
+		if observed.Collation.IsUnknown() {
+			observed.Collation = types.StringNull()
 		}
 		// Preserve the ignored local-database argument rather than changing a known Terraform plan value.
 		observed.WithPermissions = data.WithPermissions
@@ -205,11 +401,45 @@ func (r *databaseResource) read(ctx context.Context, data *databaseModel) (bool,
 	return true, nil
 }
 
+// databaseClearUnknown nulls the options the plan left to the catalog, so state written before verification
+// finishes is fully known even when the readback fails.
+func databaseClearUnknown(data *databaseModel) {
+	for _, value := range []*types.String{&data.Owner, &data.Collation, &data.IsolationLevel} {
+		if value.IsUnknown() {
+			*value = types.StringNull()
+		}
+	}
+	if data.ConnectionLimit.IsUnknown() {
+		data.ConnectionLimit = types.Int64Null()
+	}
+}
+
+// verifyCreatedDatabase re-reads a created local database, stores what the catalog holds, and reports an absent
+// database or an option that did not converge.
+func (r *databaseResource) verifyCreatedDatabase(ctx context.Context, data databaseModel, resp *resource.CreateResponse) {
+	expected := data
+	found, err := r.read(ctx, &data)
+	if err == nil && found {
+		r.databaseReadCollation(ctx, &data, &resp.Diagnostics)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		err = databaseConverged(expected, data)
+	} else if err == nil {
+		err = errors.New("the local database is absent after creation")
+	}
+	if err != nil {
+		resp.Diagnostics.AddError("Verify database", err.Error())
+	}
+}
+
 // Create creates a local database or waits for its incoming datashare before binding it.
 func (r *databaseResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data databaseModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	if err := validateDatabase(data); err != nil {
+		resp.Diagnostics.AddError("Invalid database options", err.Error())
 		return
 	}
 	target, err := r.connection(r.database.ValueString())
@@ -229,16 +459,9 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 		data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
 		data.DatabaseType = types.StringValue("local")
 		data.ShareName, data.ProducerAccount, data.ProducerNamespace = types.StringNull(), types.StringNull(), types.StringNull()
+		databaseClearUnknown(&data)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-		found, err := r.read(ctx, &data)
-		switch {
-		case err != nil:
-			resp.Diagnostics.AddError("Verify database", err.Error())
-		case !found:
-			resp.Diagnostics.AddError("Verify database", "The local database is absent after creation.")
-		default:
-			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-		}
+		r.verifyCreatedDatabase(ctx, data, resp)
 		return
 	}
 	source, err := parseShare(data.DatashareARN.ValueString())
@@ -282,6 +505,7 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 	data.ShareName = types.StringValue(source.Name)
 	data.ProducerAccount = types.StringValue(source.Account)
 	data.ProducerNamespace = types.StringValue(source.Namespace)
+	databaseClearUnknown(&data)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	expectedPermissions := data.WithPermissions
 	found, err := r.read(ctx, &data)
@@ -305,31 +529,62 @@ func (r *databaseResource) Read(ctx context.Context, req resource.ReadRequest, r
 	}
 	found, err := r.read(ctx, &data)
 	if err != nil {
-		resp.Diagnostics.AddError("Read shared database", err.Error())
+		resp.Diagnostics.AddError("Read database", err.Error())
 		return
 	}
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+	if data.Collation.IsNull() {
+		r.databaseReadCollation(ctx, &data, &resp.Diagnostics)
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Update verifies an immutable database binding without recreating it.
+// errDatabaseVanished reports a database dropped outside Terraform while an update was planned against it.
+var errDatabaseVanished = errors.New("the database disappeared during the update; refresh the plan")
+
+// Update applies the in-place options of a local database and verifies them, and verifies the immutable binding
+// of a shared database. The ALTER statements start from the catalog rather than the prior state, so an option
+// changed outside Terraform since the last refresh is still moved to the plan.
 func (r *databaseResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data databaseModel
+	var data, prior databaseModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	expectedPermissions := data.WithPermissions
-	found, err := r.read(ctx, &data)
-	if err != nil {
-		resp.Diagnostics.AddError("Read shared database", err.Error())
+	if err := validateDatabase(data); err != nil {
+		resp.Diagnostics.AddError("Invalid database options", err.Error())
 		return
 	}
-	if !found || !data.WithPermissions.Equal(expectedPermissions) {
-		resp.Diagnostics.AddError("Update shared database", "Database identity or permission mode changed during the update; refresh the plan.")
+	expected := data
+	found, err := r.read(ctx, &prior)
+	if err == nil && !found {
+		err = errDatabaseVanished
+	}
+	var statements []string
+	if err == nil {
+		statements, err = alterDatabaseStatements(prior, data)
+	}
+	if err == nil {
+		err = r.exec(ctx, r.database.ValueString(), statements...)
+	}
+	if err == nil {
+		// Collation never changes in place; keeping the prior value avoids a session inside the database.
+		if data.Collation.IsUnknown() {
+			data.Collation = prior.Collation
+		}
+		if found, err = r.read(ctx, &data); err == nil && !found {
+			err = errDatabaseVanished
+		}
+	}
+	if err == nil {
+		err = databaseConverged(expected, data)
+	}
+	if err != nil {
+		resp.Diagnostics.AddError("Update database", err.Error())
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

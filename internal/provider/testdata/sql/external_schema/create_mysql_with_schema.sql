@@ -1,0 +1,1 @@
+-- error: invalid MYSQL external schema: MYSQL does not accept source_schema

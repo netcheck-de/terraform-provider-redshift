@@ -1,0 +1,1 @@
+ALTER SCHEMA "serving" QUOTA 300 MB;

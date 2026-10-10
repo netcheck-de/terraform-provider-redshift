@@ -1,15 +1,17 @@
 ---
 subcategory: Databases and Schemas
 page_title: redshift_schema Data Source - terraform-provider-redshift
-description: Looks up a local schema and its SQL owner.
+description: Looks up a local schema, its SQL owner, and its quota.
 ---
 
 # redshift_schema (Data Source)
 
-Looks up an existing local schema without managing it.
+Looks up an existing local schema without managing it. See AWS
+[SVV_REDSHIFT_SCHEMA_QUOTA](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_SCHEMA_QUOTA.html).
 
 ```sql
 SELECT ... FROM pg_namespace WHERE nspname = 'name';
+SELECT ... FROM svv_redshift_schema_quota WHERE schema_name = 'name';
 ```
 
 ## Example Usage
@@ -34,9 +36,10 @@ data "redshift_schema" "serving" {
 
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `owner` (String) Database user owning the schema.
+- `quota` (Number) Disk quota in megabytes; `-1` means `UNLIMITED`. Null when the connection is neither a superuser nor the schema owner, because `SVV_REDSHIFT_SCHEMA_QUOTA` shows a regular user only their own schemas.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the observed schema's JSON identity, using the same warehouse, owning database, and name keys
 as the paired resource.
 
-A missing schema or incomplete catalog ownership is an error.
+A missing schema or incomplete catalog ownership is an error. A schema without a quota row reports `quota = -1`.

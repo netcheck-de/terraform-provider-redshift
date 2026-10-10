@@ -19,6 +19,8 @@ var _ = registerLifecycleCase(lifecycleCase{name: "schema", new: newSchemaResour
 var _ = registerReplacementPolicy("redshift_schema", map[string]replaceRule{
 	"database": replaceAlways,
 	"name":     replaceAlways,
+	"owner":    replaceNever,
+	"quota":    replaceNever,
 })
 
 // TestSchemaCatalogOwnership checks observed schema ownership.

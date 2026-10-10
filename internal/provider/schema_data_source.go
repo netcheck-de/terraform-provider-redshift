@@ -14,7 +14,7 @@ type schemaDataSource struct {
 	dataSourceClient
 }
 
-// schemaData contains schema lookup keys and the observed SQL owner.
+// schemaData contains schema lookup keys and the observed owner and quota.
 type schemaData struct {
 	// ID is the paired resource's JSON identity.
 	ID types.String `tfsdk:"id"`
@@ -24,6 +24,8 @@ type schemaData struct {
 	Name types.String `tfsdk:"name"`
 	// Owner reports the catalog's SQL owner name.
 	Owner types.String `tfsdk:"owner"`
+	// Quota reports the disk quota in megabytes; -1 means UNLIMITED.
+	Quota types.Int64 `tfsdk:"quota"`
 }
 
 var _ = registerDataSource(newSchemaDataSource)
@@ -36,20 +38,21 @@ func (d *schemaDataSource) Metadata(_ context.Context, req datasource.MetadataRe
 	resp.TypeName = req.ProviderTypeName + "_schema"
 }
 
-// Schema defines schema lookup keys and its observed owner.
+// Schema defines schema lookup keys and its observed owner and quota.
 func (d *schemaDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Looks up a local schema in a Redshift database.",
+		MarkdownDescription: "Looks up a local schema in a Redshift database with its owner and disk quota.",
 		Attributes: map[string]schema.Attribute{
 			"id":       dataSourceIDAttribute(),
 			"database": schema.StringAttribute{Required: true, MarkdownDescription: "Database owning the schema."},
 			"name":     schema.StringAttribute{Required: true, MarkdownDescription: "Schema name."},
 			"owner":    schema.StringAttribute{Computed: true, MarkdownDescription: "Database user owning the schema."},
+			"quota":    schema.Int64Attribute{Computed: true, MarkdownDescription: "Disk quota in megabytes; `-1` means `UNLIMITED`. Null when the connection is neither a superuser nor the schema owner, because `SVV_REDSHIFT_SCHEMA_QUOTA` shows a regular user only their own schemas."},
 		},
 	}
 }
 
-// Read refreshes the requested schema and owner without managing lifecycle.
+// Read refreshes the requested schema, owner, and quota without managing lifecycle.
 func (d *schemaDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data schemaData
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
@@ -66,7 +69,7 @@ func (d *schemaDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		resp.Diagnostics.AddError("Schema not found", "No local schema named "+data.Name.ValueString()+" exists in the configured database.")
 		return
 	}
-	data.Name, data.Owner = current.Name, current.Owner
+	data.Name, data.Owner, data.Quota = current.Name, current.Owner, current.Quota
 	data.ID = d.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

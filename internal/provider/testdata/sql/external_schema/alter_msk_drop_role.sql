@@ -1,0 +1,1 @@
+-- error: MSK cannot change iam_role_arn in place; the schema must be replaced

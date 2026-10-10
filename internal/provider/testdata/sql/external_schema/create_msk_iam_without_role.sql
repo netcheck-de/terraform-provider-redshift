@@ -1,0 +1,1 @@
+-- error: invalid MSK external schema: AUTHENTICATION iam requires iam_role_arn

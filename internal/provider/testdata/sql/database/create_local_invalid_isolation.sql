@@ -1,0 +1,1 @@
+-- error: "READ COMMITTED" is not one of SERIALIZABLE, SNAPSHOT

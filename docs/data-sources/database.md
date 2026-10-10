@@ -6,10 +6,15 @@ description: Looks up an existing local or shared database.
 
 # redshift_database (Data Source)
 
-Looks up an existing local or shared database without managing it.
+Looks up an existing local or shared database without managing it. Local databases also report their owner,
+connection limit, collation, and isolation level. See AWS
+[SHOW DATABASES](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_DATABASES.html) and
+[PG_DATABASE_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_DATABASE_INFO.html).
 
 ```sql
 SHOW DATABASES LIKE 'name';
+SELECT ... FROM pg_database_info WHERE datname = 'name';
+SELECT db_collation();
 ```
 
 ## Example Usage
@@ -30,19 +35,25 @@ data "redshift_database" "analytics" {
 
 ### Read-Only
 
+- `collation` (String) `CASE_SENSITIVE` or `CASE_INSENSITIVE` for a local database, read with `DB_COLLATION()` in a session inside it; null for shared databases, or with a warning when that session is refused, for example by the database's connection limit.
+- `connection_limit` (Number) Maximum concurrent connections to a local database; `-1` means `UNLIMITED`. Null for shared databases.
 - `database_type` (String) `local` or `shared`.
 - `datashare_arn` (String) Backing producer datashare ARN; null for local databases. Shared lookups require redshift:DescribeDataShares.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `isolation_level` (String) `SERIALIZABLE` or `SNAPSHOT` for a local database; null for shared databases.
+- `owner` (String) SQL user owning a local database; null for shared databases.
 - `producer_account` (String) Producer account ID; null for local databases.
 - `producer_namespace` (String) Producer namespace ID; null for local databases.
 - `share_name` (String) Producer share name; null for local databases.
 - `with_permissions` (Boolean) Whether the shared database requires object grants.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-Missing or ambiguous databases and shared databases without a complete producer binding are errors.
+Missing or ambiguous databases and shared databases without a complete producer binding are errors. The collation is
+read by running `DB_COLLATION()` in the looked-up database, so the caller must be able to connect to it.
 
 Shared-database lookups discover the complete producer ARN through
 `redshift:DescribeDataShares` in the consumer account. The caller needs that permission and AWS credentials
 and a region, including when the SQL connection uses a password. The returned ARN retains the producer's region and
 partition; it is not constructed from the consumer's region. Missing or ambiguous AWS metadata is an error.
-Local database lookups require no AWS metadata calls and return `with_permissions = false`.
+Local database lookups require no AWS metadata calls and return `with_permissions = false`; shared database lookups
+return null local options.

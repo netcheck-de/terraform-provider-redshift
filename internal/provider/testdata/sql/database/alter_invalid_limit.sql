@@ -1,0 +1,1 @@
+-- error: connection_limit must be -1 (UNLIMITED) or at least 0, got -2

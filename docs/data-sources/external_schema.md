@@ -1,13 +1,13 @@
 ---
 subcategory: Databases and Schemas
 page_title: redshift_external_schema Data Source - terraform-provider-redshift
-description: Looks up a Glue-backed external schema mapping.
+description: Looks up an external schema mapping and its source.
 ---
 
 # redshift_external_schema (Data Source)
 
-Looks up an existing Glue Data Catalog external schema in a local Redshift database. See AWS
-[SVV_EXTERNAL_SCHEMAS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_SCHEMAS.html).
+Looks up an existing external schema in a local Redshift database with its source form, recorded options, and owner. See
+AWS [SVV_EXTERNAL_SCHEMAS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_SCHEMAS.html).
 
 ```sql
 SELECT ... FROM svv_external_schemas WHERE schemaname = 'name';
@@ -33,13 +33,23 @@ data "redshift_external_schema" "raw" {
 
 ### Read-Only
 
-- `glue_database` (String) Glue database name.
-- `iam_role_arn` (String) Attached catalog access role ARN.
+- `authentication` (String) Streaming authentication mode `none`, `iam`, or `mtls`. Null when the catalog does not record it.
+- `authentication_arn` (String) ACM certificate ARN used for mTLS. Null when the catalog does not record it.
+- `glue_database` (String) Glue database name of a `DATA_CATALOG` schema.
+- `iam_role_arn` (String) IAM role, or role chain, used to reach the source. Null when the catalog does not record it.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
-- `region` (String) Glue catalog AWS region, if recorded in the catalog.
+- `owner` (String) SQL user owning the external schema.
+- `port` (Number) Hive metastore or federated database port. Null when the catalog does not record it.
+- `region` (String) Glue catalog or stream AWS region. Null when the catalog does not record it.
+- `secret_arn` (String) Secrets Manager ARN of the federated credentials or mTLS certificate. Null when the catalog does not record it.
+- `source_database` (String) External database of a Hive, federated, or Redshift schema.
+- `source_schema` (String) PostgreSQL or Redshift source schema. Null when the catalog does not record it.
+- `source_type` (String) `DATA_CATALOG`, `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, `REDSHIFT`, `KINESIS`, or `MSK`.
+- `uri` (String) Hive metastore URI, federated hostname, or Kafka bootstrap URI. Null when the catalog does not record it.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the observed external schema's JSON identity, using the same warehouse, owning database, and
 name keys as the paired resource.
 
-A missing schema, non-Glue schema, or incompatible catalog entry is an error.
+A missing schema, a schema of an unsupported kind such as a system-table schema, or an incomplete catalog entry is an
+error. Options that the catalog does not record in `esoptions` are null.

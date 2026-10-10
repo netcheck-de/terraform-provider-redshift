@@ -1,16 +1,19 @@
 ---
 subcategory: Databases and Schemas
 page_title: redshift_schema Resource - terraform-provider-redshift
-description: Manages a local Redshift database schema.
+description: Manages a local Redshift database schema, its owner, and its quota.
 ---
 
 # redshift_schema (Resource)
 
-Manages a local schema in a Redshift database. External schemas and SQLMesh-managed objects have separate ownership. See
-AWS [CREATE SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_SCHEMA.html).
+Manages a local schema in a Redshift database, with its owner and disk quota. External schemas and SQLMesh-managed
+objects have separate ownership. See AWS
+[CREATE SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_SCHEMA.html) and
+[ALTER SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_SCHEMA.html).
 
 ```sql
-CREATE SCHEMA name;
+CREATE SCHEMA name ...;
+ALTER SCHEMA name ...;
 DROP SCHEMA name;
 ```
 
@@ -20,6 +23,9 @@ DROP SCHEMA name;
 resource "redshift_schema" "serving" {
   database = redshift_database.warehouse.name
   name     = "serving"
+  owner    = "etl"
+  # Megabytes; -1 means UNLIMITED.
+  quota = 51200
 }
 ```
 
@@ -29,19 +35,36 @@ resource "redshift_schema" "serving" {
 
 ### Required
 
-- `database` (String) Local database owning the schema; changing it replaces the resource.
-- `name` (String) Schema name; changing it replaces the resource.
+- `database` (String) Local database owning the schema. Changing it replaces the schema.
+- `name` (String) Schema name. Changing it replaces the schema; the provider never renames.
+
+### Optional
+
+- `owner` (String) SQL user owning the schema. Set with `AUTHORIZATION` at creation and changed in place with `ALTER SCHEMA ... OWNER TO`. Omit it to keep and report the current owner, which defaults to the creating user.
+- `quota` (Number) Disk quota in megabytes, the unit Redshift stores; `-1` means `UNLIMITED`, the default. Set with `QUOTA` at creation and changed in place with `ALTER SCHEMA ... QUOTA`; changing a quota requires a superuser. Omit it to keep and report the current quota, read from `SVV_REDSHIFT_SCHEMA_QUOTA`. That view shows a regular user only their own schemas, so reading and verifying the quota of a schema owned by another user requires a superuser connection; otherwise the last known value is kept.
 
 ### Read-Only
 
 - `id` (String) JSON import identity; independent of Data API execution history.
-- `owner` (String) Database user owning the schema.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Owner and Quota
+
+`owner` is set with `AUTHORIZATION` and changed with `ALTER SCHEMA ... OWNER TO`. `quota` is in megabytes, the unit
+Redshift converts every quota to: `QUOTA 50 GB` reads back as `51200`. `-1` renders `QUOTA UNLIMITED`. Setting or
+changing a quota requires a superuser; a quota below the current usage blocks further ingestion until space is freed.
+The quota is read from
+[SVV_REDSHIFT_SCHEMA_QUOTA](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_SCHEMA_QUOTA.html), which,
+unlike `SVV_SCHEMA_QUOTA_STATE`, is also available on Redshift Serverless; a schema without a row there is reported as
+unlimited. Omitted options are reported from the catalog and left unmanaged. Create and Update re-read both and fail
+when the catalog does not hold the planned value.
 
 ## Lifecycle and Ownership
 
-The resource creates and drops only the schema. `DROP SCHEMA` does **not** cascade; remove dependent tables, views, and
-datashare memberships first. This resource does not grant permissions or manage the schema owner's credentials.
+The resource creates and drops only the schema. A new `name` replaces the schema; the provider never renames it with
+`ALTER SCHEMA ... RENAME TO`, because dependent objects keep the old name. `DROP SCHEMA` does **not** cascade; remove
+dependent tables, views, and datashare memberships first. This resource does not grant permissions or manage the schema
+owner's credentials.
 
 ## Import
 
@@ -64,3 +87,5 @@ Alternatively, use `terraform import`:
 terraform import redshift_schema.serving \
   '{"workgroup_name":"warehouse","database":"warehouse","name":"serving"}'
 ```
+
+The owner and quota are discovered on refresh.

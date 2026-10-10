@@ -1,0 +1,1 @@
+-- error: quota must be -1 (UNLIMITED) or at least 1 MB, got -5

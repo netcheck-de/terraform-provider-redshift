@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
@@ -25,6 +26,8 @@ func TestDatabaseLookup(t *testing.T) {
 			assert.Equal(t, name, data.Name.ValueString())
 			if name == "analytics" {
 				assert.Equal(t, "shared", data.DatabaseType.ValueString())
+				assert.True(t, data.Owner.IsNull(), "shared databases have no managed owner")
+				assert.True(t, data.IsolationLevel.IsNull())
 				assert.True(t, data.WithPermissions.ValueBool())
 				assert.Equal(t, "source", data.ShareName.ValueString())
 				assert.Equal(t, "123456789012", data.ProducerAccount.ValueString())
@@ -32,6 +35,10 @@ func TestDatabaseLookup(t *testing.T) {
 				assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","name":"analytics","datashare_arn":"`+shareARN+`"}`, data.ID.ValueString())
 			} else {
 				assert.Equal(t, "local", data.DatabaseType.ValueString())
+				assert.Equal(t, "admin", data.Owner.ValueString())
+				assert.Equal(t, int64(-1), data.ConnectionLimit.ValueInt64())
+				assert.Equal(t, "CASE_SENSITIVE", data.Collation.ValueString())
+				assert.Equal(t, "SNAPSHOT", data.IsolationLevel.ValueString())
 				assert.True(t, data.ShareName.IsNull())
 				assert.True(t, data.DatashareARN.IsNull())
 				assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","name":"warehouse"}`, data.ID.ValueString())
@@ -67,6 +74,10 @@ func TestDatabaseReadableMetadataMatchesResources(t *testing.T) {
 			found, err := r.read(context.Background(), &managed)
 			require.NoError(t, err)
 			assert.True(t, found)
+			// Read fills a collation that is still null, as after an import.
+			var collation diag.Diagnostics
+			r.databaseReadCollation(context.Background(), &managed, &collation)
+			require.False(t, collation.HasError())
 			assert.Equal(t, managed, observed)
 		})
 	}

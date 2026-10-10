@@ -30,7 +30,7 @@ func (d *databaseDataSource) Metadata(_ context.Context, req datasource.Metadata
 // Schema defines the lookup name and observed database/share attributes.
 func (d *databaseDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Looks up a local or shared database and its producer binding.",
+		MarkdownDescription: "Looks up a local database with its owner and options, or a shared database with its producer binding.",
 		Attributes: map[string]schema.Attribute{
 			"id":                 dataSourceIDAttribute(),
 			"name":               schema.StringAttribute{Required: true, MarkdownDescription: "Database name."},
@@ -40,6 +40,10 @@ func (d *databaseDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 			"share_name":         schema.StringAttribute{Computed: true, MarkdownDescription: "Producer share name; null for local databases."},
 			"producer_account":   schema.StringAttribute{Computed: true, MarkdownDescription: "Producer account ID; null for local databases."},
 			"producer_namespace": schema.StringAttribute{Computed: true, MarkdownDescription: "Producer namespace ID; null for local databases."},
+			"owner":              schema.StringAttribute{Computed: true, MarkdownDescription: "SQL user owning a local database; null for shared databases."},
+			"connection_limit":   schema.Int64Attribute{Computed: true, MarkdownDescription: "Maximum concurrent connections to a local database; `-1` means `UNLIMITED`. Null for shared databases."},
+			"collation":          schema.StringAttribute{Computed: true, MarkdownDescription: "`CASE_SENSITIVE` or `CASE_INSENSITIVE` for a local database, read with `DB_COLLATION()` in a session inside it; null for shared databases, or with a warning when that session is refused, for example by the database's connection limit."},
+			"isolation_level":    schema.StringAttribute{Computed: true, MarkdownDescription: "`SERIALIZABLE` or `SNAPSHOT` for a local database; null for shared databases."},
 		},
 	}
 }
@@ -61,6 +65,7 @@ func (d *databaseDataSource) Read(ctx context.Context, req datasource.ReadReques
 		return
 	}
 	data = observed
+	d.databaseReadCollation(ctx, &data, &resp.Diagnostics)
 	identity := map[string]string{"name": data.Name.ValueString()}
 	if data.DatabaseType.ValueString() == "shared" {
 		if d.datashareARN == nil {

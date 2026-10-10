@@ -1,18 +1,23 @@
 ---
 subcategory: Databases and Schemas
 page_title: redshift_external_schema Resource - terraform-provider-redshift
-description: Manages a Glue-backed external schema mapping.
+description: Manages an external schema backed by Glue, Hive, a federated database, Redshift, or a stream.
 ---
 
 # redshift_external_schema (Resource)
 
-Manages a Redshift external schema backed by an AWS Glue Data Catalog database. This is a distinct SQL object from a
-[local schema](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/schema). The namespace
-must already have an IAM role that can access Glue and the underlying data. See AWS
-[CREATE EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_SCHEMA.html).
+Manages a Redshift external schema backed by an AWS Glue Data Catalog database, an Apache Hive metastore, a PostgreSQL
+or MySQL federated database, another Redshift database, a Kinesis data stream, or an Amazon MSK cluster. This is a
+distinct SQL object from a
+[local schema](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/schema).
+The namespace must already have the IAM role the source form needs. See AWS
+[CREATE EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_SCHEMA.html) and
+[ALTER EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_EXTERNAL_SCHEMA.html).
 
 ```sql
-CREATE EXTERNAL SCHEMA name FROM DATA CATALOG ...;
+CREATE EXTERNAL SCHEMA name FROM ...;
+ALTER EXTERNAL SCHEMA name ...;
+ALTER SCHEMA name OWNER TO ...;
 DROP SCHEMA name;
 ```
 
@@ -24,6 +29,36 @@ resource "redshift_external_schema" "raw" {
   name          = "raw"
   glue_database = "raw_catalog"
   iam_role_arn  = aws_iam_role.spectrum.arn
+  owner         = "etl"
+}
+
+resource "redshift_external_schema" "orders" {
+  database        = redshift_database.warehouse.name
+  name            = "orders"
+  source_type     = "POSTGRES"
+  source_database = "orders"
+  source_schema   = "public"
+  uri             = aws_rds_cluster.orders.endpoint
+  port            = 5432
+  iam_role_arn    = aws_iam_role.federated.arn
+  secret_arn      = aws_secretsmanager_secret.orders.arn
+}
+
+resource "redshift_external_schema" "shared_sales" {
+  database        = redshift_database.warehouse.name
+  name            = "shared_sales"
+  source_type     = "REDSHIFT"
+  source_database = redshift_database.analytics.name
+  source_schema   = "public"
+}
+
+resource "redshift_external_schema" "clicks" {
+  database       = redshift_database.warehouse.name
+  name           = "clicks"
+  source_type    = "MSK"
+  authentication = "iam"
+  iam_role_arn   = aws_iam_role.streaming.arn
+  uri            = aws_msk_cluster.clicks.bootstrap_brokers_sasl_iam
 }
 ```
 
@@ -33,27 +68,62 @@ resource "redshift_external_schema" "raw" {
 
 ### Required
 
-- `database` (String) Local Redshift database owning the external schema; changing it replaces the resource.
-- `glue_database` (String) AWS Glue database referenced by the external schema; changing it replaces the resource.
-- `iam_role_arn` (String) IAM role attached to the Redshift namespace for Glue catalog access; changing it replaces the resource.
-- `name` (String) Local external schema name; changing it replaces the resource.
+- `database` (String) Local Redshift database owning the external schema. Changing it replaces the external schema.
+- `name` (String) Local external schema name. Changing it replaces the external schema.
 
 ### Optional
 
-- `refresh_revision` (String) Bump to recreate the external schema after a Glue catalog change; deletion is restrictive.
-- `region` (String) Glue catalog AWS region; defaults to the warehouse region and is read from the catalog options. Changing it replaces the resource.
+- `authentication` (String) Streaming authentication of an `MSK` schema, which requires it: `none`, `iam`, or `mtls`. `mtls` requires exactly one of `authentication_arn` and `secret_arn`. Updated in place with `ALTER EXTERNAL SCHEMA ... AUTHENTICATION`.
+- `authentication_arn` (String) AWS Certificate Manager certificate ARN for `mtls` authentication of an `MSK` schema. Updated in place together with `authentication`.
+- `glue_database` (String) AWS Glue database referenced by a `DATA_CATALOG` schema, which requires it. Changing it replaces the external schema.
+- `iam_role_arn` (String) IAM role attached to the namespace, or a comma-separated role chain, used to reach the source. Required by every form except `REDSHIFT`, which rejects it, and `MSK`, where it is optional unless `authentication` is `iam`. Updated in place with `ALTER EXTERNAL SCHEMA ... IAM_ROLE` for `DATA_CATALOG` and `MSK`; changing it replaces other external schemas.
+- `owner` (String) SQL user owning the external schema, changed after creation and in place with `ALTER SCHEMA ... OWNER TO`. Omit it to keep and report the current owner, which defaults to the creating user. `SVV_EXTERNAL_SCHEMAS` shows a regular user only their own schemas, so managing an external schema owned by another user, including handing it to one, requires a superuser connection.
+- `port` (Number) Port of a `HIVE_METASTORE` (default 9083), `POSTGRES` (default 5432), or `MYSQL` (default 3306) source. Changing it replaces the external schema.
+- `refresh_revision` (String) Bump to recreate the external schema after a source catalog change; deletion is restrictive. Changing it replaces the external schema.
+- `region` (String) AWS Region of the Glue catalog (`DATA_CATALOG`) or stream (`KINESIS`, `MSK`); defaults to the warehouse region and is read from the catalog options. Changing it replaces the external schema.
+- `secret_arn` (String) AWS Secrets Manager secret ARN: the database credentials that `POSTGRES` and `MYSQL` require, or the mTLS certificate of an `MSK` schema as an alternative to `authentication_arn`. Updated in place for `MSK`; changing it replaces other external schemas.
+- `source_database` (String) External database: the Hive metastore database, the PostgreSQL or MySQL database, or the Redshift database (for example a datashare consumer database). Required by `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, and `REDSHIFT`. Changing it replaces the external schema.
+- `source_schema` (String) Schema in the `POSTGRES` or `REDSHIFT` source; Redshift uses `public` when it is omitted. Changing it replaces the external schema.
+- `source_type` (String) Source form after `FROM`: `DATA_CATALOG` (default; AWS Glue Data Catalog), `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, `REDSHIFT`, `KINESIS`, or `MSK`. It decides which options are required or accepted; see the table on this page. Changing it replaces the external schema.
+- `uri` (String) Hive metastore URI or federated database hostname, without a protocol, or the Kafka bootstrap broker URI of an `MSK` schema. Required by `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, and `MSK`. Updated in place with `ALTER EXTERNAL SCHEMA ... URI` for `MSK`; changing it replaces other external schemas.
 
 ### Read-Only
 
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
+## Source Forms
+
+`source_type` selects the `FROM` form and decides which options are required, optional, or rejected. Plans fail when a
+required option is missing or an option the form does not take is set. In-place options change with
+`ALTER EXTERNAL SCHEMA`, which Redshift supports only for `DATA_CATALOG` and streaming schemas; every other change
+replaces the schema.
+
+| `source_type`    | Required                                               | Optional                                                     | In place                                                                    |
+|------------------|--------------------------------------------------------|--------------------------------------------------------------|-----------------------------------------------------------------------------|
+| `DATA_CATALOG`   | `glue_database`, `iam_role_arn`                        | `region`                                                     | `iam_role_arn`                                                              |
+| `HIVE_METASTORE` | `source_database`, `uri`, `iam_role_arn`               | `port`                                                       | none                                                                        |
+| `POSTGRES`       | `source_database`, `uri`, `iam_role_arn`, `secret_arn` | `source_schema`, `port`                                      | none                                                                        |
+| `MYSQL`          | `source_database`, `uri`, `iam_role_arn`, `secret_arn` | `port`                                                       | none                                                                        |
+| `REDSHIFT`       | `source_database`                                      | `source_schema`                                              | none                                                                        |
+| `KINESIS`        | `iam_role_arn`                                         | `region`                                                     | none                                                                        |
+| `MSK`            | `authentication`, `uri`                                | `iam_role_arn`, `region`, `authentication_arn`, `secret_arn` | `iam_role_arn`, `uri`, `authentication`, `authentication_arn`, `secret_arn` |
+
+For `MSK`, `authentication = "iam"` requires `iam_role_arn`, and `authentication = "mtls"` requires exactly one of
+`authentication_arn` and `secret_arn`; the other modes take neither. Authentication changes are sent as one
+`ALTER EXTERNAL SCHEMA ... AUTHENTICATION` statement together with the certificate source. `owner` changes in place for
+every form with `ALTER SCHEMA ... OWNER TO`, because `CREATE EXTERNAL SCHEMA` always makes the creator the owner.
+
 ## Lifecycle and Ownership
 
-Reads `svv_external_schemas`, verifies that it is a Glue Data Catalog schema (`eskind = 1`), and compares its configured
-Glue database and IAM role. Creation uses `CREATE EXTERNAL SCHEMA ... FROM DATA CATALOG`. Deletion uses restrictive
-`DROP SCHEMA` **without `CASCADE`**. If dependent views exist, remove or migrate them first. Bumping `refresh_revision`
-plans replacement; changes in Glue metadata do not automatically appear as Terraform diffs.
+Reads `svv_external_schemas`, maps `eskind` back to `source_type`, and refreshes the external database, owner, and the
+options recorded in `esoptions`, so changes made outside Terraform appear as diffs. Options the catalog does not record
+keep their configured value. Creation uses `CREATE EXTERNAL SCHEMA` without `CREATE EXTERNAL DATABASE`; Create and
+Update re-read the schema and fail when it does not hold the planned values. Deletion uses restrictive `DROP SCHEMA`
+**without `DROP EXTERNAL DATABASE` or `CASCADE`**, so the external database survives; remove or migrate dependent views
+first.
+Bumping `refresh_revision` plans replacement; changes in the external catalog do not automatically appear as Terraform
+diffs.
 
 ## Import
 
@@ -77,4 +147,6 @@ terraform import redshift_external_schema.raw \
   '{"workgroup_name":"warehouse","database":"warehouse","name":"raw"}'
 ```
 
-The Glue database and IAM role are discovered on refresh. Match them in configuration before applying.
+The source type, external database, owner, and recorded options are discovered on refresh. Match them in configuration
+before applying; an option the catalog does not record, such as a federated `uri` or `secret_arn`, is null after import,
+so configuring it plans a replacement unless the form changes it in place.

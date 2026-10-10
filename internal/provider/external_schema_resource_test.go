@@ -17,12 +17,21 @@ import (
 var _ = registerLifecycleCase(lifecycleCase{name: "external schema", new: newExternalSchemaResource, model: externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("example_external"), GlueDatabase: types.StringValue("example_glue"), IAMRoleARN: types.StringValue("arn:aws:iam::123456789012:role/spectrum"), RefreshRevision: types.StringNull()}, absent: func(c *catalog) { c.external = false }})
 
 var _ = registerReplacementPolicy("redshift_external_schema", map[string]replaceRule{
-	"database":         replaceAlways,
-	"name":             replaceAlways,
-	"glue_database":    replaceAlways,
-	"iam_role_arn":     replaceAlways,
-	"region":           replaceAlways,
-	"refresh_revision": replaceAlways,
+	"database":           replaceAlways,
+	"name":               replaceAlways,
+	"source_type":        replaceAlways,
+	"glue_database":      replaceAlways,
+	"source_database":    replaceAlways,
+	"source_schema":      replaceAlways,
+	"iam_role_arn":       replaceConditional("TestExternalSchemaConditionalReplacement"),
+	"region":             replaceAlways,
+	"uri":                replaceConditional("TestExternalSchemaConditionalReplacement"),
+	"port":               replaceAlways,
+	"secret_arn":         replaceConditional("TestExternalSchemaConditionalReplacement"),
+	"authentication":     replaceNever,
+	"authentication_arn": replaceNever,
+	"owner":              replaceNever,
+	"refresh_revision":   replaceAlways,
 })
 
 // TestExternalSchemaRegionRoundTrips verifies explicit cross-region SQL and both catalog key spellings.
@@ -34,7 +43,7 @@ func TestExternalSchemaRegionRoundTrips(t *testing.T) {
 					assert.Contains(t, sql, " REGION 'eu-central-1'")
 					return nil, nil
 				}
-				return []dataapi.Row{{"schemaname": "example_external", "eskind": "1", "databasename": "glue", "esoptions": `{"IAM_ROLE":"role","` + key + `":"eu-central-1"}`}}, nil
+				return []dataapi.Row{{"schemaname": "example_external", "eskind": "1", "databasename": "glue", "esoptions": `{"IAM_ROLE":"role","` + key + `":"eu-central-1"}`, "owner": "admin"}}, nil
 			}))}
 			data := externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("example_external"), GlueDatabase: types.StringValue("glue"), IAMRoleARN: types.StringValue("role"), Region: types.StringValue("eu-central-1")}
 			require.False(t, invoke(t, r, "create", data, false).HasError())
@@ -58,14 +67,14 @@ func TestExternalSchemaReadsGlueBinding(t *testing.T) {
 	assert.Equal(t, "arn:aws:iam::123456789012:role/spectrum", data.IAMRoleARN.ValueString())
 }
 
-// TestExternalSchemaRejectsIncompatibleCatalog rejects unsupported kinds and malformed options.
+// TestExternalSchemaRejectsIncompatibleCatalog rejects unsupported kinds, a missing owner, and malformed options.
 func TestExternalSchemaRejectsIncompatibleCatalog(t *testing.T) {
 	for _, row := range []dataapi.Row{
-		{"schemaname": "example_external", "eskind": "2"},
-		{"schemaname": "example_external", "eskind": "1", "esoptions": "broken"},
-		{"schemaname": "example_external", "eskind": "1", "esoptions": "{}"},
-		{"schemaname": "example_external", "eskind": "1", "databasename": "different", "esoptions": `{"IAM_ROLE":"role"}`},
-		{"schemaname": "example_external", "eskind": "1", "databasename": "glue", "esoptions": `{"IAM_ROLE":"different"}`},
+		{"schemaname": "example_external", "eskind": "6", "owner": "admin", "esoptions": "{}"},
+		{"schemaname": "example_external", "eskind": "1", "esoptions": `{"IAM_ROLE":"role"}`},
+		{"schemaname": "example_external", "eskind": "1", "owner": "admin", "esoptions": "broken"},
+		{"schemaname": "example_external", "eskind": "1", "owner": "admin", "esoptions": "{}"},
+		{"schemaname": "example_external", "eskind": "3", "owner": "admin", "esoptions": `{"PORT":"many"}`},
 	} {
 		r := &externalSchemaResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
 			return []dataapi.Row{row}, nil

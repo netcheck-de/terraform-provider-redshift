@@ -1,0 +1,1 @@
+CREATE EXTERNAL SCHEMA "kds" FROM KINESIS REGION 'us-west-2' IAM_ROLE 'arn:aws:iam::123456789012:role/kinesis';
