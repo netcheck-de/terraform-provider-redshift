@@ -20,7 +20,7 @@ SELECT ... FROM svv_language_privileges WHERE language_name = '...' AND identity
 ```terraform
 data "redshift_language_grant" "developers_plpgsql" {
   database_name = "analytics"
-  language_name = "plpgsql"
+  language_name = "PLPGSQL"
   grantee       = "developers"
   grantee_type  = "ROLE"
 }

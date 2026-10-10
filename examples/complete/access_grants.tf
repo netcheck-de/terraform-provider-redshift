@@ -100,7 +100,7 @@ resource "redshift_system_grant" "operators" {
 resource "redshift_assumerole_grant" "reader" {
   provider     = redshift.consumer
   count        = var.enable_assumerole_grant ? 1 : 0
-  iam_role_arn = "default"
+  iam_role_arn = "DEFAULT"
   grantee      = redshift_role.readers.name
   grantee_type = "ROLE"
   privileges   = ["COPY", "UNLOAD"]
@@ -197,7 +197,7 @@ data "redshift_system_grant" "operators" {
 
 data "redshift_assumerole_grant" "reader" {
   provider     = redshift.consumer
-  iam_role_arn = var.enable_assumerole_grant ? redshift_assumerole_grant.reader[0].iam_role_arn : "default"
+  iam_role_arn = var.enable_assumerole_grant ? redshift_assumerole_grant.reader[0].iam_role_arn : "DEFAULT"
   grantee      = var.enable_assumerole_grant ? redshift_assumerole_grant.reader[0].grantee : redshift_role.readers.name
   grantee_type = "ROLE"
 }

@@ -84,6 +84,6 @@ Alternatively, use `terraform import`:
 {{ codefile "shell" "examples/resources/redshift_masking_policy/import.sh" }}
 
 Import reads the `input_column` blocks and `expression` from the catalog in Redshift's spelling, for example
-`character varying(256)`. The first plan therefore shows an in-place update of `expression` unless the configuration
+`CHARACTER VARYING(256)`. The first plan therefore shows an in-place update of `expression` unless the configuration
 repeats the catalog text, and of `input_column` when the configuration spells an input type differently; neither
 replaces the policy, and only the `expression` update runs `ALTER MASKING POLICY`.

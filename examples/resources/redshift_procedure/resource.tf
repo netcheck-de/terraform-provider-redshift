@@ -5,20 +5,20 @@ resource "redshift_procedure" "purge" {
 
   argument {
     name = "keep_days"
-    type = "integer"
+    type = "INTEGER"
   }
 
   argument {
     name = "deleted"
     mode = "OUT"
-    type = "bigint"
+    type = "BIGINT"
   }
 
   security      = "DEFINER"
   configuration = { search_path = "reporting" }
   body          = <<-SQL
     BEGIN
-      DELETE FROM events WHERE created_at < dateadd(day, -keep_days, getdate());
+      DELETE FROM events WHERE created_at < DATEADD(DAY, -keep_days, GETDATE());
       GET DIAGNOSTICS deleted := ROW_COUNT;
     END;
   SQL

@@ -30,22 +30,22 @@ resource "redshift_external_table" "sales" {
 
   column {
     name = "sales_id"
-    type = "integer"
+    type = "INTEGER"
   }
 
   column {
     name = "price_paid"
-    type = "decimal(8,2)"
+    type = "DECIMAL(8,2)"
   }
 
   column {
     name = "sale_time"
-    type = "timestamp"
+    type = "TIMESTAMP"
   }
 
   partition_key {
     name = "sale_date"
-    type = "date"
+    type = "DATE"
   }
 
   field_delimiter = "\t"
@@ -64,12 +64,12 @@ resource "redshift_external_table" "events" {
 
   column {
     name = "id"
-    type = "bigint"
+    type = "BIGINT"
   }
 
   column {
     name = "payload"
-    type = "varchar(65535)"
+    type = "VARCHAR(65535)"
   }
 
   serde            = "org.openx.data.jsonserde.JsonSerDe"
@@ -86,17 +86,17 @@ resource "redshift_external_table" "clicks" {
 
   column {
     name = "click_id"
-    type = "bigint"
+    type = "BIGINT"
   }
 
   column {
     name = "page"
-    type = "varchar(1024)"
+    type = "VARCHAR(1024)"
   }
 
   column {
     name = "clicked_at"
-    type = "timestamp"
+    type = "TIMESTAMP"
   }
 
   stored_as = "ORC"
@@ -180,7 +180,7 @@ catalog to verify the result; every other change replaces the table, which drops
 | `column` blocks reordered                                                                                             | no SQL when the table maps columns by name, and the state records the configured order; otherwise replaces the table                                                                                                                                                                                                                                                                    |
 | `column.name` spelled in another case                                                                                 | no SQL; the catalog stores names in lowercase, and the state records the configured spelling                                                                                                                                                                                                                                                                                            |
 | `column.name`, any other change                                                                                       | `ADD COLUMN` for the new name and `DROP COLUMN` for the old one when the table maps columns by name or the column is the last one; otherwise, and always for an `AVRO` table, replaces the table                                                                                                                                                                                        |
-| `column.type` respelled with the same type, such as `int4` for `integer`                                              | no SQL; the state records the configured spelling                                                                                                                                                                                                                                                                                                                                       |
+| `column.type` respelled with the same type, such as `INT4` for `INTEGER`                                              | no SQL; the state records the configured spelling                                                                                                                                                                                                                                                                                                                                       |
 | `column.type`, any other change                                                                                       | replaces the table: the provider never retypes a column in place                                                                                                                                                                                                                                                                                                                        |
 | `partition_key.name` spelled in another case, or `partition_key.type` respelled with the same type                    | no SQL; the state records the configured spelling                                                                                                                                                                                                                                                                                                                                       |
 | `partition_key` block added, removed, or reordered, or `partition_key.name` or `partition_key.type` changed otherwise | replaces the table: partition keys cannot be altered                                                                                                                                                                                                                                                                                                                                    |
@@ -209,7 +209,7 @@ shows what is left.
 
 **Drift.** Refresh compares the catalog with the state. Columns and partition keys are matched by name without case
 and keep their configured spelling while they declare the same type; the catalog reports Hive type names such as `int`
-for `integer`, so equivalent spellings are not drift. A table that maps columns by name keeps the configured column
+for `INTEGER`, so equivalent spellings are not drift. A table that maps columns by name keeps the configured column
 order and appends columns that only the catalog has; other tables show the catalog order. The next plan restores the
 configuration with the statements above: a column added outside Terraform is dropped, a dropped one is added again,
 and a changed `location`, a `stored_as` that `SET FILE FORMAT` can restore, or a configured `numRows`,
@@ -233,17 +233,17 @@ resource "redshift_external_table" "events" {
 
   column {
     name = "id"
-    type = "integer"
+    type = "INTEGER"
   }
 
   column {
     name = "label"
-    type = "varchar(64)"
+    type = "VARCHAR(64)"
   }
 
   partition_key {
     name = "event_date"
-    type = "date"
+    type = "DATE"
   }
 
   field_delimiter = ","
@@ -258,18 +258,18 @@ resource "redshift_external_table" "events" {
 ### Dropping and Appending Columns
 
 Removing the first block and appending a new one keeps the remaining `label` column ahead of the new one, so the table
-changes in place. `varchar` without a length is `varchar(256)`:
+changes in place. `VARCHAR` without a length is `VARCHAR(256)`:
 
 ```terraform
 # The id column block is removed.
 column {
   name = "label"
-  type = "varchar(64)"
+  type = "VARCHAR(64)"
 }
 
 column {
   name = "note"
-  type = "varchar"
+  type = "VARCHAR"
 }
 ```
 
@@ -326,17 +326,17 @@ configured order:
 ```terraform
 column {
   name = "id"
-  type = "integer"
+  type = "INTEGER"
 }
 
 column {
   name = "amount"
-  type = "decimal(8,2)"
+  type = "DECIMAL(8,2)"
 }
 
 column {
   name = "label"
-  type = "varchar(64)"
+  type = "VARCHAR(64)"
 }
 
 stored_as = "ORC"

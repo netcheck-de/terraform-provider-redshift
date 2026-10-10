@@ -5,10 +5,10 @@ resource "redshift_function" "label" {
   database    = redshift_schema.local.database
   schema      = redshift_schema.local.name
   name        = "f_example_label"
-  arguments   = ["int", "varchar(64)"]
-  return_type = "varchar(128)"
+  arguments   = ["INT", "VARCHAR(64)"]
+  return_type = "VARCHAR(128)"
   volatility  = "IMMUTABLE"
-  body        = "SELECT $2 || '-' || $1::varchar"
+  body        = "SELECT $2 || '-' || $1::VARCHAR"
 }
 
 data "redshift_function" "label" {
@@ -27,19 +27,19 @@ resource "redshift_procedure" "scale" {
 
   argument {
     name = "factor"
-    type = "integer"
+    type = "INTEGER"
   }
 
   argument {
     name = "amount"
     mode = "INOUT"
-    type = "bigint"
+    type = "BIGINT"
   }
 
   argument {
     name = "label"
     mode = "OUT"
-    type = "varchar(64)"
+    type = "VARCHAR(64)"
   }
 
   configuration = { search_path = redshift_schema.local.name }

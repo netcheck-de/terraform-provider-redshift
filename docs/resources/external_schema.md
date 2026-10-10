@@ -58,7 +58,7 @@ resource "redshift_external_schema" "clicks" {
   database       = redshift_database.warehouse.name
   name           = "clicks"
   source_type    = "MSK"
-  authentication = "iam"
+  authentication = "IAM"
   iam_role_arn   = aws_iam_role.streaming.arn
   uri            = aws_msk_cluster.clicks.bootstrap_brokers_sasl_iam
 }
@@ -111,7 +111,7 @@ required option is missing or an option the form does not take is set. In-place 
 | `KINESIS`        | `iam_role_arn`                                         | `region`                                                     | none                                                                        |
 | `MSK`            | `authentication`, `uri`                                | `iam_role_arn`, `region`, `authentication_arn`, `secret_arn` | `iam_role_arn`, `uri`, `authentication`, `authentication_arn`, `secret_arn` |
 
-For `MSK`, `authentication = "iam"` requires `iam_role_arn`, and `authentication = "mtls"` requires exactly one of
+For `MSK`, `authentication = "IAM"` requires `iam_role_arn`, and `authentication = "MTLS"` requires exactly one of
 `authentication_arn` and `secret_arn`; the other modes take neither.
 
 ## Lifecycle and Ownership
@@ -176,7 +176,7 @@ resource "redshift_external_schema" "stream" {
   name               = "example_external"
   source_type        = "MSK"
   iam_role_arn       = "arn:aws:iam::123456789012:role/msk"
-  authentication     = "mtls" # was "iam"
+  authentication     = "MTLS" # was "iam"
   authentication_arn = "arn:aws:acm:eu-central-1:123456789012:certificate/example"
   uri                = "b-1.example.kafka.eu-central-1.amazonaws.com:9094" # was the :9098 IAM listener
 }

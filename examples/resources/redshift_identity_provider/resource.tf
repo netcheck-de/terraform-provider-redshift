@@ -13,7 +13,7 @@ ephemeral "aws_secretsmanager_secret_version" "entra" {
 
 resource "redshift_identity_provider" "entra" {
   name                             = "oauth_standard"
-  type                             = "azure"
+  type                             = "AZURE"
   namespace                        = "aad"
   issuer                           = "https://login.microsoftonline.com/e40d4bb2-7670-44ae-bfb8-5db013221d73/v2.0"
   client_id                        = "871c010f-5e61-4fb1-83ac-98610a7e9110"

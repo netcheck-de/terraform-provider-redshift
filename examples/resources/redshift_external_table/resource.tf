@@ -5,22 +5,22 @@ resource "redshift_external_table" "sales" {
 
   column {
     name = "sales_id"
-    type = "integer"
+    type = "INTEGER"
   }
 
   column {
     name = "price_paid"
-    type = "decimal(8,2)"
+    type = "DECIMAL(8,2)"
   }
 
   column {
     name = "sale_time"
-    type = "timestamp"
+    type = "TIMESTAMP"
   }
 
   partition_key {
     name = "sale_date"
-    type = "date"
+    type = "DATE"
   }
 
   field_delimiter = "\t"
@@ -39,12 +39,12 @@ resource "redshift_external_table" "events" {
 
   column {
     name = "id"
-    type = "bigint"
+    type = "BIGINT"
   }
 
   column {
     name = "payload"
-    type = "varchar(65535)"
+    type = "VARCHAR(65535)"
   }
 
   serde            = "org.openx.data.jsonserde.JsonSerDe"
@@ -61,17 +61,17 @@ resource "redshift_external_table" "clicks" {
 
   column {
     name = "click_id"
-    type = "bigint"
+    type = "BIGINT"
   }
 
   column {
     name = "page"
-    type = "varchar(1024)"
+    type = "VARCHAR(1024)"
   }
 
   column {
     name = "clicked_at"
-    type = "timestamp"
+    type = "TIMESTAMP"
   }
 
   stored_as = "ORC"

@@ -8,12 +8,12 @@ resource "redshift_table" "customers" {
 
   column {
     name = "id"
-    type = "integer"
+    type = "INTEGER"
   }
 
   column {
     name = "email"
-    type = "varchar(256)"
+    type = "VARCHAR(256)"
   }
 }
 
@@ -26,7 +26,7 @@ resource "redshift_table" "masking_exempt" {
 
   column {
     name = "email"
-    type = "varchar(256)"
+    type = "VARCHAR(256)"
   }
 }
 

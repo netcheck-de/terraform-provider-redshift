@@ -30,7 +30,7 @@ resource "redshift_external_schema" "clicks" {
   database       = redshift_database.warehouse.name
   name           = "clicks"
   source_type    = "MSK"
-  authentication = "iam"
+  authentication = "IAM"
   iam_role_arn   = aws_iam_role.streaming.arn
   uri            = aws_msk_cluster.clicks.bootstrap_brokers_sasl_iam
 }

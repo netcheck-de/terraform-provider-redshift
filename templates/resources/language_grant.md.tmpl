@@ -78,7 +78,7 @@ statements appear with the database each runs in:
 ```terraform
 resource "redshift_language_grant" "public_sql" {
   database_name = "warehouse"
-  language_name = "sql"
+  language_name = "SQL"
   grantee_type  = "PUBLIC"
   grantee       = "public"
   privileges    = []

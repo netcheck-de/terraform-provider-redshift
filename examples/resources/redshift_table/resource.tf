@@ -6,7 +6,7 @@ resource "redshift_table" "events" {
 
   column {
     name = "event_id"
-    type = "bigint"
+    type = "BIGINT"
     identity {
       seed = 1
       step = 1
@@ -15,28 +15,28 @@ resource "redshift_table" "events" {
 
   column {
     name     = "account_id"
-    type     = "integer"
+    type     = "INTEGER"
     nullable = false
     encoding = "AZ64"
   }
 
   column {
     name     = "kind"
-    type     = "varchar(32)"
+    type     = "VARCHAR(32)"
     default  = "'unknown'"
     encoding = "BYTEDICT"
   }
 
   column {
     name = "payload"
-    type = "super"
+    type = "SUPER"
   }
 
   column {
     name     = "created_at"
-    type     = "timestamp"
+    type     = "TIMESTAMP"
     nullable = false
-    default  = "getdate()"
+    default  = "GETDATE()"
   }
 
   primary_key {

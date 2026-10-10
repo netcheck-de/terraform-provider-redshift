@@ -234,6 +234,20 @@ Derive every row from the code: the schema plan modifiers, the registered replac
 and block field in backticks, so a new argument fails the tests until it is documented. `task markdown-fmt` does not
 format templates, so keep prose within 120 columns and align tables by hand.
 
+SQL spelling follows one style everywhere the provider controls it:
+
+- **Type names** are UPPERCASE (`VARCHAR(64)`, `INTEGER`, `CHARACTER VARYING(256)`) in examples, templates, schema
+  descriptions, generated SQL, and every value read back from the catalog. Configuration accepts any case and keeps
+  the configured spelling while it is canonically equal.
+- **Keyword-like values** are UPPERCASE too: privileges, styles, encodings, `authentication`, identity provider
+  `type`, language names, and the `DEFAULT` IAM role. Their validators accept any case.
+- **Hand-written SQL in examples** (view queries, defaults, predicates, masking expressions, routine bodies) uses
+  UPPERCASE keywords, built-in functions, and casts (`GETDATE()`, `DATEADD(DAY, ...)`, `::VARCHAR`). The provider never
+  rewrites SQL that users configure. Terraform functions in HCL (`coalesce`, `lower`, `jsonencode`) stay lowercase.
+
+`TestExampleTypeNamesAreUppercase` checks `type`, `return_type`, and `arguments` values in examples and template
+snippets.
+
 `task docs-check` runs the `tfplugindocs` validator against the live provider schema, checking publication layout,
 resource/data-source coverage, front matter, and document size limits, and then regenerates the documentation into
 `.cache/docs-check` and fails if it differs from `docs/`, including added or missing pages. It is included in

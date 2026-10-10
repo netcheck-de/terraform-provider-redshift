@@ -122,7 +122,7 @@ checks and the catalog read, the changes, and the read that verifies them.
 
 ```terraform
 resource "redshift_assumerole_grant" "readers" {
-  iam_role_arn = "default"
+  iam_role_arn = "DEFAULT"
   grantee_type = "ROLE"
   grantee      = "readers"
   privileges   = ["UNLOAD"] # was ["COPY"]
@@ -165,7 +165,7 @@ import {
   id = jsonencode({
     workgroup_name = "warehouse"
     database       = "admin"
-    iam_role_arn   = "default"
+    iam_role_arn   = "DEFAULT"
     grantee        = "loader"
     grantee_type   = "ROLE"
   })

@@ -33,8 +33,8 @@ override_data {
   target = data.redshift_function.label
   values = {
     id          = "function-lookup-identity"
-    signature   = "integer, character varying"
-    return_type = "character varying"
+    signature   = "INTEGER, CHARACTER VARYING"
+    return_type = "CHARACTER VARYING"
     volatility  = "IMMUTABLE"
     owner       = "observed_function_owner"
   }
@@ -43,7 +43,7 @@ override_data {
   target = data.redshift_procedure.scale
   values = {
     id        = "procedure-lookup-identity"
-    signature = "integer, bigint"
+    signature = "INTEGER, BIGINT"
     security  = "INVOKER"
     owner     = "observed_procedure_owner"
   }
@@ -56,8 +56,8 @@ run "routines_apply" {
     condition = (
       redshift_function.label.database == redshift_schema.local.database &&
       redshift_function.label.schema == redshift_schema.local.name &&
-      redshift_function.label.arguments == tolist(["int", "varchar(64)"]) &&
-      redshift_function.label.return_type == "varchar(128)" && redshift_function.label.volatility == "IMMUTABLE"
+      redshift_function.label.arguments == tolist(["INT", "VARCHAR(64)"]) &&
+      redshift_function.label.return_type == "VARCHAR(128)" && redshift_function.label.volatility == "IMMUTABLE"
     )
     error_message = "The function must live in the consumer workspace schema with its configured overload."
   }
@@ -73,7 +73,7 @@ run "routines_apply" {
       redshift_object_grant.loader_label.object_type == "FUNCTION" &&
       redshift_object_grant.loader_label.schema_name == redshift_function.label.schema &&
       redshift_object_grant.loader_label.object_name == redshift_function.label.name &&
-      redshift_object_grant.loader_label.arguments == "int, varchar(64)" &&
+      redshift_object_grant.loader_label.arguments == "INT, VARCHAR(64)" &&
       redshift_object_grant.loader_label.grantee == redshift_user.loader.name &&
       redshift_object_grant.loader_label.privileges == toset(["EXECUTE"]) &&
       redshift_object_grant.loader_label.grant_option_privileges == toset(["EXECUTE"])
@@ -92,15 +92,15 @@ run "routines_apply" {
   }
   assert {
     condition = (
-      data.redshift_procedure.scale.arguments == tolist(["integer", "bigint"])
+      data.redshift_procedure.scale.arguments == tolist(["INTEGER", "BIGINT"])
     )
     error_message = "The procedure lookup must select the overload by the IN and INOUT types of the argument blocks only."
   }
   assert {
     condition = (
-      output.routines.function.signature == "integer, character varying" &&
+      output.routines.function.signature == "INTEGER, CHARACTER VARYING" &&
       output.routines.function.owner == "observed_function_owner" &&
-      output.routines.procedure.signature == "integer, bigint" &&
+      output.routines.procedure.signature == "INTEGER, BIGINT" &&
       output.routines.procedure.security == "INVOKER" &&
       output.routines.procedure.id == "procedure-lookup-identity"
     )

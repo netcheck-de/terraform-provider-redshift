@@ -31,7 +31,7 @@ paired resource.
 
 The resource's blocks are read-only nested attributes here: `column` is a list, `unique` and `foreign_key` are sets,
 and `primary_key`, `distribution`, and `sort_key` are objects, so `data.redshift_table.x.distribution.style` needs no
-index. Values use catalog spellings: types as `format_type()` reports them, such as `character varying(256)`, and
+index. Values use catalog spellings: types as `format_type()` reports them, such as `CHARACTER VARYING(256)`, and
 defaults with their casts. `distribution` and `sort_key` are always reported, including `AUTO`; `effective_distribution`
 and `effective_sort_key` show what Redshift applies. `backup` is always null because it is not observable. A missing
 table is an error.

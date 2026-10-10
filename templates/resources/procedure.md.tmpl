@@ -51,13 +51,13 @@ share one statement, and it keeps the owner and grants. A replacement runs `DROP
 and the new procedure starts without the grants of the old one.
 
 `SHOW PARAMETERS` reports types without their length or precision, so an imported procedure holds bare types such as
-`character varying`; a bare type in state matches the same type with a modifier, such as `varchar(64)`.
+`CHARACTER VARYING`; a bare type in state matches the same type with a modifier, such as `VARCHAR(64)`.
 
 | Change                                                                                              | Result                                                                     |
 |-----------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
 | `database`, `schema`, or `name`                                                                     | replaces the procedure: the provider never moves or renames a procedure    |
 | `argument` block added, removed, or reordered                                                       | replaces the procedure                                                     |
-| `argument.type` respelled with the same canonical type, such as `int4` for `integer`                | no SQL; the state records the configured spelling                          |
+| `argument.type` respelled with the same canonical type, such as `INT4` for `INTEGER`                | no SQL; the state records the configured spelling                          |
 | `argument.type` given a length or precision where the state holds the bare type, as after an import | `CREATE OR REPLACE PROCEDURE`, which restates the declared types           |
 | `argument.type`, any other change, including another length or precision                            | replaces the procedure, also for an `OUT` argument                         |
 | `argument.mode` changed between omitted and `IN`                                                    | no SQL                                                                     |

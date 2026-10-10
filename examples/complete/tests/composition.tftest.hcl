@@ -213,7 +213,7 @@ run "private_same_account_defaults" {
   assert {
     condition = (
       length(redshift_assumerole_grant.reader) == 1 && length(aws_redshiftdata_statement.assumerole_policy) == 1 &&
-      redshift_assumerole_grant.reader[0].iam_role_arn == "default" && redshift_assumerole_grant.reader[0].grantee == redshift_role.readers.name &&
+      redshift_assumerole_grant.reader[0].iam_role_arn == "DEFAULT" && redshift_assumerole_grant.reader[0].grantee == redshift_role.readers.name &&
       redshift_assumerole_grant.reader[0].grantee_type == "ROLE" && redshift_assumerole_grant.reader[0].privileges == toset(["COPY", "UNLOAD"]) &&
       aws_redshiftdata_statement.assumerole_policy[0].database == aws_redshiftserverless_namespace.consumer.db_name &&
       aws_redshiftdata_statement.assumerole_policy[0].secret_arn == aws_redshiftserverless_namespace.consumer.admin_password_secret_arn &&
@@ -269,7 +269,7 @@ run "assumerole_disabled" {
   assert {
     condition = (
       length(redshift_assumerole_grant.reader) == 0 && length(aws_redshiftdata_statement.assumerole_policy) == 0 &&
-      data.redshift_assumerole_grant.reader.iam_role_arn == "default" && data.redshift_assumerole_grant.reader.grantee == redshift_role.readers.name &&
+      data.redshift_assumerole_grant.reader.iam_role_arn == "DEFAULT" && data.redshift_assumerole_grant.reader.grantee == redshift_role.readers.name &&
       length(output.catalog_checks.iam_commands) == 0 && length(redshift_grant.shared_read) == 3
     )
     error_message = "Disabling ASSUMEROLE must omit both policy initialization and managed grants while retaining ordinary readers and the lookup."

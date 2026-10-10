@@ -8,12 +8,12 @@ resource "redshift_table" "rls_events" {
 
   column {
     name = "id"
-    type = "integer"
+    type = "INTEGER"
   }
 
   column {
     name = "region"
-    type = "varchar(64)"
+    type = "VARCHAR(64)"
   }
 }
 
@@ -26,12 +26,12 @@ resource "redshift_table" "rls_regions" {
 
   column {
     name = "reader"
-    type = "varchar(128)"
+    type = "VARCHAR(128)"
   }
 
   column {
     name = "region"
-    type = "varchar(64)"
+    type = "VARCHAR(64)"
   }
 }
 

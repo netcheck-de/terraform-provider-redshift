@@ -29,7 +29,7 @@ SELECT ... FROM svv_external_columns WHERE schemaname = 'schema' AND tablename =
 as the paired resource.
 
 `column` lists the data columns in catalog order, which for `ORC` tables can differ from the resource's configured order
-because `ADD COLUMN` appends. Types use Redshift names (for example `integer` for the catalog's `int`); types Redshift
-cannot declare, such as Glue's `string`, keep the catalog spelling. `table_properties` reports every catalog property,
-including bookkeeping entries such as `EXTERNAL`. `stored_as` is null when the input format class belongs to no named
-format, and `serde` is null when it is the format's default SerDe. A missing table is an error.
+because `ADD COLUMN` appends. Types use Redshift names (for example `INTEGER` for the catalog's `int`); types Redshift
+cannot declare, such as Glue's `string`, are reported in UPPERCASE (`STRING`). `table_properties` reports every
+catalog property, including bookkeeping entries such as `EXTERNAL`. `stored_as` is null when the input format class
+belongs to no named format, and `serde` is null when it is the format's default SerDe. A missing table is an error.

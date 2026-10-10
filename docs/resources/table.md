@@ -31,7 +31,7 @@ resource "redshift_table" "events" {
 
   column {
     name = "event_id"
-    type = "bigint"
+    type = "BIGINT"
     identity {
       seed = 1
       step = 1
@@ -40,28 +40,28 @@ resource "redshift_table" "events" {
 
   column {
     name     = "account_id"
-    type     = "integer"
+    type     = "INTEGER"
     nullable = false
     encoding = "AZ64"
   }
 
   column {
     name     = "kind"
-    type     = "varchar(32)"
+    type     = "VARCHAR(32)"
     default  = "'unknown'"
     encoding = "BYTEDICT"
   }
 
   column {
     name = "payload"
-    type = "super"
+    type = "SUPER"
   }
 
   column {
     name     = "created_at"
-    type     = "timestamp"
+    type     = "TIMESTAMP"
     nullable = false
-    default  = "getdate()"
+    default  = "GETDATE()"
   }
 
   primary_key {
@@ -268,7 +268,7 @@ Redshift applies), `pg_attribute` (column order, `format_type()` types, and null
 - `SVV_TABLE_INFO` lists only tables with rows that the provider's SQL identity may see. Without a row, a configured
   `AUTO` sort key is kept while the sort key columns are compound, and of `AUTO` and `NONE` the configured one is kept
   while there are no sort key columns, so changing between those two outside Terraform is not detected for such tables.
-- Types are compared by their canonical form (`int8` equals `bigint`), and a configured default is kept while the
+- Types are compared by their canonical form (`INT8` equals `BIGINT`), and a configured default is kept while the
   column has one, because Redshift stores defaults with casts such as `'n/a'::character varying`.
 - `backup` is not observable in a catalog every deployment exposes; the configured value is recorded.
 
@@ -328,7 +328,7 @@ objects keep the table, and the deletion fails until they are removed.
 | `column` block removed                                                                                                                                                       | `ALTER TABLE ... DROP COLUMN`, without `CASCADE`; a key column only after the sort key and distribution moved off it, as the examples show; while the planned sort key is interleaved, dropping the distribution key Redshift chose replaces the table                               |
 | `column` blocks reordered                                                                                                                                                    | no SQL; the state records the configured order                                                                                                                                                                                                                                       |
 | `column.name`                                                                                                                                                                | `ADD COLUMN` for the new name and `DROP COLUMN` for the old one: an in-place update that loses the column's data, which `prevent_destroy` does not stop; a renamed identity or NOT NULL column without `default` replaces the table, as when it is added                             |
-| `column.type` respelled with the same canonical form, such as `int8` for `bigint`                                                                                            | no SQL; the state records the configured spelling                                                                                                                                                                                                                                    |
+| `column.type` respelled with the same canonical form, such as `INT8` for `BIGINT`                                                                                            | no SQL; the state records the configured spelling                                                                                                                                                                                                                                    |
 | `column.type` widened to a longer VARCHAR or VARBYTE                                                                                                                         | `ALTER TABLE ... ALTER COLUMN ... TYPE` when the column has no `default`, belongs to no `primary_key`, `unique`, or `foreign_key`, and is not encoded with `BYTEDICT`, `RUNLENGTH`, `TEXT255`, or `TEXT32K`; otherwise replaces the table                                            |
 | `column.type`, any other change                                                                                                                                              | replaces the table: Redshift widens only VARCHAR and VARBYTE columns in place                                                                                                                                                                                                        |
 | `column.encoding` changed                                                                                                                                                    | `ALTER TABLE ... ALTER COLUMN ... ENCODE`; replaces the table when the planned sort key is interleaved                                                                                                                                                                               |
@@ -387,7 +387,7 @@ resource "redshift_table" "events" {
 
   column {
     name     = "id"
-    type     = "bigint"
+    type     = "BIGINT"
     encoding = "AZ64"
     identity {
       seed = 1
@@ -397,7 +397,7 @@ resource "redshift_table" "events" {
 
   column {
     name     = "label"
-    type     = "varchar(64)"
+    type     = "VARCHAR(64)"
     encoding = "LZO"
     default  = "'none'"
   }
@@ -429,7 +429,7 @@ column {
 
 column {
   name     = "note"
-  type     = "varchar(32)"
+  type     = "VARCHAR(32)"
   encoding = "LZO"
 }
 
@@ -471,12 +471,12 @@ column {
 ### Widening and Re-Encoding a Column
 
 The `note` column from the first example has no default, belongs to no constraint, and uses `LZO`, so it can grow in
-place. `varchar(max)` is `character varying(65535)`:
+place. `VARCHAR(MAX)` is `CHARACTER VARYING(65535)`:
 
 ```terraform
 column {
   name     = "note"
-  type     = "varchar(max)" # was "varchar(32)"
+  type     = "VARCHAR(MAX)" # was "VARCHAR(32)"
   encoding = "ZSTD"         # was "LZO"
 }
 ```
@@ -487,7 +487,7 @@ ALTER TABLE "serving"."events" ALTER COLUMN "note" TYPE CHARACTER VARYING(65535)
 ALTER TABLE "serving"."events" ALTER COLUMN "note" ENCODE ZSTD;
 ```
 
-Narrowing it to `varchar(16)`, or changing it to another type, replaces the table instead.
+Narrowing it to `VARCHAR(16)`, or changing it to another type, replaces the table instead.
 
 ### Dropping a Column
 
@@ -557,7 +557,7 @@ table is replaced:
 # The note column block is removed.
 column {
   name     = "code"
-  type     = "char(2)"
+  type     = "CHAR(2)"
   nullable = false
   default  = "'xx'"
 }

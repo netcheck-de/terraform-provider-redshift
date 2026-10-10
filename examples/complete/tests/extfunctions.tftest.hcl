@@ -33,7 +33,7 @@ run "extfunctions_apply" {
     condition = (
       redshift_external_function.upper.database == redshift_schema.local.database &&
       redshift_external_function.upper.schema == redshift_schema.local.name &&
-      redshift_external_function.upper.arguments == tolist(["varchar"]) &&
+      redshift_external_function.upper.arguments == tolist(["VARCHAR"]) &&
       redshift_external_function.upper.lambda_function == aws_lambda_function.extfunctions_upper.function_name &&
       redshift_external_function.upper.iam_role == aws_iam_role.consumer.arn
     )

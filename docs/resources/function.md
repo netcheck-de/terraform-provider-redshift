@@ -26,8 +26,8 @@ resource "redshift_function" "greater" {
   database    = "analytics"
   schema      = "reporting"
   name        = "f_sql_greater"
-  arguments   = ["float", "float"]
-  return_type = "float"
+  arguments   = ["FLOAT", "FLOAT"]
+  return_type = "FLOAT"
   volatility  = "STABLE"
   body        = <<-SQL
     SELECT CASE WHEN $1 > $2 THEN $1 ELSE $2 END
@@ -82,14 +82,14 @@ the function. `CREATE OR REPLACE FUNCTION` restates the whole definition, so sev
 one statement, and it keeps the owner and grants. A replacement runs `DROP FUNCTION` and then `CREATE FUNCTION`, so the
 new function starts without the grants of the old one.
 
-`arguments` and `return_type` compare by their canonical type, so `int` and `integer` are the same. The catalog keeps
-no length or precision for UDF types, so `signature` reports bare types such as `character varying`, and so does the
-state after an import; a bare type in state matches the same type with a modifier, such as `varchar(64)`.
+`arguments` and `return_type` compare by their canonical type, so `INT` and `INTEGER` are the same. The catalog keeps
+no length or precision for UDF types, so `signature` reports bare types such as `CHARACTER VARYING`, and so does the
+state after an import; a bare type in state matches the same type with a modifier, such as `VARCHAR(64)`.
 
 | Change                                                                                                                | Result                                                                                                   |
 |-----------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
 | `database`, `schema`, or `name`                                                                                       | replaces the function: the provider never moves or renames a function                                    |
-| `arguments` respelled with the same canonical types, such as `int` for `integer`                                      | no SQL; the state records the configured spelling                                                        |
+| `arguments` respelled with the same canonical types, such as `INT` for `INTEGER`                                      | no SQL; the state records the configured spelling                                                        |
 | `arguments` element given a length or precision where the state holds the bare type, as after an import               | `CREATE OR REPLACE FUNCTION`, which restates the declared types                                          |
 | `arguments`, any other change: an element added, removed, reordered, or changed to another type, length, or precision | replaces the function: the input types identify the overload, and `CREATE OR REPLACE` cannot change them |
 | `return_type` respelled with the same canonical type                                                                  | no SQL; the state records the configured spelling                                                        |

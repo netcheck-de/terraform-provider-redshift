@@ -3,7 +3,7 @@ import {
   id = jsonencode({
     workgroup_name = "warehouse"
     database       = "admin"
-    iam_role_arn   = "default"
+    iam_role_arn   = "DEFAULT"
     grantee        = "loader"
     grantee_type   = "ROLE"
   })

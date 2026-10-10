@@ -15,6 +15,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // TestDocsExistForEveryRegisteredType requires a generated page, a template, and examples for each resource and data source.
@@ -70,6 +72,53 @@ func TestDocsExistForEveryRegisteredType(t *testing.T) {
 // TestTerraformSnippetsSeparateBlocks requires a blank line between a closing brace and the next block in the
 // examples and template snippets, because documentation pages render them as written and adjacent blocks run together.
 func TestTerraformSnippetsSeparateBlocks(t *testing.T) {
+	for name, lines := range terraformSnippets(t) {
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i-1]) == "}" && blockHeader.MatchString(lines[i]) {
+				assert.Fail(t, "blocks need a blank line between them", "%s:%d: %s", name, i+1, strings.TrimSpace(lines[i]))
+			}
+		}
+	}
+}
+
+// TestExampleTypeNamesAreUppercase keeps the documented type spelling consistent with what the provider reports.
+// Values that are not SQL types, such as an IAM principal type, are skipped because the type parser rejects them.
+func TestExampleTypeNamesAreUppercase(t *testing.T) {
+	for name, lines := range terraformSnippets(t) {
+		for i, line := range lines {
+			for _, value := range exampleTypeValues(line) {
+				if _, err := sqlclient.TypeName(value); err == nil && value != strings.ToUpper(value) {
+					assert.Fail(t, "type names in examples are UPPERCASE", "%s:%d: %q", name, i+1, value)
+				}
+			}
+		}
+	}
+}
+
+// exampleTypeValues returns the quoted values of type-bearing arguments on one HCL line.
+func exampleTypeValues(line string) []string {
+	var values []string
+	if match := typeArgument.FindStringSubmatch(line); match != nil {
+		values = append(values, match[1])
+	}
+	if match := argumentsList.FindStringSubmatch(line); match != nil {
+		for _, quoted := range quotedValue.FindAllStringSubmatch(match[1], -1) {
+			values = append(values, quoted[1])
+		}
+	}
+	return values
+}
+
+var (
+	typeArgument  = regexp.MustCompile(`\b(?:type|return_type)\s*=\s*"([^"]+)"`)
+	argumentsList = regexp.MustCompile(`\barguments\s*=\s*\[([^\]]*)\]`)
+	quotedValue   = regexp.MustCompile(`"([^"]+)"`)
+)
+
+// terraformSnippets returns the lines of every example file and of every Terraform snippet in a template, keyed by
+// file (and snippet number), because the documentation renders both as written.
+func terraformSnippets(t *testing.T) map[string][]string {
+	t.Helper()
 	root := filepath.Join("..", "..")
 	snippets := map[string][]string{}
 	examples, err := filepath.Glob(filepath.Join(root, "examples", "*", "*", "*.tf"))
@@ -90,13 +139,7 @@ func TestTerraformSnippetsSeparateBlocks(t *testing.T) {
 			snippets[file+"#"+strconv.Itoa(i+1)] = strings.Split(block[1], "\n")
 		}
 	}
-	for name, lines := range snippets {
-		for i := 1; i < len(lines); i++ {
-			if strings.TrimSpace(lines[i-1]) == "}" && blockHeader.MatchString(lines[i]) {
-				assert.Fail(t, "blocks need a blank line between them", "%s:%d: %s", name, i+1, strings.TrimSpace(lines[i]))
-			}
-		}
-	}
+	return snippets
 }
 
 // terraformFence captures the body of fenced Terraform code in a documentation template.

@@ -58,12 +58,12 @@ resource "aws_glue_catalog_table" "fixture" {
 
     columns {
       name = "id"
-      type = "int"
+      type = "INT"
     }
 
     columns {
       name = "label"
-      type = "varchar(64)"
+      type = "VARCHAR(64)"
     }
   }
 }
@@ -133,17 +133,17 @@ resource "redshift_external_table" "events" {
 
   column {
     name = "id"
-    type = "integer"
+    type = "INTEGER"
   }
 
   column {
     name = "label"
-    type = "varchar(64)"
+    type = "VARCHAR(64)"
   }
 
   partition_key {
     name = "event_date"
-    type = "date"
+    type = "DATE"
   }
 
   field_delimiter  = ","

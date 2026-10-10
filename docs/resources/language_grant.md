@@ -26,7 +26,7 @@ Deleting the resource revokes what it owns; see [Reconciliation](#reconciliation
 # Stored procedure authors in the analytics database.
 resource "redshift_language_grant" "procedures" {
   database_name = "analytics"
-  language_name = "plpgsql"
+  language_name = "PLPGSQL"
   grantee       = redshift_role.developers.name
   grantee_type  = "ROLE"
   privileges    = ["USAGE"]
@@ -35,7 +35,7 @@ resource "redshift_language_grant" "procedures" {
 # A user who may create SQL UDFs and pass that right on.
 resource "redshift_language_grant" "sql_udfs" {
   database_name           = "analytics"
-  language_name           = "sql"
+  language_name           = "SQL"
   grantee                 = redshift_user.udf_owner.name
   grantee_type            = "USER"
   privileges              = ["USAGE"]
@@ -45,7 +45,7 @@ resource "redshift_language_grant" "sql_udfs" {
 # Only the grantees above may create stored procedures: this revokes the built-in USAGE that PUBLIC holds.
 resource "redshift_language_grant" "public_procedures" {
   database_name = "analytics"
-  language_name = "plpgsql"
+  language_name = "PLPGSQL"
   grantee       = "public"
   grantee_type  = "PUBLIC"
   privileges    = []
@@ -123,7 +123,7 @@ statements appear with the database each runs in:
 ```terraform
 resource "redshift_language_grant" "public_sql" {
   database_name = "warehouse"
-  language_name = "sql"
+  language_name = "SQL"
   grantee_type  = "PUBLIC"
   grantee       = "public"
   privileges    = []
@@ -163,7 +163,7 @@ import {
     workgroup_name = "warehouse"
     database       = "admin"
     database_name  = "analytics"
-    language_name  = "plpgsql"
+    language_name  = "PLPGSQL"
     grantee        = "developers"
     grantee_type   = "ROLE"
   })

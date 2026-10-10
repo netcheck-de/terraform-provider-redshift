@@ -48,7 +48,7 @@ resource "redshift_column_grant" "group_orders" {
 resource "redshift_language_grant" "operator_procedures" {
   provider      = redshift.consumer
   database_name = redshift_database.local.name
-  language_name = "plpgsql"
+  language_name = "PLPGSQL"
   grantee       = redshift_role.operators.name
   grantee_type  = "ROLE"
   privileges    = ["USAGE"]
@@ -58,7 +58,7 @@ resource "redshift_language_grant" "operator_procedures" {
 resource "redshift_language_grant" "loader_sql" {
   provider                = redshift.consumer
   database_name           = redshift_database.local.name
-  language_name           = "sql"
+  language_name           = "SQL"
   grantee                 = redshift_user.loader.name
   grantee_type            = "USER"
   privileges              = ["USAGE"]

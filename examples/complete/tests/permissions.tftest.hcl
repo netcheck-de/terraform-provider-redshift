@@ -70,10 +70,10 @@ run "permissions_apply" {
 
   assert {
     condition = (
-      redshift_language_grant.operator_procedures.language_name == "plpgsql" &&
+      redshift_language_grant.operator_procedures.language_name == "PLPGSQL" &&
       redshift_language_grant.operator_procedures.grantee == redshift_role.operators.name &&
       redshift_language_grant.operator_procedures.privileges == toset(["USAGE"]) &&
-      redshift_language_grant.loader_sql.language_name == "sql" && redshift_language_grant.loader_sql.grantee_type == "USER" &&
+      redshift_language_grant.loader_sql.language_name == "SQL" && redshift_language_grant.loader_sql.grantee_type == "USER" &&
       redshift_language_grant.loader_sql.grantee == redshift_user.loader.name &&
       redshift_language_grant.loader_sql.grant_option_privileges == toset(["USAGE"])
     )

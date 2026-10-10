@@ -74,7 +74,7 @@ resource "redshift_object_grant" "report" {
 ## Functions and Procedures
 
 Redshift overloads routine names, so `arguments` lists the argument types that select one overload, such as
-`integer, varchar(10)`. Types are validated and canonicalized (`int4` becomes `integer`), and lengths are dropped,
+`integer, varchar(10)`. Types are validated and canonicalized (`INT4` becomes `INTEGER`), and lengths are dropped,
 because Redshift identifies overloads by type names alone; omit `arguments` for a routine without arguments. The
 configured spelling is kept in state and in the import identity. Redshift grants `EXECUTE` on a new function to
 `PUBLIC` implicitly; the function catalog reports that grant only once the function's privileges have been changed, so
@@ -139,7 +139,7 @@ the catalog to verify the exact sets; every change to the tuple itself replaces 
 | Change                                                                    | Result                                                                                                                                                                                                                          |
 |---------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `database_name`, `schema_name`, `object_name`, or `object_type`           | replaces the grant: they name another object, so the old object's privileges are revoked and the new one's granted                                                                                                              |
-| `arguments`                                                               | replaces the grant: it selects another overload; a new spelling of the same types, such as `int4` for `integer`, replaces it too, because the configured spelling is part of the identity                                       |
+| `arguments`                                                               | replaces the grant: it selects another overload; a new spelling of the same types, such as `INT4` for `INTEGER`, replaces it too, because the configured spelling is part of the identity                                       |
 | `grantee` or `grantee_type`                                               | replaces the grant: the grantee is part of the tuple                                                                                                                                                                            |
 | privilege added to `privileges`                                           | `GRANT ... ON DATABASE`, `ON SCHEMA`, `ON TABLE`, `ON FUNCTION`, or `ON PROCEDURE`; for a snapshot `GRANT ... ON ALL TABLES IN SCHEMA` (or `ALL FUNCTIONS`, `ALL PROCEDURES`), which covers the objects that exist when it runs |
 | privilege removed from `privileges`                                       | the matching `REVOKE ... FROM`, which also removes its grant option; for a snapshot `REVOKE ... ON ALL ... IN SCHEMA`, which revokes it from every current object, including grants made by single-object tuples                |

@@ -67,8 +67,8 @@ resource "redshift_external_function" "upper" {
   database        = redshift_schema.local.database
   schema          = redshift_schema.local.name
   name            = "f_example_upper"
-  arguments       = ["varchar"]
-  return_type     = "varchar"
+  arguments       = ["VARCHAR"]
+  return_type     = "VARCHAR"
   volatility      = "STABLE"
   lambda_function = aws_lambda_function.extfunctions_upper.function_name
   iam_role        = aws_iam_role.consumer.arn

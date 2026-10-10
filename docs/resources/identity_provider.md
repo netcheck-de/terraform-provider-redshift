@@ -6,8 +6,8 @@ description: Manages the SQL side of an AWS IAM Identity Center or Microsoft Ent
 
 # redshift_identity_provider (Resource)
 
-Manages a **SQL identity provider**: an AWS IAM Identity Center integration (`type = "awsidc"`) or native identity
-provider federation with Microsoft Entra ID (`type = "azure"`). For Identity Center, create the managed application,
+Manages a **SQL identity provider**: an AWS IAM Identity Center integration (`type = "AWSIDC"`) or native identity
+provider federation with Microsoft Entra ID (`type = "AZURE"`). For Identity Center, create the managed application,
 integration IAM role, role attachment to the namespace, and group assignments with the AWS provider. See AWS
 [CREATE IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_IDENTITY_PROVIDER.html) and
 [ALTER IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_IDENTITY_PROVIDER.html).
@@ -38,7 +38,7 @@ ephemeral "aws_secretsmanager_secret_version" "entra" {
 
 resource "redshift_identity_provider" "entra" {
   name                             = "oauth_standard"
-  type                             = "azure"
+  type                             = "AZURE"
   namespace                        = "aad"
   issuer                           = "https://login.microsoftonline.com/e40d4bb2-7670-44ae-bfb8-5db013221d73/v2.0"
   client_id                        = "871c010f-5e61-4fb1-83ac-98610a7e9110"
@@ -162,7 +162,7 @@ A new `client_secret_wo_version` sends the secret from `client_secret_wo` togeth
 ```terraform
 resource "redshift_identity_provider" "entra" {
   name                     = "oauth_standard"
-  type                     = "azure"
+  type                     = "AZURE"
   namespace                = "aad"
   issuer                   = "https://sts.windows.net/2sdfdsf-d475-420d-b5ac-667adad7c702/"
   client_id                = "87f4aa26-78b7-410e-bf29-57b39929ef9a"

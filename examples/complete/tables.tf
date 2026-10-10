@@ -8,13 +8,13 @@ resource "redshift_table" "accounts" {
 
   column {
     name     = "account_id"
-    type     = "integer"
+    type     = "INTEGER"
     nullable = false
   }
 
   column {
     name     = "name"
-    type     = "varchar(128)"
+    type     = "VARCHAR(128)"
     encoding = "ZSTD"
   }
 
@@ -36,7 +36,7 @@ resource "redshift_table" "orders" {
 
   column {
     name = "order_id"
-    type = "bigint"
+    type = "BIGINT"
     identity {
       seed = 1
       step = 1
@@ -45,29 +45,29 @@ resource "redshift_table" "orders" {
 
   column {
     name     = "account_id"
-    type     = "integer"
+    type     = "INTEGER"
     nullable = false
     encoding = "AZ64"
   }
 
   column {
     name     = "status"
-    type     = "varchar(16)"
+    type     = "VARCHAR(16)"
     default  = "'new'"
     encoding = "BYTEDICT"
   }
 
   column {
     name     = "amount"
-    type     = "numeric(12,2)"
+    type     = "NUMERIC(12,2)"
     encoding = "AZ64"
   }
 
   column {
     name     = "created_at"
-    type     = "timestamp"
+    type     = "TIMESTAMP"
     nullable = false
-    default  = "getdate()"
+    default  = "GETDATE()"
   }
 
   primary_key {
@@ -106,12 +106,12 @@ resource "redshift_table" "events" {
 
   column {
     name = "event_id"
-    type = "bigint"
+    type = "BIGINT"
   }
 
   column {
     name = "payload"
-    type = "super"
+    type = "SUPER"
   }
 }
 

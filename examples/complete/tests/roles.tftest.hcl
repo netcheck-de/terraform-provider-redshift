@@ -61,7 +61,7 @@ run "roles_identity_center" {
   override_data {
     target = data.redshift_identity_provider.this[0]
     values = {
-      type                         = "awsidc"
+      type                         = "AWSIDC"
       provider_id                  = 126692
       identity_center_instance_arn = "arn:aws:sso:::instance/ssoins-1234567890abcdef"
     }
@@ -76,9 +76,9 @@ run "roles_identity_center" {
   }
   assert {
     condition = (
-      redshift_identity_provider.this[0].type == "awsidc" && redshift_identity_provider.this[0].auto_create_roles == false &&
+      redshift_identity_provider.this[0].type == "AWSIDC" && redshift_identity_provider.this[0].auto_create_roles == false &&
       redshift_identity_provider.this[0].auto_create_roles_include_groups == null &&
-      output.identity_provider_details.type == "awsidc" && output.identity_provider_details.provider_id == 126692 &&
+      output.identity_provider_details.type == "AWSIDC" && output.identity_provider_details.provider_id == 126692 &&
       output.identity_provider_details.identity_center_instance_arn == var.identity_center_instance_arn
     )
     error_message = "The Identity Center provider must leave group roles to Terraform, and its lookup details must reach the outputs."
