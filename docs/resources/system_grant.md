@@ -32,8 +32,8 @@ resource "redshift_system_grant" "operators" {
 
 ### Required
 
-- `privileges` (Set of String) Exact explicit privilege set. An empty set revokes owned privileges.
-- `role` (String) Receiving SQL role.
+- `privileges` (Set of String) Exact set of system permissions held by the role, such as `CREATE USER`, `ACCESS SYSTEM TABLE`, or `IGNORE RLS`; every permission in the GRANT reference's role syntax is accepted. An empty set revokes owned permissions.
+- `role` (String) Receiving SQL role; Redshift grants system permissions to roles only. Changing it replaces the grant.
 
 ### Read-Only
 
@@ -44,7 +44,9 @@ Changing `role` replaces the grant; an empty `privileges` set revokes explicit p
 user/schema/table/role/datashare administration; function, external-function, procedure, view, model and library
 creation/deletion; `ALTER DEFAULT PRIVILEGES`, `ACCESS CATALOG`, `ACCESS SYSTEM TABLE`, `TRUNCATE TABLE`, `VACUUM`,
 `ANALYZE`, `CANCEL`, `IGNORE RLS`, `EXPLAIN RLS`, and `EXPLAIN MASKING`. Use full SQL names such as
-`CREATE OR REPLACE FUNCTION`. `ALL` is deliberately not accepted; declare explicit privileges.
+`CREATE OR REPLACE FUNCTION`. The accepted names are exactly the system permissions of the GRANT role syntax and the
+[RBAC system permissions](https://docs.aws.amazon.com/redshift/latest/dg/r_roles-system-privileges.html) table. `ALL`
+is deliberately not accepted; declare explicit privileges.
 
 ## Lifecycle and Ownership
 

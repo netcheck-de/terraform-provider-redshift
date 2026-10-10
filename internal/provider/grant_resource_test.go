@@ -18,14 +18,14 @@ import (
 
 var _ = registerValidateConfigCase("grant", validateConfigCase{
 	new:     newGrantResource,
-	valid:   grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("readers"), Scope: types.StringValue("DATABASE"), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("USAGE")})},
-	invalid: grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("readers"), Scope: types.StringValue("SCHEMA"), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("USAGE")})},
-	unknown: grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("readers"), Scope: types.StringValue("SCHEMA"), SchemaName: types.StringUnknown(), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("USAGE")})},
+	valid:   grantTestModel(grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("readers"), Scope: types.StringValue("DATABASE"), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("USAGE")})}),
+	invalid: grantTestModel(grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("readers"), Scope: types.StringValue("SCHEMA"), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("USAGE")})}),
+	unknown: grantTestModel(grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("readers"), Scope: types.StringValue("SCHEMA"), SchemaName: types.StringUnknown(), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("USAGE")})}),
 })
 
 var _ = registerLifecycleCase(lifecycleCase{
 	name: "grant", kind: lifecyclePermission, new: newGrantResource,
-	model:  grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("example:readers"), Scope: types.StringValue("TABLES"), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SELECT")})},
+	model:  grantTestModel(grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("example:readers"), Scope: types.StringValue("TABLES"), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SELECT")})}),
 	absent: func(c *catalog) { clear(c.privileges) },
 	prepare: func(c *catalog, operation string) {
 		if operation == "update" {
@@ -36,13 +36,25 @@ var _ = registerLifecycleCase(lifecycleCase{
 })
 
 var _ = registerReplacementPolicy("redshift_grant", map[string]replaceRule{
-	"database_name": replaceAlways,
-	"schema_name":   replaceAlways,
-	"role":          replaceAlways,
-	"datashare":     replaceAlways,
-	"scope":         replaceAlways,
-	"privileges":    replaceNever,
+	"database_name":           replaceAlways,
+	"schema_name":             replaceAlways,
+	"role":                    replaceAlways,
+	"user":                    replaceAlways,
+	"datashare":               replaceAlways,
+	"scope":                   replaceAlways,
+	"privileges":              replaceNever,
+	"grant_option_privileges": replaceNever,
 })
+
+// grantTestModel fills the sets a test model leaves zero, which the framework cannot convert, with empty sets.
+func grantTestModel(data grantModel) grantModel {
+	for _, set := range []*types.Set{&data.Privileges, &data.GrantOptionPrivileges} {
+		if set.ElementType(context.Background()) == nil {
+			*set = types.SetValueMust(types.StringType, nil)
+		}
+	}
+	return data
+}
 
 // TestGrantObservesExactPrivileges checks scoped privilege refresh and reconciliation.
 func TestGrantObservesExactPrivileges(t *testing.T) {
@@ -137,7 +149,7 @@ func TestGrantRejectsUnsupportedTargets(t *testing.T) {
 
 // TestSchemaGrantsUseSchemaObjectAndScope checks explicit-schema and scoped-table SQL.
 func TestSchemaGrantsUseSchemaObjectAndScope(t *testing.T) {
-	for _, scope := range []string{"SCHEMA", "TABLES"} {
+	for scope, privilege := range map[string]string{"SCHEMA": "USAGE", "TABLES": "SELECT"} {
 		t.Run(scope, func(t *testing.T) {
 			granted := false
 			var mutations []string
@@ -152,7 +164,7 @@ func TestSchemaGrantsUseSchemaObjectAndScope(t *testing.T) {
 				case strings.HasPrefix(sql, "SHOW GRANTS"):
 					assert.Equal(t, "analytics", target.Database)
 					if granted {
-						return []dataapi.Row{{"database_name": "analytics", "schema_name": "serving", "object_type": "SCHEMA", "privilege_scope": scope, "identity_name": "example:readers", "privilege_type": "USAGE"}}, nil
+						return []dataapi.Row{{"database_name": "analytics", "schema_name": "serving", "object_type": "SCHEMA", "privilege_scope": scope, "identity_name": "example:readers", "privilege_type": privilege}}, nil
 					}
 					return nil, nil
 				case strings.HasPrefix(sql, "GRANT "):
@@ -163,7 +175,7 @@ func TestSchemaGrantsUseSchemaObjectAndScope(t *testing.T) {
 					return nil, fmt.Errorf("unexpected SQL %q", sql)
 				}
 			}))}
-			data := grantModel{DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Role: types.StringValue("example:readers"), Scope: types.StringValue(scope), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("USAGE")})}
+			data := grantTestModel(grantModel{DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Role: types.StringValue("example:readers"), Scope: types.StringValue(scope), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue(privilege)})})
 			require.NoError(t, r.reconcile(context.Background(), data))
 			granted = false
 			require.False(t, invoke(t, r, "create", data, false).HasError())
@@ -187,7 +199,7 @@ func TestSchemaGrantRequiresConsistentScope(t *testing.T) {
 		_, _, err := r.read(context.Background(), &data)
 		require.ErrorContains(t, err, "schema_name")
 	}
-	empty := grantModel{ID: types.StringNull(), DatabaseName: types.StringNull(), SchemaName: types.StringNull(), Role: types.StringNull(), Scope: types.StringNull(), Privileges: types.SetNull(types.StringType)}
+	empty := grantTestModel(grantModel{ID: types.StringNull(), DatabaseName: types.StringNull(), SchemaName: types.StringNull(), Role: types.StringNull(), Scope: types.StringNull(), Privileges: types.SetNull(types.StringType)})
 	resp := resource.ImportStateResponse{State: testState(t, r, empty)}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","role":"readers","scope":"SCHEMA","schema_name":"serving"}`}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
@@ -252,7 +264,7 @@ func TestDatashareScopedGrantLifecycle(t *testing.T) {
 					return nil, fmt.Errorf("unexpected SQL %s", sql)
 				}
 			}))}
-			data := grantModel{DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Datashare: types.StringValue("share"), Scope: types.StringValue(scope), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue(privilege)})}
+			data := grantTestModel(grantModel{DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Datashare: types.StringValue("share"), Scope: types.StringValue(scope), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue(privilege)})})
 			require.False(t, invoke(t, r, "create", data, false).HasError())
 			assert.True(t, granted)
 			require.False(t, invoke(t, r, "delete", data, false).HasError())
@@ -334,7 +346,7 @@ func TestScopedGrantCreateRejectsInvalidTupleBeforeState(t *testing.T) {
 	r := &grantResource{testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
 		return nil, fmt.Errorf("unexpected SQL %q", sql)
 	}))}
-	data := grantModel{ID: types.StringNull(), DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Role: types.StringValue("readers"), Datashare: types.StringNull(), Scope: types.StringValue("DATABASE"), Privileges: types.SetValueMust(types.StringType, nil)}
+	data := grantTestModel(grantModel{ID: types.StringNull(), DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Role: types.StringValue("readers"), Datashare: types.StringNull(), Scope: types.StringValue("DATABASE"), Privileges: types.SetValueMust(types.StringType, nil)})
 	plan := testState(t, r, data)
 	resp := resource.CreateResponse{State: tfsdk.State{Schema: plan.Schema, Raw: tftypes.NewValue(plan.Raw.Type(), nil)}}
 	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(plan)}, &resp)

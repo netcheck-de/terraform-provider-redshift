@@ -26,5 +26,19 @@ func TestDefaultPrivilegesSQL(t *testing.T) {
 		{"unsupported_object_type", render(map[string]string{"object_type": "SEQUENCES"}, "SELECT")},
 		{"unsupported_grantee_type", render(map[string]string{"grantee_type": "DATASHARE"}, "SELECT")},
 		{"empty_owner", render(map[string]string{"owner": ""}, "SELECT")},
+		{"current_user_database_wide", render(map[string]string{"owner": "", "schema_name": ""}, "INSERT")},
+		{"functions_public_implicit", render(map[string]string{"schema_name": "", "object_type": "FUNCTIONS", "grantee_type": "PUBLIC", "grantee": "public"}, "EXECUTE")},
+		{"functions_public_implicit_current_user", render(map[string]string{"owner": "", "schema_name": "", "object_type": "FUNCTIONS", "grantee_type": "PUBLIC", "grantee": "public"}, "EXECUTE")},
+		{"functions_public_in_schema", render(map[string]string{"object_type": "FUNCTIONS", "grantee_type": "PUBLIC", "grantee": "public"}, "EXECUTE")},
+		{"quoted_implicit_owner", render(map[string]string{"database_name": `Odd"Database`, "owner": `Odd"Owner`, "schema_name": "", "object_type": "FUNCTIONS", "grantee_type": "PUBLIC", "grantee": "public"}, "EXECUTE")},
+		{"option_user", func() ([]string, error) {
+			r := newDefaultPrivilegesResource().(*privilegeResource)
+			fields := map[string]string{"database_name": "warehouse", "owner": `Odd"Owner`, "schema_name": "serving", "object_type": "TABLES", "grantee_type": "USER", "grantee": `Odd"User`}
+			target, err := r.prepare(privilegeObject(t, r, fields))
+			if err != nil {
+				return nil, err
+			}
+			return privilegeOptionStatements(target.grant, target.allowed, privilegeSets{privileges: []string{"SELECT"}, options: []string{"SELECT"}}, privilegeSets{privileges: []string{"INSERT", "SELECT"}, options: []string{"INSERT"}})
+		}},
 	})
 }

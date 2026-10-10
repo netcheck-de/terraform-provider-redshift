@@ -6,8 +6,9 @@ description: Manages IAM role command permissions for one SQL identity.
 
 # redshift_assumerole_grant (Resource)
 
-Owns the exact command set for one IAM role and one SQL identity. See AWS
-[GRANT ASSUMEROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-assumerole-permissions).
+Owns the exact command set for one IAM role selector and one SQL identity. See AWS
+[GRANT ASSUMEROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-assumerole-permissions) and its
+[usage notes](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT-usage-notes.html#r_GRANT-usage-notes-assumerole).
 
 ```sql
 GRANT ASSUMEROLE ON ... TO ... FOR ...;
@@ -15,7 +16,7 @@ REVOKE ASSUMEROLE ON ... FROM ... FOR ...;
 ```
 
 Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
-revokes the privileges it owns.
+revokes the privileges it owns and never grants any.
 
 ## Example Usage
 
@@ -34,26 +35,60 @@ resource "redshift_assumerole_grant" "loader" {
 
 ### Required
 
-- `grantee` (String) Receiving identity name; use public for PUBLIC.
-- `grantee_type` (String) ROLE, USER, GROUP, or PUBLIC.
-- `iam_role_arn` (String) IAM role ARN, or default for the namespace default role.
-- `privileges` (Set of String) Exact explicit privilege set. An empty set revokes owned privileges.
+- `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`. Changing it replaces the grant.
+- `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.
+- `iam_role_arn` (String) IAM role ARN, `default` for the namespace default IAM role, or `ALL` for every IAM role. Redshift reports grants on `default` and on `ALL` under one catalog entry, so manage a grantee through only one of them. Changing it replaces the grant.
+- `privileges` (Set of String) Exact set of commands the grantee may run with the role: `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, `CREATE MODEL`; all four together are `FOR ALL`. An empty set revokes owned commands. `PUBLIC` holds every command `ON ALL` until revoked, which the `ALL`/`PUBLIC` tuple reports; deleting that tuple grants them back.
 
 ### Read-Only
 
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-Supported `privileges` are `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, and `CREATE MODEL`; an empty set revokes the owned
-grants. Identity changes require replacement. Declare commands explicitly; `ALL` is not accepted.
+Supported `privileges` are `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, and `CREATE MODEL`; all four together are what
+`FOR ALL` grants, and the provider issues one statement per command. An empty set revokes the owned grants. Identity
+changes require replacement.
+
+## Role Selectors
+
+`iam_role_arn` accepts an IAM role ARN, `default` for the namespace default IAM role, or `ALL` for every IAM role
+(`ON ALL`). `SVV_IAM_PRIVILEGES` reports grants on `default` and on `ALL` under the same catalog entry,
+`default-aws-iam-role`, so manage one grantee through only one of the two selectors.
+
+## PUBLIC and Access Control
+
+Until a superuser revokes it once, every user holds `ASSUMEROLE ON ALL FOR ALL` through `PUBLIC`, and Redshift ignores
+identity-specific grants. The tuple `iam_role_arn = "ALL"`, `grantee_type = "PUBLIC"` models that switch: it reports the
+default commands, and `privileges = []` revokes them (`REVOKE ASSUMEROLE ON ALL FROM PUBLIC FOR …`). Deleting or
+replacing the tuple does not grant them back, so access control stays on and no window opens in which every user can
+assume every IAM role. To turn access control off again, set all four commands in `privileges` and apply, then remove
+the resource with a `removed` block that sets `destroy = false`. Order other grants after it with `depends_on`.
+
+```terraform
+# Turn on identity-specific ASSUMEROLE access control, then let one role use any IAM role for COPY.
+resource "redshift_assumerole_grant" "public" {
+  iam_role_arn = "ALL"
+  grantee      = "public"
+  grantee_type = "PUBLIC"
+  privileges   = []
+}
+
+resource "redshift_assumerole_grant" "loaders_any_role" {
+  iam_role_arn = "ALL"
+  grantee      = redshift_role.loader.name
+  grantee_type = "ROLE"
+  privileges   = ["COPY"]
+
+  depends_on = [redshift_assumerole_grant.public]
+}
+```
 
 ## Lifecycle and Ownership
 
 Reads `svv_iam_privileges` and reconciles only the selected IAM role and SQL identity. AWS owns IAM policies, trust, and
-namespace role attachments. The warehouse must already have identity-specific ASSUMEROLE access control enabled:
-Redshift rejects individual grants while unrestricted `ASSUMEROLE ON ALL TO PUBLIC FOR ALL` remains active. The resource
-does not change that warehouse-wide policy. The opt-in `TestAccAssumeroleGrantLifecycle` requires
-`REDSHIFT_ACC_ASSUMEROLE=1` in addition to the normal acceptance-test environment and an attached default IAM role.
+namespace role attachments. Only a superuser can grant or revoke `ASSUMEROLE`. The opt-in
+`TestAccAssumeroleGrantLifecycle` requires `REDSHIFT_ACC_ASSUMEROLE=1` in addition to the normal acceptance-test
+environment and an attached default IAM role.
 
 Refresh reads the current explicit command permissions into `privileges`.
 

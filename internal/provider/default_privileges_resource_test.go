@@ -8,13 +8,14 @@ import (
 )
 
 var _ = registerReplacementPolicy("redshift_default_privileges", map[string]replaceRule{
-	"database_name": replaceAlways,
-	"schema_name":   replaceAlways,
-	"owner":         replaceAlways,
-	"object_type":   replaceAlways,
-	"grantee":       replaceAlways,
-	"grantee_type":  replaceAlways,
-	"privileges":    replaceNever,
+	"database_name":           replaceAlways,
+	"schema_name":             replaceAlways,
+	"owner":                   replaceAlways,
+	"object_type":             replaceAlways,
+	"grantee":                 replaceAlways,
+	"grantee_type":            replaceAlways,
+	"privileges":              replaceNever,
+	"grant_option_privileges": replaceNever,
 })
 
 // TestDefaultPrivilegesLifecycle exercises schema-specific creator default permissions.

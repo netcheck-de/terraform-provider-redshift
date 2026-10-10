@@ -5,7 +5,10 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
-// systemPrivileges enumerates SQL capability names accepted by authoritative role grants.
+// systemPrivileges enumerates the system permissions GRANT documents for roles, in the order of its syntax; the
+// RBAC system permission table lists the same set. TestSystemGrantAllowlistMatchesReference pins it.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles
+// https://docs.aws.amazon.com/redshift/latest/dg/r_roles-system-privileges.html
 var systemPrivileges = []sqlclient.Keyword{
 	"CREATE USER", "DROP USER", "ALTER USER", "CREATE SCHEMA", "DROP SCHEMA", "ALTER DEFAULT PRIVILEGES",
 	"ACCESS CATALOG", "ACCESS SYSTEM TABLE", "CREATE TABLE", "DROP TABLE", "ALTER TABLE",

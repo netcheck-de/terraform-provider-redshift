@@ -6,7 +6,7 @@ description: Reads explicit creator-specific default permissions for future obje
 
 # redshift_default_privileges (Data Source)
 
-Reads one explicit default-privilege tuple without changing permissions on current or future objects. See AWS
+Reads one default-privilege tuple without changing permissions on current or future objects. See AWS
 [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
 
 ```sql
@@ -33,25 +33,28 @@ data "redshift_default_privileges" "reports" {
 ### Required
 
 - `database_name` (String) Local database receiving default privileges.
-- `grantee` (String) Receiving identity name; use public for PUBLIC.
-- `grantee_type` (String) ROLE, USER, GROUP, or PUBLIC.
-- `object_type` (String) TABLES, FUNCTIONS, or PROCEDURES.
-- `owner` (String) User creating the future objects.
+- `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`.
+- `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`.
+- `object_type` (String) `TABLES` (tables and views), `FUNCTIONS`, or `PROCEDURES`.
 
 ### Optional
 
-- `schema_name` (String) Optional schema; omit for database-wide defaults.
+- `owner` (String) User whose future objects receive the privileges (`FOR USER`). Omit it to define the defaults of the user the provider connects as, which is what Redshift applies without `FOR USER`; the tuple then follows that connection user.
+- `schema_name` (String) Schema whose future objects receive the privileges (`IN SCHEMA`); omit it for database-wide defaults. Schema defaults add to the database-wide ones and cannot remove them.
 
 ### Read-Only
 
+- `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `privileges` (Set of String) Current explicit privileges for the selected tuple; inherited privileges are excluded.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the permission tuple's JSON identity, using the paired resource's warehouse, provider
-database, `database_name`, `owner`, `object_type`, `grantee`, and `grantee_type` keys. `schema_name` is included when
-configured. An existing tuple with no explicit privileges still has an ID.
+database, `database_name`, `object_type`, `grantee`, and `grantee_type` keys. `owner` and `schema_name` are included
+when configured; without `owner` the lookup reads the defaults of the user the provider connects as. An existing tuple
+with no explicit privileges still has an ID.
 
 `privileges` is empty when no entries exist for this exact tuple. Missing parents raise errors. Global and
-schema-specific defaults are distinct; implicit PUBLIC defaults and inherited access are excluded. Grant-option rows can
-be observed, but their grant-option flags are not returned.
+schema-specific defaults are distinct; inherited access is excluded. The database-wide `PUBLIC` `FUNCTIONS` tuple also
+reports the `EXECUTE` that Redshift grants on new functions implicitly, until it is revoked. `grant_option_privileges`
+lists the privileges a user receives `WITH GRANT OPTION`.

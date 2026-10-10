@@ -9,13 +9,15 @@ import (
 )
 
 var _ = registerReplacementPolicy("redshift_object_grant", map[string]replaceRule{
-	"database_name": replaceAlways,
-	"schema_name":   replaceAlways,
-	"object_name":   replaceAlways,
-	"object_type":   replaceAlways,
-	"grantee":       replaceAlways,
-	"grantee_type":  replaceAlways,
-	"privileges":    replaceNever,
+	"database_name":           replaceAlways,
+	"schema_name":             replaceAlways,
+	"object_name":             replaceAlways,
+	"object_type":             replaceAlways,
+	"arguments":               replaceAlways,
+	"grantee":                 replaceAlways,
+	"grantee_type":            replaceAlways,
+	"privileges":              replaceNever,
+	"grant_option_privileges": replaceNever,
 })
 
 // TestObjectGrantLifecycle exercises explicit group privileges on a local table.

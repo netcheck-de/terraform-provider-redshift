@@ -247,6 +247,9 @@ func TestPrivilegeCreateRejectsInvalidTupleBeforeState(t *testing.T) {
 			values := map[string]attr.Value{}
 			for key := range objectType.AttrTypes {
 				values[key] = types.StringNull()
+				if set, ok := objectType.AttrTypes[key].(types.SetType); ok {
+					values[key] = types.SetValueMust(set.ElemType, nil)
+				}
 			}
 			values["privileges"] = types.SetValueMust(types.StringType, nil)
 			values["database_name"], values["object_type"] = types.StringValue("analytics"), types.StringValue("DATABASE")

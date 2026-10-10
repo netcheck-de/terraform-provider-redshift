@@ -27,7 +27,7 @@ data "redshift_system_grant" "operators" {
 
 ### Required
 
-- `role` (String) Receiving SQL role.
+- `role` (String) Receiving SQL role; Redshift grants system permissions to roles only.
 
 ### Read-Only
 

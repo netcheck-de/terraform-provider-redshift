@@ -1,0 +1,1 @@
+-- error: arguments is only valid for FUNCTION and PROCEDURE

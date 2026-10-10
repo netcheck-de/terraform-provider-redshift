@@ -1,1 +1,1 @@
--- error: iam_role_arn must be an IAM role ARN or default
+-- error: iam_role_arn must be an IAM role ARN, default, or ALL

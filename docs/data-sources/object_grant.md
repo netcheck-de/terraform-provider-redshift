@@ -1,16 +1,19 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_object_grant Data Source - terraform-provider-redshift
-description: Reads explicit permissions on one local object for one SQL identity.
+description: Reads explicit permissions on one local object, or common to all current objects of a schema, for one SQL identity.
 ---
 
 # redshift_object_grant (Data Source)
 
-Reads explicit local database/schema/table privileges, including view access through `TABLE`. See AWS
+Reads explicit local database, schema, table (including views), function, or procedure privileges, or the privileges
+common to all current tables, functions, or procedures of a schema. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
 
 ```sql
 SHOW GRANTS ON ...;
+SELECT ... FROM svv_function_privileges WHERE namespace_name = '...' ...;
+SELECT ... FROM svv_relation_privileges WHERE namespace_name = '...' ...;
 ```
 
 ## Example Usage
@@ -33,25 +36,28 @@ data "redshift_object_grant" "report" {
 ### Required
 
 - `database_name` (String) Local database containing the object.
-- `grantee` (String) Receiving identity name; use public for PUBLIC.
-- `grantee_type` (String) ROLE, USER, GROUP, or PUBLIC.
-- `object_type` (String) TABLE (including views), SCHEMA, or DATABASE.
+- `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`.
+- `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`.
+- `object_type` (String) `DATABASE`, `SCHEMA`, `TABLE` (including views), `FUNCTION`, `PROCEDURE`, or a snapshot of a schema's current objects: `ALL TABLES`, `ALL FUNCTIONS`, or `ALL PROCEDURES`.
 
 ### Optional
 
-- `object_name` (String) Table or view name; required only for TABLE.
-- `schema_name` (String) Required for TABLE and SCHEMA; omit for DATABASE.
+- `arguments` (String) Comma-separated argument types of a `FUNCTION` or `PROCEDURE`, such as `integer, varchar`, which select one overload; omit it for a routine without arguments. Types are canonicalized and lengths dropped, because Redshift identifies overloads by type names only.
+- `object_name` (String) Table, view, function, or procedure name; required for `TABLE`, `FUNCTION`, and `PROCEDURE` only.
+- `schema_name` (String) Schema containing the object, or whose objects an `ALL …` snapshot covers; required for every type except `DATABASE`.
 
 ### Read-Only
 
+- `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `privileges` (Set of String) Current explicit privileges for the selected tuple; inherited privileges are excluded.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the permission tuple's JSON identity, using the paired resource's warehouse, provider
-database, `database_name`, `schema_name`, `object_name`, `object_type`, `grantee`, and `grantee_type` keys. An existing
-tuple with no explicit privileges still has an ID.
+database, `database_name`, `schema_name`, `object_name`, `object_type`, `arguments`, `grantee`, and `grantee_type` keys
+that are set. An existing tuple with no explicit privileges still has an ID.
 
 No explicit grants returns an empty set; a missing target or grantee raises an error. Unlike resource reconciliation,
-observational reads can include permissions with grant options or newly introduced privilege names. Grant options
-themselves are not returned. No grants are adopted, revoked, or added.
+observational reads can include newly introduced privilege names. `grant_option_privileges` lists the privileges a user
+holds `WITH GRANT OPTION`. Function and procedure lookups select the overload with `arguments`. No grants are adopted,
+revoked, or added.

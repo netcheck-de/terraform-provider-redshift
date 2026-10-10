@@ -6,7 +6,7 @@ description: Reads explicit creator-specific default permissions for future obje
 
 # redshift_default_privileges (Data Source)
 
-Reads one explicit default-privilege tuple without changing permissions on current or future objects. See AWS
+Reads one default-privilege tuple without changing permissions on current or future objects. See AWS
 [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
 
 ```sql
@@ -22,9 +22,11 @@ SELECT ... FROM svv_default_privileges WHERE owner_name = 'owner' ...;
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the permission tuple's JSON identity, using the paired resource's warehouse, provider
-database, `database_name`, `owner`, `object_type`, `grantee`, and `grantee_type` keys. `schema_name` is included when
-configured. An existing tuple with no explicit privileges still has an ID.
+database, `database_name`, `object_type`, `grantee`, and `grantee_type` keys. `owner` and `schema_name` are included
+when configured; without `owner` the lookup reads the defaults of the user the provider connects as. An existing tuple
+with no explicit privileges still has an ID.
 
 `privileges` is empty when no entries exist for this exact tuple. Missing parents raise errors. Global and
-schema-specific defaults are distinct; implicit PUBLIC defaults and inherited access are excluded. Grant-option rows can
-be observed, but their grant-option flags are not returned.
+schema-specific defaults are distinct; inherited access is excluded. The database-wide `PUBLIC` `FUNCTIONS` tuple also
+reports the `EXECUTE` that Redshift grants on new functions implicitly, until it is revoked. `grant_option_privileges`
+lists the privileges a user receives `WITH GRANT OPTION`.

@@ -29,7 +29,9 @@ Changing `role` replaces the grant; an empty `privileges` set revokes explicit p
 user/schema/table/role/datashare administration; function, external-function, procedure, view, model and library
 creation/deletion; `ALTER DEFAULT PRIVILEGES`, `ACCESS CATALOG`, `ACCESS SYSTEM TABLE`, `TRUNCATE TABLE`, `VACUUM`,
 `ANALYZE`, `CANCEL`, `IGNORE RLS`, `EXPLAIN RLS`, and `EXPLAIN MASKING`. Use full SQL names such as
-`CREATE OR REPLACE FUNCTION`. `ALL` is deliberately not accepted; declare explicit privileges.
+`CREATE OR REPLACE FUNCTION`. The accepted names are exactly the system permissions of the GRANT role syntax and the
+[RBAC system permissions](https://docs.aws.amazon.com/redshift/latest/dg/r_roles-system-privileges.html) table. `ALL`
+is deliberately not accepted; declare explicit privileges.
 
 ## Lifecycle and Ownership
 

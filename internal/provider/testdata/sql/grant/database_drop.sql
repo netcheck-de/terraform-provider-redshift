@@ -1,0 +1,1 @@
+-- error: DATABASE grants support only CREATE, USAGE, TEMPORARY, ALTER, not "DROP"

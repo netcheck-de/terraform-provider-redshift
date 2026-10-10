@@ -1,18 +1,20 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_grant Resource - terraform-provider-redshift
-description: Manages role or producer datashare privileges within a database or schema scope.
+description: Manages role, user, or producer datashare privileges within a database or schema scope.
 ---
 
 # redshift_grant (Resource)
 
-Manages the exact privilege set for **one role or datashare, database, and scope**. Other recipients, scopes, and
-object-specific grants are independent. An empty `privileges` set revokes the privileges in this tuple. See AWS
-[GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
+Manages the exact privilege set for **one role, user, or datashare, database, and scope**. Other recipients, scopes,
+and object-specific grants are independent. An empty `privileges` set revokes the privileges in this tuple. See AWS
+[GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
+[REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 
 ```sql
 GRANT privilege ... TO ...;
 REVOKE privilege ... FROM ...;
+REVOKE GRANT OPTION ... FROM ...;
 ```
 
 Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
@@ -41,49 +43,105 @@ resource "redshift_grant" "readers" {
 
 ### Required
 
-- `database_name` (String) Local or shared database receiving scoped grants; changing it replaces the grant.
-- `privileges` (Set of String) Desired uppercase SQL privileges; updated in place. An empty set revokes all grants for this tuple.
-- `scope` (String) `DATABASE`, `SCHEMAS`, `SCHEMA`, `TABLES`, `FUNCTIONS`, or `PROCEDURES`. `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope. Changing it replaces the grant.
+- `database_name` (String) Local or shared database receiving scoped grants. Changing it replaces the grant.
+- `privileges` (Set of String) Desired uppercase SQL privileges; updated in place. An empty set revokes all grants for this tuple. `DATABASE`: `CREATE`, `USAGE`, `TEMPORARY`, `ALTER`. `SCHEMAS` and `SCHEMA`: `CREATE`, `USAGE`, `ALTER`, `DROP`. `TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `TRUNCATE`, `REFERENCES`. `FUNCTIONS` and `PROCEDURES`: `EXECUTE`. `LANGUAGES`: `USAGE`. `COPY JOBS`: `CREATE`, `ALTER`, `DROP`. `TEMPLATES`: `ALTER`, `DROP`, `USAGE`.
+- `scope` (String) `DATABASE` or `SCHEMA` for the database or schema itself, or the object class of a scoped grant that covers current and future objects: `SCHEMAS`, `TABLES`, `FUNCTIONS`, `PROCEDURES`, `LANGUAGES`, `COPY JOBS`, or `TEMPLATES`. `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope. Changing it replaces the grant.
 
 ### Optional
 
-- `datashare` (String) Producer datashare receiving `SCHEMA` `USAGE` or schema-scoped `TABLES` `SELECT`; requires a local database and `schema_name`. Conflicts with `role` and with datashare membership resources for the same tuple. Changing it replaces the grant.
-- `role` (String) Receiving Redshift role; configure exactly one of `role` or `datashare`. Changing it replaces the grant.
-- `schema_name` (String) Required for `SCHEMA`; optional for `TABLES`, `FUNCTIONS`, and `PROCEDURES` to limit the grant to one schema. Omit for `DATABASE` and `SCHEMAS`. Changing it replaces the grant.
+- `datashare` (String) Producer datashare receiving `SCHEMA` `USAGE` or schema-scoped `TABLES` `SELECT`; requires a local database and `schema_name`. Conflicts with datashare membership resources for the same tuple. Changing it replaces the grant.
+- `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
+- `role` (String) Receiving Redshift role; configure exactly one of `role`, `user`, or `datashare`. Changing it replaces the grant.
+- `schema_name` (String) Required for `SCHEMA`; optional for `TABLES`, `FUNCTIONS`, `PROCEDURES`, and `TEMPLATES` to limit the grant to one schema. Omit for `DATABASE`, `SCHEMAS`, `LANGUAGES`, and `COPY JOBS`. Changing it replaces the grant.
+- `user` (String) Receiving database user; the only recipient that can hold grant options. Changing it replaces the grant.
 
 ### Read-Only
 
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-Supported values are `USAGE`, `CREATE`, `TEMPORARY`, `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, and
-`TRUNCATE`, `ALTER`, and `EXECUTE`. Redshift still determines which privileges are valid for each scope. An empty set
-revokes all privileges within the owned tuple.
+## Scopes and Privileges
+
+`DATABASE` and `SCHEMA` grant on the database or schema itself. The other scopes are scoped permissions: they cover
+every current and future object of the class in the database, or in `schema_name` where the scope accepts it.
+
+| `scope`      | `schema_name` | Privileges                                                                        |
+|--------------|---------------|-----------------------------------------------------------------------------------|
+| `DATABASE`   | omit          | `CREATE`, `USAGE`, `TEMPORARY`, `ALTER`                                           |
+| `SCHEMAS`    | omit          | `CREATE`, `USAGE`, `ALTER`, `DROP`                                                |
+| `SCHEMA`     | required      | `CREATE`, `USAGE`, `ALTER`, `DROP`                                                |
+| `TABLES`     | optional      | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `TRUNCATE`, `REFERENCES` |
+| `FUNCTIONS`  | optional      | `EXECUTE`                                                                         |
+| `PROCEDURES` | optional      | `EXECUTE`                                                                         |
+| `LANGUAGES`  | omit          | `USAGE`                                                                           |
+| `COPY JOBS`  | omit          | `CREATE`, `ALTER`, `DROP`                                                         |
+| `TEMPLATES`  | optional      | `ALTER`, `DROP`, `USAGE`                                                          |
+
+Planning rejects other privileges. `DATABASE` `USAGE` is for shared databases; local databases receive `SCHEMAS`
+`USAGE` and `TABLES` `SELECT`. Use `scope = "SCHEMA"`, `schema_name = redshift_schema.serving.name`, and
+`privileges = ["USAGE"]` for explicit schema access.
+
+Redshift stores scoped routine permissions in one catalog scope that does not distinguish between functions and
+procedures, so a `FUNCTIONS` tuple and a `PROCEDURES` tuple for the same recipient/database/schema own the same grants.
+Declare only one such tuple per recipient/database/schema; prefer `FUNCTIONS` consistently.
+
+## Recipients and Grant Options
+
+Configure exactly one of `role`, `user`, or `datashare`. Scoped permissions accept only users and roles, which is why
+groups and `PUBLIC` are not recipients here; use
+[object grants](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/object_grant) for
+explicit database or schema privileges of groups and `PUBLIC`.
+
+A user can hold privileges `WITH GRANT OPTION`. `grant_option_privileges` owns which of the user's privileges carry the
+option: it must be a subset of `privileges`, defaults to none, and only a `user` recipient accepts it. Removing a
+privilege from the set keeps the privilege and revokes only its option with `REVOKE GRANT OPTION`; Redshift rejects
+that while grants the user made depend on it, because the provider never cascades.
+
+```terraform
+resource "redshift_grant" "analyst_tables" {
+  database_name           = "analytics"
+  schema_name             = "serving"
+  user                    = redshift_user.analyst.name
+  scope                   = "TABLES"
+  privileges              = ["SELECT", "INSERT"]
+  grant_option_privileges = ["SELECT"]
+}
+
+resource "redshift_grant" "developer_languages" {
+  database_name = "analytics"
+  role          = redshift_role.developers.name
+  scope         = "LANGUAGES"
+  privileges    = ["USAGE"]
+}
+
+resource "redshift_grant" "loader_copy_jobs" {
+  database_name = "analytics"
+  user          = redshift_user.loader.name
+  scope         = "COPY JOBS"
+  privileges    = ["CREATE", "ALTER", "DROP"]
+}
+
+resource "redshift_grant" "reader_templates" {
+  database_name = "analytics"
+  schema_name   = "serving"
+  role          = redshift_role.readers.name
+  scope         = "TEMPLATES"
+  privileges    = ["USAGE"]
+}
+```
 
 ## Lifecycle and Ownership
 
-The resource reads `SHOW GRANTS FOR ROLE` in the target database for local databases and in the administration database
-for shared databases. It revokes unexpected privileges in the owned tuple and grants missing ones. An unsupported
-existing privilege raises an error before mutation. `DATABASE` `USAGE` is for shared databases; local databases receive
-`SCHEMAS` `USAGE` and `TABLES` `SELECT`. The provider does not manage individual users, `PUBLIC` grants, object-specific
-grants, or direct system privileges. Use
-[object grants](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/object_grant) for
-explicit local object/user/group privileges and
-[system grants](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/system_grant) for
-role capabilities.
+A role's grants are read with `SHOW GRANTS FOR ROLE … FROM DATABASE`. A user's grants are read with
+`SHOW GRANTS ON DATABASE … FOR` or `SHOW GRANTS ON SCHEMA … FOR`, which report `admin_option`, so grant options are
+observed instead of being folded into plain privileges. Local databases are read in the target database and shared
+databases through the administration database. The resource revokes unexpected privileges in the owned tuple and grants
+missing ones; an unsupported existing privilege raises an error before mutation. A missing database, schema, or
+recipient removes the grant from state. Direct system privileges belong to
+[system grants](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/system_grant).
 
-Use `scope = "SCHEMA"`, `schema_name = redshift_schema.serving.name`, and `privileges = ["USAGE"]` for explicit schema
-access. With `scope = "TABLES"` and `schema_name` set, the grant applies to all current and future tables in that
-schema. Scope and privilege combinations are ultimately validated by Redshift.
-
-Use `FUNCTIONS` or `PROCEDURES` with `EXECUTE` for scoped routine execution. Both scopes may be limited to one schema
-with `schema_name`; without it they apply database-wide. Redshift stores scoped routine permissions in one shared
-catalog scope that does not distinguish between functions and procedures, so a `FUNCTIONS` tuple and a `PROCEDURES`
-tuple for the same role/database/schema own the same grants. Declare only one such tuple per role/database/schema to
-avoid overlapping ownership; prefer `FUNCTIONS` consistently.
-
-Reference managed role and database names to establish creation order. Changes to those names propagate into the grant's
-immutable inputs and Terraform replaces the grant using the provider's schema policy.
+Reference managed role, user, and database names to establish creation order. Changes to those names propagate into the
+grant's immutable inputs and Terraform replaces the grant using the provider's schema policy.
 
 ## Datashare Grants
 
@@ -128,17 +186,22 @@ import {
 }
 ```
 
-Alternatively, use `terraform import`. The datashare import identity uses `datashare` in place of `role` and includes
-`schema_name`:
+Alternatively, use `terraform import`. The identity names the one configured recipient key (`role`, `user`, or
+`datashare`) and includes `schema_name` when set:
 
 ```shell
 # Role grant
 terraform import 'redshift_grant.readers["TABLES"]' \
   '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","role":"ncidc:analytics-readers","scope":"TABLES"}'
 
+# User grant: uses user in place of role and includes schema_name when set
+terraform import redshift_grant.analyst_tables \
+  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","user":"analyst","schema_name":"serving","scope":"TABLES"}'
+
 # Datashare grant: uses datashare in place of role and includes schema_name
 terraform import redshift_grant.share_tables \
   '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","datashare":"analytics_share","schema_name":"serving","scope":"TABLES"}'
 ```
 
-The actual privilege set is read from the catalog during refresh; compare the next plan to the intended policy.
+The actual privilege and grant option sets are read from the catalog during refresh; compare the next plan to the
+intended policy.

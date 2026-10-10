@@ -143,7 +143,7 @@ func TestPrivilegeOptionStatementsSQL(t *testing.T) {
 // TestPrivilegeGrantOptionSchema exposes grant_option_privileges only on types that opt in, defaulting to none.
 func TestPrivilegeGrantOptionSchema(t *testing.T) {
 	var plain, options resource.SchemaResponse
-	newObjectGrantResource().Schema(context.Background(), resource.SchemaRequest{}, &plain)
+	newSystemGrantResource().Schema(context.Background(), resource.SchemaRequest{}, &plain)
 	newOptionGrantTestResource().Schema(context.Background(), resource.SchemaRequest{}, &options)
 	assert.NotContains(t, plain.Schema.Attributes, "grant_option_privileges")
 	assert.NotContains(t, newOptionGrantTestResource().(*privilegeResource).attributes, "grant_option_privileges", "the shared attribute map must stay unchanged")
@@ -227,6 +227,7 @@ func TestPrivilegeGrantOptionRead(t *testing.T) {
 	assert.Equal(t, []string{"SELECT"}, grantOptionPrivileges(data))
 
 	plain := newObjectGrantResource().(*privilegeResource)
+	plain.grantOptions = false
 	plain.resourceClient = testResourceClient(client)
 	data = privilegeObject(t, plain, optionGrantFields)
 	_, _, err = plain.read(context.Background(), &data)

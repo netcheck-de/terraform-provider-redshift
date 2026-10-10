@@ -233,7 +233,7 @@ func grantTranscripts() []transcriptCase {
 		{"datashare_schema", "local", "serving", "producer", "SCHEMA", "SCHEMA", "USAGE"},
 		{"datashare_tables", "local", "serving", "producer", "TABLES", "TABLES", "SELECT"},
 	} {
-		model := grantModel{DatabaseName: types.StringValue("analytics"), Scope: types.StringValue(shape.scope), Role: types.StringValue("example:readers"), Datashare: types.StringNull(), SchemaName: types.StringNull()}
+		model := grantModel{DatabaseName: types.StringValue("analytics"), Scope: types.StringValue(shape.scope), Role: types.StringValue("example:readers"), User: types.StringNull(), Datashare: types.StringNull(), SchemaName: types.StringNull(), GrantOptionPrivileges: types.SetValueMust(types.StringType, nil)}
 		identity := "example:readers"
 		if shape.datashare != "" {
 			model.Role, model.Datashare, identity = types.StringNull(), types.StringValue(shape.datashare), "ds:"+shape.datashare

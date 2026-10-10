@@ -1,17 +1,21 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_object_grant Resource - terraform-provider-redshift
-description: Manages explicit privileges on one local database object for one SQL grantee.
+description: Manages explicit privileges on one local database object, or on all current objects of a schema, for one SQL grantee.
 ---
 
 # redshift_object_grant (Resource)
 
-Owns the exact explicit privilege set for one local database object and one grantee. Tables and views use `TABLE`. See
-AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
+Owns the exact explicit privilege set for one local database object and one grantee. Tables and views use `TABLE`;
+functions and procedures name their overload with `arguments`. The `ALL TABLES`, `ALL FUNCTIONS`, and `ALL PROCEDURES`
+types grant on every object that currently exists in a schema. See AWS
+[GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
+[REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 
 ```sql
 GRANT privilege ON ... TO ...;
 REVOKE privilege ON ... FROM ...;
+REVOKE GRANT OPTION FOR privilege ON ... FROM ...;
 ```
 
 Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
@@ -37,37 +41,96 @@ resource "redshift_object_grant" "report" {
 
 ### Required
 
-- `database_name` (String) Local database containing the object.
-- `grantee` (String) Receiving identity name; use public for PUBLIC.
-- `grantee_type` (String) ROLE, USER, GROUP, or PUBLIC.
-- `object_type` (String) TABLE (including views), SCHEMA, or DATABASE.
-- `privileges` (Set of String) Exact explicit privilege set. An empty set revokes owned privileges.
+- `database_name` (String) Local database containing the object. Changing it replaces the grant.
+- `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`. Changing it replaces the grant.
+- `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.
+- `object_type` (String) `DATABASE`, `SCHEMA`, `TABLE` (including views), `FUNCTION`, `PROCEDURE`, or a snapshot of a schema's current objects: `ALL TABLES`, `ALL FUNCTIONS`, or `ALL PROCEDURES`. Changing it replaces the grant.
+- `privileges` (Set of String) Exact explicit privilege set; updated in place. An empty set revokes owned privileges. `DATABASE`: `CREATE`, `USAGE`, `TEMPORARY`, `ALTER`. `SCHEMA`: `CREATE`, `USAGE`, `ALTER`, `DROP`. `TABLE`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `ALTER`, `TRUNCATE`. `FUNCTION`, `PROCEDURE`, `ALL FUNCTIONS`, and `ALL PROCEDURES`: `EXECUTE`. `ALL TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`. A snapshot reports only the privileges every current object holds.
 
 ### Optional
 
-- `object_name` (String) Table or view name; required only for TABLE.
-- `schema_name` (String) Required for TABLE and SCHEMA; omit for DATABASE.
+- `arguments` (String) Comma-separated argument types of a `FUNCTION` or `PROCEDURE`, such as `integer, varchar`, which select one overload; omit it for a routine without arguments. Types are canonicalized and lengths dropped, because Redshift identifies overloads by type names only. Changing it replaces the grant.
+- `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
+- `object_name` (String) Table, view, function, or procedure name; required for `TABLE`, `FUNCTION`, and `PROCEDURE` only. Changing it replaces the grant.
+- `schema_name` (String) Schema containing the object, or whose objects an `ALL …` snapshot covers; required for every type except `DATABASE`. Changing it replaces the grant.
 
 ### Read-Only
 
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-All identity arguments require replacement when changed; `privileges` updates in place. Database privileges: `CREATE`,
-`USAGE`, `TEMPORARY`, `ALTER`. Schema privileges: `CREATE`, `USAGE`, `ALTER`, `DROP`. Table privileges: `SELECT`,
-`INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `ALTER`, `TRUNCATE`. Redshift validates which privileges apply to
-the specific object, including external schemas.
+All identity arguments require replacement when changed; `privileges` and `grant_option_privileges` update in place.
+
+| `object_type`    | Requires                                         | Privileges                                                                        |
+|------------------|--------------------------------------------------|-----------------------------------------------------------------------------------|
+| `DATABASE`       | —                                                | `CREATE`, `USAGE`, `TEMPORARY`, `ALTER`                                           |
+| `SCHEMA`         | `schema_name`                                    | `CREATE`, `USAGE`, `ALTER`, `DROP`                                                |
+| `TABLE`          | `schema_name`, `object_name`                     | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `ALTER`, `TRUNCATE` |
+| `FUNCTION`       | `schema_name`, `object_name`, optional arguments | `EXECUTE`                                                                         |
+| `PROCEDURE`      | `schema_name`, `object_name`, optional arguments | `EXECUTE`                                                                         |
+| `ALL TABLES`     | `schema_name`                                    | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`                      |
+| `ALL FUNCTIONS`  | `schema_name`                                    | `EXECUTE`                                                                         |
+| `ALL PROCEDURES` | `schema_name`                                    | `EXECUTE`                                                                         |
+
+## Functions and Procedures
+
+Redshift overloads routine names, so `arguments` lists the argument types that select one overload, such as
+`integer, varchar(10)`. Types are validated and canonicalized (`int4` becomes `integer`), and lengths are dropped,
+because Redshift identifies overloads by type names alone; omit `arguments` for a routine without arguments. The
+configured spelling is kept in state and in the import identity. Redshift grants `EXECUTE` on a new function to
+`PUBLIC` implicitly; the function catalog reports that grant only once the function's privileges have been changed, so
+use [default privileges](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/default_privileges)
+to stop granting it to future functions.
+
+```terraform
+resource "redshift_object_grant" "score" {
+  database_name           = "analytics"
+  schema_name             = "reporting"
+  object_name             = "f_score"
+  object_type             = "FUNCTION"
+  arguments               = "integer, varchar"
+  grantee                 = redshift_user.analyst.name
+  grantee_type            = "USER"
+  privileges              = ["EXECUTE"]
+  grant_option_privileges = ["EXECUTE"]
+}
+
+resource "redshift_object_grant" "reporting_tables" {
+  database_name = "analytics"
+  schema_name   = "reporting"
+  object_type   = "ALL TABLES"
+  grantee       = redshift_role.readers.name
+  grantee_type  = "ROLE"
+  privileges    = ["SELECT"]
+}
+```
+
+## Snapshots of a Schema
+
+`ALL TABLES`, `ALL FUNCTIONS`, and `ALL PROCEDURES` use `GRANT … ON ALL … IN SCHEMA`, which grants on the objects that
+exist when the statement runs; objects created later are not covered. Refresh reports only the privileges that every
+current object of the type holds, so a new object without them shows up as drift and the next apply grants them again.
+Tables include views. A schema without objects of the type, such as one that holds only procedures for
+`ALL FUNCTIONS`, has nothing to cover and is treated as a missing grant. A privilege carries the grant option only when
+every object holds it with the option.
+For current and future objects, use [scoped grants](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/grant)
+or default privileges instead.
+
+## Grant Options
+
+A `USER` grantee can hold privileges `WITH GRANT OPTION`. `grant_option_privileges` owns which of them carry the option:
+it must be a subset of `privileges` and defaults to none, so options granted outside Terraform are revoked with
+`REVOKE GRANT OPTION FOR`, which keeps the privilege itself. Groups, roles, and `PUBLIC` cannot hold grant options.
 
 ## Lifecycle and Ownership
 
-The resource checks object/grantee existence and reads `SHOW GRANTS ON` the object in the local database. Scoped,
-inherited, and other grantee grants are independent. It revokes extras, adds missing privileges, and verifies
-convergence. Grant options are not managed; existing grant-option rows raise an error before mutation. Missing parents
-remove the resource from state. Avoid overlapping this resource with `redshift_grant` for the same explicit
-schema/database tuple. Function/procedure signatures, column grants, shared database objects, and Lake Formation IAM
-grants are future work.
-
-Refresh reads the current explicit grants into `privileges`.
+The resource checks object and grantee existence. Databases, schemas, and tables are read with `SHOW GRANTS ON` the
+object, routines with `SVV_FUNCTION_PRIVILEGES`, and snapshots with `SVV_RELATION_PRIVILEGES` or
+`SVV_FUNCTION_PRIVILEGES`, all in the object's local database. Scoped, inherited, and other grantee grants are
+independent. It revokes extras, adds missing privileges, and verifies convergence. Missing parents remove the resource
+from state. Avoid overlapping this resource with `redshift_grant` for the same explicit schema/database tuple, and a
+snapshot with single-object grants of the same grantee. Language privileges, column grants, shared database objects,
+and Lake Formation IAM grants are out of scope.
 
 ## Import
 
@@ -89,9 +152,13 @@ import {
 }
 ```
 
-Alternatively, use `terraform import`:
+Alternatively, use `terraform import`. Routine identities add `arguments` as configured:
 
 ```shell
 terraform import redshift_object_grant.report \
   '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","schema_name":"reporting","object_name":"daily_summary","object_type":"TABLE","grantee":"report_readers","grantee_type":"GROUP"}'
+
+# Function overload: arguments as configured
+terraform import redshift_object_grant.score \
+  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","schema_name":"reporting","object_name":"f_score","object_type":"FUNCTION","arguments":"integer, varchar","grantee":"analyst","grantee_type":"USER"}'
 ```

@@ -29,9 +29,9 @@ data "redshift_assumerole_grant" "reader" {
 
 ### Required
 
-- `grantee` (String) Receiving identity name; use public for PUBLIC.
-- `grantee_type` (String) ROLE, USER, GROUP, or PUBLIC.
-- `iam_role_arn` (String) IAM role ARN, or default for the namespace default role.
+- `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`.
+- `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`.
+- `iam_role_arn` (String) IAM role ARN, `default` for the namespace default IAM role, or `ALL` for every IAM role. Redshift reports grants on `default` and on `ALL` under one catalog entry, so manage a grantee through only one of them.
 
 ### Read-Only
 
@@ -45,6 +45,7 @@ still has an ID.
 
 `privileges` contains explicit command permissions, such as `COPY` and `UNLOAD`; `EXFUNC` is normalized to
 `EXTERNAL FUNCTION`. No matching explicit grants returns an empty set; a missing SQL identity raises an error. Inherited
-and unrestricted PUBLIC access are not attributed to individual identities. The lookup does not enable identity-specific
-access control, revoke PUBLIC permissions, or require the optional managed ASSUMEROLE grant to be enabled in the
-complete example.
+and unrestricted PUBLIC access are not attributed to individual identities; select `iam_role_arn = "ALL"` with
+`grantee_type = "PUBLIC"` to see whether `PUBLIC` still holds its default commands. The lookup does not enable
+identity-specific access control, revoke PUBLIC permissions, or require the optional managed ASSUMEROLE grant to be
+enabled in the complete example.

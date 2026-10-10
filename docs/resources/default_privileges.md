@@ -10,12 +10,13 @@ Owns default privileges for future objects created by one user in one local data
 See AWS [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
 
 ```sql
-ALTER DEFAULT PRIVILEGES FOR USER owner ... GRANT ... TO ...;
-ALTER DEFAULT PRIVILEGES FOR USER owner ... REVOKE ... FROM ...;
+ALTER DEFAULT PRIVILEGES ... GRANT ... TO ...;
+ALTER DEFAULT PRIVILEGES ... REVOKE ... FROM ...;
+ALTER DEFAULT PRIVILEGES ... REVOKE GRANT OPTION FOR ... FROM ...;
 ```
 
 Privileges are reconciled one at a time: extra privileges are revoked and missing ones granted. Deleting the resource
-revokes the privileges it owns.
+revokes the privileges it owns and never grants any, including the implicit `PUBLIC` default described below.
 
 ## Example Usage
 
@@ -37,35 +38,79 @@ resource "redshift_default_privileges" "reports" {
 
 ### Required
 
-- `database_name` (String) Local database receiving default privileges.
-- `grantee` (String) Receiving identity name; use public for PUBLIC.
-- `grantee_type` (String) ROLE, USER, GROUP, or PUBLIC.
-- `object_type` (String) TABLES, FUNCTIONS, or PROCEDURES.
-- `owner` (String) User creating the future objects.
-- `privileges` (Set of String) Exact explicit privilege set. An empty set revokes owned privileges.
+- `database_name` (String) Local database receiving default privileges. Changing it replaces the grant.
+- `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`. Changing it replaces the grant.
+- `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.
+- `object_type` (String) `TABLES` (tables and views), `FUNCTIONS`, or `PROCEDURES`. Changing it replaces the grant.
+- `privileges` (Set of String) Exact explicit default privilege set; updated in place. `TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `TRUNCATE`. `FUNCTIONS` and `PROCEDURES`: `EXECUTE`. Redshift grants `EXECUTE` on new functions to `PUBLIC` without being asked; the database-wide `PUBLIC` `FUNCTIONS` tuple reports it, an empty set revokes it, and deleting that tuple grants it back.
 
 ### Optional
 
-- `schema_name` (String) Optional schema; omit for database-wide defaults.
+- `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
+- `owner` (String) User whose future objects receive the privileges (`FOR USER`). Omit it to define the defaults of the user the provider connects as, which is what Redshift applies without `FOR USER`; the tuple then follows that connection user. Changing it replaces the grant.
+- `schema_name` (String) Schema whose future objects receive the privileges (`IN SCHEMA`); omit it for database-wide defaults. Schema defaults add to the database-wide ones and cannot remove them. Changing it replaces the grant.
 
 ### Read-Only
 
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-`owner` is explicit rather than the executing identity. An empty `privileges` set revokes the owned grants. All
-identity arguments require replacement. Tables support `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`,
-and `TRUNCATE`; functions/procedures support `EXECUTE`.
+An empty `privileges` set revokes the owned grants. All identity arguments require replacement. Tables support
+`SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, and `TRUNCATE`; functions and procedures support
+`EXECUTE`. Grantees can be a user, `ROLE`, `GROUP`, or `PUBLIC`.
+
+## Owner
+
+`owner` selects whose future objects receive the privileges (`FOR USER`). Only a superuser can define defaults for
+other users. Omit `owner` to define the defaults of the user the provider connects as, which is what Redshift changes
+without `FOR USER`; the tuple then follows that connection user, so a provider configuration that connects as another
+user manages that user's defaults instead.
+
+## Grant Options
+
+A `USER` grantee can receive the privileges `WITH GRANT OPTION` on every future object. `grant_option_privileges` owns
+which of them carry the option: it must be a subset of `privileges` and defaults to none. Removing a privilege from the
+set revokes only its option with `REVOKE GRANT OPTION FOR`. Groups, roles, and `PUBLIC` cannot hold grant options.
+
+## Implicit PUBLIC EXECUTE on Functions
+
+Redshift grants `EXECUTE` on every new function to `PUBLIC` without being asked; procedures run only for their owner and
+superusers by default. The database-wide tuple `grantee_type = "PUBLIC"`, `object_type = "FUNCTIONS"` without
+`schema_name` reports that implicit grant as `EXECUTE`, reading `PG_DEFAULT_ACL` because the catalog has no row for it
+until the defaults change. Set `privileges = []` to revoke it, as AWS recommends before granting `EXECUTE` to specific
+users or groups. Deleting or replacing that tuple leaves the revocation in place rather than widening access; to return
+to the Redshift default, set `privileges = ["EXECUTE"]` and apply, then remove the resource with a `removed` block that
+sets `destroy = false`. Schema-specific defaults add to the database-wide ones and cannot remove this grant.
+
+```terraform
+# Stop granting EXECUTE on new functions of the loader to everyone, then grant it to one group.
+resource "redshift_default_privileges" "no_public_functions" {
+  database_name = "analytics"
+  owner         = redshift_user.loader.name
+  object_type   = "FUNCTIONS"
+  grantee       = "public"
+  grantee_type  = "PUBLIC"
+  privileges    = []
+}
+
+resource "redshift_default_privileges" "developer_functions" {
+  database_name = "analytics"
+  owner         = redshift_user.loader.name
+  object_type   = "FUNCTIONS"
+  grantee       = redshift_group.developers.name
+  grantee_type  = "GROUP"
+  privileges    = ["EXECUTE"]
+}
+```
 
 ## Lifecycle and Ownership
 
 Reads `svv_default_privileges` in the target database. Changing another user's defaults requires appropriate SQL
 administration privileges. Schema-specific defaults add to database-wide defaults; this resource owns only its exact
-tuple. Existing tables/views/functions/procedures are unaffected, including on destroy. Grant options are not managed
-and cause an error before mutation. Scoped permissions are different: they cover current and future objects regardless
-of creator. Built-in implicit PUBLIC privileges are not part of the explicit set owned by this resource.
+tuple. Existing tables/views/functions/procedures are unaffected, including on destroy. Scoped permissions are
+different: they cover current and future objects regardless of creator.
 
-Refresh reads the current explicit defaults into `privileges`.
+Refresh reads the current explicit defaults into `privileges` and `grant_option_privileges`.
 
 ## Import
 
@@ -87,9 +132,13 @@ import {
 }
 ```
 
-Alternatively, use `terraform import`:
+Alternatively, use `terraform import`. Omit `owner` from the identity for the connection user's defaults:
 
 ```shell
 terraform import redshift_default_privileges.reports \
   '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","owner":"loader","schema_name":"reporting","object_type":"TABLES","grantee":"report_readers","grantee_type":"GROUP"}'
+
+# Defaults of the connection user: no owner key
+terraform import redshift_default_privileges.mine \
+  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","object_type":"TABLES","grantee":"analyst","grantee_type":"USER"}'
 ```

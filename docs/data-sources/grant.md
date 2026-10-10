@@ -1,7 +1,7 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_grant Data Source - terraform-provider-redshift
-description: Reads explicit role permissions within one database or schema scope.
+description: Reads explicit role, user, or datashare permissions within one database or schema scope.
 ---
 
 # redshift_grant (Data Source)
@@ -31,24 +31,28 @@ data "redshift_grant" "readers" {
 ### Required
 
 - `database_name` (String) Local or shared database receiving scoped grants.
-- `scope` (String) `DATABASE`, `SCHEMAS`, `SCHEMA`, `TABLES`, `FUNCTIONS`, or `PROCEDURES`. `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope.
+- `scope` (String) `DATABASE` or `SCHEMA` for the database or schema itself, or the object class of a scoped grant that covers current and future objects: `SCHEMAS`, `TABLES`, `FUNCTIONS`, `PROCEDURES`, `LANGUAGES`, `COPY JOBS`, or `TEMPLATES`. `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope.
 
 ### Optional
 
-- `datashare` (String) Producer datashare receiving `SCHEMA` `USAGE` or schema-scoped `TABLES` `SELECT`; requires a local database and `schema_name`. Conflicts with `role` and with datashare membership resources for the same tuple.
-- `role` (String) Receiving Redshift role; configure exactly one of `role` or `datashare`.
-- `schema_name` (String) Required for `SCHEMA`; optional for `TABLES`, `FUNCTIONS`, and `PROCEDURES` to limit the grant to one schema. Omit for `DATABASE` and `SCHEMAS`.
+- `datashare` (String) Producer datashare receiving `SCHEMA` `USAGE` or schema-scoped `TABLES` `SELECT`; requires a local database and `schema_name`. Conflicts with datashare membership resources for the same tuple.
+- `role` (String) Receiving Redshift role; configure exactly one of `role`, `user`, or `datashare`.
+- `schema_name` (String) Required for `SCHEMA`; optional for `TABLES`, `FUNCTIONS`, `PROCEDURES`, and `TEMPLATES` to limit the grant to one schema. Omit for `DATABASE`, `SCHEMAS`, `LANGUAGES`, and `COPY JOBS`.
+- `user` (String) Receiving database user; the only recipient that can hold grant options.
 
 ### Read-Only
 
+- `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `privileges` (Set of String) Current explicit privileges for the selected tuple; inherited privileges are excluded.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the permission tuple's JSON identity in the paired resource format. It includes the
-warehouse, provider database, `database_name`, `scope`, and selected `role` or `datashare`; `schema_name` is included
-when configured. An existing tuple with no explicit privileges still has an ID.
+warehouse, provider database, `database_name`, `scope`, and the selected `role`, `user`, or `datashare`; `schema_name`
+is included when configured. An existing tuple with no explicit privileges still has an ID.
 
-`privileges` is empty when no matching grants exist. A missing database, role, or datashare raises an error. This data
-source does not reconcile privilege sets. Local grants read in the target database; shared grants read through the
+`privileges` is empty when no matching grants exist. For a `user`, `grant_option_privileges` lists the privileges the
+user holds `WITH GRANT OPTION`, read from `SHOW GRANTS ON DATABASE … FOR` or `SHOW GRANTS ON SCHEMA … FOR`; roles and
+datashares never hold options. A missing database, schema, role, user, or datashare raises an error. This data source
+does not reconcile privilege sets. Local grants read in the target database; shared grants read through the
 administration database.

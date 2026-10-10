@@ -1,1 +1,1 @@
--- error: schema_name is required for SCHEMA and only valid with SCHEMA, TABLES, FUNCTIONS, or PROCEDURES scope
+-- error: schema_name is required for SCHEMA and only valid with SCHEMA, TABLES, FUNCTIONS, PROCEDURES, or TEMPLATES scope

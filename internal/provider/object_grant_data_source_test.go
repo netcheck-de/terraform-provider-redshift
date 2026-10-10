@@ -7,7 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-var _ = registerParity(parityCase{source: newObjectGrantDataSource, resource: newObjectGrantResource, selectors: []string{"database_name", "schema_name", "object_name", "object_type", "grantee", "grantee_type"}})
+var _ = registerParity(parityCase{source: newObjectGrantDataSource, resource: newObjectGrantResource, selectors: []string{"database_name", "schema_name", "object_name", "object_type", "arguments", "grantee", "grantee_type"}})
 
 // TestObjectGrantLookup observes one object's explicit group permissions without reconciling extras.
 func TestObjectGrantLookup(t *testing.T) {
