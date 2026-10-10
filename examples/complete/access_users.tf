@@ -12,6 +12,26 @@ resource "redshift_user" "reader" {
   name                = "example_reader"
   password_wo         = random_password.reader.result
   password_wo_version = 1
+
+  # Sign-in limits and the defaults every new session of the reader starts with.
+  valid_until      = "infinity"
+  connection_limit = 5
+  session_timeout  = 3600
+  syslog_access    = "RESTRICTED"
+  search_path      = ["$user", "public"]
+  session_defaults = {
+    timezone          = "UTC"
+    statement_timeout = "300000"
+  }
+}
+
+# An identity without a password signs in only with temporary IAM credentials.
+resource "redshift_user" "iam_auditor" {
+  provider          = redshift.consumer
+  name              = "example_iam_auditor"
+  password_disabled = true
+  syslog_access     = "UNRESTRICTED"
+  connection_limit  = 2
 }
 
 # A loader identity exercises the user capability flags; its password is not exported.
@@ -43,9 +63,10 @@ resource "redshift_group_membership" "reader" {
   user     = redshift_user.reader.name
 }
 
+# Reading through the membership makes the lookup's member list include the reader.
 data "redshift_group" "readers" {
   provider = redshift.consumer
-  name     = redshift_group.readers.name
+  name     = redshift_group_membership.reader.group
 }
 
 data "redshift_user" "reader" {

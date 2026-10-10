@@ -29,19 +29,23 @@ resource "redshift_group" "readers" {
 
 ### Required
 
-- `name` (String) SQL group name; changing it replaces the resource.
+- `name` (String) SQL group name. Changing it replaces the group.
 
 ### Read-Only
 
+- `group_id` (Number) Group ID from `pg_group.grosysid`.
 - `id` (String) JSON import identity; independent of Data API execution history.
+- `members` (Set of String) Names of the users currently in the group, read from `pg_group`. Informational only: this resource never changes membership, which `redshift_group_membership` manages, and refresh records members added elsewhere.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 ## Lifecycle and Ownership
 
 Creation requires a SQL superuser. Memberships and privileges are separate resources; this resource does not reconcile
-them. Delete does not remove users or revoke unrelated grants. Redshift refuses deletion while the group has object
-privileges. Order managed grants and memberships through references; group-name changes propagate into their immutable
-identity inputs and require replacement through the provider's schema.
+them. Refresh records the group ID and the current members from `pg_group`, including members added by
+`redshift_group_membership` or outside Terraform, for reference only. Delete does not remove users or revoke unrelated
+grants. Redshift refuses deletion while the group has object privileges. Order managed grants and memberships through
+references; group-name changes propagate into their immutable identity inputs and require replacement through the
+provider's schema.
 
 ## Import
 

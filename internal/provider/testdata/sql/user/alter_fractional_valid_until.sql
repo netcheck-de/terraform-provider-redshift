@@ -1,0 +1,1 @@
+-- error: valid_until "2030-01-01T00:00:00.5Z" must not have fractional seconds, because Redshift stores whole seconds

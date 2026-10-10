@@ -12,7 +12,11 @@ func dropGroupStatement(data groupModel) string {
 	return sqlclient.Stmt("DROP GROUP").Ident(data.Name.ValueString()).String()
 }
 
-// readGroupQuery looks up the group by its exact catalog name.
+// readGroupQuery looks up the group by its exact catalog name with one row per member, joined the way the AWS
+// groups page lists users by group. The left join keeps one row with an empty user name for a group without members.
 func readGroupQuery(data groupModel) sqlclient.Query {
-	return sqlclient.Select("groname").From("pg_group").Where("groname = :name", sqlclient.Bind("name", data.Name.ValueString()))
+	return sqlclient.Select("g.groname", "g.grosysid", "u.usename").
+		From("pg_group g LEFT JOIN pg_user u ON u.usesysid = ANY(g.grolist)").
+		Where("g.groname = :name", sqlclient.Bind("name", data.Name.ValueString())).
+		OrderBy("u.usename")
 }

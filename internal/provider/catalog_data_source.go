@@ -69,9 +69,11 @@ func lookupDescription(description string) string {
 // the catalog holds rather than what Terraform enforces.
 const privilegesLookupDescription = "Current explicit privileges for the selected tuple; inherited privileges are excluded."
 
-// lookupExcluded reports resource inputs that cannot be observed: secrets and apply-time triggers.
+// lookupExcluded reports resource inputs that cannot be observed: secrets, apply-time triggers, and settings the
+// catalog does not document, such as a disabled password.
 func lookupExcluded(name string, attribute resourceschema.Attribute) bool {
-	return attribute.IsWriteOnly() || name == "password_wo" || name == "password_wo_version" || name == "refresh_revision"
+	return attribute.IsWriteOnly() || name == "password_wo" || name == "password_wo_version" || name == "refresh_revision" ||
+		name == "password_disabled"
 }
 
 // lookupAttributes converts resource attributes for a lookup; observed attributes, and those listed in

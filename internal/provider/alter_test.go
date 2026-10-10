@@ -169,6 +169,12 @@ func TestAlterCoverage(t *testing.T) {
 		return alterStep[userModel]{attribute: attribute}
 	}
 	complete := []alterStep[userModel]{step("superuser"), step("create_database"), step("password_wo_version")}
+	// The user resource's other options get steps too, so the cases below vary only the three above.
+	for _, extra := range userAlterSteps {
+		if !slices.ContainsFunc(complete, func(existing alterStep[userModel]) bool { return existing.attribute == extra.attribute }) {
+			complete = append(complete, step(extra.attribute))
+		}
+	}
 	assertAlterCoverage(t, newUserResource(), complete, "password_wo")
 
 	for _, test := range []struct {
@@ -177,7 +183,7 @@ func TestAlterCoverage(t *testing.T) {
 		exempt              []string
 		missing, unexpected []string
 	}{
-		{"missing step", complete[:2], []string{"password_wo"}, []string{"password_wo_version"}, nil},
+		{"missing step", slices.Delete(slices.Clone(complete), 2, 3), []string{"password_wo"}, []string{"password_wo_version"}, nil},
 		{"missing exemption", complete, nil, []string{"password_wo"}, nil},
 		{"replacing attribute", append(slices.Clone(complete), step("name")), []string{"password_wo"}, nil, []string{"name"}},
 		{"computed attribute", append(slices.Clone(complete), step("id")), []string{"password_wo"}, nil, []string{"id"}},

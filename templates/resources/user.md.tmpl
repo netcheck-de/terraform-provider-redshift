@@ -1,17 +1,21 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_user Resource - terraform-provider-redshift
-description: Manages SQL users and write-only password rotation.
+description: Manages SQL users, their sign-in options and session defaults, and write-only password rotation.
 ---
 
 # redshift_user (Resource)
 
-Manages a password-authenticated database user. Role memberships and object privileges are independent resources. See
-AWS [CREATE USER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html).
+Manages a database user, signing in with a password or, with `password_disabled`, only with temporary IAM
+credentials or a federated identity. Role memberships and object privileges are independent resources. See AWS
+[CREATE USER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html) and
+[ALTER USER](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_USER.html).
 
 ```sql
-CREATE USER name PASSWORD '...' ...;
+CREATE USER name PASSWORD { '...' | DISABLE } ...;
 ALTER USER name ...;
+ALTER USER name SET parameter TO '...';
+ALTER USER name RESET parameter;
 DROP USER name;
 ```
 
@@ -25,12 +29,26 @@ DROP USER name;
 
 ## Lifecycle and Ownership
 
-Reads discover non-secret properties from `pg_user`; password values cannot be refreshed or compared. The provider
-changes the password only on creation or a version change. A missing password during rotation is an error. Deletion
-issues `DROP USER` without `CASCADE`; dependencies, including role grants, must be removed first.
+Reads discover non-secret properties from `pg_user` and
+[SVV_USER_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_USER_INFO.html); password values cannot be
+refreshed or compared. The provider changes the password only on creation, on a version change, or when
+`password_disabled` changes to `false`. A missing password in those cases is an error. Deletion issues `DROP USER`
+without `CASCADE`; dependencies, including role grants, must be removed first.
 
-Refresh updates `superuser` and `create_database` from the catalog. `password_wo_version` retains the configured
-rotation revision rather than a catalog value.
+Every in-place change runs one `ALTER USER` statement per option. Redshift cannot disable a superuser's password, so
+`superuser` is revoked before `PASSWORD DISABLE` and the password is enabled before `CREATEUSER`; `external_id` needs a
+disabled password and is set last. `password_disabled` is kept from configuration, because the catalog does not
+document where a disabled password is recorded; state without it, from an import or an earlier provider version,
+records `false` on refresh.
+
+Refresh updates `superuser`, `create_database`, `valid_until`, `search_path`, and `session_defaults` from `pg_user`,
+and `connection_limit`, `session_timeout`, `syslog_access`, and `external_id` from `SVV_USER_INFO`. Superusers see
+every row there; a provider identity that is not a superuser sees only its own, so these four keep their configured
+or previous values for other users. `search_path` and `session_defaults` are the stored defaults that apply at the
+user's next login (`pg_user.useconfig`), not the settings of a running session. `session_defaults` accepts only the
+documented session parameters listed above; cluster-wide parameters belong to the parameter group. `valid_until` has
+whole-second precision, because `pg_user.valuntil` is an `abstime`, and a user without an expiration is recorded as
+`infinity`.
 
 `password_wo` is a write-only argument and requires Terraform 1.11 or later. Write-only values are absent from
 **this resource's** state. The password source (for example, `random_password`) may
@@ -47,5 +65,7 @@ Alternatively, use `terraform import`:
 
 {{ codefile "shell" "examples/resources/redshift_user/import.sh" }}
 
-Import sets `password_wo_version` to `0` and does **not** rotate the existing password. Match the configured version and
-non-secret flags to the imported state for a no-change plan. Increase the version later to rotate the password.
+Import sets `password_wo_version` to `0` and `password_disabled` to `false`, and does **not** rotate the existing
+password. Match the configured version and non-secret options to the imported state for a no-change plan. Increase the
+version later to rotate the password. For an imported user whose password is disabled, configure
+`password_disabled = true`; the next apply disables it again, which changes nothing.

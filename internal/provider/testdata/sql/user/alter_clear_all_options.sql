@@ -1,0 +1,13 @@
+ALTER USER "Odd""User" SYSLOG ACCESS RESTRICTED;
+
+ALTER USER "Odd""User" VALID UNTIL 'infinity';
+
+ALTER USER "Odd""User" CONNECTION LIMIT UNLIMITED;
+
+ALTER USER "Odd""User" RESET SESSION TIMEOUT;
+
+ALTER USER "Odd""User" RESET search_path;
+
+ALTER USER "Odd""User" RESET query_group;
+
+ALTER USER "Odd""User" RESET timezone;

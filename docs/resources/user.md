@@ -1,17 +1,21 @@
 ---
 subcategory: Identity and Access
 page_title: redshift_user Resource - terraform-provider-redshift
-description: Manages SQL users and write-only password rotation.
+description: Manages SQL users, their sign-in options and session defaults, and write-only password rotation.
 ---
 
 # redshift_user (Resource)
 
-Manages a password-authenticated database user. Role memberships and object privileges are independent resources. See
-AWS [CREATE USER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html).
+Manages a database user, signing in with a password or, with `password_disabled`, only with temporary IAM
+credentials or a federated identity. Role memberships and object privileges are independent resources. See AWS
+[CREATE USER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html) and
+[ALTER USER](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_USER.html).
 
 ```sql
-CREATE USER name PASSWORD '...' ...;
+CREATE USER name PASSWORD { '...' | DISABLE } ...;
 ALTER USER name ...;
+ALTER USER name SET parameter TO '...';
+ALTER USER name RESET parameter;
 DROP USER name;
 ```
 
@@ -22,6 +26,22 @@ resource "redshift_user" "grafana" {
   name                = "grafana"
   password_wo         = random_password.grafana.result
   password_wo_version = 0
+
+  connection_limit = 10
+  session_timeout  = 3600
+  valid_until      = "2030-01-01T00:00:00Z"
+  search_path      = ["reporting", "public"]
+  session_defaults = {
+    timezone          = "Europe/Berlin"
+    statement_timeout = "300000"
+  }
+}
+
+# Signs in only with temporary IAM credentials; no password exists.
+resource "redshift_user" "etl" {
+  name              = "etl"
+  password_disabled = true
+  syslog_access     = "UNRESTRICTED"
 }
 
 resource "redshift_role_grant" "grafana_monitor" {
@@ -36,16 +56,24 @@ resource "redshift_role_grant" "grafana_monitor" {
 
 ### Required
 
-- `name` (String) Database user name; changing it replaces the resource.
+- `name` (String) Database user name. Changing it replaces the user.
 
 ### Optional
 
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
+- `connection_limit` (Number) Maximum concurrent connections (`CONNECTION LIMIT`); `-1` stands for `UNLIMITED`, the Redshift default. Not enforced for superusers. When unset, the current catalog value is recorded and left alone. Updated in place.
 - `create_database` (Boolean) `CREATEDB` privilege; defaults to `false`. Updated in place.
-- `password_wo` (String, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only password (requires Terraform 1.11 or later); required on creation and rotation. Never stored in this resource's plan or state.
-- `password_wo_version` (Number) Password rotation trigger; defaults to `0`. Increment to rotate `password_wo`. Imported users start at version 0 without changing their password.
+- `external_id` (String) Identifier of the user in a native identity provider (`EXTERNALID`); requires `password_disabled = true`. When unset, the current catalog value is recorded and left alone; Redshift has no statement that removes an external ID. Updated in place.
+- `password_disabled` (Boolean) `PASSWORD DISABLE`: the user has no password and signs in only with temporary IAM credentials or through a federated identity provider; defaults to `false`. Redshift refuses it for superusers. Changing it to `false` sets the password from `password_wo`. Kept from configuration rather than read back, because Redshift does not document where a disabled password is recorded; import records `false`. Updated in place.
+- `password_wo` (String, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only password (requires Terraform 1.11 or later); required on creation, on rotation, and when `password_disabled` changes to `false`, and not allowed while `password_disabled` is `true`. Never stored in this resource's plan or state.
+- `password_wo_version` (Number) Password rotation trigger; defaults to `0`. Increment to rotate `password_wo`. Imported users start at version 0 without changing their password. Ignored while `password_disabled` is `true`.
+- `search_path` (List of String) Stored `search_path` default (`ALTER USER ... SET search_path`) as schema names in search order; `$user` stands for the schema named after the session user. It takes effect at the user's next login. Removing it runs `RESET search_path`. Updated in place.
+- `session_defaults` (Map of String) Other stored session parameter defaults, set with `ALTER USER ... SET parameter TO 'value'` and removed with `RESET parameter`. They take effect at the user's next login. Keys are limited to the documented session parameters `analyze_threshold_percent`, `cast_super_null_on_error`, `datestyle`, `default_array_search_null_handling`, `default_geometry_encoding`, `describe_field_name_in_uppercase`, `downcase_delimited_identifier`, `enable_case_sensitive_identifier`, `enable_case_sensitive_super_attribute`, `enable_numeric_rounding`, `enable_result_cache_for_session`, `enable_spectrum_oid`, `enable_vacuum_boost`, `error_on_nondeterministic_update`, `extra_float_digits`, `interval_forbid_composite_literals`, `json_serialization_enable`, `json_serialization_parse_nested_strings`, `mv_enable_aqmv_for_session`, `navigate_super_null_on_error`, `parse_super_null_on_error`, `pg_federation_repeatable_read`, `query_group`, `spectrum_enable_pseudo_columns`, `spectrum_query_maxerror`, `statement_timeout`, `stored_proc_log_min_messages`, `timezone`, `wlm_query_slot_count`; values are strings as Redshift stores them, such as `Europe/Berlin` or `300000`. Refresh reads the stored defaults from `pg_user.useconfig`, not the values of a running session, and reports these parameters as set outside Terraform too. Updated in place.
+- `session_timeout` (Number) Idle-session timeout in seconds (`SESSION TIMEOUT`), from 60 to 1728000 and applied to new sessions; `0` removes the user's timeout (`RESET SESSION TIMEOUT`) so the warehouse setting applies. When unset, the current catalog value is recorded and left alone. Updated in place.
 - `superuser` (Boolean) `CREATEUSER` privilege; defaults to `false`. Updated in place.
+- `syslog_access` (String) System table visibility (`SYSLOG ACCESS`): `RESTRICTED`, the Redshift default, shows a regular user only their own rows in user-visible system tables and views; `UNRESTRICTED` shows rows of other users too, including the query text of their statements. When unset, the current catalog value is recorded and left alone. Updated in place.
+- `valid_until` (String) Password expiration (`VALID UNTIL`) as an RFC 3339 timestamp in whole seconds, such as `2030-01-01T00:00:00Z`, or `infinity` for none; defaults to `infinity`. Only superusers can set an expiration; creating a user without one sends no `VALID UNTIL`. Updated in place.
 
 ### Read-Only
 
@@ -54,12 +82,26 @@ resource "redshift_role_grant" "grafana_monitor" {
 
 ## Lifecycle and Ownership
 
-Reads discover non-secret properties from `pg_user`; password values cannot be refreshed or compared. The provider
-changes the password only on creation or a version change. A missing password during rotation is an error. Deletion
-issues `DROP USER` without `CASCADE`; dependencies, including role grants, must be removed first.
+Reads discover non-secret properties from `pg_user` and
+[SVV_USER_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_USER_INFO.html); password values cannot be
+refreshed or compared. The provider changes the password only on creation, on a version change, or when
+`password_disabled` changes to `false`. A missing password in those cases is an error. Deletion issues `DROP USER`
+without `CASCADE`; dependencies, including role grants, must be removed first.
 
-Refresh updates `superuser` and `create_database` from the catalog. `password_wo_version` retains the configured
-rotation revision rather than a catalog value.
+Every in-place change runs one `ALTER USER` statement per option. Redshift cannot disable a superuser's password, so
+`superuser` is revoked before `PASSWORD DISABLE` and the password is enabled before `CREATEUSER`; `external_id` needs a
+disabled password and is set last. `password_disabled` is kept from configuration, because the catalog does not
+document where a disabled password is recorded; state without it, from an import or an earlier provider version,
+records `false` on refresh.
+
+Refresh updates `superuser`, `create_database`, `valid_until`, `search_path`, and `session_defaults` from `pg_user`,
+and `connection_limit`, `session_timeout`, `syslog_access`, and `external_id` from `SVV_USER_INFO`. Superusers see
+every row there; a provider identity that is not a superuser sees only its own, so these four keep their configured
+or previous values for other users. `search_path` and `session_defaults` are the stored defaults that apply at the
+user's next login (`pg_user.useconfig`), not the settings of a running session. `session_defaults` accepts only the
+documented session parameters listed above; cluster-wide parameters belong to the parameter group. `valid_until` has
+whole-second precision, because `pg_user.valuntil` is an `abstime`, and a user without an expiration is recorded as
+`infinity`.
 
 `password_wo` is a write-only argument and requires Terraform 1.11 or later. Write-only values are absent from
 **this resource's** state. The password source (for example, `random_password`) may
@@ -88,5 +130,7 @@ terraform import redshift_user.grafana \
   '{"workgroup_name":"warehouse","database":"admin","name":"grafana"}'
 ```
 
-Import sets `password_wo_version` to `0` and does **not** rotate the existing password. Match the configured version and
-non-secret flags to the imported state for a no-change plan. Increase the version later to rotate the password.
+Import sets `password_wo_version` to `0` and `password_disabled` to `false`, and does **not** rotate the existing
+password. Match the configured version and non-secret options to the imported state for a no-change plan. Increase the
+version later to rotate the password. For an imported user whose password is disabled, configure
+`password_disabled = true`; the next apply disables it again, which changes nothing.

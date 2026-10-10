@@ -23,11 +23,35 @@ var _ = registerReplacementPolicy("redshift_user", map[string]replaceRule{
 	"create_database":     replaceNever,
 	"password_wo":         replaceNever,
 	"password_wo_version": replaceNever,
+	"password_disabled":   replaceNever,
+	"valid_until":         replaceNever,
+	"connection_limit":    replaceNever,
+	"session_timeout":     replaceNever,
+	"syslog_access":       replaceNever,
+	"external_id":         replaceNever,
+	"search_path":         replaceNever,
+	"session_defaults":    replaceNever,
 })
 
-// grafanaUser supplies a non-administrative user model for lifecycle tests.
+var _ = registerValidateConfigCase("user", validateConfigCase{
+	new:   newUserResource,
+	valid: userWith(grafanaUser(), userIdentityProvider),
+	invalid: userWith(grafanaUser(), func(data *userModel) {
+		data.PasswordDisabled, data.Password = types.BoolValue(true), types.StringValue("Secret123")
+	}),
+	unknown: userWith(grafanaUser(), func(data *userModel) {
+		data.PasswordDisabled, data.ExternalID = types.BoolUnknown(), types.StringValue("abc")
+	}),
+})
+
+// grafanaUser supplies a non-administrative user model for lifecycle tests with the schema defaults; the other
+// options are null.
 func grafanaUser() userModel {
-	return userModel{Name: types.StringValue("grafana"), Password: types.StringNull(), PasswordVersion: types.Int64Value(0), Superuser: types.BoolValue(false), CreateDB: types.BoolValue(false)}
+	data := userNullModel(types.StringValue("grafana"))
+	data.PasswordVersion, data.PasswordDisabled = types.Int64Value(0), types.BoolValue(false)
+	data.ValidUntil = types.StringValue(userValidUntilInfinity)
+	data.Superuser, data.CreateDB = types.BoolValue(false), types.BoolValue(false)
+	return data
 }
 
 // runUser invokes user lifecycle operations with a separate write-only configuration secret.
