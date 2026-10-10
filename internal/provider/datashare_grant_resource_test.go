@@ -9,9 +9,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,11 +22,172 @@ import (
 var _ = registerLifecycleCase(lifecycleCase{name: "share grant", new: newDatashareGrantResource, model: datashareGrantModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), AccountID: types.StringValue("123456789012")}, absent: func(c *catalog) { c.shareGrant = false }})
 
 var _ = registerReplacementPolicy("redshift_datashare_grant", map[string]replaceRule{
-	"database":     replaceAlways,
-	"datashare":    replaceAlways,
-	"account_id":   replaceAlways,
-	"namespace_id": replaceAlways,
+	"database":         replaceAlways,
+	"datashare":        replaceAlways,
+	"account_id":       replaceAlways,
+	"namespace_id":     replaceAlways,
+	"via_data_catalog": replaceConditional("TestDatashareGrantViaDataCatalogReplacement"),
 })
+
+// datashareCatalogGrant is an account grant to a Lake Formation account.
+func datashareCatalogGrant() datashareGrantModel {
+	return datashareGrantModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), AccountID: types.StringValue("123456789012"), NamespaceID: types.StringNull(), ViaDataCatalog: types.BoolValue(true)}
+}
+
+// TestDatashareGrantViaDataCatalogReplacement replaces the grant only when the effective form changes: null, recorded
+// before the default existed, and false are the same plain account grant, while a value unknown until apply replaces
+// because Update cannot switch forms.
+func TestDatashareGrantViaDataCatalogReplacement(t *testing.T) {
+	var response resource.SchemaResponse
+	(&datashareGrantResource{}).Schema(context.Background(), resource.SchemaRequest{}, &response)
+	attribute := response.Schema.Attributes["via_data_catalog"].(schema.BoolAttribute)
+	for _, test := range []struct {
+		state, plan types.Bool
+		replace     bool
+	}{
+		{types.BoolNull(), types.BoolValue(false), false},
+		{types.BoolValue(false), types.BoolNull(), false},
+		{types.BoolNull(), types.BoolValue(true), true},
+		{types.BoolValue(false), types.BoolValue(true), true},
+		{types.BoolValue(true), types.BoolNull(), true},
+		{types.BoolValue(true), types.BoolValue(false), true},
+		{types.BoolNull(), types.BoolUnknown(), true},
+		{types.BoolValue(false), types.BoolUnknown(), true},
+		{types.BoolValue(true), types.BoolUnknown(), true},
+	} {
+		state := testState(t, &datashareGrantResource{}, datashareGrantModel{ViaDataCatalog: test.state})
+		plan := testState(t, &datashareGrantResource{}, datashareGrantModel{ViaDataCatalog: test.plan})
+		request := planmodifier.BoolRequest{Path: path.Root("via_data_catalog"), StateValue: test.state, PlanValue: test.plan, ConfigValue: test.plan, State: state, Plan: tfsdk.Plan(plan), Config: tfsdk.Config(plan)}
+		replace := false
+		for _, modifier := range attribute.PlanModifiers {
+			var result planmodifier.BoolResponse
+			modifier.PlanModifyBool(context.Background(), request, &result)
+			require.False(t, result.Diagnostics.HasError(), "%v", result.Diagnostics)
+			replace = replace || result.RequiresReplace
+		}
+		assert.Equal(t, test.replace, replace, "%v -> %v", test.state, test.plan)
+	}
+}
+
+// TestDatashareGrantViaDataCatalogValidation accepts the Data Catalog form only for accounts, during planning and
+// before Create records state.
+func TestDatashareGrantViaDataCatalogValidation(t *testing.T) {
+	r := &datashareGrantResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+		t.Fatalf("invalid consumer reached SQL: %s", sql)
+		return nil, nil
+	}))}
+	for name, test := range map[string]struct {
+		data    datashareGrantModel
+		invalid bool
+	}{
+		"account":           {datashareCatalogGrant(), false},
+		"namespace":         {datashareGrantModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), AccountID: types.StringNull(), NamespaceID: types.StringValue("12345678-1234-1234-1234-123456789abc"), ViaDataCatalog: types.BoolValue(true)}, true},
+		"unknown":           {datashareGrantModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), AccountID: types.StringValue("123456789012"), NamespaceID: types.StringNull(), ViaDataCatalog: types.BoolUnknown()}, false},
+		"unknown namespace": {datashareGrantModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), AccountID: types.StringNull(), NamespaceID: types.StringUnknown(), ViaDataCatalog: types.BoolValue(true)}, false},
+		"neither":           {datashareGrantModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), AccountID: types.StringNull(), NamespaceID: types.StringNull(), ViaDataCatalog: types.BoolNull()}, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			config := testState(t, r, test.data)
+			var validated resource.ValidateConfigResponse
+			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(config)}, &validated)
+			assert.Equal(t, test.invalid, validated.Diagnostics.HasError(), "%v", validated.Diagnostics)
+			if test.invalid {
+				resp := resource.CreateResponse{State: tfsdk.State{Schema: config.Schema, Raw: tftypes.NewValue(config.Raw.Type(), nil)}}
+				r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(config)}, &resp)
+				require.True(t, resp.Diagnostics.HasError())
+				assert.True(t, resp.State.Raw.IsNull(), "an invalid consumer must not be recorded in state")
+			}
+		})
+	}
+	var validated resource.ValidateConfigResponse
+	r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config{Schema: testState(t, r, datashareCatalogGrant()).Schema, Raw: tftypes.NewValue(tftypes.String, "invalid")}}, &validated)
+	assert.True(t, validated.Diagnostics.HasError())
+}
+
+// TestDatashareGrantViaDataCatalogLifecycle grants and revokes the Data Catalog form and records it in the identity.
+func TestDatashareGrantViaDataCatalogLifecycle(t *testing.T) {
+	c := &catalog{}
+	var statements []string
+	r := &datashareGrantResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		if !strings.HasPrefix(sql, "SELECT") {
+			statements = append(statements, sql)
+		}
+		return c.Query(ctx, target, sql, parameters)
+	}))}
+	data := datashareCatalogGrant()
+	state, diagnostics := applyOperation(t, r, "create", nil, data, nil)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	var created datashareGrantModel
+	require.False(t, state.Get(context.Background(), &created).HasError())
+	assert.Equal(t, r.identity("admin", map[string]string{"datashare": "producer", "account_id": "123456789012", "via_data_catalog": "true"}), created.ID)
+	require.False(t, invoke(t, r, "delete", created, false).HasError())
+	assert.Equal(t, []string{
+		`GRANT USAGE ON DATASHARE "producer" TO ACCOUNT '123456789012' VIA DATA CATALOG`,
+		`REVOKE USAGE ON DATASHARE "producer" FROM ACCOUNT '123456789012' VIA DATA CATALOG`,
+	}, statements)
+	assert.False(t, c.shareGrant)
+}
+
+// TestDatashareGrantViaDataCatalogImport restores the flag from the JSON identity and rejects other values.
+func TestDatashareGrantViaDataCatalogImport(t *testing.T) {
+	r := &datashareGrantResource{}
+	for selector, valid := range map[string]bool{
+		`"account_id":"123456789012","via_data_catalog":"true"`:                           true,
+		`"account_id":"123456789012","via_data_catalog":"false"`:                          false,
+		`"account_id":"123456789012","via_data_catalog":""`:                               false,
+		`"namespace_id":"12345678-1234-1234-1234-123456789abc","via_data_catalog":"true"`: false,
+	} {
+		id := `{"workgroup_name":"warehouse","database":"admin","datashare":"producer",` + selector + `}`
+		resp := resource.ImportStateResponse{State: testState(t, r, datashareGrantModel{})}
+		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
+		require.Equal(t, !valid, resp.Diagnostics.HasError(), "%s: %v", selector, resp.Diagnostics)
+		if valid {
+			var data datashareGrantModel
+			require.False(t, resp.State.Get(context.Background(), &data).HasError())
+			assert.Equal(t, types.BoolValue(true), data.ViaDataCatalog)
+			assert.Equal(t, id, data.ID.ValueString())
+		}
+	}
+}
+
+// TestDatashareGrantUpdateRejectsFormSwitch refuses to record a switch between the account forms, which the
+// catalog cannot verify, and accepts null state as the plain form.
+func TestDatashareGrantUpdateRejectsFormSwitch(t *testing.T) {
+	plain := datashareCatalogGrant()
+	plain.ViaDataCatalog = types.BoolValue(false)
+	legacy := plain
+	legacy.ViaDataCatalog = types.BoolNull()
+	for name, test := range map[string]struct {
+		prior, planned datashareGrantModel
+		invalid        bool
+	}{
+		"to data catalog": {plain, datashareCatalogGrant(), true},
+		"to plain":        {datashareCatalogGrant(), plain, true},
+		"null to false":   {legacy, plain, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := &datashareGrantResource{testResourceClient(catalogWith()())}
+			state, diagnostics := applyOperation(t, r, "update", test.prior, test.planned, test.planned)
+			assert.Equal(t, test.invalid, diagnostics.HasError(), "%v", diagnostics)
+			if !test.invalid {
+				var updated datashareGrantModel
+				require.False(t, state.Get(context.Background(), &updated).HasError())
+				assert.Equal(t, types.BoolValue(false), updated.ViaDataCatalog)
+			}
+		})
+	}
+}
+
+// TestDatashareGrantViaDataCatalogTranscripts records the Data Catalog form beside the lifecycle transcripts.
+func TestDatashareGrantViaDataCatalogTranscripts(t *testing.T) {
+	data := datashareCatalogGrant()
+	runTranscripts(t, "lifecycle/datashare_grant_via_data_catalog", newDatashareGrantResource, []transcriptCase{
+		{name: "create", operation: "create", catalog: catalogWith(func(c *catalog) { c.shareGrant = false }), planned: data},
+		{name: "read", operation: "read", catalog: catalogWith(), prior: data},
+		{name: "delete", operation: "delete", catalog: catalogWith(), prior: data},
+		{name: "import", operation: "import", catalog: catalogWith(func(c *catalog) { c.shareGrant = false }), planned: data},
+	})
+}
 
 // TestDatashareAccountGrant checks explicit SQL usage for a consumer account.
 func TestDatashareAccountGrant(t *testing.T) {
@@ -154,6 +317,8 @@ func TestDatashareGrantImport(t *testing.T) {
 			var data datashareGrantModel
 			require.False(t, resp.State.Get(context.Background(), &data).HasError())
 			assert.Equal(t, id, data.ID.ValueString())
+			// The default records false, so a configuration writing false plans no change after import.
+			assert.Equal(t, types.BoolValue(false), data.ViaDataCatalog)
 			_, _, _, err := data.consumer()
 			require.NoError(t, err)
 		}

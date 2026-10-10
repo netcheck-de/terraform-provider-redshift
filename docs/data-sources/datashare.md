@@ -27,16 +27,25 @@ data "redshift_datashare" "analytics" {
 
 ### Required
 
-- `database` (String) Producer database owning the share.
-- `name` (String) Datashare name.
+- `database` (String) Local producer database owning the datashare.
+- `name` (String) Datashare name, unique within the producer namespace.
 
 ### Read-Only
 
+- `created_at` (String) Creation timestamp reported by `SVV_DATASHARES`, as text without a time zone.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
-- `publicly_accessible` (Boolean) Whether public workgroups may consume it.
+- `owner` (String) Database user owning the datashare: the user that ran `CREATE DATASHARE`. Read-only, because `ALTER DATASHARE` has no `OWNER TO` clause.
+- `producer_account` (String) AWS account ID of the producer namespace.
+- `producer_namespace` (String) Producer namespace UUID; with `producer_account` and `name` it identifies the datashare ARN.
+- `publicly_accessible` (Boolean) Whether public workgroups may consume the share.
+- `share_id` (Number) Numeric datashare ID reported by `SVV_DATASHARES`.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 `id` (String, computed) is the observed datashare's JSON identity, using the same warehouse, producer database, and name
 keys as the paired resource.
 
-A missing share, a share owned by another database, or a share managed by another service is an error.
+A missing share, a share owned by another database, or a share managed by another service is an error. The owner,
+share ID, producer account and namespace, and creation time come from
+[SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html). Use
+[redshift_datashares](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/data-sources/datashares)
+to list every share, including inbound ones.

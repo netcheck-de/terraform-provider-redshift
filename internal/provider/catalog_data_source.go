@@ -231,7 +231,7 @@ func newCatalogDataSource(spec catalogSpec) datasource.DataSource {
 func (d *catalogDataSource) observedID(data types.Object) types.String {
 	fields := map[string]string{}
 	for _, field := range d.spec.identityFields {
-		if value := objectString(data, field); value != "" {
+		if value := identityText(data, field); value != "" {
 			fields[field] = value
 		}
 	}
@@ -243,6 +243,18 @@ func (d *catalogDataSource) observedID(data types.Object) types.String {
 		database = objectString(data, d.spec.identityDatabase)
 	}
 	return d.identity(database, fields)
+}
+
+// identityText renders one identity field. A Bool flag is recorded as "true" only when set and omitted otherwise,
+// matching resources that add an opt-in flag to their identity without changing the format of existing IDs.
+func identityText(data types.Object, field string) string {
+	if flag, ok := data.Attributes()[field].(types.Bool); ok {
+		if flag.ValueBool() {
+			return "true"
+		}
+		return ""
+	}
+	return objectString(data, field)
 }
 
 // Metadata identifies the concrete catalog lookup to Terraform.

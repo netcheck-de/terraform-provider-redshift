@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -29,5 +30,25 @@ func TestDatashareSQL(t *testing.T) {
 		{"drop_quoted", func() string { return dropDatashareStatement(share(`Odd"Producer`, false)) }},
 		{"read", built(readDatashareQuery(share(`Odd"Producer`, false)))},
 		{"read_empty_name", built(readDatashareQuery(share("", false)))},
+	})
+}
+
+// TestDatashareListSQL pins the listing for every filter combination. Filter values are bound parameters, so a
+// name with quotes and backslashes never reaches the SQL text.
+func TestDatashareListSQL(t *testing.T) {
+	built := func(shareType, name string) func() (string, error) {
+		return func() (string, error) {
+			sql, parameters, err := listDatasharesQuery(shareType, name).Build()
+			if err == nil && name != "" && parameters["name"] != name {
+				return "", fmt.Errorf("name bound as %q", parameters["name"])
+			}
+			return sql, err
+		}
+	}
+	checkSQL(t, "datashares", []sqlCase{
+		{"all", built("", "")},
+		{"outbound", built("OUTBOUND", "")},
+		{"named", built("", `Odd"Share\'s`)},
+		{"inbound_named", built("INBOUND", "source")},
 	})
 }

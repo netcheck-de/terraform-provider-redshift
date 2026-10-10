@@ -9,8 +9,11 @@ import (
 // TestDatashareGrantSQL pins the consumer read and GRANT/REVOKE USAGE for account and namespace consumers.
 // Consumer values pass a strict pattern before rendering, so only the share name can carry quoting edge cases.
 func TestDatashareGrantSQL(t *testing.T) {
-	render := func(share, account, namespace string) func() ([]string, error) {
-		data := datashareGrantModel{Database: types.StringValue("analytics"), Datashare: types.StringValue(share), AccountID: types.StringNull(), NamespaceID: types.StringNull()}
+	render := func(share, account, namespace string, via ...bool) func() ([]string, error) {
+		data := datashareGrantModel{Database: types.StringValue("analytics"), Datashare: types.StringValue(share), AccountID: types.StringNull(), NamespaceID: types.StringNull(), ViaDataCatalog: types.BoolNull()}
+		if len(via) > 0 {
+			data.ViaDataCatalog = types.BoolValue(via[0])
+		}
 		if account != "" {
 			data.AccountID = types.StringValue(account)
 		}
@@ -43,5 +46,9 @@ func TestDatashareGrantSQL(t *testing.T) {
 		{"both_consumers", render("producer", "123456789012", "12345678-1234-1234-1234-123456789abc")},
 		{"without_consumer", render("producer", "", "")},
 		{"empty_share", render("", "123456789012", "")},
+		{"account_via_data_catalog", render("producer", "123456789012", "", true)},
+		{"account_via_data_catalog_false", render("producer", "123456789012", "", false)},
+		{"quoted_share_via_data_catalog", render(`Odd"Share`, "123456789012", "", true)},
+		{"namespace_via_data_catalog", render("producer", "", "12345678-1234-1234-1234-123456789abc", true)},
 	})
 }

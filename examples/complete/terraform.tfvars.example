@@ -23,6 +23,9 @@ region = "eu-central-1"
 # identity_center_reader_group_name   = "existing-readers"
 # identity_center_operator_group_name = "existing-operators"
 
+# Grant the grants datashare VIA DATA CATALOG to a Lake Formation account and authorize its DataCatalog/ identifier.
+# lake_formation_account_id = "123456789012"
+
 # Optional cross-account mode: distinct profiles create separate networks and warehouses in those accounts.
 # producer_profile = "producer-admin"
 # consumer_profile = "consumer-admin"

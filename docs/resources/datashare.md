@@ -42,14 +42,27 @@ resource "redshift_datashare" "analytics" {
 
 ### Read-Only
 
+- `created_at` (String) Creation timestamp reported by `SVV_DATASHARES`, as text without a time zone.
 - `id` (String) JSON import identity; independent of Data API execution history.
+- `owner` (String) Database user owning the datashare: the user that ran `CREATE DATASHARE`. Read-only, because `ALTER DATASHARE` has no `OWNER TO` clause.
+- `producer_account` (String) AWS account ID of the producer namespace.
+- `producer_namespace` (String) Producer namespace UUID; with `producer_account` and `name` it identifies the datashare ARN.
+- `share_id` (Number) Numeric datashare ID reported by `SVV_DATASHARES`.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 ## Lifecycle and Ownership
 
 Reads check that the share is outbound, belongs to the configured database, and is not managed by another service.
 Creation and updates verify the catalog state. Deletion uses `DROP DATASHARE` without cascading into the producer
-database. Schema/table membership and account usage grants are managed by separate provider resources.
+database. Schema/table membership, account usage grants, and `ALTER`/`SHARE` permissions for SQL identities are managed
+by separate provider resources.
+
+`owner`, `share_id`, `producer_account`, `producer_namespace`, and `created_at` are read from
+[SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html), with the owner's name resolved
+through `pg_user`. The owner is the user that ran `CREATE DATASHARE`; it is read-only because
+[ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html) has no `OWNER TO` clause.
+[DESC DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_DESC_DATASHARE.html) lists the share's objects, which
+the membership resources own, so this resource does not read it.
 
 ## Import
 

@@ -4,7 +4,8 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
-// spec renders USAGE ON DATASHARE "share" for the validated consumer through the shared grant shape.
+// spec renders USAGE ON DATASHARE "share" for the validated consumer through the shared grant shape. VIA DATA
+// CATALOG follows the account on both GRANT and REVOKE (r_GRANT, r_REVOKE), so it belongs to the grantee.
 func (data datashareGrantModel) spec() (grantSpec, error) {
 	consumerType, _, value, err := data.consumer()
 	if err != nil {
@@ -12,7 +13,7 @@ func (data datashareGrantModel) spec() (grantSpec, error) {
 	}
 	return grantSpec{
 		object:  sqlclient.Fragment().KwIdent("ON DATASHARE", data.Datashare.ValueString()),
-		grantee: sqlclient.Fragment().KwLit(consumerType, value),
+		grantee: sqlclient.Fragment().KwLit(consumerType, value).If(data.ViaDataCatalog.ValueBool(), "VIA DATA CATALOG"),
 	}, nil
 }
 
@@ -35,7 +36,8 @@ func dropDatashareGrantStatement(data datashareGrantModel) (string, error) {
 }
 
 // readDatashareGrantQuery checks consumer usage. An account grant has no namespace, so it must not match a
-// namespace grant within the same account.
+// namespace grant within the same account. SVV_DATASHARE_CONSUMERS documents no column for the VIA DATA CATALOG
+// form, so both account forms read the same row.
 func readDatashareGrantQuery(data datashareGrantModel) (sqlclient.Query, error) {
 	consumerType, _, value, err := data.consumer()
 	if err != nil {

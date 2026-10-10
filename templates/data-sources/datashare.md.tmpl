@@ -23,4 +23,8 @@ SELECT ... FROM svv_datashares WHERE share_name = 'name' ...;
 `id` (String, computed) is the observed datashare's JSON identity, using the same warehouse, producer database, and name
 keys as the paired resource.
 
-A missing share, a share owned by another database, or a share managed by another service is an error.
+A missing share, a share owned by another database, or a share managed by another service is an error. The owner,
+share ID, producer account and namespace, and creation time come from
+[SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html). Use
+[redshift_datashares](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/data-sources/datashares)
+to list every share, including inbound ones.

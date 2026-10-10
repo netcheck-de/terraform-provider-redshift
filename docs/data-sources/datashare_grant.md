@@ -43,6 +43,7 @@ data "redshift_datashare_grant" "namespace" {
 
 - `account_id` (String) 12-digit consumer AWS account ID. Specify exactly one of `account_id` and `namespace_id`.
 - `namespace_id` (String) Consumer Redshift namespace UUID, not an ARN. Specify exactly one of `account_id` and `namespace_id`.
+- `via_data_catalog` (Boolean) Grants usage `VIA DATA CATALOG`, to a Lake Formation account instead of an account that owns a cluster; requires `account_id`. Defaults to `false`, the plain account form. `SVV_DATASHARE_CONSUMERS` reports both forms alike, so refresh cannot detect a grant re-created in the other form.
 
 ### Read-Only
 
@@ -54,7 +55,8 @@ Exactly one consumer selector is required. A namespace UUID may be unknown durin
 until its value resolves.
 
 `id` (String, computed) is the relationship's JSON identity, using the same warehouse, producer database, datashare, and
-selected `account_id` or `namespace_id` key as the paired resource. Existing account identities retain their format.
+selected `account_id` or `namespace_id` key as the paired resource, plus `via_data_catalog` when it is `true`. Existing
+account identities retain their format.
 It is null when `exists` is false.
 
 Absent SQL grants return false. Missing databases and catalog errors raise errors. No SQL grants or AWS resources
@@ -63,4 +65,5 @@ change.
 Reads [SVV_DATASHARE_CONSUMERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARE_CONSUMERS.html).
 Account lookups match the share and account with an empty/null namespace. Namespace lookups match the share and exact
 namespace UUID; an account-wide grant does not count as an explicit namespace grant. The catalog has no consumer-type
-column. Only read-only SQL is executed.
+column and no column for the `VIA DATA CATALOG` form, so `via_data_catalog` only selects the identity format and both
+account forms report the same relationship. Only read-only SQL is executed.

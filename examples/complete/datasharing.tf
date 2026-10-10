@@ -130,3 +130,61 @@ data "redshift_grant" "share_schema" {
   datashare     = redshift_grant.share_schema["TABLES"].datashare
   scope         = redshift_grant.share_schema["TABLES"].scope
 }
+
+# A producer-side role administers the grants share without owning it: ALTER changes its objects, SHARE its consumers.
+resource "redshift_role" "share_operators" {
+  provider = redshift.producer
+  name     = "example_share_operators"
+}
+
+resource "redshift_datashare_privilege" "share_operators" {
+  provider       = redshift.producer
+  database_name  = redshift_datashare.grants.database
+  datashare_name = redshift_datashare.grants.name
+  grantee_type   = "ROLE"
+  grantee        = redshift_role.share_operators.name
+  privileges     = ["ALTER", "SHARE"]
+}
+
+data "redshift_datashare_privilege" "share_operators" {
+  provider       = redshift.producer
+  database_name  = redshift_datashare_privilege.share_operators.database_name
+  datashare_name = redshift_datashare_privilege.share_operators.datashare_name
+  grantee_type   = redshift_datashare_privilege.share_operators.grantee_type
+  grantee        = redshift_datashare_privilege.share_operators.grantee
+}
+
+# Lake Formation consumers receive usage VIA DATA CATALOG and an AWS authorization for the DataCatalog/ identifier.
+resource "redshift_datashare_grant" "lake_formation" {
+  provider         = redshift.producer
+  count            = var.lake_formation_account_id == null ? 0 : 1
+  database         = redshift_datashare.grants.database
+  datashare        = redshift_datashare.grants.name
+  account_id       = var.lake_formation_account_id
+  via_data_catalog = true
+
+  depends_on = [redshift_grant.share_schema]
+}
+
+resource "aws_redshift_data_share_authorization" "lake_formation" {
+  provider            = aws.producer
+  count               = var.lake_formation_account_id == null ? 0 : 1
+  data_share_arn      = "${replace(aws_redshift_cluster.producer.cluster_namespace_arn, ":namespace:", ":datashare:")}/${redshift_datashare_grant.lake_formation[0].datashare}"
+  consumer_identifier = "DataCatalog/${redshift_datashare_grant.lake_formation[0].account_id}"
+}
+
+# Listings observe both sides of the share: the producer's outbound shares and the consumer's inbound share.
+data "redshift_datashares" "outbound" {
+  provider   = redshift.producer
+  share_type = "OUTBOUND"
+
+  depends_on = [redshift_datashare.producer, redshift_datashare.grants]
+}
+
+data "redshift_datashares" "inbound" {
+  provider   = redshift.consumer
+  share_type = "INBOUND"
+  name       = redshift_datashare.producer.name
+
+  depends_on = [redshift_database.shared]
+}

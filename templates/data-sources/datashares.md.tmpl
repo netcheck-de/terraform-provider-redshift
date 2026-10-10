@@ -1,0 +1,32 @@
+---
+subcategory: Data Sharing
+page_title: redshift_datashares Data Source - terraform-provider-redshift
+description: Lists the inbound and outbound datashares of the provider's namespace.
+---
+
+# redshift_datashares (Data Source)
+
+Lists the inbound and outbound datashares visible in the provider's namespace, optionally narrowed by type or name. See
+AWS [SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html).
+
+```sql
+SELECT ... FROM svv_datashares ...;
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_datashares/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`items` is empty when nothing matches; it is ordered by share type and name. Outbound shares report their producer
+`database` and `owner`. Inbound shares report the `consumer_database` created from them, while `producer_account` and
+`producer_namespace` identify the producer; their `database` and `owner` are null.
+
+`id` (String, computed) is the listing's JSON identity: the warehouse binding, the provider database, and the configured
+filters.
+
+`SVV_DATASHARES` shows rows only to superusers, share owners, and users with `ALTER` or `USAGE` on a share, so the
+listing is limited to what the provider user can see. Only read-only SQL is executed.

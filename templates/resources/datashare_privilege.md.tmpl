@@ -1,0 +1,60 @@
+---
+subcategory: Data Sharing
+page_title: redshift_datashare_privilege Resource - terraform-provider-redshift
+description: Manages ALTER and SHARE on a producer datashare for one user, role, group, or PUBLIC.
+---
+
+# redshift_datashare_privilege (Resource)
+
+Owns the exact explicit `ALTER` and `SHARE` permissions that **one SQL identity** holds on a producer datashare.
+`ALTER` lets the grantee add or remove objects and set `PUBLICACCESSIBLE`; `SHARE` lets it grant consumers usage. These
+are the only datashare permissions Redshift grants to users, roles, and groups. See AWS
+[GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax) and
+[REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-datashare-permissions).
+
+```sql
+GRANT privilege ON DATASHARE datashare_name TO grantee;
+REVOKE privilege ON DATASHARE datashare_name FROM grantee;
+```
+
+Consumer `USAGE` for an account or namespace is a different grant, managed by
+[redshift_datashare_grant](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/datashare_grant).
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_datashare_privilege/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+Changing the database, datashare, or grantee replaces the grant; `privileges` is reconciled in place. Use
+`grantee_type = "PUBLIC"` with `grantee = "public"` to grant to every user.
+
+## Lifecycle and Ownership
+
+Reads confirm that the outbound share exists in `database_name`
+([SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html)) and that the grantee exists,
+then read the explicit permissions from
+[SVV_DATASHARE_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARE_PRIVILEGES.html). Extra
+permissions are revoked before missing ones are granted, and the catalog is read again to verify the result. Statements
+run in the producer database. A dropped share or grantee removes the resource from state. Deleting the resource revokes
+only the permissions this grantee holds; other grantees are independent.
+
+Grant options are not managed. `REVOKE ... ON DATASHARE` documents no `GRANT OPTION FOR` form that removes only the
+option, so a permission held `WITH GRANT OPTION` is reported as an error instead of being silently downgraded. To bring
+such a grantee under Terraform, revoke the permission itself outside Terraform (`REVOKE ALTER ON DATASHARE ... FROM
+user`, which drops the option with it), then apply, which grants the permission again without the option. Superusers and users with `ACCESS SYSTEM TABLE` see every row of `SVV_DATASHARE_PRIVILEGES`;
+other users see only identities they have access to or own, so the provider user needs that visibility.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_datashare_privilege/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_datashare_privilege/import.sh" }}
+
+The identity's `database` is the provider's administration database; `database_name` is the share's producer database.

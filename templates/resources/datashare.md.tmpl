@@ -30,7 +30,15 @@ DROP DATASHARE name;
 
 Reads check that the share is outbound, belongs to the configured database, and is not managed by another service.
 Creation and updates verify the catalog state. Deletion uses `DROP DATASHARE` without cascading into the producer
-database. Schema/table membership and account usage grants are managed by separate provider resources.
+database. Schema/table membership, account usage grants, and `ALTER`/`SHARE` permissions for SQL identities are managed
+by separate provider resources.
+
+`owner`, `share_id`, `producer_account`, `producer_namespace`, and `created_at` are read from
+[SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html), with the owner's name resolved
+through `pg_user`. The owner is the user that ran `CREATE DATASHARE`; it is read-only because
+[ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html) has no `OWNER TO` clause.
+[DESC DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_DESC_DATASHARE.html) lists the share's objects, which
+the membership resources own, so this resource does not read it.
 
 ## Import
 

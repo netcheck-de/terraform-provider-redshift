@@ -1,0 +1,33 @@
+---
+subcategory: Data Sharing
+page_title: redshift_datashare_privilege Data Source - terraform-provider-redshift
+description: Reads the explicit ALTER and SHARE permissions of one SQL identity on a datashare.
+---
+
+# redshift_datashare_privilege (Data Source)
+
+Reads the explicit `ALTER` and `SHARE` permissions that one user, role, group, or `PUBLIC` holds on a producer datashare.
+See AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax).
+
+```sql
+SELECT ... FROM svv_datashare_privileges WHERE datashare_name = 'datashare_name' ...;
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_datashare_privilege/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the permission tuple's JSON identity, using the same warehouse, provider database, producer
+database, datashare, and grantee keys as the paired resource. A share and grantee without explicit permissions still
+have an ID.
+
+`privileges` is empty when the grantee holds no explicit datashare permissions. A missing share or grantee raises an
+error. Permissions held with grant option are reported like any other, because the lookup only observes; no
+permissions change.
+
+Reads [SVV_DATASHARE_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARE_PRIVILEGES.html) after
+checking [SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html) for the share.

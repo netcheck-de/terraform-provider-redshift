@@ -218,3 +218,14 @@ variable "consumer_password" {
     error_message = "The consumer_direct_password probe requires TF_VAR_consumer_password."
   }
 }
+
+variable "lake_formation_account_id" {
+  description = "Optional AWS account that receives the grants share through Lake Formation (VIA DATA CATALOG); null skips that grant."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.lake_formation_account_id == null || can(regex("^[0-9]{12}$", var.lake_formation_account_id))
+    error_message = "lake_formation_account_id must be a 12-digit AWS account ID."
+  }
+}
