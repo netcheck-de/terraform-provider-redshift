@@ -1,0 +1,1 @@
+-- error: RLS policy requires a nonempty name

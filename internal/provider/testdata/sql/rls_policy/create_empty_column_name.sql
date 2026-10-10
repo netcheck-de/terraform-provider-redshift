@@ -1,0 +1,1 @@
+-- error: columns[0] needs a nonempty name

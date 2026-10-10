@@ -1,0 +1,1 @@
+-- error: conjunction_type: "XOR; DROP TABLE t" is not one of AND, OR

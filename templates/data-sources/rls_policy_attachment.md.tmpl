@@ -1,0 +1,28 @@
+---
+subcategory: Row-Level Security
+page_title: redshift_rls_policy_attachment Data Source - terraform-provider-redshift
+description: Checks whether a row-level security policy is attached to a relation for a recipient.
+---
+
+# redshift_rls_policy_attachment (Data Source)
+
+Checks whether one policy is attached to one relation for one user, role, or `PUBLIC`. See AWS
+[SVV_RLS_ATTACHED_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_ATTACHED_POLICY.html).
+
+```sql
+SELECT ... FROM svv_rls_attached_policy WHERE polname = 'policy' AND relname = 'relation' ...;
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_rls_policy_attachment/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the attachment's JSON identity, using the same keys as the paired resource. It is null when
+`exists` is false.
+
+A missing attachment returns false; a missing database and catalog errors remain errors. Only superusers and
+`sys:secadmin` holders can query the view.

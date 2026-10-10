@@ -1,0 +1,52 @@
+---
+subcategory: Row-Level Security
+page_title: redshift_table_security Resource - terraform-provider-redshift
+description: Turns row-level security on or off for a table or view.
+---
+
+# redshift_table_security (Resource)
+
+Turns row-level security (RLS) on or off for one existing table, view, late-binding view, or materialized view, and
+sets how several policies combine and whether RLS also applies to datashare consumers. See AWS
+[ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html) and
+[SVV_RLS_RELATION](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_RELATION.html).
+
+```sql
+ALTER TABLE schema.relation ROW LEVEL SECURITY ON ...;
+ALTER TABLE schema.relation ROW LEVEL SECURITY OFF ...;
+```
+
+~> **Destroying this resource turns row-level security OFF.** Every policy attached to the relation stops filtering,
+and all rows become visible to anyone with `SELECT` on it. To keep a relation protected while it leaves Terraform,
+remove the resource from state with a `removed` block instead of destroying it.
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_table_security/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+Only superusers and `sys:secadmin` holders can change these settings. While RLS is on, a user sees only the rows that an
+attached policy permits and no rows at all when no policy applies to them, so attach the policies before turning RLS on.
+`conjunction_type` and `datashare_row_level_security` change in place; when unset, the resource keeps and reports what
+the relation already has. `ROW LEVEL SECURITY OFF FOR DATASHARES` makes the relation readable over datashares without
+row filtering on the consumer side, while the producer keeps RLS.
+
+The resource never creates or drops the relation and never reads its columns, policies, or attachments. Reads use
+`svv_rls_relation`; a relation that view does not list has never been protected and reports RLS off, `AND`, and RLS on
+for datashares. A dropped relation or database removes the resource from state. Deletion only turns RLS off; the
+conjunction type and datashare setting stay as they are.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_table_security/import-by-string-id.tf" }}
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_table_security/import.sh" }}

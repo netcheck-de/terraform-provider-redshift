@@ -1,0 +1,1 @@
+-- error: columns[0] (region): data type "VARCHAR(64); DROP TABLE x" has unbalanced parentheses

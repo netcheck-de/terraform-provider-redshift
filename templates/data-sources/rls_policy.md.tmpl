@@ -1,0 +1,28 @@
+---
+subcategory: Row-Level Security
+page_title: redshift_rls_policy Data Source - terraform-provider-redshift
+description: Looks up a row-level security policy definition.
+---
+
+# redshift_rls_policy (Data Source)
+
+Reads one row-level security policy without managing it. See AWS
+[SVV_RLS_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_POLICY.html).
+
+```sql
+SELECT ... FROM svv_rls_policy WHERE poldb = 'database' AND polname = 'name';
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_rls_policy/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the policy's JSON identity, using the same warehouse, database, and name keys as the paired
+resource. `predicate` is the catalog's rewritten form of the `USING` expression.
+
+A missing policy or database is an error. Regular users see only their own policies; superusers and `sys:secadmin`
+holders see all.

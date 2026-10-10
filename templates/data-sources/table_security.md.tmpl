@@ -1,0 +1,28 @@
+---
+subcategory: Row-Level Security
+page_title: redshift_table_security Data Source - terraform-provider-redshift
+description: Reads the row-level security settings of a table or view.
+---
+
+# redshift_table_security (Data Source)
+
+Reads whether row-level security is on for one table or view, its conjunction type, and its datashare setting. See AWS
+[SVV_RLS_RELATION](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_RELATION.html).
+
+```sql
+SELECT ... FROM svv_rls_relation WHERE relschema = 'schema' AND relname = 'relation';
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_table_security/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the relation's JSON identity, using the same warehouse, database, schema, and relation keys
+as the paired resource.
+
+A relation that `svv_rls_relation` does not list reports RLS off, `AND`, and RLS on for datashares. A missing relation
+or database is an error.

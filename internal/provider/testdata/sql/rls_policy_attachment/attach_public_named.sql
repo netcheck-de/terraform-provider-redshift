@@ -1,0 +1,1 @@
+-- error: grantee_type PUBLIC requires grantee = public

@@ -1,0 +1,1 @@
+-- error: grantee_type "GROUP" is not one of USER, ROLE, PUBLIC

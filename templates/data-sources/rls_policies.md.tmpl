@@ -1,0 +1,24 @@
+---
+subcategory: Row-Level Security
+page_title: redshift_rls_policies Data Source - terraform-provider-redshift
+description: Lists the row-level security policies of a database.
+---
+
+# redshift_rls_policies (Data Source)
+
+Lists every row-level security policy of one database, including policies Terraform does not manage. See AWS
+[SVV_RLS_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_POLICY.html).
+
+```sql
+SELECT ... FROM svv_rls_policy WHERE poldb = 'database';
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_rls_policies/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+Items are sorted by name; an empty database yields an empty list. Regular users see only their own policies.

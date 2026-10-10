@@ -1,0 +1,1 @@
+-- error: table security requires a nonempty schema and relation

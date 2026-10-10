@@ -1,0 +1,1 @@
+-- error: predicate: SQL text has an unterminated string literal
