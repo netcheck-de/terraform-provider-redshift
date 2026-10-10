@@ -5,6 +5,10 @@ description: Manages Redshift Serverless and provisioned SQL objects through Dat
 
 # Redshift Provider
 
+~> **Preview:** This provider is in preview. Its resources, data sources, and schemas may still change between
+releases, and it may contain issues. Review plans carefully before applying them to production warehouses, and report
+problems in the [issue tracker](https://github.com/netcheck-de/terraform-provider-redshift/issues).
+
 Manage [Amazon Redshift](https://docs.aws.amazon.com/redshift/) SQL objects and permissions through Data API or direct
 TLS connections. Use the AWS provider for workgroups, namespaces, IAM roles, Identity Center applications, and datashare
 authorization/association. The SQL provider does not retrieve administration passwords automatically; direct
