@@ -76,6 +76,6 @@ the read connects to the listed database, which must be a local database. `id` c
 listed database, and the configured filters. Items are ordered by schema, table, and constraint name; no match returns
 an empty `constraints` list.
 
-Key columns are parsed from `pg_get_constraintdef`, because the catalog's column-number arrays are not readable
-through the provider's SQL transports; `columns` and `referenced_columns` keep key order, so the n-th columns of a composite foreign key
-correspond. Use `name` with `redshift_comment` and `object_type = "CONSTRAINT"` to annotate a constraint.
+Key columns are parsed from `pg_get_constraintdef`, because the catalog's column-number arrays are not readable through
+the provider's SQL transports; `columns` and `referenced_columns` keep key order, so the n-th columns of a composite
+foreign key correspond. Use `name` with `redshift_comment` and `object_type = "CONSTRAINT"` to annotate a constraint.

@@ -16,9 +16,9 @@ golangci-lint `depguard` rule prevents resource code from importing concrete tra
 [Live acceptance tests](README.md#acceptance-test) are opt-in.
 
 The Taskfile provides `fmt`, `markdown-fmt`, `markdown-fmt-check`, `lint`, `actionlint`, `test`, `golden`, `check`,
-`docs`, `docs-check`, `build`, `terraform`, `terraform-check`, `terraform-test`, and `snapshot`. The Terraform runner defaults to
-`examples/complete`; override `TF_DIR` for another configuration. Cache and development overrides live in the ignored
-`.cache/` directory.
+`docs`, `docs-check`, `build`, `terraform`, `terraform-check`, `terraform-test`, and `snapshot`. The Terraform runner
+defaults to `examples/complete`; override `TF_DIR` for another configuration. Cache and development overrides live in
+the ignored `.cache/` directory.
 
 Development tools (`tfplugindocs`, `mdox`, `actionlint`) are pinned with `tool` directives in `go.mod`; tasks run them
 with `go tool <tool>`. They are never linked into the provider binary. Refresh dependencies with `go get -u ./...`
@@ -221,8 +221,8 @@ ownership and permission prose stays under `## Lifecycle and Ownership`. The sec
 - A hand-aligned `| Change | Result |` table with rows for every configurable argument and block, named in backticks
   exactly as in the schema, with nested fields as `block.field`. Write-only and trigger arguments (`password_wo`,
   `*_wo_version`, `refresh_revision`) and `timeouts.*` are listed too. A result names the statement kind of an in-place
-  change (`ALTER TABLE ... ADD COLUMN`, `GRANT`/`REVOKE`), says "no SQL", or says "replaces the <noun>" with the
-  reason, and spells out conditional cases.
+  change (`ALTER TABLE ... ADD COLUMN`, `GRANT`/`REVOKE`), says "no SQL", or says "replaces the table" (naming the
+  object) with the reason, and spells out conditional cases.
 - A **Drift.** paragraph: what refresh compares, how a change made outside Terraform shows in the next plan, and what
   is never read back.
 - For non-trivial reconciliation (tables, external tables, materialized views, privilege sets), worked examples: a

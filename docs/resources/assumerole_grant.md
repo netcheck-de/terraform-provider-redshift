@@ -113,9 +113,9 @@ and the next plan shows what is left.
 
 **Drift.** Refresh compares the grantee's commands for the selected role with the state, and the next plan restores the
 configuration with the statements above: a command granted outside Terraform is revoked, and a revoked one is granted
-again. A grant on `ALL` also shows up in the tuples of individual roles, so a command granted on `ALL` outside
-Terraform appears as drift there. Other IAM roles and other grantees are never read. A missing grantee removes the grant from state,
-and the next plan creates it again.
+again. A grant on `ALL` also shows up in the tuples of individual roles, so a command granted on `ALL` outside Terraform
+appears as drift there. Other IAM roles and other grantees are never read. A missing grantee removes the grant from
+state, and the next plan creates it again.
 
 The following example shows the statements an update runs, each with the database it runs in: the existence
 checks and the catalog read, the changes, and the read that verifies them.

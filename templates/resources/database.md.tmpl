@@ -179,17 +179,17 @@ of a shared database, with the state. A configured local option changed outside 
 statements above; an omitted one follows the catalog and never plans a change. A shared database whose permission mode
 differs from the configuration is replaced. A database dropped outside Terraform is removed from state, and the next
 plan creates it again. A database that changed between local and shared, or is bound to another producer share than
-`datashare_arn` names, fails the refresh instead of planning a change. `collation` is read only at creation, at
-import, and while the state holds no value, so a later change is not detected. For a zero-ETL destination, refresh
-compares `source_database`, `refresh_interval`, `history_mode`, and `auto_remediation` with `SVV_INTEGRATION`: a
-configured setting changed outside Terraform is set back, an omitted one follows the catalog, and a changed source
-database replaces the database. `query_all_states`, `accept_invalid_chars`, and `truncate_columns` are never read
-back, so changes to them outside Terraform are not detected. A destination that `SVV_INTEGRATION` no longer shows,
-because the integration was deleted or the provider SQL identity is no longer a superuser, keeps its database: the
-refresh warns and drops the `integration` block from state, so the next plan replaces the database, and a destroy
-still drops it. A destination that receives another integration than `integration_id` names, or that became a shared
-database, fails the refresh, as does a destination configured without the `integration` block. Comments, grants, and the objects inside the database
-are never read.
+`datashare_arn` names, fails the refresh instead of planning a change. `collation` is read only at creation, at import,
+and while the state holds no value, so a later change is not detected. For a zero-ETL destination, refresh compares
+`source_database`, `refresh_interval`, `history_mode`, and `auto_remediation` with `SVV_INTEGRATION`: a configured
+setting changed outside Terraform is set back, an omitted one follows the catalog, and a changed source database
+replaces the database. `query_all_states`, `accept_invalid_chars`, and `truncate_columns` are never read back, so
+changes to them outside Terraform are not detected. A destination that `SVV_INTEGRATION` no longer shows, because the
+integration was deleted or the provider SQL identity is no longer a superuser, keeps its database: the refresh warns and
+drops the `integration` block from state, so the next plan replaces the database, and a destroy still drops it. A
+destination that receives another integration than `integration_id` names, or that became a shared database, fails the
+refresh, as does a destination configured without the `integration` block. Comments, grants, and the objects inside the
+database are never read.
 
 ## Import
 
