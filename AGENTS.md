@@ -77,5 +77,7 @@ separate foundation change.
 - PR titles (the squash-merge subject) must follow Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `ci:`,
   `chore:`, …; `!` for breaking changes); use the same style for commits. They become the release notes, so describe
   the user-visible effect.
+- Keep `TODO.md` current and limited to open work: add what a change leaves open, and remove an item once it is done
+  or verified. No history or verification notes; keep each item short.
 - Versions come only from `vX.Y.Z` tags; follow "Versioning and releases" in `DEVELOPMENT.md`. Never tag or push
   unless asked.
