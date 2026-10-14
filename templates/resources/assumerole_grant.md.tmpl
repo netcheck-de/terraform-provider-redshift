@@ -34,8 +34,10 @@ Supported `privileges` are `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, and `CREATE MO
 ## Role Selectors
 
 `iam_role_arn` accepts an IAM role ARN, `default` for the namespace default IAM role, or `ALL` for every IAM role
-(`ON ALL`). `SVV_IAM_PRIVILEGES` reports grants on `default` and on `ALL` under the same catalog entry,
-`default-aws-iam-role`, so manage one grantee through only one of the two selectors.
+(`ON ALL`). `SVV_IAM_PRIVILEGES` reports a grant on `default` as `default-aws-iam-role` and a grant on `ALL` as
+`default`. A grant on `ALL` absorbs the grantee's grant on `default`, and the view also lists it under every IAM role
+that another grant names, including `default-aws-iam-role`. Manage one grantee through either `ALL` or individual roles,
+not both.
 
 ## PUBLIC and Access Control
 
@@ -75,8 +77,8 @@ and the next plan shows what is left.
 
 **Drift.** Refresh compares the grantee's commands for the selected role with the state, and the next plan restores the
 configuration with the statements above: a command granted outside Terraform is revoked, and a revoked one is granted
-again. Grants on `default` and on `ALL` share one catalog entry, so a command granted through the other selector shows
-up in this tuple. Other IAM roles and other grantees are never read. A missing grantee removes the grant from state,
+again. A grant on `ALL` also shows up in the tuples of individual roles, so a command granted on `ALL` outside
+Terraform appears as drift there. Other IAM roles and other grantees are never read. A missing grantee removes the grant from state,
 and the next plan creates it again.
 
 The following example shows the statements an update runs, each with the database it runs in: the existence

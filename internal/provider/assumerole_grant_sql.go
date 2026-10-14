@@ -16,11 +16,14 @@ import (
 // https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-for
 var assumeroleGrantCommands = []sqlclient.Keyword{"COPY", "UNLOAD", "EXTERNAL FUNCTION", "CREATE MODEL"}
 
-// assumeroleGrantDefaultRole is the catalog name SVV_IAM_PRIVILEGES reports for grants on the default role, and,
-// as PG_GET_IAM_ROLE_BY_USER documents for "any available role", for grants ON ALL roles too.
+// assumeroleGrantDefaultRole is the catalog name SVV_IAM_PRIVILEGES reports for grants on the default role.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_IAM_PRIVILEGES.html
-// https://docs.aws.amazon.com/redshift/latest/dg/PG_GET_IAM_ROLE_BY_USER.html
 const assumeroleGrantDefaultRole = "default-aws-iam-role"
+
+// assumeroleGrantAllRoles is the catalog name of a grant ON ALL, as observed live; Redshift does not document it. The
+// view also lists such a grant under every role that another ASSUMEROLE grant names, including the default role, so
+// only this entry identifies the ON ALL grant itself.
+const assumeroleGrantAllRoles = "default"
 
 // readAssumeroleGrantQuery reads the commands one identity may run with an IAM role.
 func readAssumeroleGrantQuery(catalogRole, grantee, granteeType string) sqlclient.Query {
@@ -59,9 +62,11 @@ func assumeroleGrantRoleChanged(_ context.Context, req planmodifier.StringReques
 // assumeroleGrantRole renders the ON clause target and its catalog name: an IAM role ARN literal, the namespace
 // default role, or ALL roles.
 func assumeroleGrantRole(role string) (sqlclient.Statement, string, error) {
-	if keyword := assumeroleGrantKeyword(role); keyword != "" {
-		// DEFAULT and ALL are keywords in SQL and share one name in the catalog.
+	switch keyword := assumeroleGrantKeyword(role); keyword {
+	case "DEFAULT":
 		return sqlclient.Kw(keyword), assumeroleGrantDefaultRole, nil
+	case "ALL":
+		return sqlclient.Kw(keyword), assumeroleGrantAllRoles, nil
 	}
 	parsed, err := arn.Parse(role)
 	if err != nil || parsed.Service != "iam" || parsed.AccountID == "" || len(parsed.Resource) < 6 || parsed.Resource[:5] != "role/" {

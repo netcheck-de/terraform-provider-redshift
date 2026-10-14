@@ -59,10 +59,10 @@ These wait for a documented way to read their state back:
   `parseCopyOptions`.
 - **COPY templates:** `SHAPEFILE SIMPLIFY` is not modeled. The listing without a schema runs one `SHOW TEMPLATES` per
   schema and fails on a schema the identity cannot use; `SYS_REDSHIFT_TEMPLATE` might replace the loop.
-- **Role drop after destroy:** destroying the complete example failed at `DROP ROLE example_operators` ("the role has a
-  privilege on some object"), also after its database was gone, while no privilege view showed a grant. Suspect a
-  scoped grant (`FOR LANGUAGES` or `FOR PROCEDURES ... IN DATABASE`) that Redshift keeps beyond the revoke; check
-  `SHOW GRANTS FOR ROLE` in the database before the next destroy.
+- **ASSUMEROLE `ON ALL` rows:** `SVV_IAM_PRIVILEGES` lists a grant on `ALL` as `default` plus one row per IAM role
+  another grant names. Once, a destroy's `REVOKE ... ON ALL` removed only the per-role rows and left `default`, which
+  blocked `DROP ROLE`; a second revoke cleared it. Delete now verifies the `default` row, so a repeat fails there;
+  revoke until the row is gone if it does.
 - **Zero-ETL from DynamoDB:** the complete example covers only Aurora and RDS sources.
 - **Session context variables:** `redshift_configuration` rejects dotted names such as `app_context.user_id`.
 - **User lockouts:** Redshift 1.0.485645 rejects `SHOW USER LOCKOUT` ("account lockout security is not supported") on
@@ -113,6 +113,11 @@ Catalog behaviors the offline tests cannot reach. Each bullet names the fix if t
 - `SVV_INTEGRATION` for a non-superuser (zero rows rather than an error), and `source_database` for MySQL and DynamoDB
   sources.
 - The other `INTEGRATION SET` options; `OWNER TO`, `CONNECTION LIMIT`, and `ISOLATION LEVEL` on a destination.
+
+### ASSUMEROLE grants
+
+- Whether `REVOKE ASSUMEROLE ON '<arn>'` removes the per-role row an `ON ALL` grant shows for that role; if not, an ARN
+  tuple for a grantee that also holds `ON ALL` cannot converge, and validation should reject the overlap.
 
 ### Federated grants and diagnostics
 

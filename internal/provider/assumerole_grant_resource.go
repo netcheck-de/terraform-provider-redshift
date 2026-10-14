@@ -18,7 +18,7 @@ func newAssumeroleGrantResource() resource.Resource {
 	attributes["iam_role_arn"] = schema.StringAttribute{
 		Required: true,
 		MarkdownDescription: "IAM role ARN, `DEFAULT` for the namespace default IAM role, or `ALL` for every IAM role. `DEFAULT` and `ALL` are keywords accepted in any case, and another case of the same one is recorded in place; an ARN is case-sensitive and compared exactly. " +
-			"Redshift reports grants on `DEFAULT` and on `ALL` under one catalog entry, so manage a grantee through only one of them. Changing it replaces the grant.",
+			"A grant on `ALL` absorbs the grantee's grant on `DEFAULT` and also shows up under every IAM role that another grant names, so manage a grantee through either `ALL` or individual roles. Changing it replaces the grant.",
 		PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(assumeroleGrantRoleChanged, "Changing the IAM role replaces the grant.", "Changing the IAM role replaces the grant.")},
 		Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 	}

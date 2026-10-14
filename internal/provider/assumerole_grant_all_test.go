@@ -8,13 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAssumeroleGrantAllRoles manages commands on every IAM role, which the catalog reports under the default role.
+// TestAssumeroleGrantAllRoles manages commands on every IAM role, which the catalog reports under its own entry.
 func TestAssumeroleGrantAllRoles(t *testing.T) {
 	exercisePrivilege(t, newAssumeroleGrantResource, map[string]string{"iam_role_arn": "ALL", "grantee_type": "USER", "grantee": "analyst"}, []string{"UNLOAD", "COPY"})
 	r := newAssumeroleGrantResource().(*privilegeResource)
 	target, err := r.prepare(privilegeObject(t, r, map[string]string{"iam_role_arn": "ALL", "grantee_type": "USER", "grantee": "analyst"}))
 	require.NoError(t, err)
-	assert.Equal(t, map[string]string{"arn": assumeroleGrantDefaultRole, "grantee": "analyst", "kind": "USER"}, target.query.parameters)
+	assert.Equal(t, map[string]string{"arn": assumeroleGrantAllRoles, "grantee": "analyst", "kind": "USER"}, target.query.parameters)
 }
 
 // TestAssumeroleGrantPublicSwitch revokes PUBLIC's default ASSUMEROLE ON ALL FOR ALL, as Redshift requires before

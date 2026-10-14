@@ -39,7 +39,7 @@ resource "redshift_assumerole_grant" "loader" {
 
 - `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`. Changing it replaces the grant.
 - `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.
-- `iam_role_arn` (String) IAM role ARN, `DEFAULT` for the namespace default IAM role, or `ALL` for every IAM role. `DEFAULT` and `ALL` are keywords accepted in any case, and another case of the same one is recorded in place; an ARN is case-sensitive and compared exactly. Redshift reports grants on `DEFAULT` and on `ALL` under one catalog entry, so manage a grantee through only one of them. Changing it replaces the grant.
+- `iam_role_arn` (String) IAM role ARN, `DEFAULT` for the namespace default IAM role, or `ALL` for every IAM role. `DEFAULT` and `ALL` are keywords accepted in any case, and another case of the same one is recorded in place; an ARN is case-sensitive and compared exactly. A grant on `ALL` absorbs the grantee's grant on `DEFAULT` and also shows up under every IAM role that another grant names, so manage a grantee through either `ALL` or individual roles. Changing it replaces the grant.
 - `privileges` (Set of String) Exact set of commands the grantee may run with the role: `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, `CREATE MODEL`; all four together are `FOR ALL`. An empty set revokes owned commands. `PUBLIC` holds every command `ON ALL` until revoked, which the `ALL`/`PUBLIC` tuple reports; deleting that tuple revokes what it holds and never grants the default back.
 
 ### Read-Only
@@ -53,8 +53,10 @@ Supported `privileges` are `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, and `CREATE MO
 ## Role Selectors
 
 `iam_role_arn` accepts an IAM role ARN, `default` for the namespace default IAM role, or `ALL` for every IAM role
-(`ON ALL`). `SVV_IAM_PRIVILEGES` reports grants on `default` and on `ALL` under the same catalog entry,
-`default-aws-iam-role`, so manage one grantee through only one of the two selectors.
+(`ON ALL`). `SVV_IAM_PRIVILEGES` reports a grant on `default` as `default-aws-iam-role` and a grant on `ALL` as
+`default`. A grant on `ALL` absorbs the grantee's grant on `default`, and the view also lists it under every IAM role
+that another grant names, including `default-aws-iam-role`. Manage one grantee through either `ALL` or individual roles,
+not both.
 
 ## PUBLIC and Access Control
 
@@ -111,8 +113,8 @@ and the next plan shows what is left.
 
 **Drift.** Refresh compares the grantee's commands for the selected role with the state, and the next plan restores the
 configuration with the statements above: a command granted outside Terraform is revoked, and a revoked one is granted
-again. Grants on `default` and on `ALL` share one catalog entry, so a command granted through the other selector shows
-up in this tuple. Other IAM roles and other grantees are never read. A missing grantee removes the grant from state,
+again. A grant on `ALL` also shows up in the tuples of individual roles, so a command granted on `ALL` outside
+Terraform appears as drift there. Other IAM roles and other grantees are never read. A missing grantee removes the grant from state,
 and the next plan creates it again.
 
 The following example shows the statements an update runs, each with the database it runs in: the existence
