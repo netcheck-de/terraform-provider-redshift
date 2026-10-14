@@ -72,9 +72,9 @@ func (r *schemaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			},
 			"quota": schema.Int64Attribute{
 				Optional: true, Computed: true,
-				MarkdownDescription: "Disk quota in megabytes, the unit Redshift stores; `-1` means `UNLIMITED`, the default. Set with `QUOTA` at creation and changed in place with `ALTER SCHEMA ... QUOTA`; changing a quota requires a superuser. Omit it to keep and report the current quota, read from `SVV_REDSHIFT_SCHEMA_QUOTA`. That view shows a regular user only their own schemas, so reading and verifying the quota of a schema owned by another user requires a superuser connection; otherwise the last known value is kept.",
+				MarkdownDescription: "Disk quota in megabytes, the unit Redshift stores, from 2048 (2 GB) to 524288000 (500 TB); `-1` means `UNLIMITED`, the default. Set with `QUOTA` at creation and changed in place with `ALTER SCHEMA ... QUOTA`; changing a quota requires a superuser. Omit it to keep and report the current quota, read from `SVV_REDSHIFT_SCHEMA_QUOTA`. That view shows a regular user only their own schemas, so reading and verifying the quota of a schema owned by another user requires a superuser connection; otherwise the last known value is kept.",
 				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
-				Validators:          []validator.Int64{int64validator.Any(int64validator.OneOf(schemaUnlimited), int64validator.AtLeast(1))},
+				Validators:          []validator.Int64{int64validator.Any(int64validator.OneOf(schemaUnlimited), int64validator.Between(schemaQuotaMin, schemaQuotaMax))},
 			},
 		},
 	}

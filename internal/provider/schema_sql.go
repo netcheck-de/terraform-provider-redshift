@@ -10,6 +10,13 @@ import (
 // schemaUnlimited is the quota value that renders QUOTA UNLIMITED, the default of a schema created without one.
 const schemaUnlimited = -1
 
+// schemaQuotaMin and schemaQuotaMax bound a schema quota in megabytes; Redshift rejects other values with "Schema
+// quota must be between 2048 and 524288000 MB".
+const (
+	schemaQuotaMin = 2048
+	schemaQuotaMax = 524288000
+)
+
 // schemaAlter starts every ALTER SCHEMA statement for the schema.
 func schemaAlter(data schemaModel) sqlclient.Statement {
 	return sqlclient.Stmt("ALTER SCHEMA").Ident(data.Name.ValueString())

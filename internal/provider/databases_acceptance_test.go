@@ -96,15 +96,15 @@ data "redshift_schema" "local" {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
-			{Config: configuration(10, "SNAPSHOT", 100, "redshift_user.owner.name"), Check: resource.ComposeTestCheckFunc(
+			{Config: configuration(10, "SNAPSHOT", 2048, "redshift_user.owner.name"), Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("data.redshift_database.local", "owner", owner),
 				resource.TestCheckResourceAttr("data.redshift_database.local", "connection_limit", "10"),
 				resource.TestCheckResourceAttr("data.redshift_database.local", "collation", "CASE_INSENSITIVE"),
 				resource.TestCheckResourceAttr("data.redshift_database.local", "isolation_level", "SNAPSHOT"),
 				resource.TestCheckResourceAttr("data.redshift_schema.local", "owner", owner),
-				resource.TestCheckResourceAttr("data.redshift_schema.local", "quota", "100"),
+				resource.TestCheckResourceAttr("data.redshift_schema.local", "quota", "2048"),
 			)},
-			{Config: configuration(10, "SNAPSHOT", 100, "redshift_user.owner.name"), PlanOnly: true},
+			{Config: configuration(10, "SNAPSHOT", 2048, "redshift_user.owner.name"), PlanOnly: true},
 			{Config: configuration(-1, "SERIALIZABLE", -1, "redshift_user.successor.name"), Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_database.local", "connection_limit", "-1"),
 				resource.TestCheckResourceAttr("redshift_database.local", "isolation_level", "SERIALIZABLE"),

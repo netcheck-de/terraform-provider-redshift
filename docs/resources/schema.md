@@ -43,7 +43,7 @@ resource "redshift_schema" "serving" {
 ### Optional
 
 - `owner` (String) SQL user owning the schema. Set with `AUTHORIZATION` at creation and changed in place with `ALTER SCHEMA ... OWNER TO`. Omit it to keep and report the current owner, which defaults to the creating user.
-- `quota` (Number) Disk quota in megabytes, the unit Redshift stores; `-1` means `UNLIMITED`, the default. Set with `QUOTA` at creation and changed in place with `ALTER SCHEMA ... QUOTA`; changing a quota requires a superuser. Omit it to keep and report the current quota, read from `SVV_REDSHIFT_SCHEMA_QUOTA`. That view shows a regular user only their own schemas, so reading and verifying the quota of a schema owned by another user requires a superuser connection; otherwise the last known value is kept.
+- `quota` (Number) Disk quota in megabytes, the unit Redshift stores, from 2048 (2 GB) to 524288000 (500 TB); `-1` means `UNLIMITED`, the default. Set with `QUOTA` at creation and changed in place with `ALTER SCHEMA ... QUOTA`; changing a quota requires a superuser. Omit it to keep and report the current quota, read from `SVV_REDSHIFT_SCHEMA_QUOTA`. That view shows a regular user only their own schemas, so reading and verifying the quota of a schema owned by another user requires a superuser connection; otherwise the last known value is kept.
 
 ### Read-Only
 
