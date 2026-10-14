@@ -59,10 +59,6 @@ These wait for a documented way to read their state back:
   `parseCopyOptions`.
 - **COPY templates:** `SHAPEFILE SIMPLIFY` is not modeled. The listing without a schema runs one `SHOW TEMPLATES` per
   schema and fails on a schema the identity cannot use; `SYS_REDSHIFT_TEMPLATE` might replace the loop.
-- **ASSUMEROLE `ON ALL` rows:** `SVV_IAM_PRIVILEGES` lists a grant on `ALL` as `default` plus one row per IAM role
-  another grant names. Once, a destroy's `REVOKE ... ON ALL` removed only the per-role rows and left `default`, which
-  blocked `DROP ROLE`; a second revoke cleared it. Delete now verifies the `default` row, so a repeat fails there;
-  revoke until the row is gone if it does.
 - **Zero-ETL from DynamoDB:** the complete example covers only Aurora and RDS sources.
 - **Session context variables:** `redshift_configuration` rejects dotted names such as `app_context.user_id`.
 - **User lockouts:** Redshift 1.0.485645 rejects `SHOW USER LOCKOUT` ("account lockout security is not supported") on
@@ -88,10 +84,7 @@ Catalog behaviors the offline tests cannot reach. Each bullet names the fix if t
 - Dropping an `AUTO`-chosen distribution or sort key column: the `EVEN`/`NONE` detour and the return to `AUTO`;
   `ALTER DISTSTYLE` fails under an interleaved sort key.
 - `PG_CLASS_INFO` and `SVV_REDSHIFT_COLUMNS.distkey` are visible to a non-superuser (`effective_distribution`).
-- `ALTER DISTSTYLE`/`DISTKEY`/`SORTKEY` on materialized views, including removing the blocks.
-- The stored procedure `function_type` in `SVV_REDSHIFT_FUNCTIONS` (matched as `%PROCEDURE%`).
-- The implicit `PUBLIC` `USAGE` on `sql` and `plpgsql` in `SVV_LANGUAGE_PRIVILEGES`.
-- The `<table>_pkey` name of an unnamed primary key (used in a complete example comment).
+- Removing the `distribution` and `sort_key` blocks from a materialized view.
 - Spectrum maps Parquet columns by name. If so, extend `externalTableMapsByName` to Parquet.
 
 ### COPY templates and jobs
@@ -116,6 +109,10 @@ Catalog behaviors the offline tests cannot reach. Each bullet names the fix if t
 
 ### ASSUMEROLE grants
 
+- `ON ALL` grants against a provider apply: the fix reading them from the `default` entry is verified only by SQL run
+  by hand (`TestAccAssumeroleGrantAllRoles` needs the ASSUMEROLE fixture).
+- Why one destroy's `REVOKE ... ON ALL` removed the per-role rows but left `default`, which blocked `DROP ROLE`, while a
+  second revoke cleared it. Delete now verifies the `default` row, so a repeat fails there instead of at `DROP ROLE`.
 - Whether `REVOKE ASSUMEROLE ON '<arn>'` removes the per-role row an `ON ALL` grant shows for that role; if not, an ARN
   tuple for a grantee that also holds `ON ALL` cannot converge, and validation should reject the overlap.
 
