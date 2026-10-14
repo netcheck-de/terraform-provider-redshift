@@ -204,14 +204,12 @@ func tableSpecOf(data tableModel) (tableSpec, error) {
 	if spec.schema == "" || spec.name == "" {
 		return spec, fmt.Errorf("schema and name must be nonempty")
 	}
+	// The owner names an existing user, which IAM may have created with uppercase letters, such as IAMR:Role.
 	spec.owner = knownString(data.Owner)
 	if err := tableFolded("schema", spec.schema); err != nil {
 		return spec, err
 	}
 	if err := tableFolded("name", spec.name); err != nil {
-		return spec, err
-	}
-	if err := tableFolded("owner", spec.owner); err != nil {
 		return spec, err
 	}
 	if data.Column.IsUnknown() || data.Column.IsNull() {

@@ -272,7 +272,7 @@ Redshift applies), `pg_attribute` (column order, `format_type()` types, and null
   column has one, because Redshift stores defaults with casts such as `'n/a'::character varying`.
 - `backup` is not observable in a catalog every deployment exposes; the configured value is recorded.
 
-Schema, table, column, owner, and referenced names must be lowercase: Redshift folds ASCII letters of standard and
+Schema, table, column, and referenced names must be lowercase: Redshift folds ASCII letters of standard and
 quoted identifiers to lowercase unless `enable_case_sensitive_identifier` is set, so a mixed-case name would never
 match the catalog. Distribution and sort key columns must have a type that
 [CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html) allows for keys.

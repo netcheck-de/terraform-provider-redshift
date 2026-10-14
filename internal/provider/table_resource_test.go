@@ -458,7 +458,6 @@ func TestTableSpecValidation(t *testing.T) {
 		{"bad backup", func(m *tableModel) { m.Backup = types.StringValue("MAYBE") }, "backup"},
 		{"uppercase schema", func(m *tableModel) { m.Schema = types.StringValue("Serving") }, "folds to lowercase"},
 		{"uppercase name", func(m *tableModel) { m.Name = types.StringValue(`Odd"Events`) }, "folds to lowercase"},
-		{"uppercase owner", func(m *tableModel) { m.Owner = types.StringValue("Admin") }, "folds to lowercase"},
 		{"uppercase column", columns(tableTestColumn("Id", "int")), "folds to lowercase"},
 		{"uppercase referenced table", func(m *tableModel) {
 			m.ForeignKey = tableTestForeignKeys(tableTestForeignKey([]string{"id"}, "serving", "Accounts", "id"))
@@ -1142,4 +1141,13 @@ import {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	assert.Equal(t, []string{`DROP TABLE "serving"."events"`}, c.writes, "only the final destroy writes")
+}
+
+// TestTableSpecKeepsOwnerCase accepts an owner with uppercase letters: it names an existing user, and IAM-mapped users
+// such as IAMR:Role keep their case.
+func TestTableSpecKeepsOwnerCase(t *testing.T) {
+	spec := tableSpecMust(t, tableWith(tableMinimalModel(), func(m *tableModel) {
+		m.Owner = types.StringValue("IAMR:AWSReservedSSO_DevOps")
+	}))
+	assert.Equal(t, "IAMR:AWSReservedSSO_DevOps", spec.owner)
 }
