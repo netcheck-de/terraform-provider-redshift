@@ -51,6 +51,8 @@ The provider grows in parallel work blocks, so a new type adds files instead of 
     counts as an input.
   - `registerParity(parityCase{...})` pairs a lookup with its resource (or a collection lookup with its element shape);
     a resource without a lookup registers an explicit exemption. `lookupSelectors` names inputs only the lookup has.
+    A single-object lookup that no resource manages, such as a server setting, sets `standalone`: its `selectors` are
+    the only inputs, and every other attribute is a computed observation.
   - `registerLifecycleCase(...)` adds the type to the lifecycle, retry, and transcript runs in `lifecycle_test.go`.
   - `registerFakeFamily(...)` in `fake_<type>_test.go` teaches the stateful `catalog` fake the type's statements and
     catalog reads; the fake consults registered families before its built-in cases.

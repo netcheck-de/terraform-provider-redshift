@@ -28,6 +28,9 @@ type parityCase struct {
 	collection bool
 	// filters are a collection's optional inputs.
 	filters []string
+	// standalone marks a single-object lookup that no resource manages, such as a server setting; its inputs are the
+	// selectors, and every other attribute is a computed observation.
+	standalone bool
 }
 
 // parityCases lists every registered data source's parity contract.
@@ -233,6 +236,27 @@ func assertCollectionParity(t *testing.T, test parityCase) {
 	}
 }
 
+// assertStandaloneParity checks a lookup without a managing resource: no blocks, the selectors as its only inputs,
+// and every other attribute computed.
+func assertStandaloneParity(t *testing.T, test parityCase) {
+	t.Helper()
+	source := dataSourceSchema(test.source)
+	assert.Empty(t, source.Blocks, "data sources never declare blocks")
+	require.NotEmpty(t, test.selectors, "a standalone lookup needs at least one input")
+	for _, name := range test.selectors {
+		assert.Contains(t, source.Attributes, name, "missing selector %s", name)
+	}
+	for name, attribute := range source.Attributes {
+		if slices.Contains(test.selectors, name) {
+			assert.True(t, attribute.IsRequired() || attribute.IsOptional(), "selector %s must be an input", name)
+			assert.False(t, attribute.IsComputed(), "selector %s must not be computed", name)
+			continue
+		}
+		assert.True(t, attribute.IsComputed(), "%s must be computed", name)
+		assert.False(t, attribute.IsRequired() || attribute.IsOptional(), "%s must not be configurable", name)
+	}
+}
+
 // TestBlockLookupParity proves the block and lookup-only selector checks on the block test resource.
 func TestBlockLookupParity(t *testing.T) {
 	assertLookupParity(t, parityCase{source: blockTestLookup, resource: newBlockTestResource, selectors: []string{"database", "name"}, lookupSelectors: []string{"column_types"}})
@@ -251,6 +275,12 @@ func TestDataSourceReadableAttributeParity(t *testing.T) {
 			lookups["redshift_"+registeredResourceName(test.resource)] = true
 		}
 		t.Run(name, func(t *testing.T) {
+			if test.standalone {
+				require.Nil(t, test.resource, "a standalone lookup has no paired resource")
+				require.False(t, test.collection, "a standalone lookup is not a listing")
+				assertStandaloneParity(t, test)
+				return
+			}
 			if test.collection {
 				require.Empty(t, test.lookupSelectors, "lookup selectors apply only to single-object lookups")
 				assertCollectionParity(t, test)

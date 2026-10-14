@@ -28,8 +28,8 @@ var updateGolden = flag.Bool("update", false, "rewrite golden SQL files under te
 var goldenName = regexp.MustCompile(`^[a-z0-9_]+$`)
 
 // ddlVerbs are the leading keywords of the catalog writes the provider renders: object DDL, permissions, policy
-// ATTACH/DETACH and materialized view REFRESH.
-var ddlVerbs = []string{"ALTER", "ATTACH", "COMMENT", "CREATE", "DETACH", "DROP", "GRANT", "REFRESH", "REVOKE"}
+// ATTACH/DETACH, materialized view REFRESH and COPY JOB CREATE/ALTER/DROP.
+var ddlVerbs = []string{"ALTER", "ATTACH", "COMMENT", "COPY", "CREATE", "DETACH", "DROP", "GRANT", "REFRESH", "REVOKE"}
 
 // readVerbs are the leading keywords SerializeMutations lets run concurrently.
 var readVerbs = sqlclient.ObservationVerbs()
