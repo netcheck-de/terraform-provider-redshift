@@ -1,0 +1,36 @@
+---
+subcategory: Identity and Access
+page_title: redshift_user_lockouts Data Source - terraform-provider-redshift
+description: Lists the lockout state and failed-login counters of password users.
+---
+
+# redshift_user_lockouts (Data Source)
+
+Lists which password users are locked, whether each lockout was automatic or manual, and their recent failed logins,
+without unlocking anyone. See AWS
+[SHOW USER LOCKOUT](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_USER_LOCKOUT.html) and
+[max_failed_login_attempts](https://docs.aws.amazon.com/redshift/latest/dg/max_failed_login_attempts.html).
+
+## Catalog Query
+
+```sql
+SHOW USER LOCKOUT;
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_user_lockouts/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`SHOW USER LOCKOUT` requires a superuser, so the read fails for any other provider identity. Federated users are not
+listed. The command has no filter, so `user_name` keeps the exact name after reading every row; `user_lockouts` is
+ordered by user name and is empty when nothing matches. `locked_at` and `last_failed_at` are the timestamps as Redshift
+reports them, and they, `lock_reason`, and `locked_by` are null when not reported.
+
+Reading never changes a lockout or a counter; unlocking a user, which takes a superuser or the `ALTER USER` privilege,
+stays outside this data source. The lockout threshold is the cluster-wide `max_failed_login_attempts` parameter, which
+`redshift_configuration` reads. `id` (String, computed) is the listing's JSON identity: the warehouse binding, the
+provider database, and the configured filter.

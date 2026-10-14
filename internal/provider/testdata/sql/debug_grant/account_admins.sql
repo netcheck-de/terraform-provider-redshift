@@ -1,0 +1,5 @@
+SHOW GRANTS ON DATABASE "sales_db@finance-catalog";
+
+GRANT DEBUG ON DATABASE "sales_db@finance-catalog" TO ADMINS OF ACCOUNT '123456789012';
+
+REVOKE DEBUG ON DATABASE "sales_db@finance-catalog" FROM ADMINS OF ACCOUNT '123456789012';

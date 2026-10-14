@@ -37,6 +37,9 @@ region = "eu-central-1"
 # zero_etl_source_arn      = "arn:aws:rds:eu-central-1:123456789012:cluster:orders"
 # zero_etl_source_database = "orders" # PostgreSQL and Oracle sources only.
 
+# Grant DEBUG on a federated-permissions database to the administrators of the consumer account.
+# federated_debug_database = "sales_db"
+
 # Optional cross-account mode: distinct profiles create separate networks and warehouses in those accounts.
 # producer_profile = "producer-admin"
 # consumer_profile = "consumer-admin"

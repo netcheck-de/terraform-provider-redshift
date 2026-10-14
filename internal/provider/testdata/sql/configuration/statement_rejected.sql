@@ -1,0 +1,1 @@
+-- error: parameter name "search_path; DROP TABLE t" must be a bare lowercase identifier, such as search_path

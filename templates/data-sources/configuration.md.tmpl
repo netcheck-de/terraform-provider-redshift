@@ -1,0 +1,35 @@
+---
+subcategory: Catalog Discovery
+page_title: redshift_configuration Data Source - terraform-provider-redshift
+description: Reads the value of one configuration parameter as the provider's session sees it.
+---
+
+# redshift_configuration (Data Source)
+
+Reads the current value of one configuration parameter, such as `search_path`, `datestyle`, or
+`enable_case_sensitive_identifier`, with `SHOW`. See AWS
+[SHOW](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW.html) and the [configuration reference](https://docs.aws.amazon.com/redshift/latest/dg/cm_chap_ConfigurationRef.html).
+
+## Catalog Query
+
+```sql
+SHOW name;
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_configuration/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`value` is the value of the provider's own session in its administration database: the workgroup or cluster default,
+changed by the parameter group and by `ALTER USER ... SET` defaults of the provider's user. The provider never runs
+`SET`, so no session-only value is involved, but another user may see another value. Each read opens a new session,
+so the value can differ between plans. Settings applied with `ALTER SYSTEM` take effect as reported, but this data
+source neither sets nor manages them.
+
+`name` must be a bare lowercase identifier, because `SHOW` takes it unquoted; `all` and dotted session context
+variables are rejected. An unknown parameter is an error. `id` (String, computed) is the read's JSON identity: the
+warehouse binding, the provider database, and `name`. Only `SHOW` is executed.

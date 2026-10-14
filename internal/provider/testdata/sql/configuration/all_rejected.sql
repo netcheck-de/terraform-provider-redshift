@@ -1,0 +1,1 @@
+-- error: parameter name must name one parameter, not all

@@ -1,0 +1,1 @@
+-- error: unsupported grantee_type: "GROUP" is not one of USER, ROLE, ACCOUNT

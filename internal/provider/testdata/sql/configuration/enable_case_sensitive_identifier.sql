@@ -1,0 +1,1 @@
+SHOW enable_case_sensitive_identifier;

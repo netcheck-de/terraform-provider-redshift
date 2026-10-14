@@ -17,8 +17,8 @@ import (
 // The registered type counts are pinned so that adding or dropping a type is a deliberate change that also updates the
 // provider index, the README, and the complete example's coverage.
 const (
-	wantResources   = 39
-	wantDataSources = 53
+	wantResources   = 40
+	wantDataSources = 56
 )
 
 // documentedTypes counts the generated documentation pages of one kind, so registering a type without

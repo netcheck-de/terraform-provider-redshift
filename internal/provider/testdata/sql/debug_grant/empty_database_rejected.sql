@@ -1,0 +1,1 @@
+-- error: database must not be empty
