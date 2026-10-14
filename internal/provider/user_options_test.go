@@ -261,6 +261,9 @@ func TestUserCatalogDecoding(t *testing.T) {
 		"undecodable":        {types.StringNull(), "someday", types.StringValue("someday")},
 		"without offset":     {types.StringNull(), "2030-01-01 00:00:00", types.StringValue("2030-01-01T00:00:00Z")},
 		"direct transport":   {configured, "2030-01-01T00:00:00Z", configured},
+		// pg_user reports VALID UNTIL 'infinity' as the largest timestamp it stores once it has been set.
+		"stored infinity":      {types.StringNull(), "2038-01-19 03:14:04", types.StringValue("infinity")},
+		"stored infinity kept": {types.StringValue("INFINITY"), "2038-01-19 03:14:04", types.StringValue("INFINITY")},
 	} {
 		assert.Equal(t, test.expected, userObservedValidUntil(test.current, test.observed), name)
 	}

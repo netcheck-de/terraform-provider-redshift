@@ -253,19 +253,24 @@ func userParseTimestamp(text string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
+// userStoredInfinity is how pg_user.valuntil reports VALID UNTIL 'infinity' once it has been set: the largest
+// timestamp its 32-bit storage holds, as observed live.
+var userStoredInfinity = time.Date(2038, time.January, 19, 3, 14, 4, 0, time.UTC)
+
 // userObservedValidUntil keeps the configured spelling when the catalog holds the same expiration. The catalog shows
-// no expiration as null or infinity; both are recorded as infinity, the schema default, so an import or state written
-// before the attribute existed plans no change against a configuration that omits it or spells out infinity.
+// no expiration as null, infinity, or the stored maximum; all are recorded as infinity, the schema default, so an
+// import or state written before the attribute existed plans no change against a configuration that omits it or
+// spells out infinity.
 func userObservedValidUntil(current types.String, observed string) types.String {
 	configured := knownString(current)
-	if observed == "" || strings.EqualFold(observed, userValidUntilInfinity) {
+	instant, parsed := userParseTimestamp(observed)
+	if observed == "" || strings.EqualFold(observed, userValidUntilInfinity) || (parsed && instant.Equal(userStoredInfinity)) {
 		if strings.EqualFold(configured, userValidUntilInfinity) {
 			return current
 		}
 		return types.StringValue(userValidUntilInfinity)
 	}
-	instant, ok := userParseTimestamp(observed)
-	if !ok {
+	if !parsed {
 		return types.StringValue(observed)
 	}
 	if wanted, ok := userParseTimestamp(configured); ok && wanted.Equal(instant) {
