@@ -7,7 +7,8 @@ description: Manages explicit privileges on one local database object, or on all
 # redshift_object_grant (Resource)
 
 Owns the exact explicit privilege set for one local database object and one grantee. Tables and views use `TABLE`;
-functions and procedures name their overload with `arguments`; COPY templates use `TEMPLATE`. The `ALL TABLES`, `ALL FUNCTIONS`, and `ALL PROCEDURES` types grant on every object that currently exists
+functions and procedures name their overload with `arguments`; machine learning models use `MODEL`, and COPY templates
+`TEMPLATE`. The `ALL TABLES`, `ALL FUNCTIONS`, and `ALL PROCEDURES` types grant on every object that currently exists
 in a schema. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
@@ -45,14 +46,14 @@ resource "redshift_object_grant" "report" {
 - `database_name` (String) Local database containing the object. Changing it replaces the grant.
 - `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`. Changing it replaces the grant.
 - `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.
-- `object_type` (String) `DATABASE`, `SCHEMA`, `TABLE` (including views), `FUNCTION`, `PROCEDURE`, `TEMPLATE` (a COPY template), or a snapshot of a schema's current objects: `ALL TABLES`, `ALL FUNCTIONS`, or `ALL PROCEDURES`. Changing it replaces the grant.
-- `privileges` (Set of String) Exact explicit privilege set; updated in place. An empty set revokes owned privileges. `DATABASE`: `CREATE`, `USAGE`, `TEMPORARY`, `ALTER`. `SCHEMA`: `CREATE`, `USAGE`, `ALTER`, `DROP`. `TABLE`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `ALTER`, `TRUNCATE`. `FUNCTION`, `PROCEDURE`, `ALL FUNCTIONS`, and `ALL PROCEDURES`: `EXECUTE`. `TEMPLATE`: `USAGE`, `ALTER`, `DROP`. `ALL TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`. A snapshot reports only the privileges every current object holds.
+- `object_type` (String) `DATABASE`, `SCHEMA`, `TABLE` (including views), `FUNCTION`, `PROCEDURE`, `MODEL` (a machine learning model, whose prediction or inference function is granted through it), `TEMPLATE` (a COPY template), or a snapshot of a schema's current objects: `ALL TABLES`, `ALL FUNCTIONS`, or `ALL PROCEDURES`. Changing it replaces the grant.
+- `privileges` (Set of String) Exact explicit privilege set; updated in place. An empty set revokes owned privileges. `DATABASE`: `CREATE`, `USAGE`, `TEMPORARY`, `ALTER`. `SCHEMA`: `CREATE`, `USAGE`, `ALTER`, `DROP`. `TABLE`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `ALTER`, `TRUNCATE`. `FUNCTION`, `PROCEDURE`, `MODEL`, `ALL FUNCTIONS`, and `ALL PROCEDURES`: `EXECUTE`. `TEMPLATE`: `USAGE`, `ALTER`, `DROP`. `ALL TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`. A snapshot reports only the privileges every current object holds.
 
 ### Optional
 
 - `arguments` (String) Comma-separated argument types of a `FUNCTION` or `PROCEDURE`, such as `INTEGER, VARCHAR`, which select one overload; omit it for a routine without arguments. Types are canonicalized and lengths dropped, because Redshift identifies overloads by type names only. Changing it replaces the grant.
 - `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
-- `object_name` (String) Table, view, function, procedure, or template name; required for `TABLE`, `FUNCTION`, `PROCEDURE`, and `TEMPLATE` only. Changing it replaces the grant.
+- `object_name` (String) Table, view, function, procedure, model, or template name; required for `TABLE`, `FUNCTION`, `PROCEDURE`, `MODEL`, and `TEMPLATE` only. Changing it replaces the grant.
 - `schema_name` (String) Schema containing the object, or whose objects an `ALL …` snapshot covers; required for every type except `DATABASE`. Changing it replaces the grant.
 
 ### Read-Only
@@ -67,6 +68,7 @@ resource "redshift_object_grant" "report" {
 | `TABLE`          | `schema_name`, `object_name`                     | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `ALTER`, `TRUNCATE` |
 | `FUNCTION`       | `schema_name`, `object_name`, optional arguments | `EXECUTE`                                                                         |
 | `PROCEDURE`      | `schema_name`, `object_name`, optional arguments | `EXECUTE`                                                                         |
+| `MODEL`          | `schema_name`, `object_name`                     | `EXECUTE`                                                                         |
 | `TEMPLATE`       | `schema_name`, `object_name`                     | `USAGE`, `ALTER`, `DROP`                                                          |
 | `ALL TABLES`     | `schema_name`                                    | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`                      |
 | `ALL FUNCTIONS`  | `schema_name`                                    | `EXECUTE`                                                                         |
@@ -105,6 +107,17 @@ resource "redshift_object_grant" "reporting_tables" {
 }
 ```
 
+## Models
+
+`MODEL` grants `EXECUTE` on a trained or external machine learning model, such as a
+[`redshift_external_model`](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/external_model).
+Redshift does not grant the model's prediction or inference function on its own: running the function requires
+`EXECUTE` on the model, so grant the model rather than a `FUNCTION`. The statement names the model as
+`schema.name` and runs in its database. Existence is checked in `SVV_ML_MODEL_INFO`, which shows a regular user only
+the models it owns, so a provider SQL identity that is not a superuser can grant only on its own models; the privileges
+are read from `SVV_ML_MODEL_PRIVILEGES` in the model's database. `CREATE MODEL` is a system privilege of
+[`redshift_system_grant`](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/system_grant).
+
 ## Snapshots of a Schema
 
 `ALL TABLES`, `ALL FUNCTIONS`, and `ALL PROCEDURES` use `GRANT … ON ALL … IN SCHEMA`, which grants on the objects that
@@ -125,7 +138,7 @@ privilege itself stays. Groups, roles, and `PUBLIC` cannot hold grant options.
 ## Lifecycle and Ownership
 
 The resource checks object and grantee existence. Databases, schemas, tables, and templates are read with
-`SHOW GRANTS ON` the object, routines with `SVV_FUNCTION_PRIVILEGES`, and
+`SHOW GRANTS ON` the object, routines with `SVV_FUNCTION_PRIVILEGES`, models with `SVV_ML_MODEL_PRIVILEGES`, and
 snapshots with `SVV_RELATION_PRIVILEGES` or `SVV_FUNCTION_PRIVILEGES`, all in the object's local database. Scoped,
 inherited, and other grantee grants are independent. Avoid overlapping this resource with `redshift_grant` for the same
 explicit schema/database tuple, and a snapshot with single-object grants of the same grantee. Language privileges,
@@ -147,7 +160,7 @@ the catalog to verify the exact sets; every change to the tuple itself replaces 
 | `database_name`, `schema_name`, `object_name`, or `object_type`           | replaces the grant: they name another object, so the old object's privileges are revoked and the new one's granted                                                                                                                                         |
 | `arguments`                                                               | replaces the grant: it selects another overload; a new spelling of the same types, such as `INT4` for `INTEGER`, replaces it too, because the configured spelling is part of the identity                                                                  |
 | `grantee` or `grantee_type`                                               | replaces the grant: the grantee is part of the tuple                                                                                                                                                                                                       |
-| privilege added to `privileges`                                           | `GRANT ... ON DATABASE`, `ON SCHEMA`, `ON TABLE`, `ON FUNCTION`, `ON PROCEDURE`, or `ON TEMPLATE`; for a snapshot `GRANT ... ON ALL TABLES IN SCHEMA` (or `ALL FUNCTIONS`, `ALL PROCEDURES`), which covers the objects that exist when it runs |
+| privilege added to `privileges`                                           | `GRANT ... ON DATABASE`, `ON SCHEMA`, `ON TABLE`, `ON FUNCTION`, `ON PROCEDURE`, `ON MODEL`, or `ON TEMPLATE`; for a snapshot `GRANT ... ON ALL TABLES IN SCHEMA` (or `ALL FUNCTIONS`, `ALL PROCEDURES`), which covers the objects that exist when it runs |
 | privilege removed from `privileges`                                       | the matching `REVOKE ... FROM`, which also removes its grant option; for a snapshot `REVOKE ... ON ALL ... IN SCHEMA`, which revokes it from every current object, including grants made by single-object tuples                                           |
 | `privileges` set to `[]`                                                  | `REVOKE` for every privilege the grantee holds on the object; the resource stays and owns the empty set                                                                                                                                                    |
 | privilege added to `grant_option_privileges`                              | `GRANT ... WITH GRANT OPTION`; a privilege added to both sets at once is granted with the option in one statement                                                                                                                                          |
@@ -164,7 +177,7 @@ configuration with the statements above: a privilege or grant option granted out
 one is granted again. Other grantees, scoped permissions, and privileges inherited through roles or groups are ignored.
 A snapshot reports a privilege only when every current object of its type holds it: when configured, a privilege that a
 new object lacks is granted again on all of them, and when not configured, a privilege that only some objects hold is
-never revoked. A missing database, schema, object, routine overload, or grantee removes the grant from state, and
+never revoked. A missing database, schema, object, routine overload, model, or grantee removes the grant from state, and
 so does a snapshot whose schema holds no objects of its type; the next plan creates it again.
 
 ### Replacing Database Privileges

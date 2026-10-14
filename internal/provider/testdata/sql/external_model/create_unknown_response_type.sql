@@ -1,0 +1,1 @@
+-- error: response_type: "JSON" is not one of VARCHAR, SUPER

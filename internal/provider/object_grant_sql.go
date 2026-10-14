@@ -9,7 +9,7 @@ import (
 )
 
 // objectGrantKinds lists object_type values: single objects, then the ALL … IN SCHEMA snapshots.
-var objectGrantKinds = []string{"DATABASE", "SCHEMA", "TABLE", "FUNCTION", "PROCEDURE", "TEMPLATE", "ALL TABLES", "ALL FUNCTIONS", "ALL PROCEDURES"}
+var objectGrantKinds = []string{"DATABASE", "SCHEMA", "TABLE", "FUNCTION", "PROCEDURE", "MODEL", "TEMPLATE", "ALL TABLES", "ALL FUNCTIONS", "ALL PROCEDURES"}
 
 // objectGrantPrivileges lists the privileges GRANT documents per object type. ALL TABLES keeps to the privileges
 // SVV_RELATION_PRIVILEGES reports, because a snapshot is read back from it.
@@ -21,6 +21,7 @@ var objectGrantPrivileges = map[string][]sqlclient.Keyword{
 	"TABLE":          {"SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "REFERENCES", "ALTER", "TRUNCATE"},
 	"FUNCTION":       {"EXECUTE"},
 	"PROCEDURE":      {"EXECUTE"},
+	"MODEL":          {"EXECUTE"},
 	"TEMPLATE":       {"USAGE", "ALTER", "DROP"},
 	"ALL TABLES":     {"SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "REFERENCES"},
 	"ALL FUNCTIONS":  {"EXECUTE"},
@@ -64,6 +65,28 @@ func objectGrantRoutineKind(alias sqlclient.Keyword, procedures bool) sqlclient.
 		return "NVL(" + alias + "function_type, '') ILIKE '%PROCEDURE%'"
 	}
 	return "NVL(" + alias + "function_type, '') NOT ILIKE '%PROCEDURE%'"
+}
+
+// objectGrantModelQuery confirms that a machine learning model exists. Permission checks run in the administration
+// database, and SVV_ML_MODEL_INFO is the only model catalog that names the database; SHOW MODEL covers only the
+// current one.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ML_MODEL_INFO.html
+func objectGrantModelQuery(database, schema, name string) sqlclient.Query {
+	return sqlclient.Select("model_name").From("svv_ml_model_info").
+		Where("database_name = :database", sqlclient.Bind("database", database)).
+		Where("schema_name = :schema", sqlclient.Bind("schema", schema)).
+		Where("model_name = :name", sqlclient.Bind("name", name))
+}
+
+// readObjectGrantModelQuery reads one model's privileges for one grantee. SHOW GRANTS has no model form, and
+// SVV_ML_MODEL_PRIVILEGES has no database column, so it is read in the model's database.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ML_MODEL_PRIVILEGES.html
+func readObjectGrantModelQuery(schema, name, grantee, granteeType string) sqlclient.Query {
+	return sqlclient.Select("privilege_type", "admin_option").From("svv_ml_model_privileges").
+		Where("namespace_name = :schema", sqlclient.Bind("schema", schema)).
+		Where("model_name = :name", sqlclient.Bind("name", name)).
+		Where("identity_name = :grantee", sqlclient.Bind("grantee", grantee)).
+		Where("identity_type = LOWER(:kind)", sqlclient.Bind("kind", granteeType))
 }
 
 // readObjectGrantRoutineQuery reads one routine's privileges for one grantee. SHOW GRANTS has no procedure form, so
@@ -169,7 +192,7 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 	if arguments != "" && !routine {
 		return privilegeTarget{}, fmt.Errorf("arguments is only valid for FUNCTION and PROCEDURE")
 	}
-	named := kind == "TABLE" || kind == "TEMPLATE" || routine
+	named := kind == "TABLE" || kind == "MODEL" || kind == "TEMPLATE" || routine
 	switch {
 	case kind == "DATABASE" && (schemaName != "" || name != ""):
 		return privilegeTarget{}, fmt.Errorf("DATABASE does not accept schema_name or object_name")
@@ -207,6 +230,11 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 		}
 		object = sqlclient.Kw("ON", keyword).Qualified(database, schemaName, name).Args(sqlclient.Kw(signature))
 		read = readObjectGrantRoutineQuery(schemaName, name, routineCatalogArguments(signature), granteeName, granteeType)
+	case "MODEL":
+		// GRANT ON MODEL takes a schema-qualified name; the statement runs in the model's database.
+		queries = append(queries, privilegeSchemaQuery(database, schemaName), objectGrantModelQuery(database, schemaName, name))
+		object = sqlclient.Kw("ON MODEL").Qualified(schemaName, name)
+		read = readObjectGrantModelQuery(schemaName, name, granteeName, granteeType)
 	case "TEMPLATE":
 		// No catalog view lists every template, so existence comes from SHOW TEMPLATES, whose LIKE pattern may also
 		// match similar names; SHOW GRANTS then fails for a missing template instead of reporting it as absent.

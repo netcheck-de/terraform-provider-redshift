@@ -1,0 +1,1 @@
+-- error: a model requires a nonempty schema and name

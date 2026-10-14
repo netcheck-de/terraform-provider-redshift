@@ -1,0 +1,1 @@
+-- error: request_type: "STREAM" is not one of UNIFIED, RAW

@@ -1,0 +1,1 @@
+-- error: prompt and suffix are only supported with request_type UNIFIED

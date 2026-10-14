@@ -1,0 +1,1 @@
+CREATE EXTERNAL MODEL "Odd""Schema"."Odd""Model" FUNCTION "Odd""Schema"."Odd""Function" IAM_ROLE DEFAULT MODEL_TYPE BEDROCK SETTINGS (MODEL_ID 'anthropic.claude-v2', PROMPT 'Answer as ''Bob'' \\ briefly:', SUFFIX 'Thanks.', REQUEST_TYPE UNIFIED, RESPONSE_TYPE VARCHAR);
