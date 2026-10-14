@@ -19,9 +19,9 @@ SELECT ... FROM svv_attached_masking_policy WHERE policy_name = '...' AND schema
 
 {{ tffile "examples/data-sources/redshift_masking_policy_attachment/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `id` (String, computed) is the attachment's JSON identity, using the paired resource's warehouse, `database`, `policy`,
 `schema`, `relation`, `columns` (a JSON list), `grantee`, and `grantee_type` keys. It is null when `exists` is false,

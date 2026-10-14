@@ -23,9 +23,9 @@ Deleting the resource revokes the column privileges it owns; see [Reconciliation
 
 {{ tffile "examples/resources/redshift_column_grant/resource.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 One resource owns all columns of one grantee on one relation, because `SVV_COLUMN_PRIVILEGES` reports each column,
 privilege, and grantee exactly. Column names are quoted identifiers, so write them as the catalog stores them (lower

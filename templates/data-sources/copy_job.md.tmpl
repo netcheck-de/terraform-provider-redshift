@@ -19,9 +19,9 @@ SELECT ... FROM sys_copy_job WHERE job_name = '...';
 
 {{ tffile "examples/data-sources/redshift_copy_job/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `id` (String, computed) is the job's JSON identity, using the paired resource's warehouse, `database`, and `name` keys.
 `SYS_COPY_JOB` shows superusers every job and other users only their own; for others, and for a missing database or

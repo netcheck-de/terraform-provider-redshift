@@ -19,9 +19,9 @@ SELECT ... FROM svv_all_columns WHERE database_name = '...' AND schema_name = '.
 
 {{ tffile "examples/data-sources/redshift_columns/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `database` defaults to the provider's `database`; the read runs in the provider's database. `id` combines the
 warehouse binding, the listed database, and the configured filters. Items are ordered by schema, table, and

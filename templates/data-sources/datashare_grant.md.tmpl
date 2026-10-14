@@ -20,9 +20,9 @@ SELECT ... FROM svv_datashare_consumers WHERE share_name = 'datashare' ...;
 
 {{ tffile "examples/data-sources/redshift_datashare_grant/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Exactly one consumer selector is required. A namespace UUID may be unknown during planning; the lookup is deferred
 until its value resolves.

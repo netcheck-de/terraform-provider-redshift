@@ -19,9 +19,9 @@ SELECT ... FROM pg_description ...;
 
 {{ tffile "examples/data-sources/redshift_comment/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `id` (String, computed) is the object's JSON identity in the paired resource format. It includes the warehouse, provider
 database, `database_name`, `object_type`, and `object_name`; `schema_name`, `column_name`, and `constraint_name` are

@@ -26,9 +26,9 @@ SELECT ... FROM svv_integration WHERE target_database = 'name';
 
 {{ tffile "examples/data-sources/redshift_database/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Missing or ambiguous databases and shared databases without a complete producer binding are errors. The collation is
 read by running `DB_COLLATION()` in the looked-up database, so the caller must be able to connect to it.

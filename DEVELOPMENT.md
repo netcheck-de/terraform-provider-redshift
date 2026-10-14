@@ -169,7 +169,7 @@ requires producer/consumer fixture connectivity in addition to the normal lifecy
 `task markdown-fmt` formats the root Markdown files and example READMEs with the pinned mdox tool.
 `task markdown-fmt-check` checks the same files without rewriting them and runs in `task check` and CI. Generated
 `docs/` pages are excluded because `tfplugindocs` owns their formatting; generated schema sections are wrapped in
-markdownlint disable/enable comments for line length and inline anchors. The formatter
+markdownlint disable/enable comments for line length, blank-line runs, and inline anchors. The formatter
 aligns table columns and preserves existing prose line breaks. Markdownlint checks the 120-column prose limit
 separately.
 

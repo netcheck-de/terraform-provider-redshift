@@ -19,9 +19,9 @@ SELECT ... FROM svv_rls_attached_policy WHERE polname = 'policy' AND relname = '
 
 {{ tffile "examples/data-sources/redshift_rls_policy_attachment/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `id` (String, computed) is the attachment's JSON identity, using the same keys as the paired resource. It is null when
 `exists` is false.

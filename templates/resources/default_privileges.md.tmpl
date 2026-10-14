@@ -24,9 +24,9 @@ described below; see [Reconciliation](#reconciliation) for changes.
 
 {{ tffile "examples/resources/redshift_default_privileges/resource.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Tables support `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, and `TRUNCATE`; functions and
 procedures support `EXECUTE`. Grantees can be a user, `ROLE`, `GROUP`, or `PUBLIC`.

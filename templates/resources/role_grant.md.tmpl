@@ -23,9 +23,9 @@ REVOKE ADMIN OPTION FOR ROLE role FROM ...;
 
 {{ tffile "examples/resources/redshift_role_grant/resource.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Specify exactly one of `to_role` and `to_user`. `admin_option = true` requires `to_user`, because Redshift documents
 `WITH ADMIN OPTION` only for user recipients. Redshift documents no other recipient for roles: the role syntax lists no

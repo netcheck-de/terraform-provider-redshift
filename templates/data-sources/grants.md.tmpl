@@ -21,9 +21,9 @@ SHOW GRANTS FOR [ROLE] ... FROM DATABASE ...;
 
 {{ tffile "examples/data-sources/redshift_grants/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Set `object_type` to list the grants on that object; `grantee` and `grantee_type` then narrow the rows, which also
 covers groups and `PUBLIC`. Without `object_type`, `grantee` and `grantee_type` (`USER` or `ROLE`) select

@@ -20,9 +20,9 @@ connections require endpoint connectivity. See the
 
 {{ tffile "examples/provider/provider.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Select exactly one warehouse method: `workgroup_name`, `cluster_identifier`, or `direct_connection`.
 `direct_connection` accepts optional `host`, `port`, `username`, sensitive `password`, `ca_cert_file`, and a nested

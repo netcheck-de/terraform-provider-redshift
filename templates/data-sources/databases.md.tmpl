@@ -19,9 +19,9 @@ SELECT ... FROM svv_redshift_databases WHERE database_type = '...' AND database_
 
 {{ tffile "examples/data-sources/redshift_databases/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 The read runs in the provider's `database`. `id` is the JSON identity of the listing: the warehouse binding, the
 provider database, and the configured filters. Items are ordered by name; a filter that matches nothing returns an

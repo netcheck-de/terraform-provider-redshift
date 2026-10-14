@@ -19,9 +19,9 @@ SELECT ... FROM svv_rls_relation WHERE relschema = 'schema' AND relname = 'relat
 
 {{ tffile "examples/data-sources/redshift_table_security/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `id` (String, computed) is the relation's JSON identity, using the same warehouse, database, schema, and relation keys
 as the paired resource.

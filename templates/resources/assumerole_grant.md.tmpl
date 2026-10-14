@@ -24,9 +24,9 @@ changes.
 
 {{ tffile "examples/resources/redshift_assumerole_grant/resource.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Supported `privileges` are `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, and `CREATE MODEL`; all four together are what
 `FOR ALL` grants, and the provider issues one statement per command.

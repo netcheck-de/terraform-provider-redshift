@@ -105,8 +105,6 @@ tasks:
     desc: Generate Registry documentation
     cmds:
       - go tool tfplugindocs generate --provider-name redshift
-      # tfplugindocs leaves blank-line runs after nested blocks, which markdownlint rejects (MD012).
-      - find docs -name '*.md' -exec perl -0pi -e 's/\n{3,}/\n\n/g' {} +
 
   docs-check:
     desc: Validate Registry documentation and check that docs/ matches freshly generated output
@@ -117,7 +115,6 @@ tasks:
         go tool tfplugindocs generate
         --provider-name redshift
         --rendered-website-dir .cache/docs-check
-      - find .cache/docs-check -name '*.md' -exec perl -0pi -e 's/\n{3,}/\n\n/g' {} +
       - diff -r docs .cache/docs-check
 
   # Local build

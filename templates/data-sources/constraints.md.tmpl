@@ -20,9 +20,9 @@ SELECT ... FROM pg_constraint WHERE contype IN ('p', 'u', 'f') ...;
 
 {{ tffile "examples/data-sources/redshift_constraints/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `database` defaults to the provider's `database`. `PG_CONSTRAINT` only covers the database a statement runs in, so
 the read connects to the listed database, which must be a local database. `id` combines the warehouse binding, the

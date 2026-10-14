@@ -21,9 +21,9 @@ SHOW TEMPLATE schema.name;
 
 {{ tffile "examples/data-sources/redshift_template/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `id` (String, computed) is the template's JSON identity, using the paired resource's warehouse, `database`, `schema`,
 and `name` keys. A missing database, schema, or template fails the lookup, and so does a parameter the provider does

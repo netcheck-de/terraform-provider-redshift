@@ -19,9 +19,9 @@ SELECT ... FROM svv_masking_policy WHERE policy_database = '...';
 
 {{ tffile "examples/data-sources/redshift_masking_policies/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Items are ordered by database and name. Only superusers and `sys:secadmin` members see policies; for other identities
 the list is empty. `id` combines the warehouse binding with the `database` filter, or the provider database without one.

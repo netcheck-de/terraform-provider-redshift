@@ -19,9 +19,9 @@ SHOW PARAMETERS OF PROCEDURE schema.name (...);
 
 {{ tffile "examples/data-sources/redshift_procedure/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `arguments` selects the overload by its `IN` and `INOUT` types, as the `arguments` key of the paired resource's import
 identity holds them, and is returned unchanged. A managed procedure's types come from its `argument` blocks with

@@ -21,9 +21,9 @@ SHOW USER LOCKOUT;
 
 {{ tffile "examples/data-sources/redshift_user_lockouts/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `SHOW USER LOCKOUT` requires a superuser, so the read fails for any other provider identity. A warehouse without account
 lockout support rejects the command with "account lockout security is not supported", and the read fails too. Federated

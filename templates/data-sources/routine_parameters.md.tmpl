@@ -22,9 +22,9 @@ SHOW PARAMETERS OF { FUNCTION | PROCEDURE } database.schema.routine_name(argumen
 
 {{ tffile "examples/data-sources/redshift_routine_parameters/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 The listing first finds the matching overloads in `pg_proc_info` and then runs `SHOW PARAMETERS` once per overload, so
 narrow it with `schema` and `routine_name`. Functions add a `RETURN` row at position `0` for their result. Viewing a

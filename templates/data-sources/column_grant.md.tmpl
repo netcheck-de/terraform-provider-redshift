@@ -19,9 +19,9 @@ SELECT ... FROM svv_column_privileges WHERE namespace_name = '...' AND relation_
 
 {{ tffile "examples/data-sources/redshift_column_grant/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `id` (String, computed) is the tuple's JSON identity, using the paired resource's warehouse, provider database,
 `database_name`, `schema_name`, `object_name`, `grantee`, and `grantee_type` keys.

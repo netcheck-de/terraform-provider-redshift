@@ -22,9 +22,9 @@ SELECT sortkey1 FROM svv_table_info WHERE "schema" = 'schema' AND "table" = 'nam
 
 {{ tffile "examples/data-sources/redshift_table/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `id` (String, computed) is the table's JSON identity, using the same warehouse, database, schema, and name keys as the
 paired resource.

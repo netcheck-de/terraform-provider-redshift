@@ -20,9 +20,9 @@ SHOW name;
 
 {{ tffile "examples/data-sources/redshift_configuration/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `value` is the value of the provider's own session in its administration database: the workgroup or cluster default,
 changed by the parameter group and by `ALTER USER ... SET` defaults of the provider's user. The provider never runs

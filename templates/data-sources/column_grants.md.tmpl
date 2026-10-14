@@ -20,9 +20,9 @@ SELECT ... FROM svv_column_privileges WHERE ...;
 
 {{ tffile "examples/data-sources/redshift_column_grants/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 All filters are optional and combine with AND; an empty result is an empty list. The view shows only grants visible
 to the provider's identity (superusers and users with `ACCESS SYSTEM TABLE` see all). Column grants have no grant

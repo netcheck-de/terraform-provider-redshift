@@ -19,9 +19,9 @@ SHOW TEMPLATES FROM SCHEMA schema;
 
 {{ tffile "examples/data-sources/redshift_templates/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Items are ordered by schema and name. Without `schema`, the listing reads the local schemas of the database from
 `SVV_ALL_SCHEMAS` and runs `SHOW TEMPLATES` for each, which fails when the provider's SQL identity lacks `USAGE` on one

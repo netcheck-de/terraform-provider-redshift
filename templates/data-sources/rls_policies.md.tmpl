@@ -19,8 +19,8 @@ SELECT ... FROM svv_rls_policy WHERE poldb = 'database';
 
 {{ tffile "examples/data-sources/redshift_rls_policies/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Items are sorted by name; an empty database yields an empty list. Regular users see only their own policies.

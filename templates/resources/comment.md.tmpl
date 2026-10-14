@@ -20,9 +20,9 @@ COMMENT ON CONSTRAINT constraint_name ON schema_name.object_name IS 'text' | NUL
 
 {{ tffile "examples/resources/redshift_comment/resource.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 For `DATABASE`, `object_name` must equal `database_name`. For `COLUMN`, `object_name` identifies the relation. For
 `CONSTRAINT`, `object_name` is the table and `constraint_name` the primary key, unique, or foreign key constraint on
