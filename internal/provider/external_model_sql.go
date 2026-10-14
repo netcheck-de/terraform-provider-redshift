@@ -93,8 +93,9 @@ func createExternalModelStatement(data externalModelModel) (string, error) {
 		settings = append(settings, sqlclient.Fragment().KwLit("SUFFIX", suffix))
 	}
 	settings = append(settings, sqlclient.Kw("REQUEST_TYPE", request), sqlclient.Kw("RESPONSE_TYPE", response))
+	// Redshift creates the function in the model's schema and rejects a qualified FUNCTION name.
 	statement := sqlclient.Stmt("CREATE EXTERNAL MODEL").Append(target).
-		KwQualified("FUNCTION", data.Schema.ValueString(), data.Function.ValueString()).
+		KwIdent("FUNCTION", data.Function.ValueString()).
 		Kw("IAM_ROLE").Append(role).
 		Kw("MODEL_TYPE BEDROCK SETTINGS").Paren(settings...)
 	return statement.String(), statement.Err()

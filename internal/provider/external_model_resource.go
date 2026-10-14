@@ -157,6 +157,9 @@ func readExternalModelCatalog(ctx context.Context, client *resourceClient, datab
 	return parseShowModel(rows), true, nil
 }
 
+// externalModelDefaultRole is how SHOW MODEL prints IAM_ROLE DEFAULT to the model's owner; other users see no role.
+const externalModelDefaultRole = "default-aws-iam-role"
+
 // observeExternalModel updates data with the settings SHOW MODEL reports and keeps the others. The keys of
 // external models are undocumented, so each setting is read only where its key is present, and a configured
 // spelling that names the reported value is kept: a function name without its schema, DEFAULT for whichever
@@ -176,7 +179,7 @@ func observeExternalModel(data *externalModelModel, settings map[string]string) 
 	}
 	if role := settings["iam_role"]; role != "" {
 		switch {
-		case strings.EqualFold(role, "DEFAULT"):
+		case strings.EqualFold(role, "DEFAULT") || role == externalModelDefaultRole:
 			data.IAMRole = keywordValue(data.IAMRole, "DEFAULT")
 		case !strings.EqualFold(knownString(data.IAMRole), "DEFAULT") && knownString(data.IAMRole) != role:
 			data.IAMRole = types.StringValue(role)
@@ -193,6 +196,19 @@ func observeExternalModel(data *externalModelModel, settings map[string]string) 
 		if value := settings[key]; value != "" {
 			*field = keywordValue(*field, strings.ToUpper(value))
 		}
+	}
+}
+
+// defaultExternalModelResponse fills a response type that neither SHOW MODEL nor state holds, which only happens on
+// the refresh after an import, with the Redshift default for the request type. A UNIFIED model created with SUPER is
+// replaced by the first plan after its import; lookups leave the value null instead of guessing.
+func defaultExternalModelResponse(data *externalModelModel) {
+	if !data.ResponseType.IsNull() && !data.ResponseType.IsUnknown() {
+		return
+	}
+	data.ResponseType = types.StringValue("VARCHAR")
+	if strings.EqualFold(knownString(data.RequestType), "RAW") {
+		data.ResponseType = types.StringValue("SUPER")
 	}
 }
 
@@ -278,6 +294,7 @@ func (r *externalModelResource) Read(ctx context.Context, req resource.ReadReque
 		resp.State.RemoveResource(ctx)
 		return
 	}
+	defaultExternalModelResponse(&data)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

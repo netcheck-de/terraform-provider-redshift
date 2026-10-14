@@ -1,1 +1,1 @@
-CREATE EXTERNAL MODEL "serving"."summarizer" FUNCTION "serving"."f_summarize" IAM_ROLE 'arn:aws:iam::123456789012:role/redshift-bedrock' MODEL_TYPE BEDROCK SETTINGS (MODEL_ID 'anthropic.claude-v2', REQUEST_TYPE RAW, RESPONSE_TYPE SUPER);
+CREATE EXTERNAL MODEL "serving"."summarizer" FUNCTION "f_summarize" IAM_ROLE 'arn:aws:iam::123456789012:role/redshift-bedrock' MODEL_TYPE BEDROCK SETTINGS (MODEL_ID 'anthropic.claude-v2', REQUEST_TYPE RAW, RESPONSE_TYPE SUPER);

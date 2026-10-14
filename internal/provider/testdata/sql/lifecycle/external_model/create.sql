@@ -1,5 +1,5 @@
 -- database: admin
-CREATE EXTERNAL MODEL "serving"."summarizer" FUNCTION "serving"."f_summarize" IAM_ROLE DEFAULT MODEL_TYPE BEDROCK SETTINGS (MODEL_ID 'anthropic.claude-v2', PROMPT 'Summarize the following text:', REQUEST_TYPE UNIFIED, RESPONSE_TYPE VARCHAR);
+CREATE EXTERNAL MODEL "serving"."summarizer" FUNCTION "f_summarize" IAM_ROLE DEFAULT MODEL_TYPE BEDROCK SETTINGS (MODEL_ID 'anthropic.claude-v2', PROMPT 'Summarize the following text:', REQUEST_TYPE UNIFIED, RESPONSE_TYPE VARCHAR);
 -- params: {}
 
 -- database: admin

@@ -13,17 +13,18 @@ import (
 
 var _ = registerParity(parityCase{source: newExternalModelDataSource, resource: newExternalModelResource, selectors: []string{"database", "schema", "name"}})
 
-// TestExternalModelLookup reports the settings SHOW MODEL prints without mutating.
+// TestExternalModelLookup reports the settings SHOW MODEL prints to the model owner without mutating.
 func TestExternalModelLookup(t *testing.T) {
 	c, _ := externalModelFake()
 	exerciseCatalogLookup(t, newExternalModelDataSource, map[string]string{"database": "admin", "schema": fakeModelSchema, "name": fakeModelName}, map[string]attr.Value{
-		"function":      types.StringValue(fakeModelFunction),
-		"iam_role":      types.StringValue("DEFAULT"),
-		"model_id":      types.StringValue(fakeModelID),
-		"prompt":        types.StringValue(fakeModelPrompt),
-		"suffix":        types.StringNull(),
-		"request_type":  types.StringValue("UNIFIED"),
-		"response_type": types.StringValue("VARCHAR"),
+		"function":     types.StringValue(fakeModelFunction),
+		"iam_role":     types.StringValue("DEFAULT"),
+		"model_id":     types.StringValue(fakeModelID),
+		"prompt":       types.StringValue(fakeModelPrompt),
+		"suffix":       types.StringNull(),
+		"request_type": types.StringValue("UNIFIED"),
+		// SHOW MODEL never prints the response type, and the lookup does not guess it.
+		"response_type": types.StringNull(),
 		"owner":         types.StringValue(fakeModelOwner),
 	}, c)
 	assert.Empty(t, c.writes)

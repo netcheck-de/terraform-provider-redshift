@@ -33,6 +33,10 @@ type fakeExternalModel struct {
 }
 
 // externalModelFamily emulates external models keyed by schema and name.
+// fakeModelDefaultRole is how SHOW MODEL prints IAM_ROLE DEFAULT to the model's owner, as observed live; SHOW MODEL
+// does not report the response type at all.
+const fakeModelDefaultRole = "default-aws-iam-role"
+
 type externalModelFamily struct {
 	// models maps schema and name to the model.
 	models map[string]*fakeExternalModel
@@ -43,8 +47,8 @@ type externalModelFamily struct {
 // populate adds the representative model.
 func (f *externalModelFamily) populate() {
 	f.models[fakeViewKey(fakeModelSchema, fakeModelName)] = &fakeExternalModel{schema: fakeModelSchema, name: fakeModelName, owner: fakeModelOwner, settings: map[string]string{
-		"Model Type": "bedrock", "Function Name": fakeModelFunction, "IAM Role": "default", "Model ID": fakeModelID,
-		"Prompt": fakeModelPrompt, "Request Type": "unified", "Response Type": "varchar",
+		"Model Type": "bedrock", "Function Name": fakeModelFunction, "IAM Role": fakeModelDefaultRole, "Model ID": fakeModelID,
+		"Prompt": fakeModelPrompt, "Request Type": "unified",
 	}}
 }
 
@@ -59,7 +63,7 @@ func (f *externalModelFamily) get(name string) *fakeExternalModel {
 }
 
 // fakeExternalModelPattern matches the CREATE EXTERNAL MODEL statement the resource renders.
-var fakeExternalModelPattern = regexp.MustCompile(`^CREATE EXTERNAL MODEL ("(?:[^"]|"")*"\."(?:[^"]|"")*") FUNCTION "(?:[^"]|"")*"\."((?:[^"]|"")*)" IAM_ROLE (DEFAULT|'[^']*') MODEL_TYPE BEDROCK SETTINGS \((.*)\)$`)
+var fakeExternalModelPattern = regexp.MustCompile(`^CREATE EXTERNAL MODEL ("(?:[^"]|"")*"\."(?:[^"]|"")*") FUNCTION "((?:[^"]|"")*)" IAM_ROLE (DEFAULT|'[^']*') MODEL_TYPE BEDROCK SETTINGS \((.*)\)$`)
 
 // fakeExternalModelSetting matches one SETTINGS item.
 var fakeExternalModelSetting = regexp.MustCompile(`(MODEL_ID|PROMPT|SUFFIX) '((?:[^']|'')*)'|(REQUEST_TYPE|RESPONSE_TYPE) (\w+)`)
@@ -72,7 +76,7 @@ var fakeExternalModelSettingKeys = map[string]string{
 // show renders SHOW MODEL rows in the documented layout: general keys, a blank row, and a PARAMETERS: section.
 func (m *fakeExternalModel) show(hideSettings bool) []sqlclient.Row {
 	rows := []sqlclient.Row{
-		{"Key": "Model Name", "Value": m.name}, {"Key": "Schema Name", "Value": m.schema}, {"Key": "Owner", "Value": "'" + m.owner + "'"},
+		{"Key": "Model Name", "Value": m.name}, {"Key": "Schema Name", "Value": m.schema}, {"Key": "Owner", "Value": m.owner},
 		{"Key": "Creation Time", "Value": "Sat, 15.01.2000 14:45:20"}, {"Key": "Model State", "Value": "READY"},
 		{"Key": "", "Value": ""}, {"Key": "PARAMETERS:", "Value": ""},
 	}
@@ -122,13 +126,13 @@ func (f *externalModelFamily) query(_ *catalog, _ sqlclient.Connection, sql stri
 		}
 		role := strings.ReplaceAll(strings.Trim(match[3], "'"), "''", "'")
 		if role == "DEFAULT" {
-			role = "default"
+			role = fakeModelDefaultRole
 		}
 		settings := map[string]string{"Model Type": "bedrock", "Function Name": strings.ReplaceAll(match[2], `""`, `"`), "IAM Role": role}
 		for _, setting := range fakeExternalModelSetting.FindAllStringSubmatch(match[4], -1) {
 			if setting[1] != "" {
 				settings[fakeExternalModelSettingKeys[setting[1]]] = strings.ReplaceAll(strings.ReplaceAll(setting[2], "''", "'"), `\\`, `\`)
-			} else {
+			} else if setting[3] != "RESPONSE_TYPE" {
 				settings[fakeExternalModelSettingKeys[setting[3]]] = strings.ToLower(setting[4])
 			}
 		}

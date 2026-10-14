@@ -248,3 +248,17 @@ func TestExternalModelTranscripts(t *testing.T) {
 		{name: "create_raw", operation: "create", catalog: catalogWith(func(c *catalog) { c.family("external_model").(*externalModelFamily).remove(fakeModelName) }), planned: raw},
 	})
 }
+
+// TestExternalModelImportResponseDefault records the Redshift default response type after an import, because SHOW
+// MODEL never prints it, and keeps a value state already holds.
+func TestExternalModelImportResponseDefault(t *testing.T) {
+	for _, tc := range []struct{ request, state, want types.String }{
+		{types.StringValue("UNIFIED"), types.StringNull(), types.StringValue("VARCHAR")},
+		{types.StringValue("RAW"), types.StringNull(), types.StringValue("SUPER")},
+		{types.StringValue("UNIFIED"), types.StringValue("SUPER"), types.StringValue("SUPER")},
+	} {
+		data := externalModelModel{RequestType: tc.request, ResponseType: tc.state}
+		defaultExternalModelResponse(&data)
+		assert.Equal(t, tc.want, data.ResponseType, "%s/%s", tc.request, tc.state)
+	}
+}
