@@ -89,7 +89,8 @@ resource "aws_glue_resource_policy" "fixture" {
 }
 
 # Redshift writes table and partition definitions through the external schema's role, so the role needs catalog write
-# access for the table this example manages in SQL; the Glue fixture table above stays read-only.
+# access for the table this example manages in SQL; the Glue fixture table above stays read-only. SVV_EXTERNAL_TABLES
+# lists tables through glue:GetTables, so without it the created table is invisible to Redshift.
 resource "aws_iam_role_policy" "producer_spectrum_tables" {
   provider = aws.producer
   name     = "spectrum-tables"
@@ -100,7 +101,7 @@ resource "aws_iam_role_policy" "producer_spectrum_tables" {
       {
         Effect = "Allow"
         Action = [
-          "glue:CreateTable", "glue:UpdateTable", "glue:DeleteTable", "glue:GetTable",
+          "glue:CreateTable", "glue:UpdateTable", "glue:DeleteTable", "glue:GetTable", "glue:GetTables",
           "glue:CreatePartition", "glue:BatchCreatePartition", "glue:UpdatePartition", "glue:DeletePartition",
           "glue:BatchDeletePartition", "glue:GetPartition", "glue:GetPartitions", "glue:BatchGetPartition",
         ]

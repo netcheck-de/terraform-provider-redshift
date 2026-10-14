@@ -18,12 +18,17 @@ data "redshift_schema" "source" {
 }
 
 # The options spell out Redshift's defaults except the connection limit, so the example behaves like a plain database.
+# Default privileges stay in the database and depend on their owners and grantees; the kept PUBLIC FUNCTIONS
+# revocation even outlives its resource. Dropping the database before these identities lets DROP USER and DROP ROLE
+# succeed on destroy.
 resource "redshift_database" "local" {
   provider         = redshift.consumer
   name             = "example_local"
   connection_limit = 100
   collation        = "CASE_SENSITIVE"
   isolation_level  = "SNAPSHOT"
+
+  depends_on = [redshift_user.loader, redshift_user.reader, redshift_role.operators, redshift_role.readers]
 }
 
 # Setting a schema quota requires a superuser, which the example's admin connection is. The quota is in megabytes.
@@ -31,7 +36,7 @@ resource "redshift_schema" "local" {
   provider = redshift.consumer
   database = redshift_database.local.name
   name     = "example_schema"
-  quota    = 1024
+  quota    = 2048
 }
 
 # A cross-database external schema exposes the consumer's datashare database inside the local database. The loader owns

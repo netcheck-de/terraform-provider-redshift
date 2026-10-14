@@ -82,9 +82,10 @@ run "copy_templates" {
   assert {
     condition = (
       length(redshift_copy_job.fixture) == 0 && length(redshift_table.copy_target) == 0 &&
-      length(data.redshift_copy_job.fixture) == 0 && output.copy_checks.copy_job_auto == null
+      length(data.redshift_copy_job.fixture) == 0 && output.copy_checks.copy_job_auto == null &&
+      length(aws_redshift_integration.copy_job) == 0
     )
-    error_message = "Without copy_job, no copy job or target table is created."
+    error_message = "Without copy_job, no copy job, target table, or S3 event integration is created."
   }
 
   assert {
@@ -106,7 +107,7 @@ run "copy_job_enabled" {
   command = apply
 
   variables {
-    copy_job = { source = "s3://example-bucket/copy/" }
+    copy_job = {}
   }
 
   override_data {
@@ -117,13 +118,23 @@ run "copy_job_enabled" {
   assert {
     condition = (
       length(redshift_copy_job.fixture) == 1 &&
-      redshift_copy_job.fixture[0].source == "s3://example-bucket/copy/" &&
+      redshift_copy_job.fixture[0].source == "s3://${module.fixture_bucket.s3_bucket_id}/data/" &&
       redshift_copy_job.fixture[0].iam_role == aws_iam_role.consumer.arn &&
       redshift_copy_job.fixture[0].auto == false &&
       redshift_copy_job.fixture[0].format == "CSV" &&
       redshift_copy_job.fixture[0].parameters == tomap({ IGNOREHEADER = "1" })
     )
-    error_message = "The copy job must load the configured prefix with the consumer role, without AUTO by default."
+    error_message = "The copy job must load the fixture bucket's data prefix with the consumer role, without AUTO by default."
+  }
+
+  assert {
+    condition = (
+      aws_redshift_integration.copy_job[0].source_arn == module.fixture_bucket.s3_bucket_arn &&
+      aws_redshift_integration.copy_job[0].target_arn == aws_redshiftserverless_namespace.consumer.arn &&
+      contains(jsondecode(aws_redshift_resource_policy.inbound_integrations[0].policy).Statement[0].Condition.StringEquals["aws:SourceArn"], module.fixture_bucket.s3_bucket_arn) &&
+      contains([for statement in jsondecode(local.fixture_bucket_policy).Statement : statement.Sid], "RedshiftEventIntegration")
+    )
+    error_message = "The copy job needs an S3 event integration from the fixture bucket that the bucket and the namespace authorize."
   }
 
   assert {
@@ -143,14 +154,4 @@ run "copy_job_enabled" {
     )
     error_message = "The copy job lookup must be exposed through copy_checks."
   }
-}
-
-run "copy_job_rejects_invalid_source" {
-  command = plan
-
-  variables {
-    copy_job = { source = "https://example-bucket/copy/" }
-  }
-
-  expect_failures = [var.copy_job]
 }

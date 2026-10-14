@@ -47,7 +47,7 @@ run "databases_apply" {
     values = {
       id    = "schema-lookup-identity"
       owner = "admin"
-      quota = 1024
+      quota = 2048
     }
   }
 
@@ -65,7 +65,7 @@ run "databases_apply" {
   assert {
     condition = (
       redshift_database.local.connection_limit == 100 && redshift_database.local.collation == "CASE_SENSITIVE" &&
-      redshift_database.local.isolation_level == "SNAPSHOT" && redshift_schema.local.quota == 1024
+      redshift_database.local.isolation_level == "SNAPSHOT" && redshift_schema.local.quota == 2048
     )
     error_message = "The consumer-local database and schema must carry the example's options."
   }
@@ -88,7 +88,7 @@ run "databases_apply" {
       output.database_options.producer_collation == "CASE_SENSITIVE" &&
       output.database_options.producer_isolation == "SNAPSHOT" &&
       output.database_options.producer_limit == -1 &&
-      output.database_options.local_schema_quota == 1024 &&
+      output.database_options.local_schema_quota == 2048 &&
       output.shared_external_schema.id == "external-schema-lookup-identity" &&
       output.shared_external_schema.source_type == "REDSHIFT" &&
       output.shared_external_schema.source_database == "example_shared" &&

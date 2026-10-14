@@ -1,17 +1,27 @@
 # COPY templates and an optional COPY JOB in the consumer-local workspace schema. Terraform drops them, and revokes the
 # template grant, before the schema's restrictive DROP SCHEMA and before the loader user they belong to.
 variable "copy_job" {
-  description = "Optional COPY JOB fixture: an s3:// prefix of CSV files with an id,label header that the consumer IAM role can read, and whether Redshift loads new files automatically, which needs an S3 event integration between the prefix's bucket and the consumer namespace. Null skips the job and its target table."
+  description = "Optional COPY JOB that loads the fixture bucket's data/ prefix, and whether Redshift loads new files automatically. COPY JOB needs an S3 event integration between the bucket and the consumer namespace even without AUTO, so the example creates one. Null skips the job, its target table, and the integration."
   type = object({
-    source = string
-    auto   = optional(bool, false)
+    auto = optional(bool, false)
   })
   default = null
+}
 
-  validation {
-    condition     = var.copy_job == null ? true : startswith(var.copy_job.source, "s3://")
-    error_message = "copy_job.source must be an s3:// prefix."
-  }
+locals {
+  copy_job_enabled = var.copy_job != null
+}
+
+# Redshift resolves a COPY JOB's bucket to an S3 event integration into the warehouse. The bucket's account creates it,
+# and the bucket policy and the consumer namespace's resource policy authorize it.
+resource "aws_redshift_integration" "copy_job" {
+  provider         = aws.producer
+  count            = local.copy_job_enabled ? 1 : 0
+  integration_name = "${local.name}-copy"
+  source_arn       = module.fixture_bucket.s3_bucket_arn
+  target_arn       = aws_redshiftserverless_namespace.consumer.arn
+
+  depends_on = [module.fixture_bucket, aws_redshift_resource_policy.inbound_integrations]
 }
 
 resource "redshift_template" "csv_events" {
@@ -70,7 +80,7 @@ data "redshift_templates" "local" {
 }
 
 resource "redshift_table" "copy_target" {
-  count    = var.copy_job == null ? 0 : 1
+  count    = local.copy_job_enabled ? 1 : 0
   provider = redshift.consumer
   database = redshift_schema.local.database
   schema   = redshift_schema.local.name
@@ -89,11 +99,11 @@ resource "redshift_table" "copy_target" {
 
 # COPY JOB needs an explicit IAM role; the consumer role is attached to the namespace.
 resource "redshift_copy_job" "fixture" {
-  count    = var.copy_job == null ? 0 : 1
+  count    = local.copy_job_enabled ? 1 : 0
   provider = redshift.consumer
   database = redshift_table.copy_target[0].database
   name     = "example_fixture_load"
-  source   = var.copy_job.source
+  source   = "s3://${module.fixture_bucket.s3_bucket_id}/data/"
   iam_role = aws_iam_role.consumer.arn
   format   = "CSV"
   auto     = var.copy_job.auto
@@ -107,10 +117,12 @@ resource "redshift_copy_job" "fixture" {
     name    = redshift_table.copy_target[0].name
     columns = ["id", "label"]
   }
+
+  depends_on = [aws_redshift_integration.copy_job]
 }
 
 data "redshift_copy_job" "fixture" {
-  count    = var.copy_job == null ? 0 : 1
+  count    = local.copy_job_enabled ? 1 : 0
   provider = redshift.consumer
   database = redshift_copy_job.fixture[0].database
   name     = redshift_copy_job.fixture[0].name

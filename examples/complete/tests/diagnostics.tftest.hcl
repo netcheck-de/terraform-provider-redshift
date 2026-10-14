@@ -51,14 +51,9 @@ run "diagnostics_default" {
     )
     error_message = "The configuration lookups must read the consumer session's parameters into the output."
   }
-  # Terraform mocks generate empty lists for nested-attribute lists, so the lockout rows are covered by the Go tests;
-  # here the listing must be narrowed to the reader and the output must keep its shape.
   assert {
-    condition = (
-      data.redshift_user_lockouts.reader.user_name == redshift_user.reader.name &&
-      output.diagnostics.reader_lockouts == []
-    )
-    error_message = "The lockout listing must be narrowed to the example reader."
+    condition     = length(data.redshift_user_lockouts.reader) == 0 && output.diagnostics.reader_lockouts == null
+    error_message = "Without user_lockouts the lockout listing must be skipped."
   }
   assert {
     condition     = length(redshift_debug_grant.account_admins) == 0 && output.diagnostics.account_admins_debug == null
@@ -88,5 +83,23 @@ run "diagnostics_debug_grant" {
       output.diagnostics.account_admins_debug == true
     )
     error_message = "The DEBUG lookup must check the managed grant and expose the result."
+  }
+}
+
+run "diagnostics_user_lockouts" {
+  command = apply
+
+  variables {
+    user_lockouts = true
+  }
+
+  # Terraform mocks generate empty lists for nested-attribute lists, so the lockout rows are covered by the Go tests;
+  # here the listing must be narrowed to the reader and the output must keep its shape.
+  assert {
+    condition = (
+      data.redshift_user_lockouts.reader[0].user_name == redshift_user.reader.name &&
+      output.diagnostics.reader_lockouts == []
+    )
+    error_message = "The lockout listing must be narrowed to the example reader."
   }
 }

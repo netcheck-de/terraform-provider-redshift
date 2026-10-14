@@ -57,6 +57,18 @@ locals {
           Action    = ["s3:PutObject", "s3:AbortMultipartUpload"]
           Resource  = ["${module.fixture_bucket.s3_bucket_arn}/unload/*"]
         },
+        ]) : [], local.copy_job_enabled ? tolist([
+        {
+          Sid       = "RedshiftEventIntegration"
+          Effect    = "Allow"
+          Principal = { Service = "redshift.amazonaws.com" }
+          Action    = ["s3:GetBucketNotification", "s3:PutBucketNotification", "s3:GetBucketLocation"]
+          Resource  = [module.fixture_bucket.s3_bucket_arn]
+          Condition = {
+            ArnLike      = { "aws:SourceArn" = "arn:${data.aws_partition.consumer.partition}:redshift:${var.region}:${data.aws_caller_identity.producer.account_id}:integration:*" }
+            StringEquals = { "aws:SourceAccount" = data.aws_caller_identity.producer.account_id }
+          }
+        },
     ]) : [])
   })
 }

@@ -29,16 +29,20 @@ region = "eu-central-1"
 # Grant the grants datashare VIA DATA CATALOG to a Lake Formation account and authorize its DataCatalog/ identifier.
 # lake_formation_account_id = "123456789012"
 
-# Create a COPY JOB that loads CSV files (id,label header) from an S3 prefix the consumer IAM role can read. auto = true
-# needs an S3 event integration between the prefix's bucket and the consumer namespace.
-# copy_job = { source = "s3://example-bucket/copy/", auto = false }
+# Create a COPY JOB that loads the fixture bucket's data/ prefix, with the S3 event integration COPY JOB requires.
+# copy_job = { auto = false }
 
 # Replicate an existing Aurora or RDS source into the consumer through a zero-ETL integration (see README).
 # zero_etl_source_arn      = "arn:aws:rds:eu-central-1:123456789012:cluster:orders"
 # zero_etl_source_database = "orders" # PostgreSQL and Oracle sources only.
+# Or create a disposable Aurora PostgreSQL Serverless v2 source instead (about 20 more minutes, Aurora charges).
+# zero_etl_create_source = true
 
 # Grant DEBUG on a federated-permissions database to the administrators of the consumer account.
 # federated_debug_database = "sales_db"
+
+# Read the reader's lockout state; warehouses without account lockout support reject SHOW USER LOCKOUT.
+# user_lockouts = true
 
 # Optional cross-account mode: distinct profiles create separate networks and warehouses in those accounts.
 # producer_profile = "producer-admin"

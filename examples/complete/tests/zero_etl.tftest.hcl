@@ -31,7 +31,7 @@ run "zero_etl_disabled" {
 
   assert {
     condition = (
-      length(aws_rds_integration.zero_etl) == 0 && length(aws_redshift_resource_policy.zero_etl) == 0 &&
+      length(aws_rds_integration.zero_etl) == 0 && length(aws_redshift_resource_policy.inbound_integrations) == 0 &&
       length(redshift_database.zero_etl) == 0 && output.zero_etl_database == null
     )
     error_message = "Without zero_etl_source_arn the example must not create a zero-ETL integration or destination."
@@ -63,7 +63,7 @@ run "zero_etl_apply" {
     target = data.redshift_database.zero_etl[0]
     values = {
       id            = "zero-etl-database-lookup-identity"
-      database_type = "INTEGRATION"
+      database_type = "LOCAL"
       owner         = "admin"
       integration = {
         integration_id   = "a1b2c3d4-5678-90ab-cdef-example11111"
@@ -91,7 +91,7 @@ run "zero_etl_apply" {
     condition = (
       aws_rds_integration.zero_etl[0].source_arn == "arn:aws:rds:eu-central-1:111111111111:cluster:orders" &&
       aws_rds_integration.zero_etl[0].target_arn == aws_redshiftserverless_namespace.consumer.arn &&
-      aws_redshift_resource_policy.zero_etl[0].resource_arn == aws_redshiftserverless_namespace.consumer.arn
+      aws_redshift_resource_policy.inbound_integrations[0].resource_arn == aws_redshiftserverless_namespace.consumer.arn
     )
     error_message = "The integration must replicate the source into the consumer namespace that authorizes it."
   }
@@ -109,10 +109,57 @@ run "zero_etl_apply" {
   assert {
     condition = (
       output.zero_etl_database.name == redshift_database.zero_etl[0].name &&
-      output.zero_etl_database.database_type == "INTEGRATION" &&
+      output.zero_etl_database.database_type == "LOCAL" &&
       output.zero_etl_database.integration_id == redshift_database.zero_etl[0].integration.integration_id &&
-      output.zero_etl_database.refresh_interval == 600
+      output.zero_etl_database.refresh_interval == 600 &&
+      output.zero_etl_database.integration_arn == aws_rds_integration.zero_etl[0].arn
     )
     error_message = "The zero-ETL output must expose the destination lookup."
   }
+}
+
+run "zero_etl_created_source" {
+  command = apply
+
+  variables {
+    zero_etl_create_source = true
+  }
+
+  override_resource {
+    target = aws_rds_cluster.zero_etl_source[0]
+    values = { arn = "arn:aws:rds:eu-central-1:111111111111:cluster:example-zero-etl-source" }
+  }
+
+  assert {
+    condition = (
+      aws_rds_cluster.zero_etl_source[0].engine == "aurora-postgresql" &&
+      aws_rds_cluster.zero_etl_source[0].db_cluster_parameter_group_name == aws_rds_cluster_parameter_group.zero_etl_source[0].name &&
+      aws_rds_cluster_instance.zero_etl_source[0].instance_class == "db.serverless" &&
+      length(setsubtract(
+        ["rds.logical_replication=1", "aurora.enhanced_logical_replication=1", "aurora.logical_replication_backup=0", "aurora.logical_replication_globaldb=0"],
+        [for parameter in aws_rds_cluster_parameter_group.zero_etl_source[0].parameter : "${parameter.name}=${parameter.value}"],
+      )) == 0
+    )
+    error_message = "The created source must be Aurora PostgreSQL Serverless v2 with enhanced logical replication."
+  }
+
+  assert {
+    condition = (
+      aws_rds_integration.zero_etl[0].source_arn == aws_rds_cluster.zero_etl_source[0].arn &&
+      aws_redshift_resource_policy.inbound_integrations[0].resource_arn == aws_redshiftserverless_namespace.consumer.arn &&
+      redshift_database.zero_etl[0].integration.source_database == aws_rds_cluster.zero_etl_source[0].database_name
+    )
+    error_message = "The destination must replicate the created source's database through the integration."
+  }
+}
+
+run "zero_etl_source_conflict" {
+  command = plan
+
+  variables {
+    zero_etl_create_source = true
+    zero_etl_source_arn    = "arn:aws:rds:eu-central-1:111111111111:cluster:orders"
+  }
+
+  expect_failures = [var.zero_etl_create_source]
 }

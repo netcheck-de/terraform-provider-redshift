@@ -143,8 +143,8 @@ documented beside the resources; they are not a production security baseline.
 | `permissions.tf`           | Column and language grants, including column grants on a managed table, and grant listings.          |
 | `rls.tf`                   | Row-level security policy on managed tables, its lookup-table grant, attachment, and table security. |
 | `masking.tf`               | Masking policy on managed tables, its lookup-table grant, attachment, and listings.                  |
-| `copy.tf`                  | COPY templates, a template grant, an optional COPY JOB (`copy_job`) and its table, and lookups.      |
-| `diagnostics.tf`           | Configuration parameter lookups, the reader's lockout listing, and an optional DEBUG grant.          |
+| `copy.tf`                  | COPY templates, a template grant, an optional COPY JOB with its S3 event integration, and lookups.   |
+| `diagnostics.tf`           | Configuration parameter lookups, an optional reader lockout listing, and an optional DEBUG grant.    |
 | `discovery.tf`             | Catalog listings of databases, schemas, tables, columns, and constraints, and a constraint comment.  |
 | `models.tf`                | Optional Bedrock model, its EXECUTE grant and lookups, and the schema's model listing.               |
 | `s3.tf`                    | Private fixture bucket module, TLS/cross-account policy, and CSV object.                             |
@@ -154,7 +154,7 @@ documented beside the resources; they are not a production security baseline.
 | `verification.tf`          | Live shared-data and Spectrum queries.                                                               |
 | `identity_center.tf`       | Optional SSO application, directory groups/assignments, SQL identity provider and roles.             |
 | `connections.tf`           | Optional IAM/password connection probes for both warehouse types.                                    |
-| `zero_etl.tf`              | Optional zero-ETL integration from an existing RDS source, its destination database, and a lookup.   |
+| `zero_etl.tf`              | Optional zero-ETL integration from an existing or created Aurora source, destination, and lookup.    |
 | `variables.tf`             | Deployment inputs and validation.                                                                    |
 | `outputs*.tf`              | Warehouse/fixture metadata, catalog observations, connection checks, query identities.               |
 | `tests/`                   | Mocked `terraform test` suites per feature area and their shared mocks (no AWS access).              |
@@ -212,11 +212,23 @@ zero_etl_source_arn = "arn:aws:rds:eu-central-1:123456789012:cluster:orders"
 ```
 
 The source cluster or instance must already exist in the consumer account and region with the engine settings AWS
-requires for zero-ETL. Setting the ARN turns on `enable_case_sensitive_identifier` on the consumer workgroup, adds a
-namespace resource policy that authorizes the source, creates an `aws_rds_integration`, and creates the read-only
-`example_zero_etl` destination database from it with `redshift_database`'s `integration` block. The admin connection
-creates the database, so replication runs with its permissions. Destroying the example drops the destination database
-before the integration.
+requires for zero-ETL. Instead, `zero_etl_create_source = true` creates a disposable Aurora PostgreSQL Serverless v2
+cluster with those settings and an `orders` database in the consumer VPC; it adds about 20 minutes to apply and Aurora
+charges while it exists.
+
+Either way, the consumer workgroup turns on `enable_case_sensitive_identifier`, a namespace resource policy authorizes
+the source, an `aws_rds_integration` replicates it, and `redshift_database`'s `integration` block creates the read-only
+`example_zero_etl` destination database from it. The admin connection creates the database, so replication runs with
+its permissions.
+
+Redshift refuses to drop the destination database while the integration is active, and Terraform drops the database
+first, so delete the integration before destroying the example:
+
+```sh
+aws rds delete-integration --profile <consumer profile> \
+  --integration-identifier "$(terraform output -json zero_etl_database | jq -r .integration_arn)"
+# Wait until the integration no longer exists, then destroy as usual.
+```
 
 ## Optional DEBUG grant
 
@@ -226,8 +238,10 @@ federated_debug_database = "sales_db@finance-catalog"
 
 Setting a database grants `DEBUG` on it to the administrators of the consumer account with `redshift_debug_grant` and
 reads the grant back with its lookup. The database must use federated permissions and be visible to the consumer
-workgroup; the example does not register such a warehouse. Without the variable, only the configuration lookups and
-the lockout listing run.
+workgroup; the example does not register such a warehouse. Without the variable, only the configuration lookups run.
+
+`user_lockouts = true` adds the reader's row from `SHOW USER LOCKOUT`. It is off by default, because warehouses that
+do not support account lockout reject the command.
 
 ## Connection methods
 
