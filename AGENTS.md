@@ -15,7 +15,8 @@ through the Data API or a direct TLS connection.
 
 ## Commands
 
-- `task check`: lint, Markdown format check, race tests with coverage, docs check. Run before finishing.
+- `task check`: Go lint, actionlint, yamllint, markdownlint, Markdown format check, race tests with coverage, docs
+  check. Run before finishing. yamllint and markdownlint are not Go tools: `brew install yamllint markdownlint-cli`.
 - `task lint` / `task lint-fix` download and use the golangci-lint release pinned in `.golangci-lint-version`.
 - `task docs`: regenerate `docs/`. `task terraform-check` and `task terraform-test`: validate and test the examples.
 - Tools (`tfplugindocs`, `mdox`, `actionlint`) are `tool` directives in `go.mod`; run them with `go tool <name>`.

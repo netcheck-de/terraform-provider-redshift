@@ -20,6 +20,9 @@ tasks:
     desc: Check formatting, lint, offline tests, and documentation
     cmds:
       - task: lint
+      - task: actionlint
+      - task: yamllint
+      - task: markdownlint
       - task: markdown-fmt-check
       - task: test
       - task: docs-check
@@ -67,6 +70,16 @@ tasks:
     desc: Lint GitHub Actions workflows
     cmds:
       - go tool actionlint -color
+
+  yamllint:
+    desc: Lint YAML files as CI does
+    cmds:
+      - yamllint .
+
+  markdownlint:
+    desc: Lint Markdown files as CI does
+    cmds:
+      - markdownlint .
 
   # Documentation
 

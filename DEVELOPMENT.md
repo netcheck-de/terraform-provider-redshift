@@ -8,11 +8,12 @@ resources. Follow its command-specific documentation and verify catalog and life
 
 ## Local checks
 
-Use Go matching `go.mod`, Terraform 1.14 or later, Task v3, and `curl`; golangci-lint is fetched automatically. Run
-`task check` from the module root to check gofmt formatting, lint, `go vet`, and offline race tests with statement
-coverage printed to the terminal. Tests check that every resource and data source has a generated documentation
-page, a template, and examples, and that every resource template documents how each argument reconciles. A
-golangci-lint `depguard` rule prevents resource code from importing concrete transports.
+Use Go matching `go.mod`, Terraform 1.14 or later, Task v3, `curl`, yamllint, and markdownlint-cli; golangci-lint is
+fetched automatically. Run `task check` from the module root to check gofmt formatting, lint (Go, GitHub Actions, YAML,
+and Markdown), `go vet`, and offline race tests with statement coverage printed to the terminal. Tests check that every
+resource and data source has a generated documentation page, a template, and examples, and that every resource template
+documents how each argument reconciles. A golangci-lint `depguard` rule prevents resource code from importing concrete
+transports.
 [Live acceptance tests](README.md#acceptance-test) are opt-in.
 
 The Taskfile provides `fmt`, `markdown-fmt`, `markdown-fmt-check`, `lint`, `actionlint`, `test`, `golden`, `check`,
