@@ -143,7 +143,10 @@ documented beside the resources; they are not a production security baseline.
 | `permissions.tf`           | Column and language grants, including column grants on a managed table, and grant listings.          |
 | `rls.tf`                   | Row-level security policy on managed tables, its lookup-table grant, attachment, and table security. |
 | `masking.tf`               | Masking policy on managed tables, its lookup-table grant, attachment, and listings.                  |
+| `copy.tf`                  | COPY templates, a template grant, an optional COPY JOB (`copy_job`) and its table, and lookups.      |
+| `diagnostics.tf`           | Configuration parameter lookups, the reader's lockout listing, and an optional DEBUG grant.          |
 | `discovery.tf`             | Catalog listings of databases, schemas, tables, columns, and constraints, and a constraint comment.  |
+| `models.tf`                | Optional Bedrock model, its EXECUTE grant and lookups, and the schema's model listing.               |
 | `s3.tf`                    | Private fixture bucket module, TLS/cross-account policy, and CSV object.                             |
 | `spectrum.tf`              | Glue catalog resources/policy, SQL external schema, external table and partition, and lookups.       |
 | `secrets.tf`               | Reader credential secret module.                                                                     |
@@ -151,6 +154,7 @@ documented beside the resources; they are not a production security baseline.
 | `verification.tf`          | Live shared-data and Spectrum queries.                                                               |
 | `identity_center.tf`       | Optional SSO application, directory groups/assignments, SQL identity provider and roles.             |
 | `connections.tf`           | Optional IAM/password connection probes for both warehouse types.                                    |
+| `zero_etl.tf`              | Optional zero-ETL integration from an existing RDS source, its destination database, and a lookup.   |
 | `variables.tf`             | Deployment inputs and validation.                                                                    |
 | `outputs*.tf`              | Warehouse/fixture metadata, catalog observations, connection checks, query identities.               |
 | `tests/`                   | Mocked `terraform test` suites per feature area and their shared mocks (no AWS access).              |
@@ -198,6 +202,32 @@ namespaced roles use the created directory groups' actual display names and inhe
 Use an assigned real user and a supported JDBC/browser client to verify SSO, with endpoint connectivity. Creating the
 application/groups is configuration coverage, not proof of interactive login. If login creates federated SQL users,
 remove those users before teardown; the identity-provider resource refuses to drop an integration with remaining users.
+
+## Optional zero-ETL integration
+
+```hcl
+zero_etl_source_arn = "arn:aws:rds:eu-central-1:123456789012:cluster:orders"
+# Required for Aurora PostgreSQL, RDS for PostgreSQL, and RDS for Oracle sources:
+# zero_etl_source_database = "orders"
+```
+
+The source cluster or instance must already exist in the consumer account and region with the engine settings AWS
+requires for zero-ETL. Setting the ARN turns on `enable_case_sensitive_identifier` on the consumer workgroup, adds a
+namespace resource policy that authorizes the source, creates an `aws_rds_integration`, and creates the read-only
+`example_zero_etl` destination database from it with `redshift_database`'s `integration` block. The admin connection
+creates the database, so replication runs with its permissions. Destroying the example drops the destination database
+before the integration.
+
+## Optional DEBUG grant
+
+```hcl
+federated_debug_database = "sales_db@finance-catalog"
+```
+
+Setting a database grants `DEBUG` on it to the administrators of the consumer account with `redshift_debug_grant` and
+reads the grant back with its lookup. The database must use federated permissions and be visible to the consumer
+workgroup; the example does not register such a warehouse. Without the variable, only the configuration lookups and
+the lockout listing run.
 
 ## Connection methods
 
@@ -277,6 +307,18 @@ resources to reexecute them. There is no populated, independently managed source
 
 Use fresh state for this module-based example. It does not include state migrations from earlier complete-example
 configurations; create a new state/configuration directory rather than applying it to an existing deployment.
+
+## Optional Bedrock model
+
+```hcl
+bedrock_model_id = "anthropic.claude-3-haiku-20240307-v1:0"
+```
+
+Setting a model ID creates `redshift_external_model` in the consumer-local schema with the consumer's default IAM role,
+an inline policy that lets that role invoke the model, and an `EXECUTE` grant on the model for the readers role. The
+model must already be enabled in Amazon Bedrock for the consumer account and region; Terraform does not request model
+access. Creation does not call Amazon Bedrock, but the first call of the inference function does. Without the variable,
+only the model listing of the local schema runs.
 
 ## Configuration tests
 

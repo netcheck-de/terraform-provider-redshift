@@ -2,14 +2,17 @@
 
 This Go provider manages Redshift Serverless and provisioned SQL objects through the Data API or direct TLS connections.
 Use the AWS provider for workgroups, namespaces, IAM, Identity Center applications, and datashare
-association/authorization. Its thirty-six resources and forty-seven data sources cover:
+association/authorization. Its forty resources and fifty-six data sources cover:
 
-- databases, local and external schemas, tables, views, materialized views, and Spectrum external tables and partitions;
-- SQL and Lambda functions and stored procedures;
-- users, groups, roles, and Identity Center or Microsoft Entra ID identity providers;
-- scoped, object, column, language, system, IAM-role, and default privileges;
+- databases, including zero-ETL integration destinations, local and external schemas, tables, views, materialized
+  views, and Spectrum external tables and partitions;
+- SQL and Lambda functions, stored procedures, and Amazon Bedrock external models;
+- users, groups, roles, Identity Center or Microsoft Entra ID identity providers, and user lockouts;
+- scoped, object (including models and COPY templates), column, language, system, IAM-role, default, and federated
+  `DEBUG` privileges;
 - row-level security and dynamic data masking;
-- datashares, comments, and catalog listings.
+- COPY templates and automatic COPY jobs;
+- datashares, comments, configuration parameters, and catalog listings, including models.
 
 The [resource index](docs/index.md#ownership-boundaries) shows which resource owns which part of a table or datashare.
 
