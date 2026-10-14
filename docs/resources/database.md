@@ -153,7 +153,13 @@ history mode for single tables. A destination database reports no collation, and
 
 ## Lifecycle and Ownership
 
-Deletion drops only the matching database, without `CASCADE`; active sessions or grants may prevent it. This resource
+Deletion drops only the matching database, without `CASCADE`; active sessions or grants may prevent it.
+
+Redshift refuses to drop a zero-ETL destination while its integration is active, also with `FORCE`. Because the
+destination depends on the integration's ID, Terraform destroys the database first, also under `-target`, and the
+destroy fails with an error that says so. Delete the integration outside Terraform, for example with
+`aws rds delete-integration`, wait until it is gone, and destroy again: the refresh then drops the integration from
+state, and the database, which stays behind as a local database, is dropped. This resource
 manages no `PUBLIC` grants; assign permissions separately. The data source reports the permission mode of a local
 database as `false`. Resource refreshes do not require AWS datashare discovery permissions.
 

@@ -688,7 +688,16 @@ func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteReques
 
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
-		err = r.exec(ctx, r.database.ValueString(), dropDatabaseStatement(data))
+		if err = r.exec(ctx, r.database.ValueString(), dropDatabaseStatement(data)); err != nil && state.Integration != nil {
+			// Redshift refuses DROP DATABASE, even with FORCE, while the integration is active, and Terraform destroys
+			// the destination before the integration it depends on, also under -target, so only the operator can fix
+			// the order.
+			resp.Diagnostics.AddError("Delete zero-ETL destination database", fmt.Sprintf("%s\n\n"+
+				"Redshift cannot drop a zero-ETL destination while its integration is active, and Terraform destroys the "+
+				"database before the integration it depends on. Delete the integration outside Terraform, for example with "+
+				"aws rds delete-integration, wait until it is gone, and destroy again.", err))
+			return
+		}
 		if err == nil {
 			found, err = r.read(ctx, &data)
 			if err == nil && found {

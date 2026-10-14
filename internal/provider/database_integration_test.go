@@ -226,6 +226,23 @@ func TestDatabaseIntegrationHidden(t *testing.T) {
 	assert.Contains(t, diagnostics.Errors()[0].Detail(), "only superusers")
 }
 
+// TestDatabaseIntegrationDeleteActive explains the teardown order when Redshift refuses to drop a destination whose
+// integration still replicates, and keeps the database in state.
+func TestDatabaseIntegrationDeleteActive(t *testing.T) {
+	c := fullCatalog()
+	f := fakeState[*databaseIntegrationFamily](c, "database_integration")
+	configuredIntegrationCatalog(f)
+	f.active = true
+	r := newDatabaseResource()
+	configureTestResource(t, r, c)
+	_, diagnostics := applyOperation(t, r, "delete", integrationState(), nil, nil)
+	require.True(t, diagnostics.HasError())
+	assert.Equal(t, "Delete zero-ETL destination database", diagnostics.Errors()[0].Summary())
+	assert.Contains(t, diagnostics.Errors()[0].Detail(), "being accessed by integration client")
+	assert.Contains(t, diagnostics.Errors()[0].Detail(), "Delete the integration outside Terraform")
+	assert.True(t, f.exists)
+}
+
 // TestDatabaseIntegrationLocalType accepts a destination that SHOW DATABASES reports as local, since its type is
 // undocumented, and still reads neither its collation nor the integration settings no view reports.
 func TestDatabaseIntegrationLocalType(t *testing.T) {

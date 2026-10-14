@@ -28,6 +28,8 @@ type databaseIntegrationFamily struct {
 	databaseType string
 	// hidden emulates a provider identity that is not a superuser, which SVV_INTEGRATION shows no rows.
 	hidden bool
+	// active emulates an integration that still replicates, so DROP DATABASE fails as observed live.
+	active bool
 	// integrationID, sourceDatabase, refreshInterval, historyMode, and autoRemediation are the SVV_INTEGRATION values.
 	integrationID, sourceDatabase, refreshInterval, historyMode, autoRemediation string
 	// settings records the options no catalog view reports, keyed by keyword, for assertions.
@@ -135,6 +137,9 @@ func (f *databaseIntegrationFamily) query(_ *catalog, _ dataapi.Connection, sql 
 	case sql == "DROP DATABASE "+quoted:
 		if !f.exists {
 			return nil, true, fmt.Errorf("database does not exist")
+		}
+		if f.active {
+			return nil, true, fmt.Errorf("database %q is being accessed by integration client", fakeIntegrationDatabase)
 		}
 		f.exists = false
 		return nil, true, nil
