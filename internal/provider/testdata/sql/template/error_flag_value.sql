@@ -1,0 +1,1 @@
+-- error: COPY parameter GZIP takes no value; set it to ""

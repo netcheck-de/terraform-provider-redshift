@@ -1,0 +1,30 @@
+---
+subcategory: Data Loading
+page_title: redshift_template Data Source - terraform-provider-redshift
+description: Reads a COPY template's format, parameters, and owner.
+---
+
+# redshift_template (Data Source)
+
+Reads one COPY template's data format, parameters, and owner as Redshift reports them. See AWS
+[SHOW TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_TEMPLATE.html) and
+[SHOW TEMPLATES](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_TEMPLATES.html).
+
+## Catalog Query
+
+```sql
+SHOW TEMPLATES FROM SCHEMA schema LIKE '...';
+SHOW TEMPLATE schema.name;
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_template/data-source.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+`id` (String, computed) is the template's JSON identity, using the paired resource's warehouse, `database`, `schema`,
+and `name` keys. A missing database, schema, or template fails the lookup, and so does a parameter the provider does
+not know. Reading a template requires `USAGE` on it and on its schema, or a superuser.

@@ -1,0 +1,1 @@
+CREATE OR REPLACE TEMPLATE "serving"."json_load" FOR COPY AS FORMAT AS JSON 'auto ignorecase' MAXERROR 100 NULL AS '';

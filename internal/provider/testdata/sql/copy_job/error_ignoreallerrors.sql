@@ -1,0 +1,1 @@
+-- error: COPY parameter IGNOREALLERRORS is not allowed in a copy job

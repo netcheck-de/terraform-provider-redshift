@@ -1,0 +1,1 @@
+-- error: COPY parameter REGION is not allowed in a template

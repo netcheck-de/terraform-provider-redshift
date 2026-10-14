@@ -1,0 +1,3 @@
+ALTER TEMPLATE "serving"."csv_load" DROP DELIMITER;
+
+ALTER TEMPLATE "serving"."csv_load" DROP IGNOREHEADER;

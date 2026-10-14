@@ -1,0 +1,1 @@
+-- error: COPY parameter ENCODING: "LATIN1" is not one of UTF8, UTF16, UTF16LE, UTF16BE, ISO88591

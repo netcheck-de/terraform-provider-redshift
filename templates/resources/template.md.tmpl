@@ -1,0 +1,102 @@
+---
+subcategory: Data Loading
+page_title: redshift_template Resource - terraform-provider-redshift
+description: Manages a reusable template of COPY options.
+---
+
+# redshift_template (Resource)
+
+Manages a template of `COPY` options, such as the data format, compression, and conversion parameters, that `COPY`
+commands reference instead of repeating them. Grant `USAGE`, `ALTER`, or `DROP` on it with `redshift_object_grant` and
+`object_type = "TEMPLATE"`. See AWS
+[CREATE TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TEMPLATE.html),
+[ALTER TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TEMPLATE.html),
+[DROP TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_TEMPLATE.html), and
+[SHOW TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_TEMPLATE.html).
+
+## SQL Statements
+
+```sql
+CREATE TEMPLATE schema.name FOR COPY AS ...;
+CREATE OR REPLACE TEMPLATE schema.name FOR COPY AS ...;
+ALTER TEMPLATE schema.name RENAME TO name;
+ALTER TEMPLATE schema.name ADD ...;
+ALTER TEMPLATE schema.name DROP ...;
+ALTER TEMPLATE schema.name SET ... TO ...;
+ALTER TEMPLATE schema.name OWNER TO owner;
+DROP TEMPLATE schema.name;
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_template/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Parameters
+
+`parameters` maps each COPY parameter keyword, in UPPERCASE, to its argument as a string. Keywords without an argument,
+such as `GZIP` or `TRUNCATECOLUMNS`, take `""`; `ACCEPTINVCHARS` takes `""` or a replacement character. Text
+arguments such as `DELIMITER`, `DATEFORMAT`, `TIMEFORMAT`, `QUOTE`, and `NULL` (rendered as `NULL AS`) are written
+without SQL quotes; the provider quotes them. `IGNOREHEADER`, `COMPROWS`, and `MAXERROR` take digits, and `ENCODING`,
+`COMPUPDATE`, and `STATUPDATE` take their keyword in any case. Keywords outside the list in the schema are rejected
+while planning, among them the source, authorization, and `MANIFEST` options that a template cannot hold. The data
+format is `format` with its `format_argument`, not a parameter. Redshift validates combinations, such as `CSV` with
+`FIXEDWIDTH`, only when the template is created or used.
+
+## Lifecycle and Ownership
+
+Statements run in `database`, and the template name is schema-qualified, because templates cannot be referenced from
+another database. Creation uses plain `CREATE TEMPLATE`, so an existing template is never adopted silently; import it
+instead. Without `owner`, the provider's SQL identity owns the template and `owner` reports it; with `owner`, the
+provider transfers ownership with `ALTER TEMPLATE ... OWNER TO`. Redshift folds unquoted names to lowercase, so `name`
+must be lowercase. Refresh needs `USAGE` on the template and its schema, or a superuser.
+
+## Reconciliation
+
+Refresh reads the owner from `SHOW TEMPLATES` and the definition from `SHOW TEMPLATE`; an update checks that the
+template still exists, runs `ALTER TEMPLATE` or, for a new data format, `CREATE OR REPLACE TEMPLATE`, and re-reads the
+catalog to verify the result; a changed `database` or `schema` replaces the template.
+
+| Change                        | Result                                                                                                                                                                                        |
+|-------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database` or `schema`        | replaces the template: `DROP TEMPLATE`, then `CREATE TEMPLATE`                                                                                                                                |
+| `name`                        | `ALTER TEMPLATE ... RENAME TO`, first, so later statements use the new name; the resource ID changes with it                                                                                  |
+| `format` or `format_argument` | `CREATE OR REPLACE TEMPLATE` with the complete planned definition, followed by `ALTER TEMPLATE ... OWNER TO` when the owner is known; another case is no SQL                                  |
+| key added to `parameters`     | `ALTER TEMPLATE ... ADD` per parameter                                                                                                                                                        |
+| key removed from `parameters` | `ALTER TEMPLATE ... DROP` per parameter, the only form Redshift accepts                                                                                                                       |
+| value changed in `parameters` | `ALTER TEMPLATE ... SET ... TO` per parameter; a value that gains or loses its argument, such as `ACCEPTINVCHARS`, is dropped and added again; equal values, such as `01` for `1`, are no SQL |
+| `owner` set or changed        | `ALTER TEMPLATE ... OWNER TO`, after the definition                                                                                                                                           |
+| `owner` removed               | no SQL; the current owner stays and is still reported                                                                                                                                         |
+
+Parameter changes run together with a format change only through `CREATE OR REPLACE TEMPLATE`. The statements share
+no transaction: when one fails, the earlier ones stay applied and the next plan shows what is left. An update fails when
+the template was dropped after the plan, because `CREATE OR REPLACE TEMPLATE` would silently create it again. Whether
+`CREATE OR REPLACE TEMPLATE` keeps the grants on the template is not documented; check them after a format change.
+
+**Drift.** `SHOW TEMPLATE` prints the parameters in its own order and drops the optional `AS`, so refresh compares the
+parsed format and parameters with the state as a map of canonical values: keyword arguments in uppercase and integers
+without leading zeros. State keeps the configured spelling while the catalog matches it. A parameter added, removed,
+or changed outside Terraform appears in `parameters`, and the next plan restores the configuration with the statements
+above; a parameter this provider does not know fails the refresh. A configured `owner` changed outside Terraform is set
+back; an omitted `owner` follows the catalog. A template that is gone, or whose schema or database is gone, is removed
+from state, and the next plan creates it again. Grants on the template are never read.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_template/import-by-string-id.tf" }}
+
+The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
+cluster, or with `endpoint` (`host:port`) for a direct password connection; see
+[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_template/import.sh" }}
+
+Import reads `owner`, `format`, `format_argument`, and `parameters` from the catalog in their canonical spelling, so the
+first plan afterwards shows an in-place update only where the configuration differs.

@@ -26,6 +26,10 @@ region = "eu-central-1"
 # Grant the grants datashare VIA DATA CATALOG to a Lake Formation account and authorize its DataCatalog/ identifier.
 # lake_formation_account_id = "123456789012"
 
+# Create a COPY JOB that loads CSV files (id,label header) from an S3 prefix the consumer IAM role can read. auto = true
+# needs an S3 event integration between the prefix's bucket and the consumer namespace.
+# copy_job = { source = "s3://example-bucket/copy/", auto = false }
+
 # Optional cross-account mode: distinct profiles create separate networks and warehouses in those accounts.
 # producer_profile = "producer-admin"
 # consumer_profile = "consumer-admin"

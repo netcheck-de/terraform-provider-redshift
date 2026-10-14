@@ -1,0 +1,1 @@
+-- error: a template requires a nonempty schema and name

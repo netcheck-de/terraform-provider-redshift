@@ -6,8 +6,8 @@ description: Reads explicit permissions on one local object, or common to all cu
 
 # redshift_object_grant (Data Source)
 
-Reads explicit local database, schema, table (including views), function, or procedure privileges, or the privileges
-common to all current tables, functions, or procedures of a schema. See AWS
+Reads explicit local database, schema, table (including views), function, procedure, or COPY template
+privileges, or the privileges common to all current tables, functions, or procedures of a schema. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
 
 ## Catalog Query
@@ -40,12 +40,12 @@ data "redshift_object_grant" "report" {
 - `database_name` (String) Local database containing the object.
 - `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`.
 - `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`.
-- `object_type` (String) `DATABASE`, `SCHEMA`, `TABLE` (including views), `FUNCTION`, `PROCEDURE`, or a snapshot of a schema's current objects: `ALL TABLES`, `ALL FUNCTIONS`, or `ALL PROCEDURES`.
+- `object_type` (String) `DATABASE`, `SCHEMA`, `TABLE` (including views), `FUNCTION`, `PROCEDURE`, `TEMPLATE` (a COPY template), or a snapshot of a schema's current objects: `ALL TABLES`, `ALL FUNCTIONS`, or `ALL PROCEDURES`.
 
 ### Optional
 
 - `arguments` (String) Comma-separated argument types of a `FUNCTION` or `PROCEDURE`, such as `INTEGER, VARCHAR`, which select one overload; omit it for a routine without arguments. Types are canonicalized and lengths dropped, because Redshift identifies overloads by type names only.
-- `object_name` (String) Table, view, function, or procedure name; required for `TABLE`, `FUNCTION`, and `PROCEDURE` only.
+- `object_name` (String) Table, view, function, procedure, or template name; required for `TABLE`, `FUNCTION`, `PROCEDURE`, and `TEMPLATE` only.
 - `schema_name` (String) Schema containing the object, or whose objects an `ALL …` snapshot covers; required for every type except `DATABASE`.
 
 ### Read-Only

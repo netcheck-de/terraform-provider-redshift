@@ -9,7 +9,7 @@ import (
 )
 
 // objectGrantKinds lists object_type values: single objects, then the ALL … IN SCHEMA snapshots.
-var objectGrantKinds = []string{"DATABASE", "SCHEMA", "TABLE", "FUNCTION", "PROCEDURE", "ALL TABLES", "ALL FUNCTIONS", "ALL PROCEDURES"}
+var objectGrantKinds = []string{"DATABASE", "SCHEMA", "TABLE", "FUNCTION", "PROCEDURE", "TEMPLATE", "ALL TABLES", "ALL FUNCTIONS", "ALL PROCEDURES"}
 
 // objectGrantPrivileges lists the privileges GRANT documents per object type. ALL TABLES keeps to the privileges
 // SVV_RELATION_PRIVILEGES reports, because a snapshot is read back from it.
@@ -21,6 +21,7 @@ var objectGrantPrivileges = map[string][]sqlclient.Keyword{
 	"TABLE":          {"SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "REFERENCES", "ALTER", "TRUNCATE"},
 	"FUNCTION":       {"EXECUTE"},
 	"PROCEDURE":      {"EXECUTE"},
+	"TEMPLATE":       {"USAGE", "ALTER", "DROP"},
 	"ALL TABLES":     {"SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "REFERENCES"},
 	"ALL FUNCTIONS":  {"EXECUTE"},
 	"ALL PROCEDURES": {"EXECUTE"},
@@ -168,7 +169,7 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 	if arguments != "" && !routine {
 		return privilegeTarget{}, fmt.Errorf("arguments is only valid for FUNCTION and PROCEDURE")
 	}
-	named := kind == "TABLE" || routine
+	named := kind == "TABLE" || kind == "TEMPLATE" || routine
 	switch {
 	case kind == "DATABASE" && (schemaName != "" || name != ""):
 		return privilegeTarget{}, fmt.Errorf("DATABASE does not accept schema_name or object_name")
@@ -187,6 +188,7 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 	granteeName, granteeType := objectString(data, "grantee"), objectString(data, "grantee_type")
 	var object sqlclient.Statement
 	var read sqlclient.Query
+	var extra []catalogCheck
 	showGrants := false
 	switch kind {
 	case "DATABASE":
@@ -205,6 +207,12 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 		}
 		object = sqlclient.Kw("ON", keyword).Qualified(database, schemaName, name).Args(sqlclient.Kw(signature))
 		read = readObjectGrantRoutineQuery(schemaName, name, routineCatalogArguments(signature), granteeName, granteeType)
+	case "TEMPLATE":
+		// No catalog view lists every template, so existence comes from SHOW TEMPLATES, whose LIKE pattern may also
+		// match similar names; SHOW GRANTS then fails for a missing template instead of reporting it as absent.
+		queries = append(queries, privilegeSchemaQuery(database, schemaName))
+		extra = append(extra, catalogCheck{sql: showTemplatesStatement(database, schemaName, name)})
+		object, showGrants = sqlclient.Kw("ON TEMPLATE").Qualified(database, schemaName, name), true
 	case "ALL TABLES":
 		queries = append(queries, objectGrantMembersQuery("svv_all_tables", database, schemaName))
 		object = sqlclient.Kw("ON ALL TABLES IN SCHEMA").Ident(schemaName)
@@ -223,6 +231,7 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+	checks = append(checks, extra...)
 	target := privilegeTarget{database: database, checks: append([]catalogCheck{check}, checks...), allowed: allowed, grant: grantSpec{object: object, grantee: grantee}}
 	if showGrants {
 		target.query = catalogCheck{sql: sqlclient.Stmt("SHOW GRANTS").Append(object).String()}

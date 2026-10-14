@@ -1,0 +1,90 @@
+---
+subcategory: Data Loading
+page_title: redshift_copy_job Resource - terraform-provider-redshift
+description: Manages a COPY JOB that automatically loads new Amazon S3 files into a table.
+---
+
+# redshift_copy_job (Resource)
+
+Manages a `COPY JOB`: a stored `COPY` command that Redshift runs for files newly created under an Amazon S3 prefix.
+Automatic loading (`auto = true`) needs an S3 event integration between the source bucket and the warehouse, which the
+AWS provider manages. See AWS [COPY JOB](https://docs.aws.amazon.com/redshift/latest/dg/r_COPY-JOB.html),
+[auto-copy](https://docs.aws.amazon.com/redshift/latest/dg/loading-data-copy-job.html), and
+[SYS_COPY_JOB](https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html).
+
+## SQL Statements
+
+```sql
+COPY schema.table FROM 's3://...' IAM_ROLE '...' ... JOB CREATE name AUTO ...;
+COPY JOB ALTER name AUTO ...;
+COPY JOB DROP name;
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_copy_job/resource.tf" }}
+
+<!-- markdownlint-disable MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD013 MD022 MD033 -->
+
+## Parameters
+
+`parameters` uses the keyword table of [`redshift_template`](template.md#parameters): UPPERCASE keywords mapped to
+their argument as a string, with `""` for keywords without an argument. A copy job additionally accepts `REGION` for a
+bucket in another Region, and rejects `MAXERROR` and `IGNOREALLERRORS`, which `COPY JOB` refuses. The source,
+`IAM_ROLE`, and the data format have their own arguments; manifests and key-based credentials are not supported.
+
+## Lifecycle and Ownership
+
+Statements run in `database`, the target table is schema-qualified, and `COPY JOB CREATE` and `COPY JOB DROP` run
+outside a transaction block, as Redshift requires. A new job loads only files created after it; files already under
+the prefix are not loaded. Redshift validates the COPY options only when the job runs, so an invalid role, source, or
+option surfaces in `SYS_COPY_JOB_INFO` and `STL_LOAD_ERRORS` rather than in the apply. Deleting the job keeps the data
+it loaded. The job name must be lowercase letters, digits, and underscores: COPY JOB documents no quoted names and
+forbids hyphens.
+
+`SYS_COPY_JOB` shows superusers every job and other users only their own, so the provider's SQL identity must own the
+job or be a superuser for refresh to find it.
+
+## Reconciliation
+
+Refresh reads `auto` and `iam_role` from `SYS_COPY_JOB`; an update runs `COPY JOB ALTER ... AUTO` and re-reads the
+catalog to verify the result; every other change replaces the job, because `COPY JOB ALTER` changes only `AUTO`.
+
+| Change                                                                                            | Result                                                                               |
+|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------|
+| `database` or `name`                                                                              | replaces the job: `COPY JOB DROP`, then `COPY ... JOB CREATE`                        |
+| `iam_role`                                                                                        | replaces the job                                                                     |
+| `source`, `format`, `format_argument`, or `parameters`                                            | replaces the job; another case of `format` is no SQL                                 |
+| `table.schema`, `table.name`, or `table.columns`                                                  | replaces the job                                                                     |
+| `source`, `format`, `format_argument`, `parameters`, or `table` in the first plan after an import | no SQL; the apply records the configured definition, which the catalog cannot report |
+| `auto`                                                                                            | `COPY JOB ALTER ... AUTO ON` or `AUTO OFF`; removing the argument means `true`       |
+
+A replacement drops the job before it creates the new one, so files created in between are not loaded by either job.
+
+**Drift.** Refresh compares `auto` and `iam_role` with `SYS_COPY_JOB`. `AUTO` changed outside Terraform is set back
+with `COPY JOB ALTER`; another IAM role is stored as the catalog reports it, and the next plan replaces the job. A role
+ARN longer than the 128 characters of `SYS_COPY_JOB.iam_role` is compared by its first 128 characters. The COPY
+definition (`table`, `source`, `format`, `format_argument`, and `parameters`) is never read back:
+`SYS_COPY_JOB.job_text` is cut at 256 characters in an undocumented form, so a job redefined outside Terraform under the
+same name is not detected. A dropped job, or one in a dropped database, is removed from state, and the next plan
+creates it again.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_copy_job/import-by-string-id.tf" }}
+
+The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
+cluster, or with `endpoint` (`host:port`) for a direct password connection; see
+[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_copy_job/import.sh" }}
+
+Import reads `auto` and `iam_role`. The definition stays empty in state, and the first plan afterwards updates it in
+place without SQL, recording the configured `table`, `source`, `format`, `format_argument`, and `parameters` as they
+are; make them match the imported job, because they are not compared with it.

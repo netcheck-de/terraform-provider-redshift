@@ -1,0 +1,287 @@
+package provider
+
+import (
+	"context"
+	"fmt"
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+var _ = registerLifecycleCase(lifecycleCase{
+	name: "copy job", new: newCopyJobResource, model: copyJobLifecycleModel,
+	absent:     func(c *catalog) { fakeState[*copyJobFake](c, copyJobFakeFamily).exists = false },
+	isDeletion: func(sql string) bool { return strings.HasPrefix(sql, "COPY JOB DROP ") },
+})
+
+var _ = registerReplacementPolicy("redshift_copy_job", map[string]replaceRule{
+	"database":        replaceAlways,
+	"name":            replaceAlways,
+	"iam_role":        replaceAlways,
+	"source":          replaceConditional("TestCopyJobImportAdoptsDefinition"),
+	"format":          replaceConditional("TestCopyJobImportAdoptsDefinition"),
+	"format_argument": replaceConditional("TestCopyJobImportAdoptsDefinition"),
+	"parameters":      replaceConditional("TestCopyJobImportAdoptsDefinition"),
+	"table":           replaceConditional("TestCopyJobImportAdoptsDefinition"),
+	"auto":            replaceNever,
+})
+
+var _ = registerValidateConfigCase("copy_job", validateConfigCase{
+	new:     newCopyJobResource,
+	valid:   copyJobLifecycleModel,
+	invalid: copyJobTestModel("events_load", map[string]string{"MAXERROR": "10"}),
+	unknown: func() copyJobModel {
+		model := copyJobTestModel("events_load", nil)
+		model.Format, model.Parameters = types.StringNull(), types.MapUnknown(types.StringType)
+		return model
+	}(),
+})
+
+// TestCopyJobTranscripts records AUTO changes, the role drift read, a cut role, and import.
+func TestCopyJobTranscripts(t *testing.T) {
+	automatic := copyJobLifecycleModel
+	automatic.Auto = types.BoolValue(true)
+	absent := func(c *catalog) { fakeState[*copyJobFake](c, copyJobFakeFamily).exists = false }
+	runTranscripts(t, "copy_job/flows", newCopyJobResource, []transcriptCase{
+		{name: "update_auto", operation: "update", catalog: catalogWith(), prior: copyJobLifecycleModel, planned: automatic},
+		{name: "create_auto", operation: "create", catalog: catalogWith(absent), planned: automatic},
+		{name: "import_without_configuration", operation: "import", catalog: catalogWith(absent), planned: copyJobLifecycleModel},
+		{name: "delete_missing", operation: "delete", catalog: catalogWith(absent), prior: copyJobLifecycleModel},
+	})
+}
+
+// TestCopyJobReadReconciles refreshes AUTO and the role, keeps the unreadable definition, and removes a dropped job.
+func TestCopyJobReadReconciles(t *testing.T) {
+	c := fullCatalog()
+	fake := fakeState[*copyJobFake](c, copyJobFakeFamily)
+	fake.auto, fake.role = true, "arn:aws:iam::123456789012:role/other"
+	r := newCopyJobResource()
+	configureTestResource(t, r, c)
+	state, diagnostics := applyOperation(t, r, "read", copyJobLifecycleModel, nil, nil)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	var observed copyJobModel
+	require.False(t, state.Get(context.Background(), &observed).HasError())
+	assert.True(t, observed.Auto.ValueBool())
+	assert.Equal(t, "arn:aws:iam::123456789012:role/other", observed.IAMRole.ValueString(), "another role surfaces to plan a replacement")
+	assert.True(t, observed.Table.Equal(copyJobLifecycleModel.Table), "the definition is kept")
+	assert.True(t, observed.Parameters.Equal(copyJobLifecycleModel.Parameters))
+
+	fake.exists = false
+	state, _ = applyOperation(t, r, "read", copyJobLifecycleModel, nil, nil)
+	assert.True(t, state.Raw.IsNull(), "a dropped job is removed from state")
+
+	ambiguous := queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+		row := sqlclient.Row{"job_name": "events_load", "iam_role": copyJobFakeRole, "is_auto": "1"}
+		if strings.Contains(sql, "sys_copy_job") {
+			return []sqlclient.Row{row, row}, nil
+		}
+		return nil, fmt.Errorf("unexpected SQL %q", sql)
+	})
+	configureTestResource(t, r, ambiguous)
+	assert.True(t, invoke(t, r, "read", copyJobLifecycleModel, false).HasError())
+	configureTestResource(t, r, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+		return []sqlclient.Row{{"job_name": "events_load", "iam_role": copyJobFakeRole, "is_auto": "maybe"}}, nil
+	}))
+	assert.True(t, invoke(t, r, "read", copyJobLifecycleModel, false).HasError())
+}
+
+// TestCopyJobConvergence fails an apply whose AUTO setting or role did not take effect.
+func TestCopyJobConvergence(t *testing.T) {
+	c := fullCatalog()
+	client := queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		if strings.HasPrefix(sql, "COPY JOB ALTER") {
+			return nil, nil
+		}
+		return c.Query(ctx, connection, sql, parameters)
+	})
+	r := newCopyJobResource()
+	configureTestResource(t, r, client)
+	automatic := copyJobLifecycleModel
+	automatic.Auto = types.BoolValue(true)
+	_, diagnostics := applyOperation(t, r, "update", copyJobLifecycleModel, automatic, nil)
+	assert.True(t, diagnostics.HasError())
+
+	absent := fullCatalog()
+	fakeState[*copyJobFake](absent, copyJobFakeFamily).exists = false
+	created := queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		rows, err := absent.Query(ctx, connection, sql, parameters)
+		if strings.HasPrefix(sql, "COPY ") {
+			fakeState[*copyJobFake](absent, copyJobFakeFamily).role = "arn:aws:iam::123456789012:role/other"
+		}
+		return rows, err
+	})
+	configureTestResource(t, r, created)
+	state, diagnostics := applyOperation(t, r, "create", nil, copyJobLifecycleModel, nil)
+	assert.True(t, diagnostics.HasError())
+	assert.False(t, state.Raw.IsNull(), "a created job stays in state when verification fails")
+}
+
+// TestCopyJobCreateRejectsInvalidBeforeState keeps invalid jobs out of state and SQL.
+func TestCopyJobCreateRejectsInvalidBeforeState(t *testing.T) {
+	r := newCopyJobResource()
+	configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+		return nil, fmt.Errorf("unexpected SQL %q", sql)
+	}))
+	model := copyJobTestModel("events_load", map[string]string{"IGNOREALLERRORS": ""})
+	resp := resource.CreateResponse{State: emptyState(t, r)}
+	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(testState(t, r, model))}, &resp)
+	require.True(t, resp.Diagnostics.HasError())
+	assert.True(t, resp.State.Raw.IsNull(), "an invalid job must not be recorded in state")
+
+	model = copyJobLifecycleModel
+	model.Table = types.ObjectNull(copyJobTableType.AttrTypes)
+	var validated resource.ValidateConfigResponse
+	r.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, model))}, &validated)
+	assert.False(t, validated.Diagnostics.HasError(), "the schema reports an absent table block once: %v", validated.Diagnostics)
+}
+
+// TestCopyJobImportAdoptsDefinition replaces the job when a definition argument changes, except on the first plan after
+// an import, whose state holds no definition because SYS_COPY_JOB does not report it.
+func TestCopyJobImportAdoptsDefinition(t *testing.T) {
+	ctx := context.Background()
+	r := newCopyJobResource()
+	configureTestResource(t, r, fullCatalog())
+	imported := resource.ImportStateResponse{State: emptyState(t, r)}
+	id := r.(*copyJobResource).identity("admin", map[string]string{"name": "events_load"}).ValueString()
+	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: id}, &imported)
+	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
+	refreshed := resource.ReadResponse{State: imported.State}
+	r.Read(ctx, resource.ReadRequest{State: imported.State}, &refreshed)
+	require.False(t, refreshed.Diagnostics.HasError(), "%v", refreshed.Diagnostics)
+	var state copyJobModel
+	require.False(t, refreshed.State.Get(ctx, &state).HasError())
+	assert.Equal(t, copyJobFakeRole, state.IAMRole.ValueString())
+	assert.True(t, state.Source.IsNull() && state.Table.IsNull(), "the definition is not read back")
+
+	var response resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &response)
+	plan := tfsdk.Plan(testState(t, r, copyJobLifecycleModel))
+	managed := testState(t, r, func() copyJobModel {
+		model := copyJobLifecycleModel
+		model.Source = types.StringValue("s3://example-bucket/old/")
+		model.Format = types.StringValue("JSON")
+		model.FormatArgument = types.StringValue("auto")
+		model.Table = copyJobTableObject("serving", "old_events")
+		model.Parameters = templateTestModel("", "", "", map[string]string{"GZIP": ""}).Parameters
+		return model
+	}())
+	for name, prior := range map[string]tfsdk.State{"imported": refreshed.State, "managed": managed} {
+		for _, attribute := range []string{"source", "format", "format_argument", "parameters", "table"} {
+			replace := false
+			var priorValue, planValue any
+			switch attribute {
+			case "parameters":
+				var before, after types.Map
+				require.False(t, prior.GetAttribute(ctx, path.Root(attribute), &before).HasError())
+				require.False(t, plan.GetAttribute(ctx, path.Root(attribute), &after).HasError())
+				for _, modifier := range response.Schema.Attributes[attribute].(schema.MapAttribute).PlanModifiers {
+					resp := planmodifier.MapResponse{PlanValue: after}
+					modifier.PlanModifyMap(ctx, planmodifier.MapRequest{Path: path.Root(attribute), State: prior, Plan: plan, StateValue: before, PlanValue: after, ConfigValue: after}, &resp)
+					replace = replace || resp.RequiresReplace
+				}
+				priorValue, planValue = before, after
+			case "table":
+				var before, after types.Object
+				require.False(t, prior.GetAttribute(ctx, path.Root(attribute), &before).HasError())
+				require.False(t, plan.GetAttribute(ctx, path.Root(attribute), &after).HasError())
+				for _, modifier := range response.Schema.Blocks[attribute].(schema.SingleNestedBlock).PlanModifiers {
+					resp := planmodifier.ObjectResponse{PlanValue: after}
+					modifier.PlanModifyObject(ctx, planmodifier.ObjectRequest{Path: path.Root(attribute), State: prior, Plan: plan, StateValue: before, PlanValue: after, ConfigValue: after}, &resp)
+					replace = replace || resp.RequiresReplace
+				}
+				priorValue, planValue = before, after
+			default:
+				var before, after types.String
+				require.False(t, prior.GetAttribute(ctx, path.Root(attribute), &before).HasError())
+				require.False(t, plan.GetAttribute(ctx, path.Root(attribute), &after).HasError())
+				for _, modifier := range response.Schema.Attributes[attribute].(schema.StringAttribute).PlanModifiers {
+					resp := planmodifier.StringResponse{PlanValue: after}
+					modifier.PlanModifyString(ctx, planmodifier.StringRequest{Path: path.Root(attribute), State: prior, Plan: plan, StateValue: before, PlanValue: after, ConfigValue: after}, &resp)
+					replace = replace || resp.RequiresReplace
+				}
+				priorValue, planValue = before, after
+			}
+			assert.Equal(t, name == "managed", replace, "%s %s: %v -> %v", name, attribute, priorValue, planValue)
+		}
+	}
+	// The format keyword compares without case, so another spelling records in place.
+	var format types.String
+	require.False(t, managed.GetAttribute(ctx, path.Root("format"), &format).HasError())
+	lower := types.StringValue("json")
+	for _, modifier := range response.Schema.Attributes["format"].(schema.StringAttribute).PlanModifiers {
+		resp := planmodifier.StringResponse{PlanValue: lower}
+		modifier.PlanModifyString(ctx, planmodifier.StringRequest{Path: path.Root("format"), State: managed, Plan: plan, StateValue: format, PlanValue: lower, ConfigValue: lower}, &resp)
+		assert.False(t, resp.RequiresReplace)
+	}
+	// The first apply after the import records the configured definition with no statement beyond AUTO.
+	statements, err := alterCopyJobStatements(state, copyJobLifecycleModel)
+	require.NoError(t, err)
+	assert.Empty(t, statements)
+}
+
+// TestCopyJobPlan drives real plans: the required table block, an in-place AUTO change, and a replacing source change.
+func TestCopyJobPlan(t *testing.T) {
+	c := &catalog{identity: true, privileges: map[string]bool{}}
+	configuration := func(source, auto, table string) string {
+		return fmt.Sprintf(`
+provider "redshift" {
+  region = "eu-central-1"
+  workgroup_name = "warehouse"
+  database = "admin"
+}
+resource "redshift_copy_job" "events" {
+  database = "admin"
+  name = "events_load"
+  source = %q
+  iam_role = %q
+  format = "CSV"
+  parameters = { IGNOREHEADER = "1" }
+  auto = %s
+%s
+}`, source, copyJobFakeRole, auto, table)
+	}
+	table := `  table {
+    schema = "serving"
+    name = "events"
+    columns = ["id", "label"]
+  }`
+	first := configuration("s3://example-bucket/events/", "false", table)
+	automatic := configuration("s3://example-bucket/events/", "true", table)
+	moved := configuration("s3://example-bucket/moved/", "true", table)
+	testresource.UnitTest(t, testresource.TestCase{
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})},
+		Steps: []testresource.TestStep{
+			{Config: configuration("s3://example-bucket/events/", "false", ""), ExpectError: regexp.MustCompile(`Block table must have a configuration value`), PlanOnly: true},
+			{Config: first, Check: testresource.TestCheckResourceAttr("redshift_copy_job.events", "auto", "false")},
+			{Config: first, PlanOnly: true},
+			{
+				Config: automatic,
+				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("redshift_copy_job.events", plancheck.ResourceActionUpdate),
+				}},
+				Check: testresource.TestCheckResourceAttr("redshift_copy_job.events", "auto", "true"),
+			},
+			{
+				Config: moved,
+				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("redshift_copy_job.events", plancheck.ResourceActionDestroyBeforeCreate),
+				}},
+			},
+			{Config: moved, PlanOnly: true},
+		},
+	})
+}

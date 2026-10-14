@@ -1,0 +1,1 @@
+-- error: iam_role "DEFAULT" must be an IAM role ARN; COPY JOB does not support the default role
