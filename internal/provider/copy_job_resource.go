@@ -114,7 +114,7 @@ func (r *copyJobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"source": schema.StringAttribute{
 				Required: true, PlanModifiers: definition, Validators: []validator.String{stringvalidator.RegexMatches(copyJobSourcePattern, "must start with s3://")},
-				MarkdownDescription: "Amazon S3 prefix the job monitors, such as `s3://bucket/staging/`. Its bucket needs an S3 event integration with the warehouse for `auto`. Changing it replaces the job.",
+				MarkdownDescription: "Amazon S3 prefix the job monitors, such as `s3://bucket/staging/`. Its bucket needs an S3 event integration with the warehouse, also with `auto = false`. Changing it replaces the job.",
 			},
 			"iam_role": schema.StringAttribute{
 				Required: true, PlanModifiers: replace, Validators: []validator.String{stringvalidator.RegexMatches(copyJobRolePattern, "must be an IAM role ARN")},
@@ -136,7 +136,7 @@ func (r *copyJobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"auto": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(true),
-				MarkdownDescription: "Whether Redshift loads new files automatically (`AUTO ON`); updated in place with `COPY JOB ALTER`. Defaults to `true`, the Redshift default, which requires an S3 event integration for the source bucket.",
+				MarkdownDescription: "Whether Redshift loads new files automatically (`AUTO ON`); updated in place with `COPY JOB ALTER`. Defaults to `true`, the Redshift default.",
 			},
 		},
 		Blocks: map[string]schema.Block{

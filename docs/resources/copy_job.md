@@ -7,8 +7,9 @@ description: Manages a COPY JOB that automatically loads new Amazon S3 files int
 # redshift_copy_job (Resource)
 
 Manages a `COPY JOB`: a stored `COPY` command that Redshift runs for files newly created under an Amazon S3 prefix.
-Automatic loading (`auto = true`) needs an S3 event integration between the source bucket and the warehouse, which the
-AWS provider manages. See AWS [COPY JOB](https://docs.aws.amazon.com/redshift/latest/dg/r_COPY-JOB.html),
+Creating a job needs an S3 event integration between the source bucket and the warehouse, also with `auto = false`;
+otherwise Redshift fails with "Cannot find integration for bucket". The AWS provider manages it as
+`aws_redshift_integration`. See AWS [COPY JOB](https://docs.aws.amazon.com/redshift/latest/dg/r_COPY-JOB.html),
 [auto-copy](https://docs.aws.amazon.com/redshift/latest/dg/loading-data-copy-job.html), and
 [SYS_COPY_JOB](https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html).
 
@@ -68,11 +69,11 @@ resource "redshift_copy_job" "archive" {
 - `database` (String) Local database containing the target table; the job's statements run there. Changing it replaces the job.
 - `iam_role` (String) ARN of an IAM role associated with the warehouse that can read `source`. COPY JOB does not support the default role. Changing it replaces the job.
 - `name` (String) Job name: lowercase letters, digits, and underscores, without hyphens. Changing it replaces the job.
-- `source` (String) Amazon S3 prefix the job monitors, such as `s3://bucket/staging/`. Its bucket needs an S3 event integration with the warehouse for `auto`. Changing it replaces the job.
+- `source` (String) Amazon S3 prefix the job monitors, such as `s3://bucket/staging/`. Its bucket needs an S3 event integration with the warehouse, also with `auto = false`. Changing it replaces the job.
 
 ### Optional
 
-- `auto` (Boolean) Whether Redshift loads new files automatically (`AUTO ON`); updated in place with `COPY JOB ALTER`. Defaults to `true`, the Redshift default, which requires an S3 event integration for the source bucket.
+- `auto` (Boolean) Whether Redshift loads new files automatically (`AUTO ON`); updated in place with `COPY JOB ALTER`. Defaults to `true`, the Redshift default.
 - `format` (String) Data format of `FORMAT AS`: `AVRO`, `CSV`, `FIXEDWIDTH`, `JSON`, `ORC`, `PARQUET`, `SHAPEFILE`. Omit it for pipe-delimited text. Changing it replaces the job.
 - `format_argument` (String) Argument of the format, required for `JSON` and `AVRO` (`auto`, `auto ignorecase`, `noshred`, or an `s3://` JSONPaths file) and `FIXEDWIDTH`, and rejected for the others. Changing it replaces the job.
 - `parameters` (Map of String) COPY parameters keyed by their UPPERCASE keyword, with `""` for keywords without an argument, such as `{ IGNOREHEADER = "1", GZIP = "" }`. Accepted: `ACCEPTANYDATE`, `ACCEPTINVCHARS`, `BLANKSASNULL`, `BZIP2`, `COMPROWS`, `COMPUPDATE`, `DATEFORMAT`, `DELIMITER`, `EMPTYASNULL`, `ENCODING`, `ENCRYPTED`, `ESCAPE`, `EXPLICIT_IDS`, `FILLRECORD`, `GZIP`, `IGNOREBLANKLINES`, `IGNOREHEADER`, `LZOP`, `NOLOAD`, `NULL`, `QUOTE`, `REGION`, `REMOVEQUOTES`, `ROUNDEC`, `STATUPDATE`, `TIMEFORMAT`, `TRIMBLANKS`, `TRUNCATECOLUMNS`, `ZSTD`. COPY JOB rejects `MAXERROR`, `IGNOREALLERRORS`, `MANIFEST`, and key-based credentials. Changing it replaces the job.

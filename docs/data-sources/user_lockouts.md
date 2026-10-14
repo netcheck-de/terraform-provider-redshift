@@ -58,8 +58,9 @@ Read-Only:
 - `user_name` (String) Database user name.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
-`SHOW USER LOCKOUT` requires a superuser, so the read fails for any other provider identity. Federated users are not
-listed. The command has no filter, so `user_name` keeps the exact name after reading every row; `user_lockouts` is
+`SHOW USER LOCKOUT` requires a superuser, so the read fails for any other provider identity. A warehouse without
+account lockout support rejects the command with "account lockout security is not supported", and the read fails
+too. Federated users are not listed. The command has no filter, so `user_name` keeps the exact name after reading every row; `user_lockouts` is
 ordered by user name and is empty when nothing matches. `locked_at` and `last_failed_at` are the timestamps as Redshift
 reports them, and they, `lock_reason`, and `locked_by` are null when not reported.
 

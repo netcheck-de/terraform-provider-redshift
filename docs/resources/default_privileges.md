@@ -81,7 +81,10 @@ superusers by default. The database-wide tuple `grantee_type = "PUBLIC"`, `objec
 until the defaults change. Set `privileges = []` to revoke it, as AWS recommends before granting `EXECUTE` to specific
 users or groups. Deleting or replacing that tuple leaves the revocation in place rather than widening access; to return
 to the Redshift default, set `privileges = ["EXECUTE"]` and apply, then remove the resource with a `removed` block that
-sets `destroy = false`. Schema-specific defaults add to the database-wide ones and cannot remove this grant.
+sets `destroy = false`. The kept revocation is a `PG_DEFAULT_ACL` entry that depends on `owner`, so `DROP USER` of the
+owner fails until the database is dropped; in one configuration, let the database depend on the owner's
+`redshift_user` so Terraform drops it first. Schema-specific defaults add to the database-wide ones and cannot remove
+this grant.
 
 ```terraform
 # Stop granting EXECUTE on new functions of the loader to everyone, then grant it to one group.
