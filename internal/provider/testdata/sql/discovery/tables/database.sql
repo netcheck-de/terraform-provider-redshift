@@ -3,5 +3,9 @@ SELECT t.schema_name, t.table_name, UPPER(t.table_type) AS table_type, r.table_o
 -- params: {"database":"analytics"}
 
 -- database: admin
-SELECT TRIM(schema_name) AS schema_name, TRIM(name) AS name FROM svv_mv_info WHERE TRIM(database_name) = :database;
+SELECT database_name FROM svv_redshift_databases WHERE database_name = :database AND database_type = 'local';
+-- params: {"database":"analytics"}
+
+-- database: analytics
+SELECT TRIM(schema_name) AS schema_name, TRIM(name) AS name, TRIM(user_name) AS owner FROM svv_mv_info WHERE TRIM(database_name) = :database;
 -- params: {"database":"analytics"}

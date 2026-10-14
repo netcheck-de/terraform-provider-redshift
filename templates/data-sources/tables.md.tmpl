@@ -33,6 +33,8 @@ returns an empty `tables` list.
 `SVV_ALL_TABLES` reports materialized views as views. The listing reclassifies every view that `SVV_MV_INFO` knows as
 `MATERIALIZED VIEW`. `SVV_MV_INFO` shows a regular user only the materialized views it owns, so unless the provider's
 SQL identity is a superuser, a materialized view owned by another user is listed as `VIEW`: `table_type = "VIEW"`
-returns it, and `table_type = "MATERIALIZED VIEW"` does not. The `SVV_MV_INFO` read is skipped when the type filter
-cannot match a view or when nothing matched. Owners come from `SVV_REDSHIFT_TABLES`, which does not cover external
-tables, so their `owner` is null. Superusers see every relation; other users see only their own.
+returns it, and `table_type = "MATERIALIZED VIEW"` does not. `SVV_MV_INFO` covers only the database it is queried in,
+so the listing reads it in the listed database; a shared database's materialized views are listed as `VIEW`. The
+`SVV_MV_INFO` read is skipped when the type filter cannot match a view or when nothing matched. Owners come from `SVV_REDSHIFT_TABLES`, and for materialized views from
+`SVV_MV_INFO`, because `SVV_REDSHIFT_TABLES` leaves them empty when read from another database. It does not cover
+external tables, so their `owner` is null. Superusers see every relation; other users see only their own.

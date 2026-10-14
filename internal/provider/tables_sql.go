@@ -42,11 +42,12 @@ func readTablesQuery(database, schemaName, tableType string) sqlclient.Query {
 		OrderBy("t.schema_name", "t.table_name")
 }
 
-// readTablesMaterializedQuery lists the materialized views of one database. SVV_MV_INFO stores names as CHAR(128),
-// so they are trimmed before comparison. It stays a separate query because SVV_MV_INFO is built on STV state,
+// readTablesMaterializedQuery lists the materialized views of one database and their owners, which
+// SVV_REDSHIFT_TABLES leaves empty for a materialized view read from another database. SVV_MV_INFO stores names as
+// CHAR(128), so they are trimmed before comparison. It stays a separate query because SVV_MV_INFO is built on STV state,
 // and Redshift rejects some joins between such views and the leader-node catalog views of the listing.
 func readTablesMaterializedQuery(database, schemaName string) sqlclient.Query {
-	return sqlclient.Select("TRIM(schema_name) AS schema_name", "TRIM(name) AS name").
+	return sqlclient.Select("TRIM(schema_name) AS schema_name", "TRIM(name) AS name", "TRIM(user_name) AS owner").
 		From("svv_mv_info").
 		Where("TRIM(database_name) = :database", sqlclient.Bind("database", database)).
 		OptEq("TRIM(schema_name)", "schema", schemaName)

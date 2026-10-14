@@ -40,7 +40,8 @@ var discoveryListings = []discoveryListing{
 	{name: "databases", source: string(databasesSource), equal: map[string]string{"database_type": "database_type"}, like: map[string]string{"name_like": "database_name"}},
 	{name: "schemas", source: string(schemasSource), equal: map[string]string{"database": "database_name", "schema_type": "schema_type"}},
 	{name: "tables", source: string(tablesSource), equal: map[string]string{"database": "database_name", "schema": "schema_name", "table_type": "table_type"}},
-	{name: "materialized", source: "svv_mv_info", selects: "TRIM(schema_name) AS schema_name", equal: map[string]string{"database": "database_name", "schema": "schema_name"}},
+	// SVV_MV_INFO lists only the materialized views of the connected database.
+	{name: "materialized", source: "svv_mv_info", selects: "TRIM(schema_name) AS schema_name", equal: map[string]string{"database": "database_name", "schema": "schema_name"}, connected: true},
 	{name: "columns", source: "svv_all_columns", equal: map[string]string{"database": "database_name", "schema": "schema_name", "table": "table_name"}},
 	{name: "constraints", source: string(constraintsSource), equal: map[string]string{"schema": "schema_name", "table": "table_name", "contype": "contype"}, connected: true},
 }
@@ -69,6 +70,17 @@ func discoveryLike(pattern string) *regexp.Regexp {
 
 // query answers the discovery listings with the rows matching their bound filters.
 func (f *discoveryFamily) query(_ *catalog, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+	// The tables listing asks whether the selected database is local; other families answer for their databases.
+	if local, _, _ := localDatabaseQuery(parameters["database"]).Build(); sql == local {
+		for _, row := range f.rows["databases"] {
+			if row["database_name"] == parameters["database"] {
+				if row["database_type"] == "local" {
+					return []dataapi.Row{{"database_name": row["database_name"]}}, true, nil
+				}
+				return nil, true, nil
+			}
+		}
+	}
 	for _, listing := range discoveryListings {
 		if !strings.HasPrefix(sql, "SELECT "+listing.selects) || !strings.Contains(sql, " FROM "+listing.source+" ") {
 			continue
@@ -114,11 +126,12 @@ func (f *discoveryFamily) populate() {
 		"tables": {
 			{"database_name": "analytics", "schema_name": "serving", "table_name": "orders", "table_type": "TABLE", "owner": "admin", "remarks": "Order facts."},
 			{"database_name": "analytics", "schema_name": "serving", "table_name": "order_labels", "table_type": "VIEW", "owner": "admin", "remarks": ""},
-			{"database_name": "analytics", "schema_name": "serving", "table_name": "order_totals", "table_type": "VIEW", "owner": "etl", "remarks": ""},
+			// SVV_REDSHIFT_TABLES read from another database leaves a materialized view's owner empty.
+			{"database_name": "analytics", "schema_name": "serving", "table_name": "order_totals", "table_type": "VIEW", "owner": "", "remarks": ""},
 			{"database_name": "analytics", "schema_name": "spectrum", "table_name": "events", "table_type": "EXTERNAL TABLE", "owner": "", "remarks": ""},
 		},
 		"materialized": {
-			{"database_name": "analytics", "schema_name": "serving", "name": "order_totals"},
+			{"database_name": "analytics", "schema_name": "serving", "name": "order_totals", "owner": "etl"},
 		},
 		"columns": {
 			{"database_name": "analytics", "schema_name": "serving", "table_name": "orders", "column_name": "id", "ordinal_position": "1", "data_type": "integer", "character_maximum_length": "", "numeric_precision": "32", "numeric_scale": "0", "is_nullable": "NO", "column_default": "", "remarks": "Order key."},
