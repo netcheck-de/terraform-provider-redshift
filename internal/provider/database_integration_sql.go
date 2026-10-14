@@ -66,11 +66,11 @@ var databaseIntegrationSettings = []databaseIntegrationSetting{
 }
 
 // databaseIntegrationSource renders FROM INTEGRATION with the optional source database and the configured
-// options after SET. The syntax spells the source database as a string literal, while the AWS example passes an
-// identifier; the literal follows the syntax.
+// options after SET. The syntax shows the source database as a string literal, but Redshift rejects one and accepts
+// the identifier the AWS example passes; quoting keeps the source's letter case.
 func databaseIntegrationSource(integration databaseIntegrationModel) sqlclient.Statement {
 	clause := sqlclient.Fragment().KwLit("FROM INTEGRATION", integration.IntegrationID.ValueString()).
-		OptLit("DATABASE", knownString(integration.SourceDatabase))
+		OptIdent("DATABASE", knownString(integration.SourceDatabase))
 	settings := sqlclient.Fragment()
 	for _, setting := range databaseIntegrationSettings {
 		if value := setting.value(integration); !value.IsNull() && !value.IsUnknown() {

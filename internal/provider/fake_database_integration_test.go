@@ -23,7 +23,8 @@ const fakeIntegrationID = "a1b2c3d4-5678-90ab-cdef-example11111"
 type databaseIntegrationFamily struct {
 	// exists records whether the destination database exists.
 	exists bool
-	// databaseType is the SHOW DATABASES type, which Redshift does not document for a destination.
+	// databaseType is the SHOW DATABASES type, which Redshift does not document for a destination; live it is local,
+	// which TestDatabaseIntegrationLocalType covers.
 	databaseType string
 	// hidden emulates a provider identity that is not a superuser, which SVV_INTEGRATION shows no rows.
 	hidden bool
@@ -58,6 +59,8 @@ func (f *databaseIntegrationFamily) populate() {
 var (
 	// fakeIntegrationSource captures the integration identifier.
 	fakeIntegrationSource = regexp.MustCompile(`FROM INTEGRATION '((?:[^']|'')*)'`)
+	// fakeIntegrationSourceDatabase captures the quoted source database identifier.
+	fakeIntegrationSourceDatabase = regexp.MustCompile(`FROM INTEGRATION '(?:[^']|'')*' DATABASE "((?:[^"]|"")*)"`)
 	// fakeIntegrationSetting captures one option of SET.
 	fakeIntegrationSetting = regexp.MustCompile(`(ACCEPTINVCHARS|QUERY_ALL_STATES|TRUNCATECOLUMNS|HISTORY_MODE|AUTO_REMEDIATION) = (TRUE|FALSE)|REFRESH_INTERVAL (\d+)`)
 )
@@ -118,7 +121,7 @@ func (f *databaseIntegrationFamily) query(_ *catalog, _ dataapi.Connection, sql 
 		if source == nil {
 			return nil, true, fmt.Errorf("fake catalog cannot parse the integration of %q", sql)
 		}
-		sourceDatabase, _ := fakeLiteral("DATABASE", sql)
+		sourceDatabase, _ := fakeIdentifier(fakeIntegrationSourceDatabase, sql)
 		f.reset(commentUnescaper.Replace(source[1]), sourceDatabase)
 		f.apply(sql)
 		f.exists = true
