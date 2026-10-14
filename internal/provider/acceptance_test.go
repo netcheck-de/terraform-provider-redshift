@@ -166,7 +166,8 @@ data "redshift_grant" "schema" {
 			{ResourceName: "redshift_schema.local", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_role.reader", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_grant.schema", ImportState: true, ImportStateVerify: true},
-			{ResourceName: "redshift_group.readers", ImportState: true, ImportStateVerify: true},
+			// members is informational and refreshed only by Read, so the state from the membership apply is stale.
+			{ResourceName: "redshift_group.readers", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"members"}},
 			{ResourceName: "redshift_group_membership.reader", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_user.reader", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"password_wo_version"}},
 			{ResourceName: "redshift_object_grant.schema", ImportState: true, ImportStateVerify: true},

@@ -59,7 +59,7 @@ resource "redshift_view" "ordinary" {
   database = redshift_schema.local.database
   schema = redshift_schema.local.name
   name = "labels"
-  query = "SELECT id, %[1]s AS label FROM serving.events"
+  query = "SELECT id, CAST(%[1]s AS VARCHAR(64)) AS label FROM serving.events"
 }
 resource "redshift_view" "late" {
   database = redshift_schema.local.database
@@ -125,7 +125,8 @@ data "redshift_materialized_view" "counts" {
 			{ResourceName: "redshift_view.ordinary", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"query"}},
 			{ResourceName: "redshift_view.late", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"query"}},
 			{ResourceName: "redshift_materialized_view.counts", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"query", "distribution", "sort_key"}},
-			// The new query keeps the column names and types, so CREATE OR REPLACE VIEW succeeds in place.
+			// The new query keeps the column names and types, so CREATE OR REPLACE VIEW succeeds in place; UPPER alone would
+			// return another VARCHAR length, which Redshift rejects.
 			{
 				Config: configuration("UPPER(label)", false, true),
 				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
@@ -137,7 +138,7 @@ data "redshift_materialized_view" "counts" {
 			{
 				Config: configuration("UPPER(label)", false, true), PlanOnly: true, ExpectNonEmptyPlan: true,
 				PreConfig: func() {
-					_, err := client.Query(ctx, target, `CREATE OR REPLACE VIEW serving.labels AS SELECT id, LOWER(label) AS label FROM serving.events`, nil)
+					_, err := client.Query(ctx, target, `CREATE OR REPLACE VIEW serving.labels AS SELECT id, CAST(LOWER(label) AS VARCHAR(64)) AS label FROM serving.events`, nil)
 					require.NoError(t, err)
 				},
 			},

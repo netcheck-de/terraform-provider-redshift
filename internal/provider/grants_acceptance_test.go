@@ -27,7 +27,12 @@ provider "redshift" {
   workgroup_name = %q
   database       = %q
 }
-resource "redshift_database" "local" { name = "acc_grants_%[5]s" }
+# The revoked PUBLIC default stays in the database and depends on its owner, so the database is dropped before the
+# user: DROP USER fails while the entry exists.
+resource "redshift_database" "local" {
+  name       = "acc_grants_%[5]s"
+  depends_on = [redshift_user.analyst]
+}
 resource "redshift_schema" "local" {
   database = redshift_database.local.name
   name     = "acc_grants_%[5]s"

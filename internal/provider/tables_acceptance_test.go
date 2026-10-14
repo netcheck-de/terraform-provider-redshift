@@ -32,7 +32,7 @@ func TestAccTableLifecycle(t *testing.T) {
 		accountColumn = `
   column {
     name     = "account_id"
-    type     = "integer"
+    type     = "INTEGER"
     nullable = false
     encoding = "AZ64"
   }`

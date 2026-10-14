@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/require"
@@ -113,10 +115,22 @@ data "redshift_procedure" "scale" {
 			require.NoError(t, err)
 		}
 	})
+	// The forgotten routines are no longer in state, so their import IDs are recorded when they are created.
+	ids := map[string]string{}
+	recordIDs := func(state *terraform.State) error {
+		for _, address := range []string{"redshift_function.label", "redshift_procedure.scale"} {
+			ids[address] = state.RootModule().Resources[address].Primary.ID
+		}
+		return nil
+	}
+	recordedID := func(address string) resource.ImportStateIdFunc {
+		return func(*terraform.State) (string, error) { return ids[address], nil }
+	}
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
 			{Config: configuration("SELECT $2 || '-' || $1::varchar", "IMMUTABLE", "INVOKER"), Check: resource.ComposeAggregateTestCheckFunc(
+				recordIDs,
 				resource.TestCheckResourceAttr("redshift_function.label", "signature", "INTEGER, CHARACTER VARYING"),
 				resource.TestCheckResourceAttr("data.redshift_function.label", "return_type", "CHARACTER VARYING"),
 				resource.TestCheckResourceAttr("redshift_procedure.scale", "signature", "INTEGER, BIGINT"),
@@ -130,9 +144,11 @@ data "redshift_procedure" "scale" {
 			{ResourceName: "redshift_function.label", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"arguments", "return_type", "body"}},
 			{ResourceName: "redshift_procedure.scale", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"argument", "body", "nonatomic", "configuration"}},
 			// Imported state holds types without their modifiers; planning the original configuration against it must
-			// update in place rather than replace a routine that grants or views may depend on.
-			{ResourceName: "redshift_function.label", ImportState: true, ImportStatePersist: true},
-			{ResourceName: "redshift_procedure.scale", ImportState: true, ImportStatePersist: true},
+			// update in place rather than replace a routine that grants or views may depend on. Terraform imports only
+			// into a free address, so the routines are first forgotten without being dropped.
+			{Config: forgetRoutines(configuration("SELECT $2 || '-' || $1::varchar", "IMMUTABLE", "INVOKER"))},
+			{Config: configuration("SELECT $2 || '-' || $1::varchar", "IMMUTABLE", "INVOKER"), ResourceName: "redshift_function.label", ImportState: true, ImportStatePersist: true, ImportStateIdFunc: recordedID("redshift_function.label")},
+			{Config: configuration("SELECT $2 || '-' || $1::varchar", "IMMUTABLE", "INVOKER"), ResourceName: "redshift_procedure.scale", ImportState: true, ImportStatePersist: true, ImportStateIdFunc: recordedID("redshift_procedure.scale")},
 			{Config: configuration("SELECT $2 || '-' || $1::varchar", "IMMUTABLE", "INVOKER"), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
 				plancheck.ExpectResourceAction("redshift_function.label", plancheck.ResourceActionUpdate),
 				plancheck.ExpectResourceAction("redshift_procedure.scale", plancheck.ResourceActionUpdate),
@@ -149,4 +165,35 @@ data "redshift_procedure" "scale" {
 			{Config: configuration("SELECT $1::varchar || ':' || $2", "STABLE", "DEFINER")},
 		},
 	})
+}
+
+// forgetRoutines replaces the routines the import steps re-import, and the lookups reading them, with removed blocks
+// that keep the objects, so the next steps can import them into free addresses.
+func forgetRoutines(configuration string) string {
+	forgotten := map[string]bool{
+		`resource "redshift_function" "label" {`: true, `resource "redshift_procedure" "scale" {`: true,
+		`data "redshift_function" "label" {`: true, `data "redshift_procedure" "scale" {`: true,
+	}
+	var kept []string
+	skipping := false
+	for _, line := range strings.Split(configuration, "\n") {
+		switch {
+		case forgotten[line]:
+			skipping = true
+		case skipping && line == "}":
+			skipping = false
+		case !skipping:
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n") + `
+removed {
+  from = redshift_function.label
+  lifecycle { destroy = false }
+}
+removed {
+  from = redshift_procedure.scale
+  lifecycle { destroy = false }
+}
+`
 }
