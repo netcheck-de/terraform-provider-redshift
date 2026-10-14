@@ -39,6 +39,7 @@ var _ = registerReplacementPolicy("redshift_database", map[string]replaceRule{
 	"connection_limit": replaceNever,
 	"collation":        replaceAlways,
 	"isolation_level":  replaceNever,
+	"integration":      replaceConditional("TestDatabaseIntegrationReplacement"),
 })
 
 // localDatabaseClient answers the local option reads with Redshift's defaults and passes every other statement,

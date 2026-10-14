@@ -1,0 +1,1 @@
+CREATE DATABASE "replica" FROM INTEGRATION 'a1b2c3d4-5678-90ab-cdef-example11111' DATABASE 'orders';

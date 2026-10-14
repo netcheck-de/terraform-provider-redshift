@@ -79,6 +79,15 @@ resource "aws_redshiftserverless_workgroup" "consumer" {
     parameter_value = "true"
   }
 
+  # Zero-ETL targets require case-sensitive identifiers; the parameter is set only with the optional integration.
+  dynamic "config_parameter" {
+    for_each = local.zero_etl_enabled ? ["true"] : []
+    content {
+      parameter_key   = "enable_case_sensitive_identifier"
+      parameter_value = config_parameter.value
+    }
+  }
+
   depends_on = [
     module.consumer_vpc,
     module.consumer_endpoints,

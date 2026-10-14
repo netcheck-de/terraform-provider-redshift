@@ -33,6 +33,10 @@ region = "eu-central-1"
 # needs an S3 event integration between the prefix's bucket and the consumer namespace.
 # copy_job = { source = "s3://example-bucket/copy/", auto = false }
 
+# Replicate an existing Aurora or RDS source into the consumer through a zero-ETL integration (see README).
+# zero_etl_source_arn      = "arn:aws:rds:eu-central-1:123456789012:cluster:orders"
+# zero_etl_source_database = "orders" # PostgreSQL and Oracle sources only.
+
 # Optional cross-account mode: distinct profiles create separate networks and warehouses in those accounts.
 # producer_profile = "producer-admin"
 # consumer_profile = "consumer-admin"

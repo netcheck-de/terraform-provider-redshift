@@ -1,0 +1,1 @@
+-- error: the integration block conflicts with datashare_arn; remove one of them

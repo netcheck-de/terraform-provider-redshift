@@ -46,14 +46,20 @@ func databaseOptions(data databaseModel) (collation, isolation sqlclient.Keyword
 }
 
 // createDatabaseStatement renders CREATE DATABASE for a local database with its optional OWNER, CONNECTION
-// LIMIT, COLLATE and ISOLATION LEVEL, or for a consumer database bound to the producer share encoded in
-// datashare_arn, which accepts none of those options.
+// LIMIT, COLLATE and ISOLATION LEVEL, for a zero-ETL destination that adds FROM INTEGRATION before them, or for a
+// consumer database bound to the producer share encoded in datashare_arn, which accepts none of those options.
 func createDatabaseStatement(data databaseModel) (string, error) {
 	statement := sqlclient.Stmt("CREATE DATABASE").Ident(data.Name.ValueString())
+	if err := validateDatabaseIntegration(data); err != nil {
+		return "", err
+	}
 	if data.DatashareARN.IsNull() {
 		collation, isolation, err := databaseOptions(data)
 		if err != nil {
 			return "", err
+		}
+		if data.Integration != nil {
+			statement = statement.Append(databaseIntegrationSource(*data.Integration))
 		}
 		statement = statement.OptIdent("OWNER", knownString(data.Owner))
 		if limit := knownInt64(data.ConnectionLimit); limit != nil {
@@ -75,7 +81,9 @@ func createDatabaseStatement(data databaseModel) (string, error) {
 	return statement.String(), statement.Err()
 }
 
-// databaseAlterSteps change one option per statement. Collation is absent because it replaces the database.
+// databaseAlterSteps change one option per statement. Collation is absent because it replaces the database; the
+// integration step changes only the settings that ALTER DATABASE ... INTEGRATION SET accepts, since the block's
+// binding replaces the database.
 // The values were checked by databaseOptions, so the renders cannot meet an invalid keyword.
 var databaseAlterSteps = []alterStep[databaseModel]{
 	{
@@ -99,6 +107,11 @@ var databaseAlterSteps = []alterStep[databaseModel]{
 			isolation, _ := optOneOf(plan.IsolationLevel, databaseIsolationLevels...)
 			return []string{databaseAlter(plan).Kw("ISOLATION LEVEL", isolation).String()}
 		},
+	},
+	{
+		attribute: "integration",
+		value:     func(data databaseModel) attr.Value { return databaseIntegrationObject(data.Integration) },
+		render:    alterDatabaseIntegrationStatements,
 	},
 }
 

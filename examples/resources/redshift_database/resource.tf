@@ -15,3 +15,15 @@ resource "redshift_database" "local" {
   collation        = "CASE_INSENSITIVE"
   isolation_level  = "SNAPSHOT"
 }
+
+# The read-only destination of an active zero-ETL integration. The warehouse must set enable_case_sensitive_identifier.
+resource "redshift_database" "replica" {
+  name = "orders_replica"
+
+  integration {
+    integration_id   = "a1b2c3d4-5678-90ab-cdef-example11111"
+    source_database  = "orders"
+    refresh_interval = 600
+    query_all_states = true
+  }
+}

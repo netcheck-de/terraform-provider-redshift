@@ -1,15 +1,17 @@
 ---
 subcategory: Databases and Schemas
 page_title: redshift_database Data Source - terraform-provider-redshift
-description: Looks up an existing local or shared database.
+description: Looks up an existing local, zero-ETL destination, or shared database.
 ---
 
 # redshift_database (Data Source)
 
-Looks up an existing local or shared database without managing it. Local databases also report their owner,
-connection limit, collation, and isolation level. See AWS
-[SHOW DATABASES](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_DATABASES.html) and
-[PG_DATABASE_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_DATABASE_INFO.html).
+Looks up an existing local, zero-ETL destination, or shared database without managing it. Local and destination
+databases also report their owner, connection limit, and isolation level, local databases their collation, and
+destination databases their integration. See AWS
+[SHOW DATABASES](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_DATABASES.html),
+[PG_DATABASE_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_DATABASE_INFO.html), and
+[SVV_INTEGRATION](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_INTEGRATION.html).
 
 ## Catalog Query
 
@@ -17,6 +19,7 @@ connection limit, collation, and isolation level. See AWS
 SHOW DATABASES LIKE 'name';
 SELECT ... FROM pg_database_info WHERE datname = 'name';
 SELECT db_collation();
+SELECT ... FROM svv_integration WHERE target_database = 'name';
 ```
 
 ## Example Usage
@@ -39,19 +42,40 @@ data "redshift_database" "analytics" {
 
 - `collation` (String) `CASE_SENSITIVE` or `CASE_INSENSITIVE` for a local database, read with `DB_COLLATION()` in a session inside it; null for shared databases, or with a warning when that session is refused, for example by the database's connection limit.
 - `connection_limit` (Number) Maximum concurrent connections to a local database; `-1` means `UNLIMITED`. Null for shared databases.
-- `database_type` (String) `LOCAL` or `SHARED`.
+- `database_type` (String) `LOCAL` or `SHARED`; for a zero-ETL destination database, the type `SHOW DATABASES` reports, in uppercase.
 - `datashare_arn` (String) Backing producer datashare ARN; null for local databases. Shared lookups require redshift:DescribeDataShares.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `integration` (Attributes) Zero-ETL integration of a destination database, from `SVV_INTEGRATION`, which only superusers can see; null for shared databases and when the view shows no integration for the database. (see [below for nested schema](#nestedatt--integration))
 - `isolation_level` (String) `SERIALIZABLE` or `SNAPSHOT` for a local database; null for shared databases.
 - `owner` (String) SQL user owning a local database; null for shared databases.
 - `producer_account` (String) Producer account ID; null for local databases.
 - `producer_namespace` (String) Producer namespace ID; null for local databases.
 - `share_name` (String) Producer share name; null for local databases.
 - `with_permissions` (Boolean) Whether the shared database requires object grants.
+
+<a id="nestedatt--integration"></a>
+### Nested Schema for `integration`
+
+Read-Only:
+
+- `accept_invalid_chars` (Boolean) Not reported by any catalog view, so always null in the lookup.
+- `auto_remediation` (Boolean) Whether tables affected by duplicate rows are resynchronized automatically.
+- `history_mode` (Boolean) Whether history mode is on.
+- `integration_id` (String) Zero-ETL integration identifier.
+- `query_all_states` (Boolean) Not reported by any catalog view, so always null in the lookup.
+- `refresh_interval` (Number) Approximate seconds between refresh cycles.
+- `source_database` (String) Replicated source database; null when the view reports none.
+- `truncate_columns` (Boolean) Not reported by any catalog view, so always null in the lookup.
 <!-- markdownlint-enable MD013 MD022 MD033 -->
 
 Missing or ambiguous databases and shared databases without a complete producer binding are errors. The collation is
 read by running `DB_COLLATION()` in the looked-up database, so the caller must be able to connect to it.
+
+Every database that is not `SHARED` is a zero-ETL destination candidate, because `SHOW DATABASES` does not document the
+type of a destination: its `integration` comes from `SVV_INTEGRATION`, which only superusers can see, and is null when
+the view shows no row for the database.
+`query_all_states`, `accept_invalid_chars`, and `truncate_columns` have no catalog column and are always null. A
+destination's `id` includes `integration_id`, so it can be used to import the database.
 
 Shared-database lookups discover the complete producer ARN through
 `redshift:DescribeDataShares` in the consumer account. The caller needs that permission and AWS credentials

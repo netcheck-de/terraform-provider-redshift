@@ -1,15 +1,16 @@
 ---
 subcategory: Databases and Schemas
 page_title: redshift_database Resource - terraform-provider-redshift
-description: Manages a local or datashare-backed Redshift database.
+description: Manages a local, zero-ETL destination, or datashare-backed Redshift database.
 ---
 
 # redshift_database (Resource)
 
-Creates a local database with an optional owner, connection limit, collation, and isolation level, or a consumer
-database from an **already associated** producer datashare. Datashare authorization and the namespace-scoped consumer
-association are AWS resources and must precede shared database creation. The provider waits for the inbound share to
-appear in the SQL catalog, for up to five minutes or, when set, the `timeouts.create` duration. See AWS
+Creates a local database with an optional owner, connection limit, collation, and isolation level, the destination
+database of an **active** zero-ETL integration, or a consumer database from an **already associated** producer
+datashare. Datashare authorization and the namespace-scoped consumer association are AWS resources and must precede
+shared database creation. The provider waits for the inbound share to appear in the SQL catalog, for up to five minutes
+or, when set, the `timeouts.create` duration. See AWS
 [CREATE DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATABASE.html) and
 [ALTER DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATABASE.html).
 
@@ -41,6 +42,18 @@ resource "redshift_database" "local" {
   collation        = "CASE_INSENSITIVE"
   isolation_level  = "SNAPSHOT"
 }
+
+# The read-only destination of an active zero-ETL integration. The warehouse must set enable_case_sensitive_identifier.
+resource "redshift_database" "replica" {
+  name = "orders_replica"
+
+  integration {
+    integration_id   = "a1b2c3d4-5678-90ab-cdef-example11111"
+    source_database  = "orders"
+    refresh_interval = 600
+    query_all_states = true
+  }
+}
 ```
 
 <!-- markdownlint-disable MD013 MD022 MD033 -->
@@ -56,6 +69,7 @@ resource "redshift_database" "local" {
 - `collation` (String) `CASE_SENSITIVE` (the Redshift default) or `CASE_INSENSITIVE` string comparison for a local database, set with `COLLATE` at creation. It is read with `DB_COLLATION()`, which needs a session inside the database, only at creation and import, so a `connection_limit` does not block later refreshes; when that session is refused, the value is kept with a warning. Omit it to keep and report the current collation. Not supported for shared databases, where it is null. Changing it replaces the database.
 - `connection_limit` (Number) Maximum number of concurrent connections to a local database; `-1` means `UNLIMITED`, the Redshift default. Superusers are exempt. Updated in place with `ALTER DATABASE ... CONNECTION LIMIT`. Omit it to keep and report the current limit. Not supported for shared databases, where it is null.
 - `datashare_arn` (String) Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database. Changing it replaces the database.
+- `integration` (Block, Optional) Creates the database as the read-only destination of an active zero-ETL integration with `CREATE DATABASE ... FROM INTEGRATION`, which needs a superuser or a user with `CREATEDB` and `CREATEUSER`; replication runs with that user's permissions. The warehouse must set `enable_case_sensitive_identifier`. Conflicts with `datashare_arn` and `collation`. Adding or removing the block, or changing `integration_id` or `source_database`, replaces the database. Refresh reads `SVV_INTEGRATION`, which only superusers can see. (see [below for nested schema](#nestedblock--integration))
 - `isolation_level` (String) `SERIALIZABLE` or `SNAPSHOT` (the Redshift default) isolation for a local database. Updated in place with `ALTER DATABASE ... ISOLATION LEVEL`, which fails while other sessions are connected to the database. Omit it to keep and report the current level. Not supported for shared databases, where it is null.
 - `owner` (String) SQL user owning a local database. Set with `OWNER` at creation and changed in place with `ALTER DATABASE ... OWNER TO`, which requires a superuser. Omit it to keep and report the current owner. Not supported for shared databases, where it is null.
 - `timeouts` (Block, Optional) Time limits for whole Terraform operations, as durations such as `30m` or `2h`. Unset, an operation has no limit of its own and each SQL statement is bounded only by the provider's `query_timeout`; set, a statement still running when the operation's limit expires is cancelled. A change to the timeouts alone runs no DDL of its own, but applies as an in-place update that reads and verifies the catalog like any other. (see [below for nested schema](#nestedblock--timeouts))
@@ -63,11 +77,26 @@ resource "redshift_database" "local" {
 
 ### Read-Only
 
-- `database_type` (String) `LOCAL` or `SHARED`.
+- `database_type` (String) `LOCAL` or `SHARED`; for a zero-ETL destination database, the type `SHOW DATABASES` reports, in uppercase.
 - `id` (String) JSON import identity; independent of Data API execution history.
 - `producer_account` (String) Producer account ID; null for local databases.
 - `producer_namespace` (String) Producer namespace ID; null for local databases.
 - `share_name` (String) Producer share name; null for local databases.
+
+<a id="nestedblock--integration"></a>
+### Nested Schema for `integration`
+
+Optional:
+
+- `accept_invalid_chars` (Boolean) Replace invalid VARCHAR characters with `?` instead of stopping ingestion (`ACCEPTINVCHARS`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No catalog view reports it, so changes made outside Terraform are not detected; omitted, it is not managed.
+- `auto_remediation` (Boolean) Resynchronize tables affected by duplicate rows automatically (`AUTO_REMEDIATION`). Omit it to keep and report the current setting. Updated in place with `ALTER DATABASE ... INTEGRATION SET`.
+- `history_mode` (Boolean) Turn history mode on for all tables (`HISTORY_MODE`). Omit it to keep and report the current setting. Updated in place with `ALTER DATABASE ... INTEGRATION SET`, which switches only tables in the `Synced` state.
+- `integration_id` (String) Zero-ETL integration identifier, the `integration_id` of `SVV_INTEGRATION`; required in the block. Changing it replaces the database.
+- `query_all_states` (Boolean) Allow queries on tables in every replication state, not only `Synced` (`QUERY_ALL_STATES`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No catalog view reports it, so changes made outside Terraform are not detected; omitted, it is not managed.
+- `refresh_interval` (Number) Approximate seconds between refresh cycles (`REFRESH_INTERVAL`), from 0 to 432000; DynamoDB sources need at least 900. Omit it to keep and report the current interval. Updated in place with `ALTER DATABASE ... INTEGRATION SET`.
+- `source_database` (String) Source database to replicate (`DATABASE`), required for Aurora PostgreSQL, RDS for PostgreSQL, and RDS for Oracle sources. Omit it to report the source database `SVV_INTEGRATION` names. Changing it replaces the database.
+- `truncate_columns` (Boolean) Truncate VARCHAR and SUPER values that exceed the column instead of stopping ingestion (`TRUNCATECOLUMNS`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No catalog view reports it, so changes made outside Terraform are not detected; omitted, it is not managed.
+
 
 <a id="nestedblock--timeouts"></a>
 ### Nested Schema for `timeouts`
@@ -94,6 +123,33 @@ reported from the catalog and left unmanaged; see [Reconciliation](#reconciliati
 
 `connection_limit = -1` renders `UNLIMITED`; superusers are not limited. The isolation level of the `dev` database
 cannot be changed. Changes apply to new sessions.
+
+## Zero-ETL Integration Databases
+
+The `integration` block creates the database with `CREATE DATABASE ... FROM INTEGRATION`, the read-only destination of
+a zero-ETL integration from Aurora, RDS, DynamoDB, or another supported source. The integration is an AWS resource,
+such as `aws_rds_integration`, and must be active first. The warehouse must set `enable_case_sensitive_identifier`, and
+creating the database needs a superuser or a user with `CREATEDB` and `CREATEUSER`, whose permissions replication then
+uses. `integration_id` is the identifier `SVV_INTEGRATION` reports. Aurora PostgreSQL, RDS for PostgreSQL, and RDS for
+Oracle sources also need `source_database`. The block conflicts with `datashare_arn` and `collation`; `owner`,
+`connection_limit`, and `isolation_level` apply as for a local database.
+
+| Attribute                          | Created with       | Changed with                          | Read from                          |
+|------------------------------------|--------------------|---------------------------------------|------------------------------------|
+| `integration.integration_id`       | `FROM INTEGRATION` | replacement                           | `SVV_INTEGRATION.integration_id`   |
+| `integration.source_database`      | `DATABASE`         | replacement                           | `SVV_INTEGRATION.source_database`  |
+| `integration.refresh_interval`     | `REFRESH_INTERVAL` | `ALTER DATABASE ... INTEGRATION SET`  | `SVV_INTEGRATION.refresh_interval` |
+| `integration.history_mode`         | `HISTORY_MODE`     | `ALTER DATABASE ... INTEGRATION SET`  | `SVV_INTEGRATION.is_history_mode`  |
+| `integration.auto_remediation`     | `AUTO_REMEDIATION` | `ALTER DATABASE ... INTEGRATION SET`  | `SVV_INTEGRATION.auto_remediation` |
+| `integration.query_all_states`     | `QUERY_ALL_STATES` | `ALTER DATABASE ... INTEGRATION SET`  | not read back                      |
+| `integration.accept_invalid_chars` | `ACCEPTINVCHARS`   | `ALTER DATABASE ... INTEGRATION SET`  | not read back                      |
+| `integration.truncate_columns`     | `TRUNCATECOLUMNS`  | `ALTER DATABASE ... INTEGRATION SET`  | not read back                      |
+
+`SVV_INTEGRATION` is visible only to superusers, so the provider identity managing a destination database must be one.
+`refresh_interval` accepts 0 to 432000 seconds; DynamoDB sources need at least 900. Turning `history_mode` on or off
+switches only tables in the `Synced` state. The provider does not run `ALTER DATABASE ... INTEGRATION REFRESH` or set
+history mode for single tables. A destination database reports no collation, and its `database_type` is the type
+`SHOW DATABASES` reports for it.
 
 ## Lifecycle and Ownership
 
@@ -122,11 +178,12 @@ state. Refreshes are bounded only by `query_timeout`. A change to the values alo
 
 ## Reconciliation
 
-Refresh reads the database from `SHOW DATABASES` and, for a local database, its owner and connection limit from
-`PG_DATABASE_INFO`; an update reads them again, runs one `ALTER DATABASE` statement per changed local option starting
-from what the catalog holds, and re-reads the catalog to verify the result; every other change replaces the database
-with `DROP DATABASE` and `CREATE DATABASE`, which **drops everything stored in a local database**. Protect databases
-that hold data:
+Refresh reads the database from `SHOW DATABASES`, for a local or zero-ETL destination database its owner and
+connection limit from `PG_DATABASE_INFO`, and for a destination its integration from `SVV_INTEGRATION`; an update reads
+them again, runs one `ALTER DATABASE` statement per changed local option and one `ALTER DATABASE ... INTEGRATION SET`
+per changed integration setting, starting from what the catalog holds, and re-reads the catalog to verify the result;
+every other change replaces the database with `DROP DATABASE` and `CREATE DATABASE`, which **drops everything stored in
+a local database** and starts the replication of a destination over. Protect databases that hold data:
 
 ```terraform
 lifecycle {
@@ -149,12 +206,57 @@ lifecycle {
 | `collation` removed                                        | no SQL; the database keeps its collation                                                                                                                               |
 | `isolation_level` set or changed                           | `ALTER DATABASE ... ISOLATION LEVEL`, which fails while other sessions are connected to the database                                                                   |
 | `isolation_level` removed                                  | no SQL; the current level stays and is still reported                                                                                                                  |
+| `integration` block added or removed                       | replaces the database: a local database cannot become a zero-ETL destination, nor a destination a local database                                                       |
+| `integration.integration_id` changed                       | replaces the database, also when the value is known only at apply: a destination is bound to its integration at creation                                               |
+| `integration.source_database` set or changed               | replaces the database: the source database is part of `CREATE DATABASE ... FROM INTEGRATION` only                                                                      |
+| `integration.source_database` removed                      | no SQL; the source database stays and is still reported                                                                                                                |
+| `integration.refresh_interval` set or changed              | `ALTER DATABASE ... INTEGRATION SET REFRESH_INTERVAL`                                                                                                                  |
+| `integration.refresh_interval` removed                     | no SQL; the current interval stays and is still reported                                                                                                               |
+| `integration.history_mode` set or changed                  | `ALTER DATABASE ... INTEGRATION SET HISTORY_MODE`, which switches only tables in the `Synced` state                                                                    |
+| `integration.history_mode` removed                         | no SQL; the current setting stays and is still reported                                                                                                                |
+| `integration.auto_remediation` set or changed              | `ALTER DATABASE ... INTEGRATION SET AUTO_REMEDIATION`                                                                                                                  |
+| `integration.auto_remediation` removed                     | no SQL; the current setting stays and is still reported                                                                                                                |
+| `integration.query_all_states` set or changed              | `ALTER DATABASE ... INTEGRATION SET QUERY_ALL_STATES`                                                                                                                  |
+| `integration.accept_invalid_chars` set or changed          | `ALTER DATABASE ... INTEGRATION SET ACCEPTINVCHARS`                                                                                                                    |
+| `integration.truncate_columns` set or changed              | `ALTER DATABASE ... INTEGRATION SET TRUNCATECOLUMNS`                                                                                                                   |
+| `integration.query_all_states` removed                     | no SQL; the setting stays as it is and is no longer managed                                                                                                            |
+| `integration.accept_invalid_chars` removed                 | no SQL; the setting stays as it is and is no longer managed                                                                                                            |
+| `integration.truncate_columns` removed                     | no SQL; the setting stays as it is and is no longer managed                                                                                                            |
 | `timeouts.create`, `timeouts.update`, or `timeouts.delete` | no DDL of its own, but an in-place update that re-reads and verifies the catalog: it moves options changed outside Terraform since the plan back to the planned values |
 
-An update runs its statements in the order owner, connection limit, isolation level. They share no transaction: when
-one fails, the earlier ones stay applied and the next plan shows what is left. After them, the update fails when the
-catalog does not hold every configured option, or when a shared database no longer has the planned
-`with_permissions`.
+An update runs its statements in the order owner, connection limit, isolation level, then the integration settings in
+the order of the `CREATE DATABASE` syntax. They share no transaction: when one fails, the earlier ones stay applied and
+the next plan shows what is left. After them, the update fails when the catalog does not hold every configured option
+it reports, or when a shared database no longer has the planned `with_permissions`. For example, changing every
+integration setting of a destination database:
+
+```terraform
+integration {
+  integration_id       = "a1b2c3d4-5678-90ab-cdef-example11111"
+  refresh_interval     = 0     # was 600
+  history_mode         = false # was true
+  auto_remediation     = false # was true
+  query_all_states     = false # was true
+  accept_invalid_chars = true  # was false
+  truncate_columns     = false # was true
+}
+```
+
+runs one statement per setting:
+
+```sql
+ALTER DATABASE "replica" INTEGRATION SET ACCEPTINVCHARS = TRUE;
+
+ALTER DATABASE "replica" INTEGRATION SET QUERY_ALL_STATES = FALSE;
+
+ALTER DATABASE "replica" INTEGRATION SET REFRESH_INTERVAL 0;
+
+ALTER DATABASE "replica" INTEGRATION SET TRUNCATECOLUMNS = FALSE;
+
+ALTER DATABASE "replica" INTEGRATION SET HISTORY_MODE = FALSE;
+
+ALTER DATABASE "replica" INTEGRATION SET AUTO_REMEDIATION = FALSE;
+```
 
 **Drift.** Refresh compares the owner, connection limit, and isolation level of a local database, and `with_permissions`
 of a shared database, with the state. A configured local option changed outside Terraform is set back with the
@@ -162,8 +264,16 @@ statements above; an omitted one follows the catalog and never plans a change. A
 differs from the configuration is replaced. A database dropped outside Terraform is removed from state, and the next
 plan creates it again. A database that changed between local and shared, or is bound to another producer share than
 `datashare_arn` names, fails the refresh instead of planning a change. `collation` is read only at creation, at
-import, and while the state holds no value, so a later change is not detected. Comments, grants, and the objects inside
-the database are never read.
+import, and while the state holds no value, so a later change is not detected. For a zero-ETL destination, refresh
+compares `source_database`, `refresh_interval`, `history_mode`, and `auto_remediation` with `SVV_INTEGRATION`: a
+configured setting changed outside Terraform is set back, an omitted one follows the catalog, and a changed source
+database replaces the database. `query_all_states`, `accept_invalid_chars`, and `truncate_columns` are never read
+back, so changes to them outside Terraform are not detected. A destination that `SVV_INTEGRATION` no longer shows,
+because the integration was deleted or the provider SQL identity is no longer a superuser, keeps its database: the
+refresh warns and drops the `integration` block from state, so the next plan replaces the database, and a destroy
+still drops it. A destination that receives another integration than `integration_id` names, or that became a shared
+database, fails the refresh, as does a destination configured without the `integration` block. Comments, grants, and the objects inside the database
+are never read.
 
 ## Import
 
@@ -192,5 +302,8 @@ terraform import redshift_database.analytics \
   '{"workgroup_name":"warehouse","database":"admin","name":"analytics","datashare_arn":"arn:aws:redshift:eu-central-1:123456789012:datashare:11111111-2222-3333-4444-555555555555/source"}'
 ```
 
-For a local database, omit `datashare_arn` from the import ID. For a shared database it must match the existing producer
-binding. `with_permissions` and the local database options are discovered on refresh.
+For a local database, omit `datashare_arn` and `integration_id` from the import ID. For a shared database
+`datashare_arn` must match the existing producer binding. For a zero-ETL destination, replace `datashare_arn` with
+`integration_id`, the integration the database receives as `SVV_INTEGRATION` reports it. `with_permissions`, the local
+database options, and the integration settings `SVV_INTEGRATION` reports are discovered on refresh;
+`query_all_states`, `accept_invalid_chars`, and `truncate_columns` stay unmanaged until configured.

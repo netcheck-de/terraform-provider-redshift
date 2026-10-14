@@ -28,7 +28,8 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
-// databaseResource manages local databases and consumer databases bound to datashares.
+// databaseResource manages local databases, zero-ETL destination databases, and consumer databases bound to
+// datashares.
 type databaseResource struct {
 	// resourceClient provides SQL execution and warehouse ownership checks.
 	resourceClient
@@ -60,6 +61,8 @@ type databaseModel struct {
 	Collation types.String `tfsdk:"collation"`
 	// IsolationLevel is the SERIALIZABLE or SNAPSHOT isolation of a local database.
 	IsolationLevel types.String `tfsdk:"isolation_level"`
+	// Integration is the zero-ETL integration of a destination database; nil for local and shared databases.
+	Integration *databaseIntegrationModel `tfsdk:"integration"`
 }
 
 // databaseResourceModel is the resource state: the attributes the data source shares, plus the timeouts only the
@@ -122,10 +125,10 @@ func (r *databaseResource) Metadata(_ context.Context, req resource.MetadataRequ
 // Schema defines database identity, optional share binding, permission mode, and local database options.
 func (r *databaseResource) Schema(ctx context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages a local database or a consumer database bound to a producer datashare.",
+		MarkdownDescription: "Manages a local database, a zero-ETL integration destination database, or a consumer database bound to a producer datashare.",
 		Attributes: map[string]schema.Attribute{
 			"id":                 idAttribute(),
-			"database_type":      schema.StringAttribute{Computed: true, MarkdownDescription: "`LOCAL` or `SHARED`."},
+			"database_type":      schema.StringAttribute{Computed: true, MarkdownDescription: databaseTypeDescription},
 			"share_name":         schema.StringAttribute{Computed: true, MarkdownDescription: "Producer share name; null for local databases."},
 			"producer_account":   schema.StringAttribute{Computed: true, MarkdownDescription: "Producer account ID; null for local databases."},
 			"producer_namespace": schema.StringAttribute{Computed: true, MarkdownDescription: "Producer namespace ID; null for local databases."},
@@ -172,6 +175,7 @@ func (r *databaseResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 		Blocks: map[string]schema.Block{
 			timeoutsBlockName: operationTimeoutsBlock(ctx, " For a shared database it includes the wait for the associated "+
 				"datashare to appear in the SQL catalog, which without a create timeout ends after five minutes."),
+			"integration": databaseIntegrationBlock(),
 		},
 	}
 }
@@ -191,8 +195,12 @@ func databaseLocalOptions(data databaseModel) []string {
 	return configured
 }
 
-// validateDatabase rejects local-only options on a shared database before Create writes state, and at plan time.
+// validateDatabase rejects local-only options on a shared database and an incomplete or conflicting integration
+// block before Create writes state, and at plan time.
 func validateDatabase(data databaseModel) error {
+	if err := validateDatabaseIntegration(data); err != nil {
+		return err
+	}
 	if data.DatashareARN.IsNull() || data.DatashareARN.IsUnknown() {
 		return nil
 	}
@@ -202,11 +210,25 @@ func validateDatabase(data databaseModel) error {
 	return nil
 }
 
-// ValidateConfig surfaces local-only options on shared databases at plan time; unknown values are checked at apply.
+// ValidateConfig surfaces local-only options on shared databases and integration conflicts at plan time; unknown
+// values are checked at apply.
 func (r *databaseResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	// A dynamic block can leave the whole integration object unknown, which the model's pointer cannot hold.
+	var integration types.Object
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("integration"), &integration)...)
+	if resp.Diagnostics.HasError() || integration.IsUnknown() {
+		return
+	}
 	var data databaseResourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if err := validateDatabaseIntegration(data.databaseModel); err != nil {
+		resp.Diagnostics.AddError("Invalid database options", err.Error())
+		return
+	}
+	if !req.Config.Raw.IsFullyKnown() {
 		return
 	}
 	if err := validateDatabase(data.databaseModel); err != nil {
@@ -225,8 +247,17 @@ func sharedDatabaseReplacement(ctx context.Context, req planmodifier.BoolRequest
 	resp.RequiresReplace = !arn.IsNull()
 }
 
-// databaseMetadata reads and decodes the same catalog-backed attributes for resources and lookups.
+// databaseMetadata reads and decodes the same catalog-backed attributes for resources and lookups. A database of
+// another type than local or shared is reported with its type only.
 func (r *resourceClient) databaseMetadata(ctx context.Context, name string) (databaseModel, bool, error) {
+	return r.databaseCatalog(ctx, name, false)
+}
+
+// databaseCatalog is databaseMetadata that, with destination set, also reads the local options of a database whose
+// type is neither local nor shared. The type SHOW DATABASES reports for a zero-ETL destination is undocumented; such
+// a database is created like a local one, with an owner, a connection limit, and an isolation level. Without
+// destination, a caller that expects a local or shared database rejects the type before any further read.
+func (r *resourceClient) databaseCatalog(ctx context.Context, name string, destination bool) (databaseModel, bool, error) {
 	rows, err := r.query(ctx, readDatabaseStatement(name), nil)
 	matching := make([]sqlclient.Row, 0, 1)
 	for _, row := range rows {
@@ -239,34 +270,35 @@ func (r *resourceClient) databaseMetadata(ctx context.Context, name string) (dat
 	if err != nil || len(rows) == 0 {
 		return databaseModel{}, false, err
 	}
-	if len(rows) != 1 || (!strings.EqualFold(rows[0]["database_type"], databaseTypeLocal) && !strings.EqualFold(rows[0]["database_type"], databaseTypeShared)) {
-		return databaseModel{}, false, fmt.Errorf("expected one local or shared database named %q", name)
+	if len(rows) != 1 || strings.TrimSpace(rows[0]["database_type"]) == "" {
+		return databaseModel{}, false, fmt.Errorf("expected one database named %q with a type", name)
 	}
 	row := rows[0]
-	databaseType := strings.ToUpper(row["database_type"])
+	databaseType := strings.ToUpper(strings.TrimSpace(row["database_type"]))
 	data := databaseModel{
 		Name: types.StringValue(row["database_name"]), DatabaseType: types.StringValue(databaseType),
 		WithPermissions: types.BoolValue(false),
 		Owner:           types.StringNull(), ConnectionLimit: types.Int64Null(), Collation: types.StringNull(), IsolationLevel: types.StringNull(),
 	}
-	if databaseType == databaseTypeLocal {
+	if databaseType == databaseTypeLocal || databaseType != databaseTypeShared && destination {
 		return data, true, r.databaseLocalMetadata(ctx, &data, row["database_isolation_level"])
 	}
-	if databaseType == databaseTypeShared {
-		var options sharedDatabaseOptions
-		if err := json.Unmarshal([]byte(row["parameters"]), &options); err != nil {
-			return databaseModel{}, false, fmt.Errorf("decode shared database %q parameters: %w", name, err)
-		}
-		if options.Permissions == nil {
-			return databaseModel{}, false, fmt.Errorf("shared database %q has no permissions catalog option", name)
-		}
-		data.WithPermissions = types.BoolValue(*options.Permissions)
-		data.ShareName = types.StringValue(strings.TrimSpace(options.ShareName))
-		data.ProducerAccount = types.StringValue(strings.TrimSpace(options.ProducerAccount))
-		data.ProducerNamespace = types.StringValue(strings.TrimSpace(options.ProducerNamespace))
-		if data.ShareName.ValueString() == "" || data.ProducerAccount.ValueString() == "" || data.ProducerNamespace.ValueString() == "" {
-			return databaseModel{}, false, fmt.Errorf("shared database %q has no complete inbound producer binding", name)
-		}
+	if databaseType != databaseTypeShared {
+		return data, true, nil
+	}
+	var options sharedDatabaseOptions
+	if err := json.Unmarshal([]byte(row["parameters"]), &options); err != nil {
+		return databaseModel{}, false, fmt.Errorf("decode shared database %q parameters: %w", name, err)
+	}
+	if options.Permissions == nil {
+		return databaseModel{}, false, fmt.Errorf("shared database %q has no permissions catalog option", name)
+	}
+	data.WithPermissions = types.BoolValue(*options.Permissions)
+	data.ShareName = types.StringValue(strings.TrimSpace(options.ShareName))
+	data.ProducerAccount = types.StringValue(strings.TrimSpace(options.ProducerAccount))
+	data.ProducerNamespace = types.StringValue(strings.TrimSpace(options.ProducerNamespace))
+	if data.ShareName.ValueString() == "" || data.ProducerAccount.ValueString() == "" || data.ProducerNamespace.ValueString() == "" {
+		return databaseModel{}, false, fmt.Errorf("shared database %q has no complete inbound producer binding", name)
 	}
 	return data, true, nil
 }
@@ -318,7 +350,8 @@ func (r *resourceClient) databaseCollation(ctx context.Context, name string) (st
 // refuses the connection. The collation is supplementary, so a failed read is a warning that keeps the current
 // value rather than an error that would block every refresh of a database that exists.
 func (r *resourceClient) databaseReadCollation(ctx context.Context, data *databaseModel, diagnostics *diag.Diagnostics) {
-	if data.DatabaseType.ValueString() != databaseTypeLocal {
+	// A zero-ETL destination does not accept the collation option, so it is left null rather than reported.
+	if data.DatabaseType.ValueString() != databaseTypeLocal || data.Integration != nil {
 		return
 	}
 	collation, err := r.databaseCollation(ctx, data.Name.ValueString())
@@ -334,7 +367,8 @@ func (r *resourceClient) databaseReadCollation(ctx context.Context, data *databa
 	data.Collation = types.StringValue(collation)
 }
 
-// Database types as the provider reports them; SVV_REDSHIFT_DATABASES spells them in lowercase.
+// Database types as the provider reports them; SVV_REDSHIFT_DATABASES spells them in lowercase. A zero-ETL
+// destination reports the type SHOW DATABASES gives it, in uppercase.
 const (
 	databaseTypeLocal  = "LOCAL"
 	databaseTypeShared = "SHARED"
@@ -382,7 +416,7 @@ func databaseConverged(expected, observed databaseModel) error {
 			return fmt.Errorf("%s is %s in the catalog, not the planned %s", option.name, option.observed, option.expected)
 		}
 	}
-	return nil
+	return databaseIntegrationConverged(expected.Integration, observed.Integration)
 }
 
 // read verifies local/shared database identity and refreshes its catalog-backed metadata.
@@ -390,13 +424,17 @@ func (r *databaseResource) read(ctx context.Context, data *databaseModel) (bool,
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
-	observed, found, err := r.databaseMetadata(ctx, data.Name.ValueString())
+	observed, found, err := r.databaseCatalog(ctx, data.Name.ValueString(), data.Integration != nil)
 	if err != nil || !found {
 		return found, err
 	}
 	observed.ID, observed.DatashareARN = data.ID, data.DatashareARN
 	if data.DatashareARN.IsNull() {
-		if observed.DatabaseType.ValueString() != databaseTypeLocal {
+		if data.Integration != nil {
+			if err := r.databaseReadIntegration(ctx, data.Integration, &observed); err != nil {
+				return false, err
+			}
+		} else if observed.DatabaseType.ValueString() != databaseTypeLocal {
 			return false, fmt.Errorf("database %q is not a local database; migrate it explicitly", data.Name.ValueString())
 		}
 		// Collation is create-only and needs a session inside the database, so it is read only at creation,
@@ -436,6 +474,7 @@ func databaseClearUnknown(data *databaseModel) {
 	if data.ConnectionLimit.IsUnknown() {
 		data.ConnectionLimit = types.Int64Null()
 	}
+	databaseIntegrationClearUnknown(data.Integration)
 }
 
 // verifyCreatedDatabase re-reads a created local database, stores what the catalog holds, and reports an absent
@@ -482,8 +521,15 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 			resp.Diagnostics.AddError("Create database", err.Error())
 			return
 		}
-		data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+		identity := map[string]string{"name": data.Name.ValueString()}
 		data.DatabaseType = types.StringValue(databaseTypeLocal)
+		if data.Integration != nil {
+			// The integration binds the database like a datashare does, so the identity carries it for import.
+			identity["integration_id"] = data.Integration.IntegrationID.ValueString()
+			// The type of a zero-ETL destination is only known from the catalog.
+			data.DatabaseType = types.StringNull()
+		}
+		data.ID = r.identity(r.database.ValueString(), identity)
 		data.ShareName, data.ProducerAccount, data.ProducerNamespace = types.StringNull(), types.StringNull(), types.StringNull()
 		databaseClearUnknown(&data.databaseModel)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -555,6 +601,7 @@ func (r *databaseResource) Read(ctx context.Context, req resource.ReadRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	destination := data.Integration != nil
 	found, err := r.read(ctx, &data.databaseModel)
 	if err != nil {
 		resp.Diagnostics.AddError("Read database", err.Error())
@@ -563,6 +610,11 @@ func (r *databaseResource) Read(ctx context.Context, req resource.ReadRequest, r
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
+	}
+	if destination && data.Integration == nil {
+		resp.Diagnostics.AddWarning("Zero-ETL integration not found",
+			fmt.Sprintf("SVV_INTEGRATION shows no integration for database %q, so a configured integration block plans a replacement. "+
+				"The integration may have been deleted, or the provider SQL identity is no longer a superuser and cannot see the view.", data.Name.ValueString()))
 	}
 	if data.Collation.IsNull() {
 		r.databaseReadCollation(ctx, &data.databaseModel, &resp.Diagnostics)
@@ -593,6 +645,9 @@ func (r *databaseResource) Update(ctx context.Context, req resource.UpdateReques
 	found, err := r.read(ctx, &prior.databaseModel)
 	if err == nil && !found {
 		err = errDatabaseVanished
+	}
+	if err == nil && data.Integration != nil && prior.Integration == nil {
+		err = errors.New("SVV_INTEGRATION no longer shows the database's zero-ETL integration; refresh the plan")
 	}
 	var statements []string
 	if err == nil {
@@ -646,11 +701,22 @@ func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteReques
 	}
 }
 
-// ImportState restores local or shared database ownership from JSON.
+// ImportState restores local, zero-ETL destination, or shared database ownership from JSON.
 func (r *databaseResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importIdentity(ctx, req, resp, "name")
 	var values map[string]string
-	if err := json.Unmarshal([]byte(req.ID), &values); err == nil && values["datashare_arn"] != "" {
+	if err := json.Unmarshal([]byte(req.ID), &values); err != nil {
+		return
+	}
+	if values["datashare_arn"] != "" {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("datashare_arn"), values["datashare_arn"])...)
+	}
+	if values["integration_id"] != "" {
+		// Refresh reads every other field; the settings no catalog view reports stay null until configured.
+		integration := databaseIntegrationModel{
+			IntegrationID: types.StringValue(values["integration_id"]), SourceDatabase: types.StringNull(), RefreshInterval: types.Int64Null(),
+			HistoryMode: types.BoolNull(), AutoRemediation: types.BoolNull(), QueryAllStates: types.BoolNull(), AcceptInvalidChars: types.BoolNull(), TruncateColumns: types.BoolNull(),
+		}
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("integration"), &integration)...)
 	}
 }
