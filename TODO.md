@@ -50,15 +50,23 @@ These wait for a documented way to read their state back:
 - **Plan-time validation:** most resources skip `ValidateConfig` unless the whole configuration is known
   (`column_grant`, `database`, `external_table`, `grant`, …); do as `redshift_materialized_view` does where checks
   skip unknown values.
-- **External model import:** settings that `SHOW MODEL` does not report stay null after import, so the first plan
-  replaces the model. Record "unread after import" in private state and skip that replacement until the first apply.
-- **COPY job definition drift:** `table`, `source`, `format`, `format_argument`, and `parameters` are never read back;
-  if `COPY JOB SHOW` prints a parseable definition, parse it with `sqlclient.Tokens` and `parseCopyOptions`.
+- **External model import:** import records the owner's settings and the default response type, but a `UNIFIED` model
+  created with `SUPER`, or a role imported by a non-owner (who sees no `IAM Role` row), still replaces on the first
+  plan. Record "unread after import" in private state and skip that replacement until the first apply.
+- **COPY job definition drift:** `table`, `source`, `format`, `format_argument`, and `parameters` are never read back.
+  Live, `SYS_COPY_JOB` has undocumented columns `copy_query` (the whole `COPY ... JOB CREATE` statement, with the IAM
+  role blanked), `data_source`, `table_id`, and `job_owner`; parse `copy_query` with `sqlclient.Tokens` and
+  `parseCopyOptions`.
 - **COPY templates:** `SHAPEFILE SIMPLIFY` is not modeled. The listing without a schema runs one `SHOW TEMPLATES` per
   schema and fails on a schema the identity cannot use; `SYS_REDSHIFT_TEMPLATE` might replace the loop.
-- **Zero-ETL destinations:** `DROP DATABASE ... FORCE` if replication sessions block a plain drop; a DynamoDB source in
-  the complete example.
+- **Role drop after destroy:** destroying the complete example failed at `DROP ROLE example_operators` ("the role has a
+  privilege on some object"), also after its database was gone, while no privilege view showed a grant. Suspect a
+  scoped grant (`FOR LANGUAGES` or `FOR PROCEDURES ... IN DATABASE`) that Redshift keeps beyond the revoke; check
+  `SHOW GRANTS FOR ROLE` in the database before the next destroy.
+- **Zero-ETL from DynamoDB:** the complete example covers only Aurora and RDS sources.
 - **Session context variables:** `redshift_configuration` rejects dotted names such as `app_context.user_id`.
+- **User lockouts:** Redshift 1.0.485645 rejects `SHOW USER LOCKOUT` ("account lockout security is not supported") on
+  Serverless and provisioned; the complete example gates the listing behind `user_lockouts`. Recheck when it rolls out.
 
 ### Documentation wording
 
@@ -76,7 +84,6 @@ Catalog behaviors the offline tests cannot reach. Each bullet names the fix if t
 
 ### Tables, views, and functions
 
-- `TestAccTableLifecycle`: interior column drops and their `PlanOnly` no-drift steps.
 - `ADD COLUMN ... NOT NULL` without a default is refused (why the provider replaces the table).
 - Dropping an `AUTO`-chosen distribution or sort key column: the `EVEN`/`NONE` detour and the return to `AUTO`;
   `ALTER DISTSTYLE` fails under an interleaved sort key.
@@ -89,43 +96,23 @@ Catalog behaviors the offline tests cannot reach. Each bullet names the fix if t
 
 ### COPY templates and jobs
 
-- How `SHOW TEMPLATE` prints each keyword in `copy_parameters.go` (`FORMAT AS`, `NULL AS`, `ACCEPTINVCHARS`, `ON`/`OFF`
-  values, integers, quoting, escapes), and whether every keyword is accepted in a template.
-- `SHOW TEMPLATES FROM SCHEMA` columns, `LIKE`, and the cross-database `"db"."schema"` form the `TEMPLATE` grant check
-  uses.
-- `CREATE`/`ALTER TEMPLATE` as rendered; whether `CREATE OR REPLACE` keeps owner and grants; names fold to lowercase.
-- `SHOW GRANTS ON TEMPLATE`: `privilege_scope = TEMPLATE`, identity types, and grant options.
-- `COPY JOB CREATE`/`ALTER`/`DROP` as rendered through the Data API, including `AUTO OFF` without an S3 event
-  integration, and the scope of job name uniqueness.
-- `SYS_COPY_JOB`: non-superuser visibility, padding, `iam_role` text, `is_auto` values, and whether rows are per
-  database. If warehouse-wide, filter the read and `redshift_copy_jobs` by database, e.g. via `COPY JOB LIST`.
+- How `SHOW TEMPLATE` prints the other keywords in `copy_parameters.go` (`NULL AS`, `ACCEPTINVCHARS`, `ON`/`OFF`
+  values, quoting, escapes), and whether every keyword is accepted in a template.
+- `ALTER TEMPLATE` as rendered; whether `CREATE OR REPLACE` keeps owner and grants.
+- `COPY JOB ALTER ... AUTO ON` with an active integration.
+- `SYS_COPY_JOB` for a non-superuser, and whether its rows are per database. If warehouse-wide, filter the read and
+  `redshift_copy_jobs` by database, e.g. via `COPY JOB LIST`.
 
 ### External models and model grants
 
-- `SHOW MODEL ALL` column labels and whether it lists only the current database.
-- `SHOW MODEL` keys for an external Bedrock model (model ID, prompt, suffix, request/response type, function, role,
-  owner). Adjust `observeExternalModel`, read exactly those keys, and refuse non-Bedrock models.
-- `CREATE EXTERNAL MODEL` as rendered, and whether it fails without Bedrock model access; `DROP MODEL` drops the
-  function outside a transaction.
-- `GRANT`/`REVOKE EXECUTE ON MODEL` for every grantee kind and grant option, and whether `PUBLIC` gets `EXECUTE`
-  implicitly.
-- `SVV_ML_MODEL_INFO` lists external models of other databases for the provider identity. If not, add a hook in
-  `privilege_resource.go` that checks with `SHOW MODEL ALL` in the target database; until then a `MODEL` grant on an
-  external model leaves state on every refresh.
-- `SVV_ML_MODEL_PRIVILEGES` reports `EXECUTE` rows for external models.
-- The complete example: `bedrock:InvokeModel` on the foundation-model ARN suffices on Redshift Serverless.
+- `SVV_ML_MODEL_INFO` for a non-superuser that does not own the model; `GRANT`/`REVOKE EXECUTE ON MODEL` for users,
+  groups, `PUBLIC`, and grant options; whether `PUBLIC` gets `EXECUTE` implicitly.
 
 ### Zero-ETL destinations
 
-- The `database_type` `SHOW DATABASES` reports for a destination (the fake assumes `integration`). Then add it to the
-  `data.redshift_databases` filter, report the integration there, and let the lookup skip local databases.
-- `CREATE DATABASE ... FROM INTEGRATION ... DATABASE '<source>'` with a string literal, including mixed case.
-- `SVV_INTEGRATION` from the administration database: zero rows (not an error) for a non-superuser,
-  `auto_remediation`, `source_database` for MySQL and DynamoDB, and `integration_id` matching the RDS ARN.
-- `PG_DATABASE_INFO` and the isolation level for a destination; `OWNER TO`, `CONNECTION LIMIT`, `ISOLATION LEVEL` on it.
-- Each `INTEGRATION SET` option as an autocommit statement, visible at once; create as soon as the integration is
-  active; plain `DROP DATABASE`.
-- The complete example: case-sensitive identifiers on the consumer and the namespace resource policy.
+- `SVV_INTEGRATION` for a non-superuser (zero rows rather than an error), and `source_database` for MySQL and DynamoDB
+  sources.
+- The other `INTEGRATION SET` options; `OWNER TO`, `CONNECTION LIMIT`, and `ISOLATION LEVEL` on a destination.
 
 ### Federated grants and diagnostics
 
@@ -133,8 +120,7 @@ Catalog behaviors the offline tests cannot reach. Each bullet names the fix if t
   account ID), including for `"db@catalog"`; `GRANT`/`REVOKE DEBUG` works from the administration database.
 - Whether `SHOW DATABASES` lists `db@catalog` names; otherwise a transient failure removes the grant from state.
 - The complete example with `federated_debug_database`: which warehouse needs federated permissions.
-- `SHOW <parameter>` column naming, `ALTER USER ... SET` defaults, and `ALTER SYSTEM` values through all transports.
-- `SHOW USER LOCKOUT` columns, value formats, and the non-superuser failure.
+- `SHOW <parameter>` through a direct connection, `ALTER USER ... SET` defaults, and `ALTER SYSTEM` values.
 
 ## Fixtures
 
