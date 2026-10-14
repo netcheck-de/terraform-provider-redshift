@@ -418,3 +418,10 @@ mutable catalog state and remove missing resources from state so Terraform can r
 deletion uses no `CASCADE`. Resource references order dependent operations, and changes to immutable referenced inputs
 require replacement through the provider's schema. Same-name recreation can require a follow-up refresh/plan/apply to
 reconcile relationships lost with the parent object.
+
+~> **Keep the provider's SQL identity stable.** Some catalog views show a regular user only its own rows, and some show
+rows only to superusers: `SYS_COPY_JOB` lists a regular user's own COPY jobs, and `SVV_INTEGRATION` is visible only
+to superusers. After the provider connects as a different SQL identity, or its identity loses superuser, a refresh can
+miss an object that still exists. Terraform then plans to create it again, or, for a zero-ETL destination database, to
+replace it. Review the plan after changing credentials, `db_user`, or the identity's privileges, and consider
+`prevent_destroy` for objects that are expensive to recreate.
