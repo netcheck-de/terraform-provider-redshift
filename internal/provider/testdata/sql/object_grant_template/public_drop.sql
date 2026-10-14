@@ -2,7 +2,7 @@ SELECT database_name FROM svv_redshift_databases WHERE database_name = :database
 
 SELECT schema_name FROM svv_all_schemas WHERE database_name = :database AND schema_name = :schema;
 
-SHOW TEMPLATES FROM SCHEMA "admin"."serving" LIKE 'csv_load';
+SHOW TEMPLATES FROM SCHEMA "serving" LIKE 'csv_load';
 
 SHOW GRANTS ON TEMPLATE "admin"."serving"."csv_load";
 

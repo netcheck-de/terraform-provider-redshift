@@ -11,7 +11,7 @@ SELECT schema_name FROM svv_all_schemas WHERE database_name = :database AND sche
 -- params: {"database":"admin","schema":"serving"}
 
 -- database: admin
-SHOW TEMPLATES FROM SCHEMA "admin"."serving" LIKE 'csv_load';
+SHOW TEMPLATES FROM SCHEMA "serving" LIKE 'csv_load';
 -- params: {}
 
 -- database: admin
@@ -31,7 +31,7 @@ SELECT schema_name FROM svv_all_schemas WHERE database_name = :database AND sche
 -- params: {"database":"admin","schema":"serving"}
 
 -- database: admin
-SHOW TEMPLATES FROM SCHEMA "admin"."serving" LIKE 'csv_load';
+SHOW TEMPLATES FROM SCHEMA "serving" LIKE 'csv_load';
 -- params: {}
 
 -- database: admin
@@ -55,7 +55,7 @@ SELECT schema_name FROM svv_all_schemas WHERE database_name = :database AND sche
 -- params: {"database":"admin","schema":"serving"}
 
 -- database: admin
-SHOW TEMPLATES FROM SCHEMA "admin"."serving" LIKE 'csv_load';
+SHOW TEMPLATES FROM SCHEMA "serving" LIKE 'csv_load';
 -- params: {}
 
 -- database: admin

@@ -53,6 +53,9 @@ type catalogCheck struct {
 	sql string
 	// parameters binds values without interpolating them into catalog SQL.
 	parameters map[string]string
+	// local runs the check in the tuple's database instead of the administration database, for catalogs such as
+	// SHOW TEMPLATES that cannot reach another database.
+	local bool
 }
 
 // privilegeTarget describes catalog discovery and SQL mutation for one authoritative permission tuple.
@@ -209,7 +212,11 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 		if check.sql == "" {
 			continue
 		}
-		rows, err := r.queryDatabase(ctx, r.database.ValueString(), check.sql, check.parameters)
+		database := r.database.ValueString()
+		if check.local {
+			database = r.targetDatabase(target)
+		}
+		rows, err := r.queryDatabase(ctx, database, check.sql, check.parameters)
 		if err != nil || len(rows) == 0 {
 			return target, false, err
 		}

@@ -67,9 +67,8 @@ func objectGrantRoutineKind(alias sqlclient.Keyword, procedures bool) sqlclient.
 	return "NVL(" + alias + "function_type, '') NOT ILIKE '%PROCEDURE%'"
 }
 
-// objectGrantModelQuery confirms that a machine learning model exists. Permission checks run in the administration
-// database, and SVV_ML_MODEL_INFO is the only model catalog that names the database; SHOW MODEL covers only the
-// current one.
+// objectGrantModelQuery confirms that a machine learning model exists. The check runs in the model's database, like the
+// privilege read, because a model catalog may not reach other databases.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ML_MODEL_INFO.html
 func objectGrantModelQuery(database, schema, name string) sqlclient.Query {
 	return sqlclient.Select("model_name").From("svv_ml_model_info").
@@ -232,14 +231,21 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 		read = readObjectGrantRoutineQuery(schemaName, name, routineCatalogArguments(signature), granteeName, granteeType)
 	case "MODEL":
 		// GRANT ON MODEL takes a schema-qualified name; the statement runs in the model's database.
-		queries = append(queries, privilegeSchemaQuery(database, schemaName), objectGrantModelQuery(database, schemaName, name))
+		queries = append(queries, privilegeSchemaQuery(database, schemaName))
+		model, err := newCatalogCheck(objectGrantModelQuery(database, schemaName, name))
+		if err != nil {
+			return privilegeTarget{}, err
+		}
+		model.local = true
+		extra = append(extra, model)
 		object = sqlclient.Kw("ON MODEL").Qualified(schemaName, name)
 		read = readObjectGrantModelQuery(schemaName, name, granteeName, granteeType)
 	case "TEMPLATE":
 		// No catalog view lists every template, so existence comes from SHOW TEMPLATES, whose LIKE pattern may also
-		// match similar names; SHOW GRANTS then fails for a missing template instead of reporting it as absent.
+		// match similar names; SHOW GRANTS then fails for a missing template instead of reporting it as absent. SHOW
+		// TEMPLATES rejects a cross-database schema, so it runs in the template's database.
 		queries = append(queries, privilegeSchemaQuery(database, schemaName))
-		extra = append(extra, catalogCheck{sql: showTemplatesStatement(database, schemaName, name)})
+		extra = append(extra, catalogCheck{sql: showTemplatesStatement("", schemaName, name), local: true})
 		object, showGrants = sqlclient.Kw("ON TEMPLATE").Qualified(database, schemaName, name), true
 	case "ALL TABLES":
 		queries = append(queries, objectGrantMembersQuery("svv_all_tables", database, schemaName))
