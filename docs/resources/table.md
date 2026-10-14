@@ -156,8 +156,6 @@ Optional:
 - `seed` (Number) First generated value; required in the block.
 - `step` (Number) Increment between generated values, not zero; required in the block.
 
-
-
 <a id="nestedblock--distribution"></a>
 ### Nested Schema for `distribution`
 
@@ -165,7 +163,6 @@ Optional:
 
 - `key` (String) Distribution key column for `style = "KEY"`, of type BOOLEAN, REAL, DOUBLE PRECISION, SMALLINT, INTEGER, BIGINT, DECIMAL, DATE, TIME, TIMETZ, TIMESTAMP, TIMESTAMPTZ, CHAR, or VARCHAR.
 - `style` (String) Distribution style: `AUTO`, `EVEN`, `KEY`, or `ALL`. Omitted, it is `KEY` when `key` is set and `AUTO` otherwise. `AUTO` covers whatever `AUTO(ALL)`, `AUTO(EVEN)`, or `AUTO(KEY(column))` Redshift currently applies; see `effective_distribution`.
-
 
 <a id="nestedblock--foreign_key"></a>
 ### Nested Schema for `foreign_key`
@@ -187,15 +184,12 @@ Optional:
 - `schema` (String) Schema of the referenced table; required in the block.
 - `table` (String) Referenced table; required in the block.
 
-
-
 <a id="nestedblock--primary_key"></a>
 ### Nested Schema for `primary_key`
 
 Optional:
 
 - `columns` (List of String) Primary key columns in order; required in the block.
-
 
 <a id="nestedblock--sort_key"></a>
 ### Nested Schema for `sort_key`
@@ -204,7 +198,6 @@ Optional:
 
 - `columns` (List of String) Sort key columns in order, at most 400 for a compound and 8 for an interleaved key, of the types `distribution.key` allows; omit them for `AUTO` and `NONE`.
 - `style` (String) Sort key style: `AUTO`, `COMPOUND`, `INTERLEAVED`, or `NONE`. Omitted, it is `COMPOUND` when `columns` is set and `AUTO` otherwise. `NONE` removes the sort key with `ALTER SORTKEY NONE`, also right after `CREATE TABLE`. Without sort key columns, `AUTO` and `NONE` differ only in `SVV_TABLE_INFO`, which lists tables with rows; for an empty table the configured one of the two is kept.
-
 
 <a id="nestedblock--timeouts"></a>
 ### Nested Schema for `timeouts`
@@ -215,14 +208,12 @@ Optional:
 - `delete` (String) Maximum time for dropping the object and verifying that it is gone. Applies only when the value was saved to state by an earlier apply before the destroy.
 - `update` (String) Maximum time for an in-place update, including the catalog reads before and after the change.
 
-
 <a id="nestedblock--unique"></a>
 ### Nested Schema for `unique`
 
 Required:
 
 - `columns` (List of String) Constrained columns in order.
-
 
 <a id="nestedatt--effective_distribution"></a>
 ### Nested Schema for `effective_distribution`
@@ -232,7 +223,6 @@ Read-Only:
 - `auto` (Boolean) Whether Redshift manages the distribution (`DISTSTYLE AUTO`).
 - `key` (String) Distribution key column of a `KEY` distribution, including one Redshift chose.
 - `style` (String) `ALL`, `EVEN`, or `KEY`; null when `PG_CLASS_INFO` does not show the table to the provider's SQL identity and the table has no distribution key column.
-
 
 <a id="nestedatt--effective_sort_key"></a>
 ### Nested Schema for `effective_sort_key`

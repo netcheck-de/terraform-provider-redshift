@@ -81,8 +81,6 @@ Read-Only:
 - `seed` (Number) First generated value; required in the block.
 - `step` (Number) Increment between generated values, not zero; required in the block.
 
-
-
 <a id="nestedatt--distribution"></a>
 ### Nested Schema for `distribution`
 
@@ -90,7 +88,6 @@ Read-Only:
 
 - `key` (String) Distribution key column for `style = "KEY"`, of type BOOLEAN, REAL, DOUBLE PRECISION, SMALLINT, INTEGER, BIGINT, DECIMAL, DATE, TIME, TIMETZ, TIMESTAMP, TIMESTAMPTZ, CHAR, or VARCHAR.
 - `style` (String) Distribution style: `AUTO`, `EVEN`, `KEY`, or `ALL`. Omitted, it is `KEY` when `key` is set and `AUTO` otherwise. `AUTO` covers whatever `AUTO(ALL)`, `AUTO(EVEN)`, or `AUTO(KEY(column))` Redshift currently applies; see `effective_distribution`.
-
 
 <a id="nestedatt--effective_distribution"></a>
 ### Nested Schema for `effective_distribution`
@@ -101,7 +98,6 @@ Read-Only:
 - `key` (String) Distribution key column of a `KEY` distribution, including one Redshift chose.
 - `style` (String) `ALL`, `EVEN`, or `KEY`; null when `PG_CLASS_INFO` does not show the table to the provider's SQL identity and the table has no distribution key column.
 
-
 <a id="nestedatt--effective_sort_key"></a>
 ### Nested Schema for `effective_sort_key`
 
@@ -110,7 +106,6 @@ Read-Only:
 - `auto` (Boolean) Whether Redshift manages the sort key (`SORTKEY AUTO`). `SVV_TABLE_INFO` lists only tables with rows that the provider's SQL identity may see; without a row, the configured style is assumed when it matches the sort key columns.
 - `columns` (List of String) Sort key columns in order; empty without a sort key.
 - `style` (String) `COMPOUND`, `INTERLEAVED`, or `NONE` when the table has no sort key columns.
-
 
 <a id="nestedatt--foreign_key"></a>
 ### Nested Schema for `foreign_key`
@@ -129,15 +124,12 @@ Read-Only:
 - `schema` (String) Schema of the referenced table; required in the block.
 - `table` (String) Referenced table; required in the block.
 
-
-
 <a id="nestedatt--primary_key"></a>
 ### Nested Schema for `primary_key`
 
 Read-Only:
 
 - `columns` (List of String) Primary key columns in order; required in the block.
-
 
 <a id="nestedatt--sort_key"></a>
 ### Nested Schema for `sort_key`
@@ -146,7 +138,6 @@ Read-Only:
 
 - `columns` (List of String) Sort key columns in order, at most 400 for a compound and 8 for an interleaved key, of the types `distribution.key` allows; omit them for `AUTO` and `NONE`.
 - `style` (String) Sort key style: `AUTO`, `COMPOUND`, `INTERLEAVED`, or `NONE`. Omitted, it is `COMPOUND` when `columns` is set and `AUTO` otherwise. `NONE` removes the sort key with `ALTER SORTKEY NONE`, also right after `CREATE TABLE`. Without sort key columns, `AUTO` and `NONE` differ only in `SVV_TABLE_INFO`, which lists tables with rows; for an empty table the configured one of the two is kept.
-
 
 <a id="nestedatt--unique"></a>
 ### Nested Schema for `unique`

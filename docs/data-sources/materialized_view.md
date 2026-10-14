@@ -55,7 +55,6 @@ Read-Only:
 - `key` (String) Distribution key column.
 - `style` (String) Distribution style: `EVEN`, `ALL`, or `KEY`.
 
-
 <a id="nestedatt--sort_key"></a>
 ### Nested Schema for `sort_key`
 

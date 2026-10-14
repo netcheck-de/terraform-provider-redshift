@@ -82,14 +82,12 @@ Optional:
 - `key` (String) Distribution key column; implies `KEY` distribution. Changed with `ALTER DISTSTYLE KEY DISTKEY`.
 - `style` (String) Distribution style: `EVEN`, `ALL`, or `KEY`. Omitted, it is `KEY` when `key` is set. `KEY` requires `key`.
 
-
 <a id="nestedblock--sort_key"></a>
 ### Nested Schema for `sort_key`
 
 Optional:
 
 - `columns` (List of String) Sort key columns in order; required in the block.
-
 
 <a id="nestedblock--timeouts"></a>
 ### Nested Schema for `timeouts`

@@ -60,7 +60,6 @@ Read-Only:
 - `name` (String) Column name. The external catalog stores names in lowercase, so names differing only in case are the same column.
 - `type` (String) Data type: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `REAL`, `DOUBLE PRECISION`, `BOOLEAN`, `CHAR(n)`, `VARCHAR(n)`, `DATE`, or `TIMESTAMP`, including their aliases such as `INT4` or `NUMERIC`, in any case. Spellings of the same type, such as `INT` and `INTEGER`, are equivalent. A refresh or import reports the uppercase name, and Glue types the provider cannot declare, such as `STRING`, with uppercase type names.
 
-
 <a id="nestedatt--partition_key"></a>
 ### Nested Schema for `partition_key`
 
