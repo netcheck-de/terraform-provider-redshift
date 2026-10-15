@@ -1,0 +1,1 @@
+CREATE IDENTITY PROVIDER "Odd""IdP" TYPE AWSIDC NAMESPACE 'it''s \\ns' APPLICATION_ARN 'application' IAM_ROLE 'role-''two\\';

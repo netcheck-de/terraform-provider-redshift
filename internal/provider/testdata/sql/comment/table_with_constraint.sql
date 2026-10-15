@@ -1,0 +1,1 @@
+-- error: constraint_name is required only for CONSTRAINT

@@ -1,0 +1,1 @@
+-- error: COPY parameter IGNOREHEADER needs a non-negative integer, got "one"

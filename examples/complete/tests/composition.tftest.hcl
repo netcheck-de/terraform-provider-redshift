@@ -1,99 +1,21 @@
 # Mocked applies exercise dependent catalog reads without AWS or SQL operations.
 mock_provider "aws" {
-  alias = "producer"
-  # Policy-document merging is an AWS-provider data source inside the bucket module.
-  # Assert the configured policy below; the mock must still return valid JSON.
-  mock_data "aws_iam_policy_document" {
-    defaults = { json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}" }
-  }
-  mock_data "aws_availability_zones" {
-    defaults = { names = ["eu-central-1a", "eu-central-1b", "eu-central-1c"] }
-  }
-  mock_data "aws_partition" {
-    defaults = { partition = "aws" }
-  }
-  mock_data "aws_caller_identity" {
-    defaults = { account_id = "111111111111" }
-  }
-  mock_resource "aws_redshift_cluster" {
-    defaults = {
-      cluster_type               = "single-node"
-      cluster_namespace_arn      = "arn:aws:redshift:eu-central-1:111111111111:namespace:11111111-2222-3333-4444-555555555555"
-      master_password_secret_arn = "arn:aws:secretsmanager:eu-central-1:111111111111:secret:producer-admin-ABC123"
-      dns_name                   = "producer.example.test"
-    }
-  }
-  mock_resource "aws_iam_role" {
-    defaults = { arn = "arn:aws:iam::111111111111:role/producer-fixture" }
-  }
-  mock_resource "aws_s3_bucket" {
-    defaults = { arn = "arn:aws:s3:::mock-fixture" }
-  }
-  mock_resource "aws_s3_object" {
-    # Uploads inherit the fixture bucket's SSE-S3 encryption.
-    defaults = { server_side_encryption = "AES256" }
-  }
-  mock_resource "aws_glue_catalog_database" {
-    defaults = { arn = "arn:aws:glue:eu-central-1:111111111111:database/mock_fixture" }
-  }
+  alias  = "producer"
+  source = "./tests/mocks/aws_producer"
 }
 
 mock_provider "aws" {
-  alias = "consumer"
-  mock_data "aws_availability_zones" {
-    defaults = { names = ["eu-central-1a", "eu-central-1b", "eu-central-1c"] }
-  }
-  mock_data "aws_partition" {
-    defaults = { partition = "aws" }
-  }
-  mock_data "aws_caller_identity" {
-    defaults = { account_id = "111111111111" }
-  }
-  mock_resource "aws_redshiftserverless_namespace" {
-    defaults = {
-      namespace_id              = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-      arn                       = "arn:aws:redshift-serverless:eu-central-1:111111111111:namespace/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-      admin_password_secret_arn = "arn:aws:secretsmanager:eu-central-1:111111111111:secret:consumer-admin-ABC123"
-    }
-  }
-  mock_resource "aws_redshiftserverless_workgroup" {
-    defaults = {
-      port     = 5439
-      endpoint = [{ address = "consumer.example.test", port = 5439 }]
-    }
-  }
-  mock_resource "aws_iam_role" {
-    defaults = { arn = "arn:aws:iam::111111111111:role/consumer-fixture" }
-  }
-  mock_resource "aws_secretsmanager_secret" {
-    defaults = { arn = "arn:aws:secretsmanager:eu-central-1:111111111111:secret:reader-ABC123" }
-  }
-  mock_data "aws_ssoadmin_instances" {
-    defaults = {
-      arns               = ["arn:aws:sso:::instance/ssoins-1234567890abcdef"]
-      identity_store_ids = ["d-1234567890"]
-    }
-  }
-  mock_resource "aws_redshift_idc_application" {
-    defaults = { idc_managed_application_arn = "arn:aws:sso::111111111111:application/ssoins-1234567890abcdef/apl-1234567890abcdef" }
-  }
+  alias  = "consumer"
+  source = "./tests/mocks/aws_consumer"
 }
 
 mock_provider "random" {
-  mock_resource "random_id" {
-    defaults = { hex = "deadbeef" }
-  }
-  mock_resource "random_password" {
-    defaults = { result = "MockOnlyPassword123456789" }
-  }
+  source = "./tests/mocks/random"
 }
 mock_provider "redshift" { alias = "producer" }
 mock_provider "redshift" {
-  alias = "consumer"
-  # Mocking bypasses the framework's plan-time defaults.
-  mock_resource "redshift_database" {
-    defaults = { with_permissions = true }
-  }
+  alias  = "consumer"
+  source = "./tests/mocks/redshift_consumer"
 }
 mock_provider "redshift" { alias = "producer_data_api_iam" }
 mock_provider "redshift" { alias = "consumer_data_api_iam" }
@@ -221,6 +143,7 @@ run "private_same_account_defaults" {
       length(aws_redshift_data_share_authorization.consumer) == 0 && length(aws_redshift_data_share_consumer_association.this) == 0 &&
       local.datashare_arn == "arn:aws:redshift:eu-central-1:111111111111:datashare:11111111-2222-3333-4444-555555555555/example_share" &&
       redshift_database.shared.datashare_arn == local.datashare_arn && redshift_database.shared.with_permissions &&
+      redshift_database.shared.timeouts.create == "15m" &&
       !redshift_datashare.producer.publicly_accessible && redshift_datashare_schema.source.include_new &&
       redshift_datashare_table.source.schema == "public" && redshift_datashare_table.source.table == "fixture"
     )
@@ -290,7 +213,7 @@ run "private_same_account_defaults" {
   assert {
     condition = (
       length(redshift_assumerole_grant.reader) == 1 && length(aws_redshiftdata_statement.assumerole_policy) == 1 &&
-      redshift_assumerole_grant.reader[0].iam_role_arn == "default" && redshift_assumerole_grant.reader[0].grantee == redshift_role.readers.name &&
+      redshift_assumerole_grant.reader[0].iam_role_arn == "DEFAULT" && redshift_assumerole_grant.reader[0].grantee == redshift_role.readers.name &&
       redshift_assumerole_grant.reader[0].grantee_type == "ROLE" && redshift_assumerole_grant.reader[0].privileges == toset(["COPY", "UNLOAD"]) &&
       aws_redshiftdata_statement.assumerole_policy[0].database == aws_redshiftserverless_namespace.consumer.db_name &&
       aws_redshiftdata_statement.assumerole_policy[0].secret_arn == aws_redshiftserverless_namespace.consumer.admin_password_secret_arn &&
@@ -346,7 +269,7 @@ run "assumerole_disabled" {
   assert {
     condition = (
       length(redshift_assumerole_grant.reader) == 0 && length(aws_redshiftdata_statement.assumerole_policy) == 0 &&
-      data.redshift_assumerole_grant.reader.iam_role_arn == "default" && data.redshift_assumerole_grant.reader.grantee == redshift_role.readers.name &&
+      data.redshift_assumerole_grant.reader.iam_role_arn == "DEFAULT" && data.redshift_assumerole_grant.reader.grantee == redshift_role.readers.name &&
       length(output.catalog_checks.iam_commands) == 0 && length(redshift_grant.shared_read) == 3
     )
     error_message = "Disabling ASSUMEROLE must omit both policy initialization and managed grants while retaining ordinary readers and the lookup."

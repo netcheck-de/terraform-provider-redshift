@@ -1,0 +1,3 @@
+CREATE EXTERNAL FUNCTION "serving"."f_exfunc_upper"(CHARACTER VARYING) RETURNS CHARACTER VARYING STABLE LAMBDA 'exfunc_upper' IAM_ROLE 'arn:aws:iam::123456789012:role/lambda-udf';
+
+ALTER FUNCTION "serving"."f_exfunc_upper"(CHARACTER VARYING) OWNER TO "admin";

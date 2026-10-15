@@ -1,0 +1,1 @@
+DROP ROLE "Odd""Readers";

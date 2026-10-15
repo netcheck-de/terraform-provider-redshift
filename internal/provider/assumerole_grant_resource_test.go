@@ -6,6 +6,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerReplacementPolicy("redshift_assumerole_grant", map[string]replaceRule{
+	"iam_role_arn": replaceAlways,
+	"grantee":      replaceAlways,
+	"grantee_type": replaceAlways,
+	"privileges":   replaceNever,
+})
+
 // TestAssumeroleGrantLifecycle exercises per-role IAM command reconciliation.
 func TestAssumeroleGrantLifecycle(t *testing.T) {
 	exercisePrivilege(t, newAssumeroleGrantResource, map[string]string{"iam_role_arn": "default", "grantee_type": "ROLE", "grantee": "readers"}, []string{"COPY", "UNLOAD"})

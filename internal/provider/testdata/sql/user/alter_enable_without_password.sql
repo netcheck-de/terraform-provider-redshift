@@ -1,0 +1,1 @@
+-- error: password_wo is required when password_disabled changes to false

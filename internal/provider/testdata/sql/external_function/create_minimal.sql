@@ -1,0 +1,1 @@
+CREATE EXTERNAL FUNCTION "serving"."f_exfunc_upper"() RETURNS INTEGER VOLATILE LAMBDA 'exfunc_upper' IAM_ROLE DEFAULT;

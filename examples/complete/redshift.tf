@@ -79,6 +79,15 @@ resource "aws_redshiftserverless_workgroup" "consumer" {
     parameter_value = "true"
   }
 
+  # Zero-ETL targets require case-sensitive identifiers; the parameter is set only with the optional integration.
+  dynamic "config_parameter" {
+    for_each = local.zero_etl_enabled ? ["true"] : []
+    content {
+      parameter_key   = "enable_case_sensitive_identifier"
+      parameter_value = config_parameter.value
+    }
+  }
+
   depends_on = [
     module.consumer_vpc,
     module.consumer_endpoints,
@@ -89,4 +98,41 @@ resource "aws_redshiftserverless_workgroup" "consumer" {
     aws_vpc_security_group_egress_rule.consumer_s3,
     aws_vpc_security_group_ingress_rule.consumer_sql,
   ]
+}
+
+# A namespace has one resource policy, so it authorizes every inbound integration source of the example: the zero-ETL
+# source and the fixture bucket of the COPY JOB. Each source's account may create integrations into the namespace.
+locals {
+  inbound_integration_sources = concat(
+    local.zero_etl_enabled ? [local.zero_etl_source_arn] : [],
+    local.copy_job_enabled ? [module.fixture_bucket.s3_bucket_arn] : [],
+  )
+  inbound_integration_accounts = distinct(concat(
+    local.zero_etl_enabled ? [data.aws_caller_identity.consumer.account_id] : [],
+    local.copy_job_enabled ? [data.aws_caller_identity.producer.account_id] : [],
+  ))
+}
+
+resource "aws_redshift_resource_policy" "inbound_integrations" {
+  provider     = aws.consumer
+  count        = local.zero_etl_enabled || local.copy_job_enabled ? 1 : 0
+  resource_arn = aws_redshiftserverless_namespace.consumer.arn
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "redshift.amazonaws.com" }
+        Action    = "redshift:AuthorizeInboundIntegration"
+        Resource  = aws_redshiftserverless_namespace.consumer.arn
+        Condition = { StringEquals = { "aws:SourceArn" = local.inbound_integration_sources } }
+      },
+      {
+        Effect    = "Allow"
+        Principal = { AWS = [for account in local.inbound_integration_accounts : "arn:${data.aws_partition.consumer.partition}:iam::${account}:root"] }
+        Action    = "redshift:CreateInboundIntegration"
+        Resource  = aws_redshiftserverless_namespace.consumer.arn
+      },
+    ]
+  })
 }

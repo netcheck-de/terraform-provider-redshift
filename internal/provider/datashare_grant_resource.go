@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -35,6 +37,8 @@ type datashareGrantModel struct {
 	AccountID types.String `tfsdk:"account_id"`
 	// NamespaceID identifies the consumer Redshift namespace UUID.
 	NamespaceID types.String `tfsdk:"namespace_id"`
+	// ViaDataCatalog grants an account usage VIA DATA CATALOG, the Lake Formation consumer form.
+	ViaDataCatalog types.Bool `tfsdk:"via_data_catalog"`
 }
 
 // datashareAccountPattern validates AWS account identifiers.
@@ -43,9 +47,15 @@ var datashareAccountPattern = regexp.MustCompile(`^[0-9]{12}$`)
 // datashareNamespacePattern validates Redshift namespace UUIDs.
 var datashareNamespacePattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
-// consumer validates the resolved selector and returns its SQL type and identity key.
-func (data datashareGrantModel) consumer() (string, string, string, error) {
-	if data.AccountID.IsUnknown() || data.NamespaceID.IsUnknown() {
+// Consumer kinds as they appear in GRANT USAGE ON DATASHARE … TO ACCOUNT | NAMESPACE.
+const (
+	datashareGrantAccount   sqlclient.Keyword = "ACCOUNT"
+	datashareGrantNamespace sqlclient.Keyword = "NAMESPACE"
+)
+
+// consumer validates the resolved selector and returns its SQL type, identity key, and value.
+func (data datashareGrantModel) consumer() (sqlclient.Keyword, string, string, error) {
+	if data.AccountID.IsUnknown() || data.NamespaceID.IsUnknown() || data.ViaDataCatalog.IsUnknown() {
 		return "", "", "", fmt.Errorf("consumer identity must be known before executing SQL")
 	}
 	account, namespace := data.AccountID.ValueString(), data.NamespaceID.ValueString()
@@ -56,13 +66,19 @@ func (data datashareGrantModel) consumer() (string, string, string, error) {
 		if !datashareAccountPattern.MatchString(account) {
 			return "", "", "", fmt.Errorf("account_id must contain exactly 12 digits")
 		}
-		return "ACCOUNT", "account_id", account, nil
+		return datashareGrantAccount, "account_id", account, nil
+	}
+	// r_GRANT documents VIA DATA CATALOG only after ACCOUNT, because a Lake Formation consumer is an account.
+	if data.ViaDataCatalog.ValueBool() {
+		return "", "", "", fmt.Errorf("via_data_catalog requires account_id")
 	}
 	if !datashareNamespacePattern.MatchString(namespace) {
 		return "", "", "", fmt.Errorf("namespace_id must be a UUID")
 	}
-	return "NAMESPACE", "namespace_id", namespace, nil
+	return datashareGrantNamespace, "namespace_id", namespace, nil
 }
+
+var _ = registerResource(newDatashareGrantResource)
 
 // newDatashareGrantResource constructs a SQL consumer share grant handler.
 func newDatashareGrantResource() resource.Resource { return &datashareGrantResource{} }
@@ -82,13 +98,52 @@ func (r *datashareGrantResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"datashare":    schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Datashare name."},
 			"account_id":   schema.StringAttribute{Optional: true, Validators: []validator.String{stringvalidator.ExactlyOneOf(path.MatchRoot("namespace_id")), stringvalidator.RegexMatches(datashareAccountPattern, "must contain exactly 12 digits")}, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "12-digit consumer AWS account ID. Specify exactly one of `account_id` and `namespace_id`."},
 			"namespace_id": schema.StringAttribute{Optional: true, Validators: []validator.String{stringvalidator.RegexMatches(datashareNamespacePattern, "must be a namespace UUID")}, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Consumer Redshift namespace UUID, not an ARN. Specify exactly one of `account_id` and `namespace_id`."},
+			"via_data_catalog": schema.BoolAttribute{
+				// Computed with a false default, so an omitted value, an explicit false, and an imported plain grant
+				// all record the same state.
+				Optional: true, Computed: true, Default: booldefault.StaticBool(false),
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.RequiresReplaceIf(datashareGrantFormChanged, datashareGrantFormChange, datashareGrantFormChange)},
+				MarkdownDescription: "Grants usage `VIA DATA CATALOG`, to a Lake Formation account instead of an account that owns a cluster; requires `account_id`. Defaults to `false`, the plain account form. `SVV_DATASHARE_CONSUMERS` reports both forms alike, so refresh cannot detect a grant re-created in the other form. Changing it replaces the grant.",
+			},
 		},
 	}
 }
 
+// datashareGrantFormChange explains the conditional replacement of via_data_catalog.
+const datashareGrantFormChange = "Switching between the plain and the VIA DATA CATALOG account form revokes and grants again."
+
+// datashareGrantFormChanged replaces the grant when the effective form changes, so state recorded as null before
+// the default existed keeps the grant. An unknown plan value replaces too: the form it resolves to is decided only
+// at apply, and Update cannot switch forms because the catalog reports both alike.
+func datashareGrantFormChanged(_ context.Context, req planmodifier.BoolRequest, resp *boolplanmodifier.RequiresReplaceIfFuncResponse) {
+	resp.RequiresReplace = req.PlanValue.IsUnknown() || req.StateValue.ValueBool() != req.PlanValue.ValueBool()
+}
+
+// ValidateConfig reports invalid consumer selectors during planning, once they are known.
+func (r *datashareGrantResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data datashareGrantModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+		return
+	}
+	if _, _, _, err := data.consumer(); err != nil {
+		resp.Diagnostics.AddError("Invalid datashare consumer", err.Error())
+	}
+}
+
+// identityFields returns the JSON identity keys; the Data Catalog form is recorded only when set, so plain
+// account and namespace identities keep their format.
+func (data datashareGrantModel) identityFields(field, value string) map[string]string {
+	fields := map[string]string{"datashare": data.Datashare.ValueString(), field: value}
+	if data.ViaDataCatalog.ValueBool() {
+		fields["via_data_catalog"] = "true"
+	}
+	return fields
+}
+
 // read checks explicitly scoped consumer share usage in the producer catalog.
 func (r *datashareGrantResource) read(ctx context.Context, data datashareGrantModel) (bool, error) {
-	consumerType, _, value, err := data.consumer()
+	query, err := readDatashareGrantQuery(data)
 	if err != nil {
 		return false, err
 	}
@@ -98,14 +153,7 @@ func (r *datashareGrantResource) read(ctx context.Context, data datashareGrantMo
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
-	predicate := "consumer_account = :account AND NVL(consumer_namespace, '') = ''"
-	parameters := map[string]string{"share": data.Datashare.ValueString(), "account": value}
-	if consumerType == "NAMESPACE" {
-		predicate = "consumer_namespace = :namespace"
-		parameters = map[string]string{"share": data.Datashare.ValueString(), "namespace": value}
-	}
-	rows, err := r.queryDatabase(ctx, data.Database.ValueString(),
-		"SELECT consumer_account, consumer_namespace FROM svv_datashare_consumers WHERE share_name = :share AND "+predicate, parameters)
+	rows, err := r.selectRows(ctx, data.Database.ValueString(), query)
 	return len(rows) > 0, err
 }
 
@@ -116,17 +164,21 @@ func (r *datashareGrantResource) Create(ctx context.Context, req resource.Create
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	consumerType, field, value, err := data.consumer()
+	_, field, value, err := data.consumer()
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid datashare consumer", err.Error())
 		return
 	}
-	sql := "GRANT USAGE ON DATASHARE " + sqlclient.Identifier(data.Datashare.ValueString()) + " TO " + consumerType + " " + sqlclient.Literal(value)
-	if _, err := r.queryDatabase(ctx, data.Database.ValueString(), sql, nil); err != nil {
+	sql, err := createDatashareGrantStatement(data)
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid datashare consumer", err.Error())
+		return
+	}
+	if err := r.exec(ctx, data.Database.ValueString(), sql); err != nil {
 		resp.Diagnostics.AddError("Grant datashare usage", err.Error())
 		return
 	}
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"datashare": data.Datashare.ValueString(), field: value})
+	data.ID = r.identity(data.Database.ValueString(), data.identityFields(field, value))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	found, err := r.read(ctx, data)
 	if err != nil {
@@ -156,9 +208,16 @@ func (r *datashareGrantResource) Read(ctx context.Context, req resource.ReadRequ
 
 // Update verifies the immutable share/consumer grant remains present.
 func (r *datashareGrantResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data datashareGrantModel
+	var data, prior datashareGrantModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	// The catalog cannot tell the account forms apart, so recording a switch here would claim a grant that does not
+	// exist; planning replaces the grant instead, and this guards against a plan that did not.
+	if data.ViaDataCatalog.ValueBool() != prior.ViaDataCatalog.ValueBool() {
+		resp.Diagnostics.AddError("Update datashare grant", "Switching via_data_catalog requires replacing the grant.")
 		return
 	}
 	found, err := r.read(ctx, data)
@@ -181,9 +240,11 @@ func (r *datashareGrantResource) Delete(ctx context.Context, req resource.Delete
 	}
 	found, err := r.read(ctx, data)
 	if err == nil && found {
-		consumerType, _, value, _ := data.consumer()
-		sql := "REVOKE USAGE ON DATASHARE " + sqlclient.Identifier(data.Datashare.ValueString()) + " FROM " + consumerType + " " + sqlclient.Literal(value)
-		_, err = r.queryDatabase(ctx, data.Database.ValueString(), sql, nil)
+		var sql string
+		sql, err = dropDatashareGrantStatement(data)
+		if err == nil {
+			err = r.exec(ctx, data.Database.ValueString(), sql)
+		}
 		if err == nil {
 			found, err = r.read(ctx, data)
 			if err == nil && found {
@@ -203,12 +264,19 @@ func (r *datashareGrantResource) ImportState(ctx context.Context, req resource.I
 		resp.Diagnostics.AddError("Invalid import identity", err.Error())
 		return
 	}
-	data := datashareGrantModel{AccountID: types.StringNull(), NamespaceID: types.StringNull()}
+	data := datashareGrantModel{AccountID: types.StringNull(), NamespaceID: types.StringNull(), ViaDataCatalog: types.BoolValue(false)}
 	if value, ok := values["account_id"]; ok {
 		data.AccountID = types.StringValue(value)
 	}
 	if value, ok := values["namespace_id"]; ok {
 		data.NamespaceID = types.StringValue(value)
+	}
+	if value, ok := values["via_data_catalog"]; ok {
+		if value != "true" {
+			resp.Diagnostics.AddError("Invalid import identity", `via_data_catalog must be "true" when present.`)
+			return
+		}
+		data.ViaDataCatalog = types.BoolValue(true)
 	}
 	_, field, _, err := data.consumer()
 	if err != nil {
@@ -216,4 +284,8 @@ func (r *datashareGrantResource) ImportState(ctx context.Context, req resource.I
 		return
 	}
 	importIdentity(ctx, req, resp, "database", "datashare", field)
+	if !resp.Diagnostics.HasError() {
+		// The identity omits the flag for the plain form, which the default records as false.
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("via_data_catalog"), data.ViaDataCatalog)...)
+	}
 }

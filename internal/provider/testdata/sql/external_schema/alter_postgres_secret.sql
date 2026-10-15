@@ -1,0 +1,1 @@
+-- error: POSTGRES cannot change secret_arn in place; the schema must be replaced

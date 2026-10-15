@@ -1,0 +1,11 @@
+-- database: admin
+ALTER IDENTITY PROVIDER "oauth_standard" PARAMETERS '{"issuer":"https://login.microsoftonline.com/tenant/v2.0","client_id":"87f4aa26-78b7-410e-bf29-57b39929ef9a","client_secret":"rotated''\\\\secret","audience":["https://analysis.windows.net/powerbi/connector/AmazonRedshift"]}';
+-- params: {}
+
+-- database: admin
+ALTER IDENTITY PROVIDER "oauth_standard" ENABLE;
+-- params: {}
+
+-- database: admin
+SELECT name, type, instanceid, namespc, params, enabled, uid FROM svv_identity_providers WHERE name = :name;
+-- params: {"name":"oauth_standard"}

@@ -1,0 +1,1 @@
+-- error: iam_role must be DEFAULT or one IAM role ARN, got "arn:aws:iam::123456789012:role/a,arn:aws:iam::123456789012:role/b"

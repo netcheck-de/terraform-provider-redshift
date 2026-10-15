@@ -113,9 +113,11 @@ data "redshift_comment" %[1]q {
 				if kind == "COLUMN" {
 					data.ColumnName = types.StringValue("id")
 				}
-				_, query, err := data.target()
+				query, err := readCommentQuery(data)
 				require.NoError(t, err)
-				rows, err := client.Query(ctx, target, query.sql, query.parameters)
+				sql, parameters, err := query.Build()
+				require.NoError(t, err)
+				rows, err := client.Query(ctx, target, sql, parameters)
 				require.NoError(t, err)
 				require.Len(t, rows, 1, "target object must survive comment deletion")
 				assert.Empty(t, rows[0]["text"])

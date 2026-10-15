@@ -1,0 +1,1 @@
+-- error: volatility: "IMMUTABLE" is not one of VOLATILE, STABLE

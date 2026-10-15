@@ -1,5 +1,5 @@
 ---
-subcategory: Identity and Access
+subcategory: Permissions
 page_title: redshift_assumerole_grant Data Source - terraform-provider-redshift
 description: Reads explicit IAM role command permissions for one SQL identity.
 ---
@@ -9,6 +9,8 @@ description: Reads explicit IAM role command permissions for one SQL identity.
 Reads explicit IAM-role usage permissions. See AWS
 [GRANT ASSUMEROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-assumerole-permissions).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_iam_privileges WHERE ...;
 ```
@@ -17,9 +19,9 @@ SELECT ... FROM svv_iam_privileges WHERE ...;
 
 {{ tffile "examples/data-sources/redshift_assumerole_grant/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `id` (String, computed) is the permission tuple's JSON identity, using the same warehouse, provider database,
 `iam_role_arn`, `grantee`, and `grantee_type` keys as the paired resource. An existing tuple with no explicit privileges
@@ -27,6 +29,7 @@ still has an ID.
 
 `privileges` contains explicit command permissions, such as `COPY` and `UNLOAD`; `EXFUNC` is normalized to
 `EXTERNAL FUNCTION`. No matching explicit grants returns an empty set; a missing SQL identity raises an error. Inherited
-and unrestricted PUBLIC access are not attributed to individual identities. The lookup does not enable identity-specific
-access control, revoke PUBLIC permissions, or require the optional managed ASSUMEROLE grant to be enabled in the
-complete example.
+and unrestricted PUBLIC access are not attributed to individual identities; select `iam_role_arn = "ALL"` with
+`grantee_type = "PUBLIC"` to see whether `PUBLIC` still holds its default commands. The lookup does not enable
+identity-specific access control, revoke PUBLIC permissions, or require the optional managed ASSUMEROLE grant to be
+enabled in the complete example.

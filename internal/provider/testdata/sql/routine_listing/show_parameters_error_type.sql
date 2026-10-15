@@ -1,0 +1,1 @@
+-- error: argument 1: unsupported Redshift data type "integer); DROP TABLE t; --"

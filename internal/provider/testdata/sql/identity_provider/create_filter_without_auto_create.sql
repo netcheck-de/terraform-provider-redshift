@@ -1,0 +1,1 @@
+-- error: auto_create_roles_include_groups and auto_create_roles_exclude_groups require auto_create_roles = true

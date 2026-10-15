@@ -1,0 +1,3 @@
+ALTER IDENTITY PROVIDER "identity" IAM_ROLE 'role-one';
+
+ALTER IDENTITY PROVIDER "identity" ENABLE;

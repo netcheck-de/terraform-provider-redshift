@@ -1,0 +1,74 @@
+---
+subcategory: Row-Level Security and Masking
+page_title: redshift_rls_policy_attachment Resource - terraform-provider-redshift
+description: Attaches a row-level security policy to a relation for a user, role, or PUBLIC.
+---
+
+# redshift_rls_policy_attachment (Resource)
+
+Attaches one row-level security policy to one table or view for one user, role, or `PUBLIC`. See AWS
+[ATTACH RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_ATTACH_RLS_POLICY.html) and
+[DETACH RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_DETACH_RLS_POLICY.html).
+
+## SQL Statements
+
+```sql
+ATTACH RLS POLICY policy ON schema.relation TO grantee;
+DETACH RLS POLICY policy ON schema.relation FROM grantee;
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_rls_policy_attachment/resource.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+Attaching **never turns row-level security on**: the policy filters rows only while `redshift_table_security` has RLS on
+for the relation. Detaching leaves the policy, the relation, and its RLS switch unchanged. The relation must have every
+`WITH` column of the policy, and all policies attached to one relation must use the same alias. Policies attached to
+superusers or `sys:secadmin` holders are ignored. Attaching requires a superuser or `sys:secadmin`.
+
+Reads use `svv_rls_attached_policy` in the attachment's database, which only `sys:secadmin` holders and superusers can
+query.
+
+## Reconciliation
+
+Refresh checks that the attachment is still listed in `svv_rls_attached_policy`; Redshift has no command that changes an
+attachment, so every change replaces it: `DETACH RLS POLICY` for the old tuple, then `ATTACH RLS POLICY` for the new
+one, and a re-read of the catalog to verify the result. Between the two statements the policy does not apply to the
+recipient: while row-level security is on for the relation, they see only the rows the other applicable policies permit
+under the relation's conjunction type, or no rows when no other policy applies.
+
+| Change                              | Result                  |
+|-------------------------------------|-------------------------|
+| `policy`                            | replaces the attachment |
+| `database`, `schema`, or `relation` | replaces the attachment |
+| `grantee` or `grantee_type`         | replaces the attachment |
+
+A change to the policy's `column` blocks or `alias` replaces the policy under the same name, which leaves these
+arguments unchanged. Because `DROP RLS POLICY` refuses an attached policy, add
+`lifecycle { replace_triggered_by = [redshift_rls_policy.<name>.column, redshift_rls_policy.<name>.alias] }`, as in the
+example, so Terraform detaches the policy before the replacement and attaches it again afterwards. A new predicate
+keeps the policy and its attachments.
+
+**Drift.** The attachment has no settings to compare: refresh only checks that it exists. An attachment detached
+outside Terraform, or one whose policy, relation, recipient, or database was dropped, is removed from state, and the
+next plan creates the attachment again. Other attachments of the policy or the relation are never read.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_rls_policy_attachment/import-by-string-id.tf" }}
+
+The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
+cluster, or with `endpoint` (`host:port`) for a direct password connection; see
+[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_rls_policy_attachment/import.sh" }}

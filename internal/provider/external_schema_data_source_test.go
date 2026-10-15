@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerParity(parityCase{source: newExternalSchemaDataSource, resource: newExternalSchemaResource, selectors: []string{"database", "name"}})
+
 // TestExternalSchemaLookup checks Glue database and IAM role lookup attributes.
 func TestExternalSchemaLookup(t *testing.T) {
 	state, diagnostics := readSource(t, newExternalSchemaDataSource(), externalSchemaData{Database: types.StringValue("admin"), Name: types.StringValue("example_external")}, &catalog{external: true})
@@ -16,5 +18,8 @@ func TestExternalSchemaLookup(t *testing.T) {
 	var data externalSchemaData
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.Equal(t, "example_glue", data.GlueDatabase.ValueString())
+	assert.Equal(t, "DATA_CATALOG", data.SourceType.ValueString())
+	assert.Equal(t, "admin", data.Owner.ValueString())
+	assert.True(t, data.SourceDatabase.IsNull())
 	assertLookupIdentity(t, data.ID, "admin", map[string]string{"name": "example_external"})
 }

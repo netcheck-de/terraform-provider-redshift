@@ -1,0 +1,1 @@
+-- error: distribution.key requires distribution.style KEY or no style, not ALL

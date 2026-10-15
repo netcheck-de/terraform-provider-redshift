@@ -1,0 +1,1 @@
+CREATE ROLE "example:readers";

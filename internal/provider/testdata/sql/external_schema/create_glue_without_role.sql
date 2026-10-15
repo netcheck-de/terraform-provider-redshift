@@ -1,0 +1,1 @@
+-- error: invalid DATA_CATALOG external schema: DATA_CATALOG requires iam_role_arn

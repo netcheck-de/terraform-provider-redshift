@@ -1,0 +1,1 @@
+-- error: a USER grantee must be a global identity named <prefix>:<name>, such as IAM:auditor or IAMR:audit_role; DEBUG cannot be granted to local users, groups, or PUBLIC

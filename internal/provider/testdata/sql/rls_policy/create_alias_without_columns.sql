@@ -1,0 +1,1 @@
+-- error: alias requires at least one column block, because it is part of the WITH clause

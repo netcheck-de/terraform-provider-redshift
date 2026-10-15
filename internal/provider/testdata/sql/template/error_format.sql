@@ -1,0 +1,1 @@
+-- error: format: "XML" is not one of AVRO, CSV, FIXEDWIDTH, JSON, ORC, PARQUET, SHAPEFILE

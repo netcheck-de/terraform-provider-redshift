@@ -1,0 +1,1 @@
+-- error: grant option privilege "INSERT" is not in privileges

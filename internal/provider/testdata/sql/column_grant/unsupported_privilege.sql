@@ -1,0 +1,1 @@
+-- error: unsupported column privilege "DELETE"; use SELECT or UPDATE

@@ -1,0 +1,3 @@
+CREATE TEMPLATE "serving"."csv_load" FOR COPY AS FORMAT AS CSV DELIMITER ',' IGNOREHEADER 1;
+
+ALTER TEMPLATE "serving"."csv_load" OWNER TO "Odd""Owner";

@@ -1,0 +1,1 @@
+-- error: distribution.key names column "missing", which the table does not declare

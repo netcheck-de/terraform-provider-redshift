@@ -1,0 +1,1 @@
+-- error: column "id": unsupported Redshift data type "integer; DROP TABLE x"

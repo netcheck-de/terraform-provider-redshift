@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var _ = registerParity(parityCase{source: newDatashareSchemaDataSource, resource: newDatashareSchemaResource, selectors: []string{"database", "datashare", "schema"}})
+
 // TestDatashareSchemaLookup reads both membership existence and the actual future-object policy.
 func TestDatashareSchemaLookup(t *testing.T) {
 	for _, includeNew := range []bool{false, true} {

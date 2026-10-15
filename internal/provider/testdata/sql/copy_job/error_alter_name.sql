@@ -1,0 +1,1 @@
+-- error: invalid copy job name "bad-name"

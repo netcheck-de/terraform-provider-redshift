@@ -1,0 +1,1 @@
+SELECT COALESCE(d.description, '') AS text FROM pg_class o JOIN pg_namespace n ON n.oid = o.relnamespace LEFT JOIN pg_description d ON d.objoid = o.oid AND d.classoid = 'pg_class'::regclass AND d.objsubid = 0 WHERE o.relname = :name AND n.nspname = :schema AND o.relkind = 'v';

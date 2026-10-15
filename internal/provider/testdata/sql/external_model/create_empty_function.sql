@@ -1,0 +1,1 @@
+-- error: function must not be empty

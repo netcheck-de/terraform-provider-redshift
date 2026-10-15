@@ -1,0 +1,1 @@
+ALTER TABLE "public"."events" ROW LEVEL SECURITY ON;

@@ -1,0 +1,1 @@
+-- error: a template needs a format or at least one parameter

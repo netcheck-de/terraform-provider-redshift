@@ -1,0 +1,1 @@
+SELECT namespace_name, relation_name, column_name, privilege_type, identity_name, identity_type FROM svv_column_privileges WHERE namespace_name = :schema AND relation_name = :object AND identity_name = :grantee AND identity_type = :identity_type ORDER BY namespace_name, relation_name, column_name, privilege_type, identity_type, identity_name;

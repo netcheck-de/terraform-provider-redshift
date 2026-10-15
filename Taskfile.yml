@@ -20,6 +20,9 @@ tasks:
     desc: Check formatting, lint, offline tests, and documentation
     cmds:
       - task: lint
+      - task: actionlint
+      - task: yamllint
+      - task: markdownlint
       - task: markdown-fmt-check
       - task: test
       - task: docs-check
@@ -58,10 +61,25 @@ tasks:
     cmds:
       - go test -race -cover ./...
 
+  golden:
+    desc: Rewrite golden SQL files under internal/provider/testdata/sql; review the diff before committing
+    cmds:
+      - go test ./internal/provider -run 'SQL|Transcript' -update
+
   actionlint:
     desc: Lint GitHub Actions workflows
     cmds:
       - go tool actionlint -color
+
+  yamllint:
+    desc: Lint YAML files as CI does
+    cmds:
+      - yamllint .
+
+  markdownlint:
+    desc: Lint Markdown files as CI does
+    cmds:
+      - markdownlint .
 
   # Documentation
 

@@ -1,0 +1,3 @@
+REVOKE CREATE ON DATABASE "analytics" FROM GROUP "readers";
+
+REVOKE USAGE ON DATABASE "analytics" FROM GROUP "readers";

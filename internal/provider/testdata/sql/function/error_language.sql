@@ -1,0 +1,1 @@
+-- error: language "plpgsql" is not supported; only SQL is

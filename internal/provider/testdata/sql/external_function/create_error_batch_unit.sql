@@ -1,0 +1,1 @@
+-- error: max_batch_size_unit: "GB" is not one of KB, MB

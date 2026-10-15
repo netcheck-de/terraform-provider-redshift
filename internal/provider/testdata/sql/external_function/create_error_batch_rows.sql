@@ -1,0 +1,1 @@
+-- error: max_batch_rows must be between 1 and 2147483647, got 0

@@ -1,0 +1,1 @@
+ALTER TABLE "Odd""Schema"."Odd""Events" ROW LEVEL SECURITY OFF;

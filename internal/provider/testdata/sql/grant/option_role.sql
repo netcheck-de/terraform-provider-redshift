@@ -1,0 +1,1 @@
+-- error: grant_option_privileges requires a user recipient; Redshift grants options only to users

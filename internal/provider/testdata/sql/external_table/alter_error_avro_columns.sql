@@ -1,0 +1,1 @@
+-- error: column blocks change in place only by adding or dropping columns, at the end unless an ORC table maps columns by name, and never retype a column or change an AVRO table's columns; replace the table

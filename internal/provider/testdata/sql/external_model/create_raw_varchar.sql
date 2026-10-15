@@ -1,0 +1,1 @@
+-- error: request_type RAW requires response_type SUPER

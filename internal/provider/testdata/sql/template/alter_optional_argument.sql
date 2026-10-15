@@ -1,0 +1,3 @@
+ALTER TEMPLATE "serving"."csv_load" DROP ACCEPTINVCHARS;
+
+ALTER TEMPLATE "serving"."csv_load" ADD ACCEPTINVCHARS '?';

@@ -1,0 +1,3 @@
+ALTER DATASHARE "producer" ADD SCHEMA "serving";
+
+ALTER DATASHARE "producer" SET INCLUDENEW TRUE FOR SCHEMA "serving";

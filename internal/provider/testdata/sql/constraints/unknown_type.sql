@@ -1,0 +1,1 @@
+-- error: unsupported constraint_type "CHECK"

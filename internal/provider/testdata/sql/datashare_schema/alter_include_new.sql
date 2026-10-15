@@ -1,0 +1,1 @@
+ALTER DATASHARE "producer" SET INCLUDENEW true FOR SCHEMA "serving";

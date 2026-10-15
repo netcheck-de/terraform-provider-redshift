@@ -1,0 +1,1 @@
+-- error: relation must not be empty

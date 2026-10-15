@@ -1,0 +1,1 @@
+-- error: invalid POSTGRES external schema: POSTGRES requires uri; POSTGRES requires secret_arn

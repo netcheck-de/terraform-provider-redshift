@@ -1,0 +1,1 @@
+-- error: table_properties need nonempty names

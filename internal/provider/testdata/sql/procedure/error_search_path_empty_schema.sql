@@ -1,0 +1,1 @@
+-- error: configuration SEARCH_PATH must be a comma-separated list of nonempty schema names, got "analytics,,public"

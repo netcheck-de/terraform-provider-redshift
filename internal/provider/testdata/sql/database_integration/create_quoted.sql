@@ -1,0 +1,1 @@
+CREATE DATABASE "Odd""DB" FROM INTEGRATION 'it''s-an-id';

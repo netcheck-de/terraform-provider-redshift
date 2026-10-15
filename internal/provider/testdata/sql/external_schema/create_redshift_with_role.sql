@@ -1,0 +1,1 @@
+-- error: invalid REDSHIFT external schema: REDSHIFT does not accept iam_role_arn

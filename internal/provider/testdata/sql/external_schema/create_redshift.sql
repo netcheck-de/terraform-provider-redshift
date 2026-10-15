@@ -1,0 +1,1 @@
+CREATE EXTERNAL SCHEMA "Shared""Sales" FROM REDSHIFT DATABASE 'sales''s\\db' SCHEMA 'public';

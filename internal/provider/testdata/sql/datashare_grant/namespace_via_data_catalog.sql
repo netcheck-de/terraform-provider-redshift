@@ -1,0 +1,1 @@
+-- error: via_data_catalog requires account_id

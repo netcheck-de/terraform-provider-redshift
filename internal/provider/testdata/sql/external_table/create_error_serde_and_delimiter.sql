@@ -1,0 +1,1 @@
+-- error: serde conflicts with field_delimiter and line_delimiter: ROW FORMAT is either DELIMITED or SERDE

@@ -1,45 +1,27 @@
 package provider
 
 import (
-	"fmt"
-
-	"github.com/aws/aws-sdk-go-v2/aws/arn"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 )
+
+var _ = registerResource(newAssumeroleGrantResource)
 
 // newAssumeroleGrantResource defines per-identity IAM-role command permissions.
 func newAssumeroleGrantResource() resource.Resource {
 	attributes := privilegeAttributes()
-	granteeAttributes(attributes)
-	attributes["iam_role_arn"] = privilegeString("IAM role ARN, or default for the namespace default role.", false)
-	return &privilegeResource{name: "assumerole_grant", attributes: attributes, fields: []string{"iam_role_arn", "grantee", "grantee_type"}, prepare: func(data types.Object) (privilegeTarget, error) {
-		recipient, check, err := principal(data)
-		if err != nil {
-			return privilegeTarget{}, err
-		}
-		role, catalogRole := objectString(data, "iam_role_arn"), objectString(data, "iam_role_arn")
-		sqlRole := sqlclient.Literal(role)
-		if role == "default" {
-			sqlRole, catalogRole = "default", "default-aws-iam-role"
-		} else {
-			parsed, err := arn.Parse(role)
-			if err != nil || parsed.Service != "iam" || parsed.AccountID == "" || len(parsed.Resource) < 6 || parsed.Resource[:5] != "role/" {
-				return privilegeTarget{}, fmt.Errorf("iam_role_arn must be an IAM role ARN or default")
-			}
-		}
-		return privilegeTarget{
-			checks:  []catalogCheck{check},
-			query:   catalogCheck{"SELECT command_type AS privilege_type FROM svv_iam_privileges WHERE iam_arn = :arn AND identity_name = :grantee AND identity_type = LOWER(:kind)", map[string]string{"arn": catalogRole, "grantee": objectString(data, "grantee"), "kind": objectString(data, "grantee_type")}},
-			allowed: []string{"COPY", "UNLOAD", "EXTERNAL FUNCTION", "CREATE MODEL"},
-			statement: func(verb, command string) string {
-				direction := "TO"
-				if verb == "REVOKE" {
-					direction = "FROM"
-				}
-				return verb + " ASSUMEROLE ON " + sqlRole + " " + direction + " " + recipient + " FOR " + command
-			},
-		}, nil
-	}}
+	grantRecipientAttributes(attributes)
+	attributes["iam_role_arn"] = schema.StringAttribute{
+		Required: true,
+		MarkdownDescription: "IAM role ARN, `DEFAULT` for the namespace default IAM role, or `ALL` for every IAM role. `DEFAULT` and `ALL` are keywords accepted in any case, and another case of the same one is recorded in place; an ARN is case-sensitive and compared exactly. " +
+			"A grant on `ALL` absorbs the grantee's grant on `DEFAULT` and also shows up under every IAM role that another grant names, so manage a grantee through either `ALL` or individual roles. Changing it replaces the grant.",
+		PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(assumeroleGrantRoleChanged, "Changing the IAM role replaces the grant.", "Changing the IAM role replaces the grant.")},
+		Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
+	}
+	attributes["privileges"] = grantPrivilegesAttribute("Exact set of commands the grantee may run with the role: `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, `CREATE MODEL`; all four together are `FOR ALL`. An empty set revokes owned commands. `PUBLIC` holds every command `ON ALL` until revoked, which the `ALL`/`PUBLIC` tuple reports; deleting that tuple revokes what it holds and never grants the default back.")
+	return &privilegeResource{name: "assumerole_grant", attributes: attributes, fields: []string{"iam_role_arn", "grantee", "grantee_type"}, prepare: assumeroleGrantTarget, canonical: assumeroleGrantCanonical}
 }

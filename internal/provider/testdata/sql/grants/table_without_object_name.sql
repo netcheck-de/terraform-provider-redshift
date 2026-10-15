@@ -1,0 +1,1 @@
+-- error: TABLE requires schema_name and object_name

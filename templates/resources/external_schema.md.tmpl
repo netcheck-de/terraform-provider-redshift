@@ -1,18 +1,25 @@
 ---
 subcategory: Databases and Schemas
 page_title: redshift_external_schema Resource - terraform-provider-redshift
-description: Manages a Glue-backed external schema mapping.
+description: Manages an external schema backed by Glue, Hive, a federated database, Redshift, or a stream.
 ---
 
 # redshift_external_schema (Resource)
 
-Manages a Redshift external schema backed by an AWS Glue Data Catalog database. This is a distinct SQL object from a
-[local schema](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/schema). The namespace
-must already have an IAM role that can access Glue and the underlying data. See AWS
-[CREATE EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_SCHEMA.html).
+Manages a Redshift external schema backed by an AWS Glue Data Catalog database, an Apache Hive metastore, a PostgreSQL
+or MySQL federated database, another Redshift database, a Kinesis data stream, or an Amazon MSK cluster. This is a
+distinct SQL object from a
+[local schema](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/schema).
+The namespace must already have the IAM role the source form needs. See AWS
+[CREATE EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_SCHEMA.html) and
+[ALTER EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_EXTERNAL_SCHEMA.html).
+
+## SQL Statements
 
 ```sql
-CREATE EXTERNAL SCHEMA name FROM DATA CATALOG ...;
+CREATE EXTERNAL SCHEMA name FROM ...;
+ALTER EXTERNAL SCHEMA name ...;
+ALTER SCHEMA name OWNER TO ...;
 DROP SCHEMA name;
 ```
 
@@ -20,16 +27,99 @@ DROP SCHEMA name;
 
 {{ tffile "examples/resources/redshift_external_schema/resource.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## Source Forms
+
+`source_type` selects the `FROM` form and decides which options are required, optional, or rejected. Plans fail when a
+required option is missing or an option the form does not take is set. In-place options change with
+`ALTER EXTERNAL SCHEMA`, which Redshift supports only for `DATA_CATALOG` and `MSK` schemas; see
+[Reconciliation](#reconciliation) for every change.
+
+| `source_type`    | Required                                               | Optional                                                     | In place                                                                    |
+|------------------|--------------------------------------------------------|--------------------------------------------------------------|-----------------------------------------------------------------------------|
+| `DATA_CATALOG`   | `glue_database`, `iam_role_arn`                        | `region`                                                     | `iam_role_arn`                                                              |
+| `HIVE_METASTORE` | `source_database`, `uri`, `iam_role_arn`               | `port`                                                       | none                                                                        |
+| `POSTGRES`       | `source_database`, `uri`, `iam_role_arn`, `secret_arn` | `source_schema`, `port`                                      | none                                                                        |
+| `MYSQL`          | `source_database`, `uri`, `iam_role_arn`, `secret_arn` | `port`                                                       | none                                                                        |
+| `REDSHIFT`       | `source_database`                                      | `source_schema`                                              | none                                                                        |
+| `KINESIS`        | `iam_role_arn`                                         | `region`                                                     | none                                                                        |
+| `MSK`            | `authentication`, `uri`                                | `iam_role_arn`, `region`, `authentication_arn`, `secret_arn` | `iam_role_arn`, `uri`, `authentication`, `authentication_arn`, `secret_arn` |
+
+For `MSK`, `authentication = "IAM"` requires `iam_role_arn`, and `authentication = "MTLS"` requires exactly one of
+`authentication_arn` and `secret_arn`; the other modes take neither.
 
 ## Lifecycle and Ownership
 
-Reads `svv_external_schemas`, verifies that it is a Glue Data Catalog schema (`eskind = 1`), and compares its configured
-Glue database and IAM role. Creation uses `CREATE EXTERNAL SCHEMA ... FROM DATA CATALOG`. Deletion uses restrictive
-`DROP SCHEMA` **without `CASCADE`**. If dependent views exist, remove or migrate them first. Bumping `refresh_revision`
-plans replacement; changes in Glue metadata do not automatically appear as Terraform diffs.
+Creation uses `CREATE EXTERNAL SCHEMA` without `CREATE EXTERNAL DATABASE`. Deletion uses restrictive `DROP SCHEMA`
+**without `DROP EXTERNAL DATABASE` or `CASCADE`**, so the external database survives; remove or migrate dependent views
+first. `CREATE EXTERNAL SCHEMA` has no `AUTHORIZATION` clause and makes the creator the owner, so a configured `owner`
+is set with `ALTER SCHEMA ... OWNER TO` right after creation.
+
+## Reconciliation
+
+Refresh finds the schema and its owner in `PG_NAMESPACE` and reads its source form, external database, and recorded
+options from `SVV_EXTERNAL_SCHEMAS`; an update reads them again, runs `ALTER SCHEMA ... OWNER TO` and one
+`ALTER EXTERNAL SCHEMA` statement per changed option the source form can change in place, starting from what the
+catalog holds, and re-reads the catalog to verify the result; every other change replaces the external schema.
+Replacement runs the same restrictive `DROP SCHEMA` as deletion, so it fails while views depend on the schema, and
+recreates only the mapping: the external data is untouched.
+
+| Change                                                     | Result                                                                                                                                                                                          |
+|------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database` or `name`                                       | replaces the external schema: the provider never moves or renames it                                                                                                                            |
+| `source_type`                                              | replaces the external schema: the `FROM` form is fixed at creation; an omitted `source_type` is `DATA_CATALOG`                                                                                  |
+| `glue_database` or `source_database`                       | replaces the external schema: `ALTER EXTERNAL SCHEMA` cannot change the external database                                                                                                       |
+| `source_schema`, `region`, or `port` set or changed        | replaces the external schema: `ALTER EXTERNAL SCHEMA` cannot change them                                                                                                                        |
+| `source_schema`, `region`, or `port` removed               | no SQL; the value the catalog reports, or the last known one, stays                                                                                                                             |
+| `iam_role_arn` set or changed for `DATA_CATALOG` or `MSK`  | `ALTER EXTERNAL SCHEMA ... IAM_ROLE`                                                                                                                                                            |
+| `iam_role_arn` removed, or changed for any other form      | replaces the external schema                                                                                                                                                                    |
+| `uri` changed for `MSK`                                    | `ALTER EXTERNAL SCHEMA ... URI`                                                                                                                                                                 |
+| `uri` changed for `HIVE_METASTORE`, `POSTGRES`, or `MYSQL` | replaces the external schema                                                                                                                                                                    |
+| `authentication` changed (`MSK` only)                      | `ALTER EXTERNAL SCHEMA ... AUTHENTICATION` with the planned `AUTHENTICATION_ARN` or `SECRET_ARN`, one statement however many of `authentication`, `authentication_arn`, and `secret_arn` change |
+| `authentication_arn` set, changed, or removed (`MSK` only) | the same single `ALTER EXTERNAL SCHEMA ... AUTHENTICATION` statement                                                                                                                            |
+| `secret_arn` set, changed, or removed for `MSK`            | the same single `ALTER EXTERNAL SCHEMA ... AUTHENTICATION` statement                                                                                                                            |
+| `secret_arn` changed for `POSTGRES` or `MYSQL`             | replaces the external schema                                                                                                                                                                    |
+| `owner` set or changed                                     | `ALTER SCHEMA ... OWNER TO`, the first statement of the update; handing the schema to another user requires a superuser connection                                                              |
+| `owner` removed                                            | no SQL; the current owner stays and is still reported                                                                                                                                           |
+| `refresh_revision` set, changed, or removed                | replaces the external schema, which rebuilds the mapping after the source changed                                                                                                               |
+
+Options a source form does not take are rejected at plan time, as described under [Source Forms](#source-forms). An
+update runs its statements in the order owner, `IAM_ROLE`, `URI`, `AUTHENTICATION`. They share no transaction: when one
+fails, the earlier ones stay applied and the next plan shows what is left.
+
+**Drift.** Refresh maps `eskind` back to `source_type` and compares it, the external database, the owner, and the
+options recorded in `esoptions` (`IAM_ROLE`, `REGION`, `SCHEMA`, `URI`, `PORT`, `SECRET_ARN`, `AUTHENTICATION`, and
+`AUTHENTICATION_ARN`) with the state. A changed owner, or a changed option the form changes in place, is set back with
+the statements above; any other change replaces the external schema. An omitted `owner`, `region`, `source_schema`, or
+`port` follows the catalog and never plans a change. Options the catalog does not record, such as the `uri` or
+`secret_arn` of a federated schema, keep their configured value, so changes to them are not detected. A schema, or its
+database, dropped outside Terraform is removed from state, and the next plan creates the schema again. A schema that is
+no longer external, has an unsupported source, or is hidden because another user owns it and the connection is not a
+superuser fails the refresh. Tables and other objects in the external catalog are never read; bump `refresh_revision`
+to rebuild the mapping after they change.
+
+### Switching an MSK Schema to mTLS
+
+The following example starts from an `MSK` schema with IAM authentication. Moving it to mTLS with an ACM certificate
+and another bootstrap URI changes it in place; the update reads the catalog, runs one statement for the URI and one for
+all authentication settings, and reads the catalog again:
+
+```terraform
+resource "redshift_external_schema" "stream" {
+  database           = "admin"
+  name               = "example_external"
+  source_type        = "MSK"
+  iam_role_arn       = "arn:aws:iam::123456789012:role/msk"
+  authentication     = "MTLS" # was "iam"
+  authentication_arn = "arn:aws:acm:eu-central-1:123456789012:certificate/example"
+  uri                = "b-1.example.kafka.eu-central-1.amazonaws.com:9094" # was the :9098 IAM listener
+}
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/external_schema_sources/update_msk_mtls.sql" }}
 
 ## Import
 
@@ -37,8 +127,14 @@ In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
 {{ tffile "examples/resources/redshift_external_schema/import-by-string-id.tf" }}
 
+The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
+cluster, or with `endpoint` (`host:port`) for a direct password connection; see
+[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
+
 Alternatively, use `terraform import`:
 
 {{ codefile "shell" "examples/resources/redshift_external_schema/import.sh" }}
 
-The Glue database and IAM role are discovered on refresh. Match them in configuration before applying.
+The source type, external database, owner, and recorded options are discovered on refresh. Match them in configuration
+before applying; an option the catalog does not record, such as a federated `uri` or `secret_arn`, is null after import,
+so configuring it plans a replacement unless the form changes it in place.

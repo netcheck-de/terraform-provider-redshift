@@ -1,0 +1,1 @@
+-- error: admin_option requires to_user; Redshift grants WITH ADMIN OPTION only to users

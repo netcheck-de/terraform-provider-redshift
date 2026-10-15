@@ -1,0 +1,1 @@
+-- error: name "Events" must be 1 to 127 lowercase letters, digits, or underscores, starting with a letter or underscore; COPY JOB names cannot contain hyphens

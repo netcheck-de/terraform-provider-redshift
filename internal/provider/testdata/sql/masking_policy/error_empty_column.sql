@@ -1,0 +1,1 @@
+-- error: input column names must not be empty

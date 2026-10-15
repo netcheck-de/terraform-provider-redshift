@@ -1,0 +1,3 @@
+GRANT CREATE USER TO ROLE "operators";
+
+REVOKE CREATE USER FROM ROLE "operators";

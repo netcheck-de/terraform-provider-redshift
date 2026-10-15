@@ -1,0 +1,1 @@
+-- error: return_type: REFCURSOR is supported only by stored procedures

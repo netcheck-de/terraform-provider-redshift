@@ -1,0 +1,1 @@
+CREATE EXTERNAL SCHEMA "federated" FROM MYSQL DATABASE 'it''s \\db' URI 'aurora.example.internal' PORT 3306 IAM_ROLE 'arn:aws:iam::123456789012:role/federated' SECRET_ARN 'arn:aws:secretsmanager:eu-central-1:123456789012:secret:aurora-AbCdEf';

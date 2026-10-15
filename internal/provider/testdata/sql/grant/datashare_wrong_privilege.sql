@@ -1,0 +1,1 @@
+-- error: datashare SCHEMA grants support only USAGE

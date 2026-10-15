@@ -1,0 +1,1 @@
+-- error: privilege SELECT lists an empty column name

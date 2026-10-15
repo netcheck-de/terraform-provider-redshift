@@ -1,0 +1,1 @@
+-- error: unsupported default object_type "SEQUENCES"

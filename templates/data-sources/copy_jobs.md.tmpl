@@ -1,0 +1,28 @@
+---
+subcategory: Data Loading
+page_title: redshift_copy_jobs Data Source - terraform-provider-redshift
+description: Lists COPY JOBs with their AUTO setting and IAM role.
+---
+
+# redshift_copy_jobs (Data Source)
+
+Lists copy jobs with their AUTO setting and IAM role. See AWS
+[SYS_COPY_JOB](https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html).
+
+## Catalog Query
+
+```sql
+SELECT ... FROM sys_copy_job;
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_copy_jobs/data-source.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+Items are ordered by name. Superusers see every job; other users see only their own. `SYS_COPY_JOB` has no database
+column, so `database` selects where the view is queried and is reported for every item. `id` combines the warehouse
+binding with the `database` filter, or the provider database without one.

@@ -1,0 +1,1 @@
+-- error: argument 1: ANYELEMENT is supported only by Python UDFs, which a procedure cannot use

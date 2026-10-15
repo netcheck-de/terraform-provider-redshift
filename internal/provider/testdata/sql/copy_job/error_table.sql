@@ -1,0 +1,1 @@
+-- error: the table block needs a nonempty schema and name

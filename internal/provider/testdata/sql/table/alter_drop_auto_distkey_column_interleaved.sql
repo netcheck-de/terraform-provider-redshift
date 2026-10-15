@@ -1,0 +1,1 @@
+-- error: the change requires replacing the table: column: ALTER TABLE cannot move an automatic distribution key off a dropped column while the sort key is interleaved

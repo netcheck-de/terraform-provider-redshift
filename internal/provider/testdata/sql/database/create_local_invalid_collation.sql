@@ -1,0 +1,1 @@
+-- error: "CS" is not one of CASE_SENSITIVE, CASE_INSENSITIVE

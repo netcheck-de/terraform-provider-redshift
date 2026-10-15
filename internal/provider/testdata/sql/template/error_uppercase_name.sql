@@ -1,0 +1,1 @@
+-- error: name "CSV_Load" must be lowercase, because Redshift folds template names to lowercase

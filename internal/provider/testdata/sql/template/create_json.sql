@@ -1,0 +1,1 @@
+CREATE TEMPLATE "serving"."json_load" FOR COPY AS FORMAT AS JSON 'auto' MAXERROR 100 NULL AS '';

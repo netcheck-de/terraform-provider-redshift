@@ -1,0 +1,1 @@
+-- error: datashare grants require a local database, schema_name, SCHEMA or TABLES scope, and no role

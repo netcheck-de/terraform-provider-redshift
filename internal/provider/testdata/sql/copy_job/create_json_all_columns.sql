@@ -1,0 +1,1 @@
+COPY "serving"."events" FROM 's3://example-bucket/events/' IAM_ROLE 'arn:aws:iam::123456789012:role/loader' FORMAT AS JSON 'auto ignorecase' GZIP REGION 'eu-central-1' TIMEFORMAT 'auto' JOB CREATE events_load AUTO ON;

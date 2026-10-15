@@ -9,6 +9,8 @@ description: Manages explicit table or view membership in a datashare.
 Manages one existing table or view membership in a producer datashare schema. See AWS
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
+## SQL Statements
+
 ```sql
 ALTER DATASHARE datashare ADD TABLE schema.table;
 ALTER DATASHARE datashare REMOVE TABLE schema.table;
@@ -18,11 +20,9 @@ ALTER DATASHARE datashare REMOVE TABLE schema.table;
 
 {{ tffile "examples/resources/redshift_datashare_table/resource.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
-
-Changing any argument replaces the membership.
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## Lifecycle and Ownership
 
@@ -30,11 +30,31 @@ Uses `ALTER DATASHARE ... ADD/REMOVE TABLE` and reads `svv_datashare_objects` fo
 materialized views. It does not create or drop the underlying table/view. Add the schema to the share first; remove
 member tables/views before removing the shared schema. New objects need separate membership resources.
 
+## Reconciliation
+
+Refresh checks that `SVV_DATASHARE_OBJECTS` lists the relation in the share. No argument changes in place: every change
+replaces the membership with `ALTER DATASHARE ... REMOVE TABLE` for the old relation and `ADD TABLE` for the new one,
+which leaves both relations untouched.
+
+| Change              | Result                                                                                                                                                                                    |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `database`          | replaces the membership: a share and its members belong to one producer database, so the relation is removed from the share there and added to the share of that name in the new database |
+| `datashare`         | replaces the membership: the relation is removed from the old share and added to the new one                                                                                              |
+| `schema` or `table` | replaces the membership: the old relation is removed from the share and the new one added                                                                                                 |
+
+**Drift.** Refresh only checks that the membership exists. A membership removed outside Terraform, for example with its
+relation, share, or database, is removed from state, and the next plan adds the relation again, which fails while the
+relation does not exist. The relation's definition and the share's other members are never read.
+
 ## Import
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
 {{ tffile "examples/resources/redshift_datashare_table/import-by-string-id.tf" }}
+
+The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
+cluster, or with `endpoint` (`host:port`) for a direct password connection; see
+[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 

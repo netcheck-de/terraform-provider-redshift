@@ -1,0 +1,3 @@
+ALTER USER "grafana" CREATEUSER;
+
+ALTER USER "grafana" CREATEDB;

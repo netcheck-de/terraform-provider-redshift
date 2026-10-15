@@ -1,0 +1,1 @@
+-- error: parameter name "app_context.user_id" must be a bare lowercase identifier, such as search_path

@@ -1,0 +1,1 @@
+-- error: SHOW GRANTS FOR lists only USER and ROLE grantees; set object_type to list grants of "GROUP" grantees

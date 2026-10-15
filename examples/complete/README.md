@@ -1,14 +1,16 @@
 # Complete end-to-end example
 
 Create a disposable provisioned RA3 producer and Redshift Serverless consumer, their networks and IAM roles, native SQL
-and S3/Glue sample data, datasharing, users, groups, roles, grants, comments, and matching read-only lookups. The default
-uses one AWS account, private endpoints, and managed administrator secrets with the Data API. No existing warehouse,
-VPC, source table, or Glue catalog is needed.
+and S3/Glue sample data, datasharing, users, groups, roles, grants, tables, views, routines, Spectrum external tables,
+row-level security, masking, comments, and matching read-only lookups and listings. The default uses one AWS account,
+private endpoints, and managed administrator secrets with the Data API. No existing warehouse, VPC, source table, or
+Glue catalog is needed.
 
-All nineteen provider resource/data-source types are represented; `redshift_identity_provider` and its lookup are
-created only when Identity Center is enabled. Identity Center is optional: omitting its instance ARN skips the managed
-SSO application, directory groups/assignments, and SQL identity provider. The connection configurations are in
-`providers.tf`, with optional read-only probes in `connections.tf`.
+All thirty-six provider resource types and forty-seven data source types are represented, and every data source is
+exposed through an output; `redshift_identity_provider` and its lookup are created only when Identity Center is enabled.
+Identity Center is optional: omitting its instance ARN skips the managed SSO application, directory groups/assignments,
+and SQL identity provider. The connection configurations are in `providers.tf`, with optional read-only probes in
+`connections.tf`.
 
 ## Architecture
 
@@ -121,35 +123,51 @@ documented beside the resources; they are not a production security baseline.
 
 ## What is managed
 
-| File                       | Responsibility                                                                           |
-|----------------------------|------------------------------------------------------------------------------------------|
-| `versions.tf`              | Terraform and provider version requirements.                                             |
-| `providers.tf`             | AWS, Random, and all eight Redshift provider configurations (every connection mode).     |
-| `main.tf`                  | Account lookups and shared naming/fixture locals.                                        |
-| `vpc.tf`                   | Two VPC modules, three subnets each, security groups, and private endpoint modules.      |
-| `redshift.tf`              | RA3 cluster and Serverless namespace/workgroup, TLS, IAM attachments, managed passwords. |
-| `iam.tf`                   | Scoped warehouse IAM roles and fixture policies.                                         |
-| `databases.tf`             | Owned SQL databases, local schema, comments, and paired lookups.                         |
-| `datasharing.tf`           | Datashare membership, same-/cross-account sharing, shared database, and paired lookups.  |
-| `access_control.tf`        | SQL users, groups, roles, memberships, grants, default privileges, and paired lookups.   |
-| `s3.tf`                    | Private fixture bucket module, TLS/cross-account policy, and CSV object.                 |
-| `spectrum.tf`              | Glue catalog resources/policy, SQL external schema, and its lookup.                      |
-| `secrets.tf`               | Reader credential secret module.                                                         |
-| `bootstrap.tf`             | Idempotent fixture tables/view and optional PUBLIC ASSUMEROLE policy setup.              |
-| `verification.tf`          | Live shared-data and Spectrum queries.                                                   |
-| `identity_center.tf`       | Optional SSO application, directory groups/assignments, SQL identity provider and roles. |
-| `connections.tf`           | Optional IAM/password connection probes for both warehouse types.                        |
-| `variables.tf`             | Deployment inputs and validation.                                                        |
-| `outputs.tf`               | Warehouse/fixture metadata, catalog observations, connection checks, query identities.   |
-| `tests/`                   | Mocked `terraform test` composition and input-validation runs (no AWS access needed).    |
-| `terraform.tfvars.example` | Every input with its default; copy to `terraform.tfvars` and adjust.                     |
+| File                       | Responsibility                                                                                       |
+|----------------------------|------------------------------------------------------------------------------------------------------|
+| `versions.tf`              | Terraform and provider version requirements.                                                         |
+| `providers.tf`             | AWS, Random, and all eight Redshift provider configurations (every connection mode).                 |
+| `main.tf`                  | Account lookups and shared naming/fixture locals.                                                    |
+| `vpc.tf`                   | Two VPC modules, three subnets each, security groups, and private endpoint modules.                  |
+| `redshift.tf`              | RA3 cluster and Serverless namespace/workgroup, TLS, IAM attachments, managed passwords.             |
+| `iam.tf`                   | Scoped warehouse IAM roles and fixture policies.                                                     |
+| `databases.tf`             | Owned SQL databases, local and external schemas, comments, and paired lookups.                       |
+| `tables.tf`                | Managed tables with keys, identity, defaults, and AUTO layout, a constraint comment, and a lookup.   |
+| `views.tf`                 | Ordinary, late-binding, and materialized views, including a view over a managed table.               |
+| `routines.tf`              | SQL function, stored procedure, a function object grant, and paired lookups.                         |
+| `extfunctions.tf`          | Lambda UDF with its AWS function and IAM role, and the routine listings.                             |
+| `datasharing.tf`           | Datashare membership, grants and privileges, shared database, listings, and paired lookups.          |
+| `access_users.tf`          | SQL users, groups, group memberships, and paired lookups.                                            |
+| `access_roles.tf`          | SQL roles, role memberships, and paired lookups.                                                     |
+| `access_grants.tf`         | Scoped, object, system, ASSUMEROLE, and default privilege grants with paired lookups.                |
+| `permissions.tf`           | Column and language grants, including column grants on a managed table, and grant listings.          |
+| `rls.tf`                   | Row-level security policy on managed tables, its lookup-table grant, attachment, and table security. |
+| `masking.tf`               | Masking policy on managed tables, its lookup-table grant, attachment, and listings.                  |
+| `copy.tf`                  | COPY templates, a template grant, an optional COPY JOB with its S3 event integration, and lookups.   |
+| `diagnostics.tf`           | Configuration parameter lookups, an optional reader lockout listing, and an optional DEBUG grant.    |
+| `discovery.tf`             | Catalog listings of databases, schemas, tables, columns, and constraints, and a constraint comment.  |
+| `models.tf`                | Optional Bedrock model, its EXECUTE grant and lookups, and the schema's model listing.               |
+| `s3.tf`                    | Private fixture bucket module, TLS/cross-account policy, and CSV object.                             |
+| `spectrum.tf`              | Glue catalog resources/policy, SQL external schema, external table and partition, and lookups.       |
+| `secrets.tf`               | Reader credential secret module.                                                                     |
+| `bootstrap.tf`             | Idempotent fixture tables/view and optional PUBLIC ASSUMEROLE policy setup.                          |
+| `verification.tf`          | Live shared-data and Spectrum queries.                                                               |
+| `identity_center.tf`       | Optional SSO application, directory groups/assignments, SQL identity provider and roles.             |
+| `connections.tf`           | Optional IAM/password connection probes for both warehouse types.                                    |
+| `zero_etl.tf`              | Optional zero-ETL integration from an existing or created Aurora source, destination, and lookup.    |
+| `variables.tf`             | Deployment inputs and validation.                                                                    |
+| `outputs*.tf`              | Warehouse/fixture metadata, catalog observations, connection checks, query identities.               |
+| `tests/`                   | Mocked `terraform test` suites per feature area and their shared mocks (no AWS access).              |
+| `terraform.tfvars.example` | Every input with its default; copy to `terraform.tfvars` and adjust.                                 |
 
 The example exercises each resource's documented variants where a single-account deployment allows it: all comment
-targets (database, schema, table, column, view), object grants to users, roles, groups, and PUBLIC, scoped grants for
-every scope including routines and datashare recipients, default privileges per schema and for routines, user capability
-flags, and every provider connection mode. Not covered by a live apply: `with_permissions = false` on a second consumer
-database, a direct-connection `ca_cert_file`, real cross-account sharing (mocked in `tests/`), and Identity Center
-without an existing instance.
+targets (database, schema, table, column, view, constraint), object grants to users, roles, groups, and PUBLIC, scoped
+grants for every scope including routines and datashare recipients, default privileges per schema and for routines, user
+capability flags, and every provider connection mode. Resources also build on each other the way a deployment would: a
+view, a column grant, and a constraint comment on a managed table; RLS and masking policies on managed tables that read
+managed lookup tables through policy grants; and an object grant on a managed function overload. Not covered by a live
+apply: `with_permissions = false` on a second consumer database, a direct-connection `ca_cert_file`, real cross-account
+sharing (mocked in `tests/`), and Identity Center without an existing instance.
 
 Administrator passwords are managed by AWS; only their secret ARNs are passed to the SQL provider and exported. The
 sample reader's and loader's `random_password` values and the reader secret version **retain the passwords in Terraform
@@ -184,6 +202,46 @@ namespaced roles use the created directory groups' actual display names and inhe
 Use an assigned real user and a supported JDBC/browser client to verify SSO, with endpoint connectivity. Creating the
 application/groups is configuration coverage, not proof of interactive login. If login creates federated SQL users,
 remove those users before teardown; the identity-provider resource refuses to drop an integration with remaining users.
+
+## Optional zero-ETL integration
+
+```hcl
+zero_etl_source_arn = "arn:aws:rds:eu-central-1:123456789012:cluster:orders"
+# Required for Aurora PostgreSQL, RDS for PostgreSQL, and RDS for Oracle sources:
+# zero_etl_source_database = "orders"
+```
+
+The source cluster or instance must already exist in the consumer account and region with the engine settings AWS
+requires for zero-ETL. Instead, `zero_etl_create_source = true` creates a disposable Aurora PostgreSQL Serverless v2
+cluster with those settings and an `orders` database in the consumer VPC; it adds about 20 minutes to apply and Aurora
+charges while it exists.
+
+Either way, the consumer workgroup turns on `enable_case_sensitive_identifier`, a namespace resource policy authorizes
+the source, an `aws_rds_integration` replicates it, and `redshift_database`'s `integration` block creates the read-only
+`example_zero_etl` destination database from it. The admin connection creates the database, so replication runs with
+its permissions.
+
+Redshift refuses to drop the destination database while the integration is active, and Terraform drops the database
+first, so delete the integration before destroying the example:
+
+```sh
+aws rds delete-integration --profile <consumer profile> \
+  --integration-identifier "$(terraform output -json zero_etl_database | jq -r .integration_arn)"
+# Wait until the integration no longer exists, then destroy as usual.
+```
+
+## Optional DEBUG grant
+
+```hcl
+federated_debug_database = "sales_db@finance-catalog"
+```
+
+Setting a database grants `DEBUG` on it to the administrators of the consumer account with `redshift_debug_grant` and
+reads the grant back with its lookup. The database must use federated permissions and be visible to the consumer
+workgroup; the example does not register such a warehouse. Without the variable, only the configuration lookups run.
+
+`user_lockouts = true` adds the reader's row from `SHOW USER LOCKOUT`. It is off by default, because warehouses that
+do not support account lockout reject the command.
 
 ## Connection methods
 
@@ -264,11 +322,25 @@ resources to reexecute them. There is no populated, independently managed source
 Use fresh state for this module-based example. It does not include state migrations from earlier complete-example
 configurations; create a new state/configuration directory rather than applying it to an existing deployment.
 
+## Optional Bedrock model
+
+```hcl
+bedrock_model_id = "anthropic.claude-3-haiku-20240307-v1:0"
+```
+
+Setting a model ID creates `redshift_external_model` in the consumer-local schema with the consumer's default IAM role,
+an inline policy that lets that role invoke the model, and an `EXECUTE` grant on the model for the readers role. The
+model must already be enabled in Amazon Bedrock for the consumer account and region; Terraform does not request model
+access. Creation does not call Amazon Bedrock, but the first call of the inference function does. Without the variable,
+only the model listing of the local schema runs.
+
 ## Configuration tests
 
 The [composition suite](tests/composition.tftest.hcl) uses mocked apply runs for private defaults, ASSUMEROLE disabled,
-optional SSO, cross-account sharing, and all connection probes. AWS, Redshift, and the root Random provider are mocked;
-these tests require no AWS credentials and create no infrastructure or SQL objects. The secret module uses a separate
+optional SSO, cross-account sharing, and all connection probes. Each feature area has its own suite next to it, such as
+[grants](tests/grants.tftest.hcl), and all suites share the mock values in [tests/mocks](tests/mocks). AWS, Redshift,
+and the root Random provider are mocked; these tests require no AWS credentials and create no infrastructure or SQL
+objects. The secret module uses a separate
 Random alias because Terraform cannot mock ephemeral resource types; its password generation is disabled, so this
 alias creates no resources. The bucket module's policy-document merge is mocked with valid JSON, while assertions
 check the configured TLS and cross-account policy. Scenario-specific states keep different account and networking

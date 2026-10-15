@@ -1,0 +1,1 @@
+-- error: DATABASE does not accept schema_name or object_name

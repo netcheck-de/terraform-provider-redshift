@@ -1,29 +1,47 @@
 ---
 subcategory: Databases and Schemas
 page_title: redshift_database Data Source - terraform-provider-redshift
-description: Looks up an existing local or shared database.
+description: Looks up an existing local, zero-ETL destination, or shared database.
 ---
 
 # redshift_database (Data Source)
 
-Looks up an existing local or shared database without managing it.
+Looks up an existing local, zero-ETL destination, or shared database without managing it. Local and destination
+databases also report their owner, connection limit, and isolation level, local databases their collation, and
+destination databases their integration. See AWS
+[SHOW DATABASES](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_DATABASES.html),
+[PG_DATABASE_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_DATABASE_INFO.html), and
+[SVV_INTEGRATION](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_INTEGRATION.html).
+
+## Catalog Query
 
 ```sql
 SHOW DATABASES LIKE 'name';
+SELECT ... FROM pg_database_info WHERE datname = 'name';
+SELECT db_collation();
+SELECT ... FROM svv_integration WHERE target_database = 'name';
 ```
 
 ## Example Usage
 
 {{ tffile "examples/data-sources/redshift_database/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
-Missing or ambiguous databases and shared databases without a complete producer binding are errors.
+Missing or ambiguous databases and shared databases without a complete producer binding are errors. The collation is
+read by running `DB_COLLATION()` in the looked-up database, so the caller must be able to connect to it.
+
+Every database that is not `SHARED` is a zero-ETL destination candidate, because `SHOW DATABASES` does not document the
+type of a destination: its `integration` comes from `SVV_INTEGRATION`, which only superusers can see, and is null when
+the view shows no row for the database.
+`query_all_states`, `accept_invalid_chars`, and `truncate_columns` have no catalog column and are always null. A
+destination's `id` includes `integration_id`, so it can be used to import the database.
 
 Shared-database lookups discover the complete producer ARN through
 `redshift:DescribeDataShares` in the consumer account. The caller needs that permission and AWS credentials
 and a region, including when the SQL connection uses a password. The returned ARN retains the producer's region and
 partition; it is not constructed from the consumer's region. Missing or ambiguous AWS metadata is an error.
-Local database lookups require no AWS metadata calls and return `with_permissions = false`.
+Local database lookups require no AWS metadata calls and return `with_permissions = false`; shared database lookups
+return null local options.

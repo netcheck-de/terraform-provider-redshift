@@ -1,0 +1,30 @@
+---
+subcategory: Catalog Discovery
+page_title: redshift_models Data Source - terraform-provider-redshift
+description: Lists the machine learning models of one database.
+---
+
+# redshift_models (Data Source)
+
+Lists the machine learning models of one database, trained and external models alike, optionally narrowed to one
+schema. See AWS [SHOW MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_MODEL.html).
+
+## Catalog Query
+
+```sql
+SHOW MODEL ALL;
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_models/data-source.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+`database` defaults to the provider's `database`; `SHOW MODEL ALL` covers only the database it runs in, so the listing
+runs in the listed database. `id` combines the warehouse binding, the listed database, and the configured filters.
+Items are ordered by schema and name; no match returns an empty `models` list. `SHOW MODEL ALL` has no filter clause,
+so `schema` is applied to its rows. It lists only the models the provider's SQL identity can use. Only read-only SQL
+is executed.

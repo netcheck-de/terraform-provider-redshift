@@ -10,6 +10,8 @@ Manages a SQL user group. Groups contain database users; they are distinct from 
 [CREATE GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_GROUP.html) and
 [DROP GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_GROUP.html).
 
+## SQL Statements
+
 ```sql
 CREATE GROUP name;
 DROP GROUP name;
@@ -19,22 +21,38 @@ DROP GROUP name;
 
 {{ tffile "examples/resources/redshift_group/resource.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## Lifecycle and Ownership
 
 Creation requires a SQL superuser. Memberships and privileges are separate resources; this resource does not reconcile
 them. Delete does not remove users or revoke unrelated grants. Redshift refuses deletion while the group has object
-privileges. Order managed grants and memberships through references; group-name changes propagate into their immutable
-identity inputs and require replacement through the provider's schema.
+privileges. Order managed grants and memberships through references.
+
+## Reconciliation
+
+Refresh reads the group from `pg_group`; the group has no setting that changes in place, so every change replaces it.
+Creation runs `CREATE GROUP` without members.
+
+| Change | Result                                                                                                                                                                                                                                                                                                    |
+|--------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `name` | replaces the group: the provider never renames a group, so `DROP GROUP` runs for the old name and `CREATE GROUP` for the new one; memberships and privileges are not carried over; `redshift_group_membership` and grant resources that reference `name` are replaced and re-create them on the new group |
+
+**Drift.** Refresh records `group_id` and `members` from `pg_group`, including members added by
+`redshift_group_membership` or outside Terraform; both are computed, so they never plan a change. A group dropped
+outside Terraform is removed from state and planned for creation. Privileges granted to the group are never read.
 
 ## Import
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
 {{ tffile "examples/resources/redshift_group/import-by-string-id.tf" }}
+
+The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
+cluster, or with `endpoint` (`host:port`) for a direct password connection; see
+[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 

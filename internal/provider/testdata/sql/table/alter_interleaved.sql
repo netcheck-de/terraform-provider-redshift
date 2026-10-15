@@ -1,0 +1,1 @@
+-- error: the change requires replacing the table: sort_key: ALTER TABLE cannot change distribution or create an interleaved sort key in place

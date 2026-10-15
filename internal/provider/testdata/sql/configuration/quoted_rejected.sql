@@ -1,0 +1,1 @@
+-- error: parameter name "\"search_path\"" must be a bare lowercase identifier, such as search_path

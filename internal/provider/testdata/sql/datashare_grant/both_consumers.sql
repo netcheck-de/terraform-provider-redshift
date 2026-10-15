@@ -1,0 +1,1 @@
+-- error: specify exactly one of account_id and namespace_id

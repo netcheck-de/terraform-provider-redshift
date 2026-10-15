@@ -1,0 +1,1 @@
+ALTER ROLE "readers" EXTERNALID TO "XYZ456";

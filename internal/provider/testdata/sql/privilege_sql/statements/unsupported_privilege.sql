@@ -1,0 +1,1 @@
+-- error: unsupported privilege: "USAGE; DROP TABLE x" is not one of CREATE, TEMPORARY, USAGE

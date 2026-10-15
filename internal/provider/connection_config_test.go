@@ -2,9 +2,16 @@ package provider
 
 import (
 	"context"
+	"math"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/smithy-go"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	framework "github.com/hashicorp/terraform-plugin-framework/provider"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -208,7 +215,7 @@ func TestDirectSSLModeConfiguration(t *testing.T) {
 	data := passwordProvider()
 	data.Connection.SSLMode = types.StringValue(redshiftconn.SSLModeRequire)
 	require.NoError(t, data.validate(false))
-	client, err := data.sqlClient(context.Background())
+	client, err := data.sqlClient(context.Background(), "test")
 	require.NoError(t, err)
 	assert.Equal(t, redshiftconn.SSLModeRequire, client.(*redshiftconn.Client).SSLMode)
 	data.Connection.CACertFile = types.StringValue("ca.pem")
@@ -217,4 +224,145 @@ func TestDirectSSLModeConfiguration(t *testing.T) {
 	require.NoError(t, data.validate(false))
 	data.Connection.SSLMode = types.StringUnknown()
 	require.ErrorContains(t, data.validate(false), "sslmode must be known")
+}
+
+// TestTransportSettingsDefaultsAndOverrides resolves timeouts and the application name from configuration, the
+// environment, and defaults for both transports.
+func TestTransportSettingsDefaultsAndOverrides(t *testing.T) {
+	t.Setenv(queryTimeoutEnv, "")
+	data := passwordProvider()
+	client, err := data.sqlClient(context.Background(), "1.2.3")
+	require.NoError(t, err)
+	direct := client.(*redshiftconn.Client)
+	assert.Equal(t, 5*time.Minute, direct.Timeout)
+	assert.Equal(t, 30*time.Second, direct.ConnectTimeout)
+	assert.Equal(t, "terraform-provider-redshift/1.2.3", direct.ApplicationName)
+
+	t.Setenv(queryTimeoutEnv, "90s")
+	data.Connection.ConnectTimeout, data.ApplicationName = types.StringValue("10s"), types.StringValue("deploy pipeline")
+	client, err = data.sqlClient(context.Background(), "1.2.3")
+	require.NoError(t, err)
+	direct = client.(*redshiftconn.Client)
+	assert.Equal(t, 90*time.Second, direct.Timeout)
+	assert.Equal(t, 10*time.Second, direct.ConnectTimeout)
+	assert.Equal(t, "deploy pipeline", direct.ApplicationName)
+
+	data.QueryTimeout = types.StringValue("2h")
+	client, err = data.sqlClient(context.Background(), "1.2.3")
+	require.NoError(t, err)
+	assert.Equal(t, 2*time.Hour, client.(*redshiftconn.Client).Timeout)
+
+	data.QueryTimeout = types.StringNull()
+	t.Setenv(queryTimeoutEnv, "soon")
+	_, err = data.sqlClient(context.Background(), "1.2.3")
+	require.ErrorContains(t, err, queryTimeoutEnv)
+
+	t.Setenv(queryTimeoutEnv, "")
+	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+	p := New("1.2.3")().(*redshiftProvider)
+	workgroup := providerModel{Region: types.StringValue("eu-central-1"), Database: types.StringValue("admin"), Workgroup: types.StringValue("warehouse"), QueryTimeout: types.StringValue("45s")}
+	var resp framework.ConfigureResponse
+	p.Configure(context.Background(), framework.ConfigureRequest{Config: connectionProviderConfig(t, p, workgroup)}, &resp)
+	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+	dataAPI := p.client.(*dataapi.Client)
+	assert.Equal(t, 45*time.Second, dataAPI.Timeout)
+	assert.Equal(t, "terraform-provider-redshift/1.2.3", dataAPI.StatementName)
+}
+
+// TestTransportSettingsValidation rejects malformed, out-of-range, and unknown transport settings.
+func TestTransportSettingsValidation(t *testing.T) {
+	for name, change := range map[string]func(*providerModel){
+		"query_timeout without unit": func(data *providerModel) { data.QueryTimeout = types.StringValue("300") },
+		"query_timeout zero":         func(data *providerModel) { data.QueryTimeout = types.StringValue("0s") },
+		"query_timeout negative":     func(data *providerModel) { data.QueryTimeout = types.StringValue("-1m") },
+		"connect_timeout malformed":  func(data *providerModel) { data.Connection.ConnectTimeout = types.StringValue("soon") },
+		"max_retries negative":       func(data *providerModel) { data.MaxRetries = types.Int64Value(-1) },
+		"max_retries above cap":      func(data *providerModel) { data.MaxRetries = types.Int64Value(maxRetries + 1) },
+		"max_retries overflowing":    func(data *providerModel) { data.MaxRetries = types.Int64Value(math.MaxInt64) },
+		"retry_mode unsupported":     func(data *providerModel) { data.RetryMode = types.StringValue("legacy") },
+		"application_name empty":     func(data *providerModel) { data.ApplicationName = types.StringValue("") },
+		"application_name non-ASCII": func(data *providerModel) { data.ApplicationName = types.StringValue("déploiement") },
+		"application_name control":   func(data *providerModel) { data.ApplicationName = types.StringValue("line\nbreak") },
+		"application_name too long":  func(data *providerModel) { data.ApplicationName = types.StringValue(strings.Repeat("a", 251)) },
+		"unknown query_timeout":      func(data *providerModel) { data.QueryTimeout = types.StringUnknown() },
+		"unknown connect_timeout":    func(data *providerModel) { data.Connection.ConnectTimeout = types.StringUnknown() },
+		"unknown max_retries":        func(data *providerModel) { data.MaxRetries = types.Int64Unknown() },
+		"unknown retry_mode":         func(data *providerModel) { data.RetryMode = types.StringUnknown() },
+		"unknown application_name":   func(data *providerModel) { data.ApplicationName = types.StringUnknown() },
+		"unknown with deferred client": func(data *providerModel) {
+			data.QueryTimeout, data.Connection.Password = types.StringUnknown(), types.StringUnknown()
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			data := passwordProvider()
+			change(&data)
+			require.Error(t, data.validate(false))
+			unknown := strings.HasPrefix(name, "unknown")
+			if unknown {
+				require.NoError(t, data.validate(true))
+			} else {
+				require.Error(t, data.validate(true))
+			}
+		})
+	}
+	data := passwordProvider()
+	data.QueryTimeout, data.Connection.ConnectTimeout = types.StringValue("1h30m"), types.StringValue("500ms")
+	data.MaxRetries, data.RetryMode = types.Int64Value(maxRetries), types.StringValue("adaptive")
+	data.ApplicationName = types.StringValue(strings.Repeat("a", 250))
+	require.NoError(t, data.validate(false))
+}
+
+// TestDurationValidator reports malformed durations as attribute errors and defers unknown values.
+func TestDurationValidator(t *testing.T) {
+	for value, valid := range map[types.String]bool{
+		types.StringValue("30s"): true, types.StringNull(): true, types.StringUnknown(): true,
+		types.StringValue("30"): false, types.StringValue("0s"): false,
+	} {
+		var resp validator.StringResponse
+		durationValidator{}.ValidateString(context.Background(), validator.StringRequest{Path: path.Root("query_timeout"), ConfigValue: value}, &resp)
+		assert.Equal(t, valid, !resp.Diagnostics.HasError(), value.String())
+	}
+	assert.NotEmpty(t, durationValidator{}.MarkdownDescription(context.Background()))
+}
+
+// TestAWSConfigRetrySettings converts max_retries to SDK attempts and leaves SDK defaults alone when omitted.
+func TestAWSConfigRetrySettings(t *testing.T) {
+	t.Setenv("AWS_MAX_ATTEMPTS", "")
+	t.Setenv("AWS_RETRY_MODE", "")
+	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+	data := providerModel{Region: types.StringValue("eu-central-1")}
+	cfg, err := data.awsConfig(context.Background())
+	require.NoError(t, err)
+	assert.Zero(t, cfg.RetryMaxAttempts)
+	assert.Empty(t, cfg.RetryMode)
+	t.Setenv("AWS_MAX_ATTEMPTS", "7")
+	t.Setenv("AWS_RETRY_MODE", "adaptive")
+	cfg, err = data.awsConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 7, cfg.RetryMaxAttempts)
+	assert.Equal(t, aws.RetryModeAdaptive, cfg.RetryMode)
+	data.MaxRetries, data.RetryMode = types.Int64Value(0), types.StringValue("standard")
+	cfg, err = data.awsConfig(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, 1, cfg.RetryMaxAttempts)
+	assert.Equal(t, aws.RetryModeStandard, cfg.RetryMode)
+	assert.Equal(t, 1, cfg.Retryer().MaxAttempts())
+}
+
+// TestRetryerHasNoRetryQuota keeps sustained throttling from exhausting retries that max_retries still allows: the
+// SDK default quota refuses retries after 100 failures without an intervening success.
+func TestRetryerHasNoRetryQuota(t *testing.T) {
+	throttled := &smithy.GenericAPIError{Code: "ThrottlingException"}
+	for _, mode := range []aws.RetryMode{"", aws.RetryModeStandard, aws.RetryModeAdaptive} {
+		t.Run(string(mode), func(t *testing.T) {
+			retryer := newRetryer(mode, maxRetries+1)
+			assert.Equal(t, maxRetries+1, retryer.MaxAttempts())
+			assert.True(t, retryer.IsErrorRetryable(throttled))
+			for range 1000 {
+				_, err := retryer.GetRetryToken(context.Background(), throttled)
+				require.NoError(t, err)
+			}
+		})
+	}
+	assert.Equal(t, 3, newRetryer("", 0).MaxAttempts())
 }

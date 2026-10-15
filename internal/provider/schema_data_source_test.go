@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerParity(parityCase{source: newSchemaDataSource, resource: newSchemaResource, selectors: []string{"database", "name"}})
+
 // TestSchemaLookup checks local schema lookup and owner refresh.
 func TestSchemaLookup(t *testing.T) {
 	state, diagnostics := readSource(t, newSchemaDataSource(), schemaData{Database: types.StringValue("admin"), Name: types.StringValue("serving")}, &catalog{schema: true})
@@ -16,5 +18,6 @@ func TestSchemaLookup(t *testing.T) {
 	var data schemaData
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.Equal(t, "admin", data.Owner.ValueString())
+	assert.Equal(t, int64(-1), data.Quota.ValueInt64(), "a schema without a quota reports UNLIMITED")
 	assertLookupIdentity(t, data.ID, "admin", map[string]string{"name": "serving"})
 }

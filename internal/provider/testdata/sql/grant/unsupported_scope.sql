@@ -1,0 +1,1 @@
+-- error: unsupported scope "MODELS"

@@ -1,0 +1,1 @@
+-- error: the integration block conflicts with collation; remove one of them

@@ -1,0 +1,1 @@
+-- error: privilege SELECT needs at least one column; remove the key to revoke it

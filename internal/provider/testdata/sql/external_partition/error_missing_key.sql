@@ -1,0 +1,1 @@
+-- error: values must set every partition key of the table: event_date

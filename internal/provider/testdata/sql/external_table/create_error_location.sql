@@ -1,0 +1,1 @@
+-- error: location "https://example.com/data/" must be an s3:// folder or manifest file

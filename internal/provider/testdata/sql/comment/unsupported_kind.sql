@@ -1,0 +1,1 @@
+-- error: unsupported comment object_type "FUNCTION"

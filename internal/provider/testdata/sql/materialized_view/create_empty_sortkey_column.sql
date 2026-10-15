@@ -1,0 +1,1 @@
+-- error: sort_key.columns must be nonempty

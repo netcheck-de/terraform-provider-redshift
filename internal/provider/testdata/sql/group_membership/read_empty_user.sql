@@ -1,0 +1,1 @@
+-- error: query parameter :user is empty

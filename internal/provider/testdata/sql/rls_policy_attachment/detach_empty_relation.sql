@@ -1,0 +1,1 @@
+-- error: RLS policy attachment requires a nonempty policy, schema, and relation

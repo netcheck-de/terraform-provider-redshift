@@ -1,0 +1,96 @@
+---
+subcategory: Functions and Procedures
+page_title: redshift_external_model Resource - terraform-provider-redshift
+description: Manages an Amazon Bedrock model and its inference function.
+---
+
+# redshift_external_model (Resource)
+
+Manages an Amazon Bedrock model created with `CREATE EXTERNAL MODEL` and the inference function Redshift creates for
+it, which sends prompts to Amazon Bedrock from SQL. See AWS
+[CREATE EXTERNAL MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_create_external_model.html),
+[DROP MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_MODEL.html),
+[SHOW MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_MODEL.html), and
+[Amazon Redshift ML integration with Amazon Bedrock](https://docs.aws.amazon.com/redshift/latest/dg/machine-learning-br.html).
+
+## SQL Statements
+
+```sql
+CREATE EXTERNAL MODEL schema.name FUNCTION function IAM_ROLE ... MODEL_TYPE BEDROCK SETTINGS (...);
+DROP MODEL schema.name;
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_external_model/resource.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## Request and Response Formats
+
+| `request_type`      | Inference function                                          | `response_type`                | `prompt`, `suffix` |
+|---------------------|-------------------------------------------------------------|--------------------------------|--------------------|
+| `UNIFIED` (default) | `function(input_text [, inference_config [, ...]])`         | `VARCHAR` (default) or `SUPER` | allowed            |
+| `RAW`               | `function(request_super)` in the Bedrock model's own format | `SUPER`, which must be set     | not allowed        |
+
+Planning rejects the combinations the table excludes. `MODEL_ID` is sent as a string literal, and `REQUEST_TYPE` and
+`RESPONSE_TYPE` are always stated, so the statement records the formats the state holds.
+
+## Lifecycle and Ownership
+
+Creating a model requires a superuser, a user with the `CREATE MODEL` privilege, or a role granted `CREATE MODEL` with
+[`redshift_system_grant`](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/system_grant).
+The IAM role, its permission to invoke the Bedrock model, its association with the cluster or namespace, and access to
+the model in Amazon Bedrock belong to the AWS provider and the Bedrock console.
+
+The model owns its inference function: Redshift creates it in `schema` with the model and drops it with `DROP MODEL`.
+Do not manage the function with `redshift_function`, and do not grant `EXECUTE` on it directly; grant `EXECUTE` on the
+model with [`redshift_object_grant`](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/object_grant)
+and `object_type = "MODEL"`. `DROP MODEL` commits immediately; the provider runs each statement on its own, outside a
+transaction block.
+
+`redshift_models` lists the models of a database, including trained models that this resource does not manage.
+
+## Reconciliation
+
+Refresh finds the model in `SHOW MODEL ALL` of its database and reads its settings from the `SHOW MODEL` key and value
+rows; Redshift has no `ALTER MODEL`, so no change runs SQL in place, and every change replaces the model.
+
+| Change                                                      | Result                                                                      |
+|-------------------------------------------------------------|-----------------------------------------------------------------------------|
+| `database`, `schema`, or `name`                             | replaces the model: the provider never moves or renames a model             |
+| `function`                                                  | replaces the model: the inference function is created with the model        |
+| `iam_role` changed                                          | replaces the model                                                          |
+| `iam_role` respelled as another case of `DEFAULT`           | no SQL; the state records the configured spelling                           |
+| `model_id`, `prompt`, or `suffix` set, changed, or removed  | replaces the model                                                          |
+| `request_type` or `response_type` changed                   | replaces the model; an omitted value is the default, `UNIFIED` or `VARCHAR` |
+| `request_type` or `response_type` respelled in another case | no SQL; the state records the configured spelling                           |
+
+**Drift.** `SHOW MODEL` documents the owner and the function name, but not the keys of the Bedrock settings, so refresh
+reads `function`, `iam_role`, `model_id`, `prompt`, `suffix`, `request_type`, and `response_type` only where
+`SHOW MODEL` prints a matching key (such as `Function Name`, `IAM Role`, or `Model ID`), and otherwise keeps the
+state. A reported value that differs from the state replaces the model in the next plan. A configured `DEFAULT` role
+matches whichever role the catalog reports, and only the model's owner sees the IAM role. `owner` reports the catalog
+owner. A dropped model or database is removed from state, and the next plan creates the model again.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_external_model/import-by-string-id.tf" }}
+
+The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
+cluster, or with `endpoint` (`host:port`) for a direct password connection; see
+[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_external_model/import.sh" }}
+
+Import reads the settings `SHOW MODEL` reports. To the model's owner it prints the model ID, prompt, suffix, request
+type, function, and IAM role (`DEFAULT` as `default-aws-iam-role`); other users see no role. It never prints the
+response type, so import records the Redshift default for the request type: `VARCHAR` for `UNIFIED`, `SUPER` for `RAW`.
+A setting that is not reported stays unset, so the first plan afterwards replaces the model when the configuration
+sets it, as for a `UNIFIED` model created with `response_type = "SUPER"` or a role imported by a non-owner.

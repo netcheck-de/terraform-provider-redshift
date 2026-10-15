@@ -1,0 +1,1 @@
+-- error: volatility: "LEAKPROOF" is not one of VOLATILE, STABLE, IMMUTABLE

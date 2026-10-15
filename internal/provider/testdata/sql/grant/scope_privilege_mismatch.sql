@@ -1,0 +1,1 @@
+-- error: LANGUAGES grants support only USAGE, not "EXECUTE"

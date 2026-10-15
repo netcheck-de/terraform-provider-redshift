@@ -1,0 +1,1 @@
+-- error: return_type: data type "geometry" is not supported by Lambda UDFs

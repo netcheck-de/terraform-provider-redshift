@@ -1,0 +1,1 @@
+-- error: DATABASE object_name must equal database_name

@@ -1,0 +1,1 @@
+-- error: argument 1 mode: "VARIADIC" is not one of IN, OUT, INOUT

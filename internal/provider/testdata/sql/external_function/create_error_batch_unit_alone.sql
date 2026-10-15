@@ -1,0 +1,1 @@
+-- error: max_batch_size_unit requires max_batch_size

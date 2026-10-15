@@ -1,0 +1,1 @@
+-- error: grant options are not supported for this permission

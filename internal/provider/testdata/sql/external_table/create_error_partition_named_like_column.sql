@@ -1,0 +1,1 @@
+-- error: partition_key name "Label" repeats "label"

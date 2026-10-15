@@ -1,0 +1,1 @@
+-- error: invalid DATA_CATALOG external schema: DATA_CATALOG does not accept uri

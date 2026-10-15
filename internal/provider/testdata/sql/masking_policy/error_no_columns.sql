@@ -1,0 +1,1 @@
+-- error: at least one input_column block is required

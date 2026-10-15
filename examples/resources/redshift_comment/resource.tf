@@ -13,3 +13,12 @@ resource "redshift_comment" "column" {
   column_name   = "day"
   text          = "UTC reporting date."
 }
+
+resource "redshift_comment" "primary_key" {
+  database_name   = "analytics"
+  object_type     = "CONSTRAINT"
+  schema_name     = "reporting"
+  object_name     = "daily_summary"
+  constraint_name = "daily_summary_pkey"
+  text            = "One row per reporting day."
+}

@@ -9,6 +9,8 @@ description: Reads schema membership and future-object inclusion in a producer d
 Reads explicit schema membership and its actual future-object sharing policy. See AWS
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
+## Catalog Query
+
 ```sql
 SELECT ... FROM svv_datashare_objects WHERE share_name = 'datashare' ...;
 ```
@@ -17,9 +19,9 @@ SELECT ... FROM svv_datashare_objects WHERE share_name = 'datashare' ...;
 
 {{ tffile "examples/data-sources/redshift_datashare_schema/data-source.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `id` (String, computed) is the relationship's JSON identity, using the same warehouse, producer database, datashare, and
 schema keys as the paired resource. It is null when `exists` is false.

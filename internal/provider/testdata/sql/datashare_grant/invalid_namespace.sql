@@ -1,0 +1,1 @@
+-- error: namespace_id must be a UUID

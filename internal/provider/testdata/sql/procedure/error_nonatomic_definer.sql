@@ -1,0 +1,1 @@
+-- error: SECURITY DEFINER is not supported for a NONATOMIC procedure

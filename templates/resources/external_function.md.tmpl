@@ -1,0 +1,96 @@
+---
+subcategory: Functions and Procedures
+page_title: redshift_external_function Resource - terraform-provider-redshift
+description: Manages a scalar Lambda user-defined function.
+---
+
+# redshift_external_function (Resource)
+
+Manages a scalar Lambda user-defined function (UDF) that Redshift runs by invoking an AWS Lambda function. See AWS
+[CREATE EXTERNAL FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_FUNCTION.html),
+[ALTER FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_FUNCTION.html),
+[DROP FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_FUNCTION.html), and
+[Scalar Lambda UDFs](https://docs.aws.amazon.com/redshift/latest/dg/udf-creating-a-lambda-sql-udf.html).
+
+## SQL Statements
+
+```sql
+CREATE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;
+CREATE OR REPLACE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;
+ALTER FUNCTION schema.name(arguments) OWNER TO owner;
+DROP FUNCTION schema.name(arguments);
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_external_function/resource.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## Lifecycle and Ownership
+
+The Lambda function, its execution role, and the IAM role that lets the warehouse invoke it belong to the AWS
+provider; associate that role with the cluster or namespace, or use `iam_role = "default"`. Creating the function
+requires superuser or the `CREATE [ OR REPLACE ] EXTERNAL FUNCTION` privilege and `USAGE ON LANGUAGE exfunc`.
+
+`name` and the canonical `arguments`, the argument types without length or precision, identify the overload.
+`CREATE OR REPLACE EXTERNAL FUNCTION` and `ALTER FUNCTION ... OWNER TO` require a superuser. `DROP FUNCTION` does
+**not** cascade; remove dependent views first.
+
+No documented catalog view reports `lambda_function`, `iam_role`, or the retry and batch options, so there is no
+`redshift_external_function` data source: a lookup could not report the Lambda options. `redshift_functions` lists
+Lambda UDFs with their signature, return type, volatility, language, and owner, and `redshift_routine_parameters` lists
+their parameters.
+
+## Reconciliation
+
+Refresh reads the signature, result type, volatility, language, and owner from `pg_proc`; an update runs at most one
+`CREATE OR REPLACE EXTERNAL FUNCTION`, which redefines the existing overload instead of dropping it, and then one
+`ALTER FUNCTION ... OWNER TO`, and re-reads the catalog to verify the result; every other change replaces the function.
+`CREATE OR REPLACE EXTERNAL FUNCTION` restates the whole definition with every configured option, so several changed
+arguments share one statement, and an option removed from the configuration falls back to the Redshift default.
+
+| Change                                                                                         | Result                                                                                                                                |
+|------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
+| `database`, `schema`, or `name`                                                                | replaces the function: the provider never moves or renames a function                                                                 |
+| `arguments` respelled with the same canonical types, such as `INT` for `INTEGER`               | no SQL; the state records the configured spelling                                                                                     |
+| `arguments` element given another length or precision, such as `VARCHAR(20)` for `VARCHAR(10)` | `CREATE OR REPLACE EXTERNAL FUNCTION`                                                                                                 |
+| `arguments` element added, removed, reordered, or changed to another base type                 | replaces the function: the canonical argument types identify the overload                                                             |
+| `arguments` known only during apply                                                            | replaces the function: the plan cannot tell whether the signature changes                                                             |
+| `return_type` respelled with the same canonical type                                           | no SQL; the state records the configured spelling                                                                                     |
+| `return_type` given another length or precision                                                | `CREATE OR REPLACE EXTERNAL FUNCTION`                                                                                                 |
+| `return_type` changed to another base type, or known only during apply                         | replaces the function: `OR REPLACE` requires the same data types                                                                      |
+| `volatility` changed, or removed while `STABLE`                                                | `CREATE OR REPLACE EXTERNAL FUNCTION`; an omitted `volatility` is `VOLATILE`                                                          |
+| `lambda_function` or `iam_role`                                                                | `CREATE OR REPLACE EXTERNAL FUNCTION`                                                                                                 |
+| `retry_timeout`, `max_batch_rows`, `max_batch_size`, or `max_batch_size_unit` set or changed   | `CREATE OR REPLACE EXTERNAL FUNCTION` with the new option                                                                             |
+| `retry_timeout`, `max_batch_rows`, `max_batch_size`, or `max_batch_size_unit` removed          | `CREATE OR REPLACE EXTERNAL FUNCTION` without the option, so the Redshift default applies; without a unit, `max_batch_size` counts KB |
+| `owner` set to a value other than the current owner, or changed                                | `ALTER FUNCTION ... OWNER TO`, after any `CREATE OR REPLACE EXTERNAL FUNCTION`                                                        |
+| `owner` removed                                                                                | no SQL; the current owner stays and is still reported                                                                                 |
+
+**Drift.** Refresh compares the catalog result type, volatility, and owner with the state. A volatility changed outside
+Terraform is restored with `CREATE OR REPLACE EXTERNAL FUNCTION`. A configured `owner` changed outside Terraform is set
+back with `ALTER FUNCTION ... OWNER TO`, and an omitted one follows the catalog. A result type with another base type
+replaces the function; `pg_proc` reports types without length or precision, so a change to those alone is not
+detected. A dropped overload, including one re-created outside Terraform with other argument types, is removed from
+state, and the next plan creates it again. `lambda_function`, `iam_role`, `retry_timeout`, `max_batch_rows`,
+`max_batch_size`, and `max_batch_size_unit` are never read back: Terraform keeps the configured values, so changes made
+outside Terraform are not detected, and an import leaves them unset until the first apply restates the definition with
+`CREATE OR REPLACE EXTERNAL FUNCTION`.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity. `arguments` is the canonical signature
+Create records: the argument types as the catalog spells them, without length or precision, separated by `", "`, and
+`""` for a function without arguments.
+
+{{ tffile "examples/resources/redshift_external_function/import-by-string-id.tf" }}
+
+The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
+cluster, or with `endpoint` (`host:port`) for a direct password connection; see
+[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_external_function/import.sh" }}

@@ -1,0 +1,1 @@
+-- error: query: SQL text must not contain the parameter placeholder :name, because it runs without parameters

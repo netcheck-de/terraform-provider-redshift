@@ -1,0 +1,3 @@
+ALTER SCHEMA "serving" OWNER TO "etl";
+
+ALTER SCHEMA "serving" QUOTA 2048 MB;

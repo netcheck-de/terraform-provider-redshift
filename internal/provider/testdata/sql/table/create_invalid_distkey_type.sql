@@ -1,0 +1,1 @@
+-- error: distribution.key column "payload" has type SUPER, which Redshift does not allow in a key

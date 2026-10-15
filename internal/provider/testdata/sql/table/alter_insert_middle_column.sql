@@ -1,0 +1,1 @@
+ALTER TABLE "serving"."events" ADD COLUMN "note" CHARACTER VARYING(32) ENCODE LZO;

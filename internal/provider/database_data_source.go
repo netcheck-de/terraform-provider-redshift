@@ -17,6 +17,8 @@ type databaseDataSource struct {
 // databaseData shares the resource's readable attributes without lifecycle ownership.
 type databaseData = databaseModel
 
+var _ = registerDataSource(newDatabaseDataSource)
+
 // newDatabaseDataSource constructs a read-only local/shared database lookup.
 func newDatabaseDataSource() datasource.DataSource { return &databaseDataSource{} }
 
@@ -28,16 +30,21 @@ func (d *databaseDataSource) Metadata(_ context.Context, req datasource.Metadata
 // Schema defines the lookup name and observed database/share attributes.
 func (d *databaseDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Looks up a local or shared database and its producer binding.",
+		MarkdownDescription: "Looks up a local database with its owner and options, a zero-ETL destination database with its integration, or a shared database with its producer binding.",
 		Attributes: map[string]schema.Attribute{
 			"id":                 dataSourceIDAttribute(),
 			"name":               schema.StringAttribute{Required: true, MarkdownDescription: "Database name."},
 			"datashare_arn":      schema.StringAttribute{Computed: true, MarkdownDescription: "Backing producer datashare ARN; null for local databases. Shared lookups require redshift:DescribeDataShares."},
-			"database_type":      schema.StringAttribute{Computed: true, MarkdownDescription: "`local` or `shared`."},
+			"database_type":      schema.StringAttribute{Computed: true, MarkdownDescription: databaseTypeDescription},
 			"with_permissions":   schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether the shared database requires object grants."},
 			"share_name":         schema.StringAttribute{Computed: true, MarkdownDescription: "Producer share name; null for local databases."},
 			"producer_account":   schema.StringAttribute{Computed: true, MarkdownDescription: "Producer account ID; null for local databases."},
 			"producer_namespace": schema.StringAttribute{Computed: true, MarkdownDescription: "Producer namespace ID; null for local databases."},
+			"owner":              schema.StringAttribute{Computed: true, MarkdownDescription: "SQL user owning a local database; null for shared databases."},
+			"connection_limit":   schema.Int64Attribute{Computed: true, MarkdownDescription: "Maximum concurrent connections to a local database; `-1` means `UNLIMITED`. Null for shared databases."},
+			"collation":          schema.StringAttribute{Computed: true, MarkdownDescription: "`CASE_SENSITIVE` or `CASE_INSENSITIVE` for a local database, read with `DB_COLLATION()` in a session inside it; null for shared databases, or with a warning when that session is refused, for example by the database's connection limit."},
+			"isolation_level":    schema.StringAttribute{Computed: true, MarkdownDescription: "`SERIALIZABLE` or `SNAPSHOT` for a local database; null for shared databases."},
+			"integration":        databaseIntegrationLookupAttribute(),
 		},
 	}
 }
@@ -49,7 +56,7 @@ func (d *databaseDataSource) Read(ctx context.Context, req datasource.ReadReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	observed, found, err := d.databaseMetadata(ctx, data.Name.ValueString())
+	observed, found, err := d.databaseCatalog(ctx, data.Name.ValueString(), true)
 	if err != nil {
 		resp.Diagnostics.AddError("Read database", err.Error())
 		return
@@ -60,7 +67,23 @@ func (d *databaseDataSource) Read(ctx context.Context, req datasource.ReadReques
 	}
 	data = observed
 	identity := map[string]string{"name": data.Name.ValueString()}
-	if data.DatabaseType.ValueString() == "shared" {
+	// SHOW DATABASES does not document the type of a zero-ETL destination, which may report as local, so every
+	// database but a shared one is looked up in SVV_INTEGRATION. A provider identity that is not a superuser sees no
+	// row there, which leaves the integration null.
+	if data.DatabaseType.ValueString() != databaseTypeShared {
+		integration, found, err := d.databaseIntegration(ctx, data.Name.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Read database integration", err.Error())
+			return
+		}
+		if found {
+			data.Integration = &integration
+			identity["integration_id"] = integration.IntegrationID.ValueString()
+		}
+	}
+	// A destination takes no collation, so the collation is read after the integration, which skips it.
+	d.databaseReadCollation(ctx, &data, &resp.Diagnostics)
+	if data.DatabaseType.ValueString() == databaseTypeShared {
 		if d.datashareARN == nil {
 			resp.Diagnostics.AddError("Discover datashare ARN", "The provider has no datashare metadata discovery client.")
 			return

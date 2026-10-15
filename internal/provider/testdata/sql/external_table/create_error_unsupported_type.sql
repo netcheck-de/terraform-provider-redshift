@@ -1,0 +1,1 @@
+-- error: column "id": data type "timestamptz" is not supported by external tables

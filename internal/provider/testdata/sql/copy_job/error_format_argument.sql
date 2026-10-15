@@ -1,0 +1,1 @@
+-- error: format JSON needs format_argument, such as 'auto'

@@ -1,0 +1,1 @@
+-- error: SET configuration parameters are not supported for a NONATOMIC procedure

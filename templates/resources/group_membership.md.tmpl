@@ -9,6 +9,8 @@ description: Manages one user-to-group relationship.
 Owns one database user's membership in one SQL group. See AWS
 [ALTER GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_GROUP.html).
 
+## SQL Statements
+
 ```sql
 ALTER GROUP group ADD USER user;
 ALTER GROUP group DROP USER user;
@@ -18,22 +20,37 @@ ALTER GROUP group DROP USER user;
 
 {{ tffile "examples/resources/redshift_group_membership/resource.tf" }}
 
-<!-- markdownlint-disable MD013 MD022 MD033 -->
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
-<!-- markdownlint-enable MD013 MD022 MD033 -->
-
-Changing `group` or `user` replaces the membership.
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## Lifecycle and Ownership
 
-Creation adds this user if absent; deletion removes only this membership. Drift removes a missing relationship from
-state so Terraform can restore it. Other group members remain independent.
+This resource owns only this user's membership; other group members remain independent.
+
+## Reconciliation
+
+Refresh checks whether the user is a member of the group in `pg_group`; the relationship has no setting that changes
+in place, so every change replaces it. Creation runs `ALTER GROUP ... ADD USER` only when the user is not yet a member,
+and deletion runs `ALTER GROUP ... DROP USER` only while it is; both re-read the catalog to verify the result.
+
+| Change  | Result                                                                                                                |
+|---------|-----------------------------------------------------------------------------------------------------------------------|
+| `group` | replaces the membership: `ALTER GROUP ... DROP USER` for the old group and `ALTER GROUP ... ADD USER` for the new one |
+| `user`  | replaces the membership: `ALTER GROUP ... DROP USER` for the old user and `ALTER GROUP ... ADD USER` for the new one  |
+
+**Drift.** A membership removed outside Terraform, or whose group or user was dropped, is removed from state, and the
+next plan adds it again. Other members of the group are never read, so members added outside Terraform stay.
 
 ## Import
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
 {{ tffile "examples/resources/redshift_group_membership/import-by-string-id.tf" }}
+
+The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
+cluster, or with `endpoint` (`host:port`) for a direct password connection; see
+[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 

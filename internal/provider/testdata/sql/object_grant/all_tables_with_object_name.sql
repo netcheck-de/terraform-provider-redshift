@@ -1,0 +1,1 @@
+-- error: ALL TABLES does not accept object_name

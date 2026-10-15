@@ -1,0 +1,1 @@
+-- error: type AWSIDC requires iam_role_arn

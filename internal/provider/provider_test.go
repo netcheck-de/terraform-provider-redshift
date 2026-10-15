@@ -290,7 +290,7 @@ func TestProviderLifecycle(t *testing.T) {
 		},
 		Steps: []resource.TestStep{
 			{Config: config, Check: resource.ComposeTestCheckFunc(
-				checkAttributes(t, "redshift_database.analytics", map[string]string{"with_permissions": "true", "database_type": "shared", "share_name": "source", "producer_account": "123456789012", "producer_namespace": "11111111-2222-3333-4444-555555555555"}),
+				checkAttributes(t, "redshift_database.analytics", map[string]string{"with_permissions": "true", "database_type": "SHARED", "share_name": "source", "producer_account": "123456789012", "producer_namespace": "11111111-2222-3333-4444-555555555555"}),
 				checkAttributes(t, "redshift_database.producer", map[string]string{"name": "warehouse"}),
 				checkAttributes(t, "redshift_datashare.producer", map[string]string{"publicly_accessible": "false"}),
 				checkAttributes(t, "redshift_datashare_schema.serving", map[string]string{"include_new": "true"}),
@@ -299,7 +299,7 @@ func TestProviderLifecycle(t *testing.T) {
 				checkAttributes(t, "redshift_identity_provider.main", map[string]string{"enabled": "true"}),
 				checkAttributes(t, "redshift_user.grafana", map[string]string{"password_wo_version": "0"}),
 				checkAttributes(t, "data.redshift_user.grafana", map[string]string{"superuser": "false"}),
-				checkAttributes(t, "data.redshift_database.analytics", map[string]string{"database_type": "shared", "datashare_arn": shareARN, "id": `{"database":"admin","datashare_arn":"` + shareARN + `","name":"analytics","workgroup_name":"warehouse"}`}),
+				checkAttributes(t, "data.redshift_database.analytics", map[string]string{"database_type": "SHARED", "datashare_arn": shareARN, "id": `{"database":"admin","datashare_arn":"` + shareARN + `","name":"analytics","workgroup_name":"warehouse"}`}),
 				checkAttributes(t, "data.redshift_datashare.producer", map[string]string{"publicly_accessible": "false"}),
 				checkAttributes(t, "redshift_grant.read", map[string]string{"privileges.#": "1"}),
 			)},

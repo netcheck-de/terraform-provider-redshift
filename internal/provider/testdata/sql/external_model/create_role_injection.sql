@@ -1,0 +1,1 @@
+-- error: iam_role must be DEFAULT or one IAM role ARN, got "x' MODEL_TYPE BEDROCK --"

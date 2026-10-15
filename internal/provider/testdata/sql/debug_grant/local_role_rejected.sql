@@ -1,0 +1,1 @@
+-- error: a ROLE grantee must be an Identity Center group named <prefix>:<group>

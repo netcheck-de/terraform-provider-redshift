@@ -1,0 +1,1 @@
+-- error: query: SQL text is empty

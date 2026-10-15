@@ -1,0 +1,1 @@
+-- error: table.columns must not contain empty names

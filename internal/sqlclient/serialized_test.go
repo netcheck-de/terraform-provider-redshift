@@ -61,7 +61,7 @@ func TestSerializedMutationsAllowReadsAndCancelledWaiters(t *testing.T) {
 	}()
 	<-started
 	t.Cleanup(func() { close(release); <-done })
-	for _, sql := range []string{" SELECT name", "show grants"} {
+	for _, sql := range []string{" SELECT name", "show grants", "DESC DATASHARE sales", "desc identity provider oidc"} {
 		rows, err := client.Query(context.Background(), Connection{Database: "admin"}, sql, map[string]string{"name": "reader"})
 		require.NoError(t, err)
 		assert.Equal(t, []Row{{"name": "reader"}}, rows)
@@ -87,4 +87,11 @@ func TestSerializedMutationsReleaseAfterErrors(t *testing.T) {
 		require.ErrorIs(t, err, failure)
 	}
 	assert.Equal(t, 2, calls)
+}
+
+// TestObservationVerbsAreACopy keeps callers from changing which statements bypass the mutation gate.
+func TestObservationVerbsAreACopy(t *testing.T) {
+	verbs := ObservationVerbs()
+	verbs[0] = "DROP"
+	assert.Equal(t, []string{"SELECT", "SHOW", "DESC"}, ObservationVerbs())
 }

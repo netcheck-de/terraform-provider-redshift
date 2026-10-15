@@ -1,0 +1,1 @@
+ALTER MATERIALIZED VIEW "Odd""Schema"."My""Summary" ALTER COMPOUND SORTKEY ("Label""Col", "ID");

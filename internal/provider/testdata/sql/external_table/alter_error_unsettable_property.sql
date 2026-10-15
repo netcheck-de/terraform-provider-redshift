@@ -1,0 +1,1 @@
+-- error: table property "compression_type" can only be set when the table is created; ALTER TABLE ... SET TABLE PROPERTIES supports numRows, skip.header.line.count, orc.schema.resolution; replace the table

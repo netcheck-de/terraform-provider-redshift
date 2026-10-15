@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -31,7 +32,68 @@ type datashareModel struct {
 	Name types.String `tfsdk:"name"`
 	// PublicAccessible allows public consumer workgroups when enabled.
 	PublicAccessible types.Bool `tfsdk:"publicly_accessible"`
+	// Owner is the catalog-reported owning user; ALTER DATASHARE documents no way to change it.
+	Owner types.String `tfsdk:"owner"`
+	// ShareID is the catalog's numeric datashare ID.
+	ShareID types.Int64 `tfsdk:"share_id"`
+	// ProducerAccount is the AWS account of the producer namespace.
+	ProducerAccount types.String `tfsdk:"producer_account"`
+	// ProducerNamespace is the producer namespace UUID.
+	ProducerNamespace types.String `tfsdk:"producer_namespace"`
+	// CreatedAt is the catalog creation timestamp as text.
+	CreatedAt types.String `tfsdk:"created_at"`
 }
+
+// datashareMetadata holds the observed catalog attributes shared by the resource, its lookup, and the listing.
+type datashareMetadata struct {
+	// owner is the owning user name, null for an inbound share.
+	owner types.String
+	// shareID is the numeric datashare ID, null when the catalog reports none.
+	shareID types.Int64
+	// producerAccount is the producer AWS account ID.
+	producerAccount types.String
+	// producerNamespace is the producer namespace UUID.
+	producerNamespace types.String
+	// createdAt is the creation timestamp as text.
+	createdAt types.String
+}
+
+// datashareText trims catalog padding and maps an empty value to null, because SVV_DATASHARES leaves columns
+// such as share_owner and source_database empty for inbound shares.
+func datashareText(value string) types.String {
+	if value = strings.TrimSpace(value); value == "" {
+		return types.StringNull()
+	}
+	return types.StringValue(value)
+}
+
+// datashareRowMetadata decodes the observed attributes of one datashareColumns row.
+func datashareRowMetadata(row sqlclient.Row) (datashareMetadata, error) {
+	metadata := datashareMetadata{
+		owner: datashareText(row["owner"]), shareID: types.Int64Null(), producerAccount: datashareText(row["producer_account"]),
+		producerNamespace: datashareText(row["producer_namespace"]), createdAt: datashareText(row["created_at"]),
+	}
+	if id := strings.TrimSpace(row["share_id"]); id != "" {
+		parsed, err := strconv.ParseInt(id, 10, 64)
+		if err != nil {
+			return metadata, fmt.Errorf("decode datashare ID: %w", err)
+		}
+		metadata.shareID = types.Int64Value(parsed)
+	}
+	return metadata, nil
+}
+
+// apply copies the observed attributes into the resource model.
+func (m datashareMetadata) apply(data *datashareModel) {
+	data.Owner, data.ShareID, data.ProducerAccount, data.ProducerNamespace, data.CreatedAt = m.owner, m.shareID, m.producerAccount, m.producerNamespace, m.createdAt
+}
+
+// clearObserved nulls the computed attributes, so state written before verification never holds unknown values.
+func (data *datashareModel) clearObserved() {
+	datashareMetadata{owner: types.StringNull(), shareID: types.Int64Null(), producerAccount: types.StringNull(), producerNamespace: types.StringNull(), createdAt: types.StringNull()}.apply(data)
+}
+
+var _ = registerResource(newDatashareResource)
 
 // newDatashareResource constructs a producer datashare handler.
 func newDatashareResource() resource.Resource { return &datashareResource{} }
@@ -59,6 +121,26 @@ func (r *datashareResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Optional: true, Computed: true, Default: booldefault.StaticBool(false),
 				MarkdownDescription: "Whether public workgroups may consume the share; defaults to `false`. Updated in place.",
 			},
+			"owner": schema.StringAttribute{
+				Computed: true, PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				MarkdownDescription: "Database user owning the datashare: the user that ran `CREATE DATASHARE`. Read-only, because `ALTER DATASHARE` has no `OWNER TO` clause.",
+			},
+			"share_id": schema.Int64Attribute{
+				Computed: true, PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+				MarkdownDescription: "Numeric datashare ID reported by `SVV_DATASHARES`.",
+			},
+			"producer_account": schema.StringAttribute{
+				Computed: true, PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				MarkdownDescription: "AWS account ID of the producer namespace.",
+			},
+			"producer_namespace": schema.StringAttribute{
+				Computed: true, PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				MarkdownDescription: "Producer namespace UUID; with `producer_account` and `name` it identifies the datashare ARN.",
+			},
+			"created_at": schema.StringAttribute{
+				Computed: true, PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				MarkdownDescription: "Creation timestamp reported by `SVV_DATASHARES`, as text without a time zone.",
+			},
 		},
 	}
 }
@@ -75,9 +157,7 @@ func (r *datashareResource) read(ctx context.Context, data *datashareModel) (boo
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
-	rows, err := r.queryDatabase(ctx, data.Database.ValueString(),
-		"SELECT share_name, share_type, source_database, is_publicaccessible, managed_by FROM svv_datashares WHERE share_name = :name AND share_type = 'OUTBOUND'",
-		map[string]string{"name": data.Name.ValueString()})
+	rows, err := r.selectRows(ctx, data.Database.ValueString(), readDatashareQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
@@ -89,8 +169,13 @@ func (r *datashareResource) read(ctx context.Context, data *datashareModel) (boo
 	if err != nil {
 		return false, fmt.Errorf("decode datashare public accessibility: %w", err)
 	}
+	metadata, err := datashareRowMetadata(row)
+	if err != nil {
+		return false, err
+	}
 	data.Name = types.StringValue(strings.TrimSpace(row["share_name"]))
 	data.PublicAccessible = types.BoolValue(public)
+	metadata.apply(data)
 	return true, nil
 }
 
@@ -101,12 +186,12 @@ func (r *datashareResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	sql := "CREATE DATASHARE " + sqlclient.Identifier(data.Name.ValueString()) + " SET PUBLICACCESSIBLE " + strconv.FormatBool(data.PublicAccessible.ValueBool())
-	if _, err := r.queryDatabase(ctx, data.Database.ValueString(), sql, nil); err != nil {
+	if err := r.exec(ctx, data.Database.ValueString(), createDatashareStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Create datashare", err.Error())
 		return
 	}
 	data.ID = r.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.clearObserved()
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	expected := data.PublicAccessible
 	found, err := r.read(ctx, &data)
@@ -147,12 +232,11 @@ func (r *datashareResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	sql := "ALTER DATASHARE " + sqlclient.Identifier(data.Name.ValueString()) + " SET PUBLICACCESSIBLE " + strconv.FormatBool(data.PublicAccessible.ValueBool())
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update datashare", err.Error())
 		return
 	}
-	if _, err := r.queryDatabase(ctx, data.Database.ValueString(), sql, nil); err != nil {
+	if err := r.exec(ctx, data.Database.ValueString(), alterDatashareStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Update datashare", err.Error())
 		return
 	}
@@ -178,7 +262,7 @@ func (r *datashareResource) Delete(ctx context.Context, req resource.DeleteReque
 	}
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
-		_, err = r.queryDatabase(ctx, data.Database.ValueString(), "DROP DATASHARE "+sqlclient.Identifier(data.Name.ValueString()), nil)
+		err = r.exec(ctx, data.Database.ValueString(), dropDatashareStatement(data))
 		if err == nil {
 			found, err = r.read(ctx, &data)
 			if err == nil && found {

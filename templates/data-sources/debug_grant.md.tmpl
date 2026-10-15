@@ -1,0 +1,35 @@
+---
+subcategory: Permissions
+page_title: redshift_debug_grant Data Source - terraform-provider-redshift
+description: Checks whether a grantee holds DEBUG on a database with federated permissions.
+---
+
+# redshift_debug_grant (Data Source)
+
+Checks whether a global identity, an Identity Center group, or the administrators of an account hold `DEBUG` on one
+database in a warehouse with federated permissions, as `SHOW GRANTS` reports it. See AWS
+[GRANT DEBUG](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-debug-syntax) and
+[SHOW GRANTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_GRANTS.html).
+
+## Catalog Query
+
+```sql
+SHOW GRANTS ON DATABASE database;
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_debug_grant/data-source.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+`exists` is true when a `DEBUG` row with the grantee's identity type (`global_user`, `global_group`, or
+`admins_of_account`) names the grantee, compared without case. A missing grant, or a database that `SHOW GRANTS`
+cannot read and `SHOW DATABASES` no longer lists, reports `false`; other catalog errors remain errors. `SHOW GRANTS`
+shows only grants visible to the provider's identity.
+
+`id` (String, computed) is the grant's JSON identity, using the same warehouse, database, `grantee`, and upper-case
+`grantee_type` keys as the paired resource. It is null when `exists` is false. No grant is created, adopted, or
+revoked.

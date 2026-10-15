@@ -1,0 +1,1 @@
+-- error: source "https://bucket/prefix" must be an s3:// prefix

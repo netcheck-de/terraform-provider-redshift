@@ -1,0 +1,1 @@
+-- error: input_columns must name distinct, nonempty columns

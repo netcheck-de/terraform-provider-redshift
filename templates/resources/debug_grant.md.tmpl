@@ -1,0 +1,90 @@
+---
+subcategory: Permissions
+page_title: redshift_debug_grant Resource - terraform-provider-redshift
+description: Manages DEBUG on a database with federated permissions for a global identity, group, or account.
+---
+
+# redshift_debug_grant (Resource)
+
+Grants `DEBUG` on one database in a warehouse with
+[federated permissions](https://docs.aws.amazon.com/redshift/latest/dg/federated-permissions.html). Redshift redacts
+sensitive values in the secure logging records of queries that read fine-grained access controlled data; `DEBUG` lets
+the grantee see them unredacted. The grantee is a global identity, an Identity Center group, or the superusers of an
+account. See AWS [GRANT DEBUG](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-debug-syntax),
+[usage notes](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT-usage-notes.html#r_GRANT-usage-notes-debug), and
+[REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
+
+## SQL Statements
+
+```sql
+GRANT DEBUG ON DATABASE database TO ...;
+REVOKE DEBUG ON DATABASE database FROM ...;
+SHOW GRANTS ON DATABASE database;
+```
+
+## Example Usage
+
+{{ tffile "examples/resources/redshift_debug_grant/resource.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+`grantee_type` selects the grantee form:
+
+| `grantee_type` | `grantee`                                       | Statement                             |
+|----------------|-------------------------------------------------|---------------------------------------|
+| `USER`         | global identity `<prefix>:<name>`               | `TO "<prefix>:<name>"`                |
+| `ROLE`         | Identity Center group `<prefix>:<group>`        | `TO ROLE "<prefix>:<group>"`          |
+| `ACCOUNT`      | 12-digit AWS account ID of the producer account | `TO ADMINS OF ACCOUNT '<account_id>'` |
+
+The prefix of a global identity names its identity provider: `IAM` for an IAM user, `IAMR` for an IAM role, or the
+Identity Center namespace for an Identity Center user. A `USER` or `ROLE` grantee without a prefix is rejected during
+planning, because Redshift refuses `DEBUG` for local users, local groups, and `PUBLIC`. A global identity sees only
+the records of its own queries, and so does each member of a group; account administrators see every record, also
+when Redshift exports system tables to Amazon S3 Tables. `DEBUG` is prospective: it affects only records written
+while it is granted.
+
+## Lifecycle and Ownership
+
+Only a superuser or the owner of the database can grant or revoke `DEBUG`, and only on a database in a warehouse with
+federated permissions. Statements run in the provider's administration database and name the database, so a
+cross-warehouse name such as `sales_db@finance-catalog` works without connecting to it. `DEBUG` is not part of
+`GRANT ALL ON DATABASE` and never carries a grant option, so this resource owns exactly one grant and other database
+privileges, managed by `redshift_object_grant` and `redshift_grant`, are unaffected. Deregistering the warehouse from
+the AWS Glue Data Catalog keeps the grant without effect; dropping the database removes it. A query that joins several
+databases with federated permissions needs `DEBUG` on each of them to be unredacted.
+
+## Reconciliation
+
+Refresh runs `SHOW GRANTS ON DATABASE` and looks for the `DEBUG` row whose `identity_type` is `global_user`,
+`global_group`, or `admins_of_account` for `USER`, `ROLE`, or `ACCOUNT`, comparing `identity_name` without case. There
+is no in-place SQL; every change replaces the grant: `REVOKE DEBUG` from the old grantee, `GRANT DEBUG` to the new
+one, each followed by a `SHOW GRANTS` read that verifies it.
+
+| Change                                 | Result                                                                      |
+|----------------------------------------|-----------------------------------------------------------------------------|
+| `database`                             | replaces the grant: `DEBUG` is granted on one database per statement        |
+| `grantee`                              | replaces the grant: the grantee is part of the grant                        |
+| `grantee_type` set to another keyword  | replaces the grant: the grantee form and its catalog identity type change   |
+| `grantee_type` spelled in another case | no SQL; the update checks that the grant still exists and records the value |
+
+**Drift.** A `DEBUG` grant revoked outside Terraform is removed from state, and the next plan grants it again. When
+`SHOW GRANTS` fails and `SHOW DATABASES` no longer lists the database, the database counts as dropped and the grant is
+removed from state too; any other failure is an error. Other grants on the database are never read.
+
+## Import
+
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
+
+{{ tffile "examples/resources/redshift_debug_grant/import-by-string-id.tf" }}
+
+The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
+cluster, or with `endpoint` (`host:port`) for a direct password connection; see
+[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
+
+Alternatively, use `terraform import`:
+
+{{ codefile "shell" "examples/resources/redshift_debug_grant/import.sh" }}
+
+The JSON identity's `database` is the database `DEBUG` applies to, and `grantee_type` is upper case.
