@@ -41,7 +41,17 @@ type privilegeCatalog struct {
 }
 
 // Query emulates explicit privilege catalogs and records exact SQL mutations.
-func (c *privilegeCatalog) Query(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+func (c *privilegeCatalog) Query(_ context.Context, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+	if strings.HasPrefix(sql, "SELECT usesuper FROM pg_user") {
+		return []sqlclient.Row{{"usesuper": "true"}}, nil
+	}
+	if parameters["all_arn"] != "" {
+		// These single-tuple fixtures have no independent ON ALL grant; overlap tests supply their own catalog.
+		return nil, nil
+	}
+	if parameters["ambiguous_name"] != "" || parameters["collision_schema"] != "" {
+		return nil, nil
+	}
 	if strings.HasPrefix(sql, "SHOW GRANTS") || strings.Contains(sql, " AS privilege_type") || strings.HasPrefix(sql, "SELECT privilege_type") {
 		rows := []sqlclient.Row{}
 		for value := range c.values {
@@ -103,6 +113,9 @@ func privilegeObject(t *testing.T, r *privilegeResource, fields map[string]strin
 	for name, attribute := range schema.Schema.Attributes {
 		attributeTypes[name] = attribute.GetType()
 		attributes[name] = types.StringNull()
+		if attribute.GetType().Equal(types.BoolType) {
+			attributes[name] = types.BoolNull()
+		}
 		if set, ok := attribute.GetType().(types.SetType); ok {
 			attributes[name] = types.SetValueMust(set.ElemType, nil)
 		}
