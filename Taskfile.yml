@@ -57,9 +57,9 @@ tasks:
         | sh -s -- -b "$(dirname "{{.GOLANGCI_LINT}}")" {{.GOLANGCI_LINT_VERSION}}
 
   test:
-    desc: Run offline race tests and print statement coverage
+    desc: Run offline race tests, including Terraform contracts, and print statement coverage
     cmds:
-      - go test -race -cover ./...
+      - go test -race -cover {{.CLI_ARGS}} ./...
 
   golden:
     desc: Rewrite golden SQL files under internal/provider/testdata/sql; review the diff before committing

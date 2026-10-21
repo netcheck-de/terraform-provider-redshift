@@ -3,22 +3,17 @@ package provider
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
-	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -276,48 +271,4 @@ func TestMaskingPolicyInputsReplacement(t *testing.T) {
 	var observed maskingPolicyModel
 	require.False(t, updated.Get(ctx, &observed).HasError())
 	assert.True(t, observed.InputColumn.Equal(maskingLifecyclePolicy.InputColumn), "the update records the configured spelling")
-}
-
-// TestMaskingPolicyBlockPlan drives input_column blocks through real plans, which the model-level tests skip: the
-// required-block validator, the empty plan after apply, and the in-place update for another spelling of a type.
-func TestMaskingPolicyBlockPlan(t *testing.T) {
-	c := &catalog{identity: true, privileges: map[string]bool{}}
-	configuration := func(blocks string) string {
-		return fmt.Sprintf(`
-provider "redshift" {
-  region = "eu-central-1"
-  workgroup_name = "warehouse"
-  database = "admin"
-}
-resource "redshift_masking_policy" "email" {
-  database = "admin"
-  name = "mask_email"
-  expression = "'***'::VARCHAR(256)"
-%s
-}`, blocks)
-	}
-	varchar := configuration(`  input_column {
-    name = "email"
-    type = "VARCHAR(256)"
-  }`)
-	text := configuration(`  input_column {
-    name = "email"
-    type = "TEXT"
-  }`)
-	testresource.UnitTest(t, testresource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})},
-		Steps: []testresource.TestStep{
-			{Config: configuration(""), ExpectError: regexp.MustCompile(`Block input_column must have a configuration value`), PlanOnly: true},
-			{Config: varchar, Check: testresource.TestCheckResourceAttr("redshift_masking_policy.email", "input_column.0.type", "VARCHAR(256)")},
-			{Config: varchar, PlanOnly: true},
-			{
-				Config: text,
-				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
-					plancheck.ExpectResourceAction("redshift_masking_policy.email", plancheck.ResourceActionUpdate),
-				}},
-				Check: testresource.TestCheckResourceAttr("redshift_masking_policy.email", "input_column.0.type", "TEXT"),
-			},
-			{Config: text, PlanOnly: true},
-		},
-	})
 }

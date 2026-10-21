@@ -14,7 +14,8 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
-func TestDatabaseCollationInPlacePlans(t *testing.T) {
+func TestContractDatabaseCollationInPlacePlans(t *testing.T) {
+	t.Parallel()
 	databasesPlanCase(t, &catalog{}, "redshift_database.warehouse", `
 resource "redshift_database" "warehouse" {
   name      = "warehouse"
@@ -28,7 +29,8 @@ resource "redshift_database" "warehouse" {
 
 // A failed multi-option apply must not make reverted configuration look clean, even when CONNECTION LIMIT 0
 // prevents the refresh session from recovering a stale collation: the verified partial value must already be saved.
-func TestDatabaseCollationRevertedConfigPlans(t *testing.T) {
+func TestContractDatabaseCollationRevertedConfigPlans(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"owner failure", "verification failure with zero limit"} {
 		t.Run(mode, func(t *testing.T) {
 			c := &catalog{}
@@ -65,6 +67,7 @@ resource "redshift_database" "warehouse" {
 				after = configuration("CASE_INSENSITIVE", "admin", 0)
 				reverted = configuration("CASE_SENSITIVE", "admin", 0)
 			}
+			t.Parallel()
 			resource.UnitTest(t, resource.TestCase{
 				ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
 					"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: client}),

@@ -27,6 +27,37 @@ followed by `go mod tidy`, and upgrade a tool explicitly with `go get -tool <mod
 
 ## Go test conventions
 
+### Offline tests
+
+`go test ./...` runs all offline tests, including contract tests that launch the Terraform CLI with fake SQL clients.
+Terraform must be installed, but no AWS credentials or Redshift warehouse are needed. `task test` runs the same suite
+with race detection and statement coverage. Live acceptance tests remain separately gated by `TF_ACC=1`.
+
+```sh
+task test
+task test -- -run TestName -count=1
+```
+
+Arguments after `--` pass through to `go test`. Parallel tests use Go's default concurrency limit.
+
+Keep Terraform CLI scenarios in neighboring `*_contract_test.go` files and name their tests
+`TestContract...`. These files call `resource.UnitTest` with fake SQL clients; they are not live acceptance tests.
+Use explicit `t.Parallel()` in isolated tests and subtests. Keep unit tests and shared fixtures in the neighboring
+`*_test.go` files. No build tags or separate commands are needed for contract tests.
+Live tests stay in `*_acceptance_test.go` files with `TestAcc...` names and the existing acceptance prechecks; do not
+use `TF_ACC` to enable offline contracts.
+
+### Isolation and assertions
+
+Use `t.Parallel` only with isolated per-test fixtures; do not mutate process environment or shared globals from a
+parallel test or its parent. Tests using `t.Setenv`, `os.Setenv`, or working-directory changes must stay serial, and
+contract setup must not perform those mutations before calling `t.Parallel`. Keep fixture registrations at
+package initialization, not inside parallel tests.
+
+Use `testing/synctest` for isolated, in-process timer, retry, cancellation, and goroutine coordination tests instead of
+wall-clock sleeps. Use `synctest.Wait` to observe blocked goroutines deterministically; fake time does not control
+Terraform subprocesses, network I/O, or external clocks, so do not wrap Terraform contracts in a synctest bubble.
+
 [testify](https://github.com/stretchr/testify) is the required assertion library for all Go tests. Use `require` when a
 failure makes the rest of the test meaningless (setup, errors, preconditions) and `assert` for independent checks; do not
 hand-roll `if ... { t.Errorf(...) }` comparisons. golangci-lint's `testifylint` enforces idiomatic usage.
@@ -303,7 +334,10 @@ CI uses only public actions and tools and runs from the repository root, so fork
 access or secrets for lint, offline tests, documentation checks, or snapshot builds.
 
 CI runs golangci-lint and snapshot builds through their actions and uses `task markdown-fmt-check`, `task test`,
-`task terraform-check`, `task terraform-test`, and `task docs-check` for the same checks available locally.
+`task terraform-check`, `task terraform-test`, and `task docs-check` for the same checks
+available locally.
+The Go unit job does not install Terraform; the separate Go Terraform contract job installs the real CLI with
+`terraform_wrapper: false` and runs the complete tagged suite. Terraform example validation remains a separate job.
 `task terraform-check` builds the local provider once, checks example formatting, then initializes and validates each
 directory under `examples/` using the development override and filesystem mirror. The release workflow runs the full CI
 workflow before publishing through the version-pinned GoReleaser action with full Git history for the changelog.

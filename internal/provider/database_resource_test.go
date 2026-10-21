@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -190,47 +192,51 @@ func TestDatabaseRejectsIncompatibleBinding(t *testing.T) {
 func TestDatabaseCreationConditions(t *testing.T) {
 	for _, name := range []string{"invalid ARN", "admin conflict", "unknown target", "already bound", "canceled", "propagation", "without permissions"} {
 		t.Run(name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			c := &catalog{}
-			data := databaseModel{Name: types.StringValue("analytics"), DatashareARN: types.StringValue(shareARN), WithPermissions: types.BoolValue(true)}
-			switch name {
-			case "invalid ARN":
-				data.DatashareARN = types.StringValue("invalid")
-			case "admin conflict":
-				data.Name = types.StringValue("admin")
-			case "unknown target":
-			case "already bound":
-				c.database = true
-			case "canceled":
-				cancel()
-			case "without permissions":
-				data.WithPermissions = types.BoolValue(false)
-			}
-			polls := 0
-			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
-				if strings.HasPrefix(sql, "SELECT consumer_database") {
-					polls++
-					if name == "canceled" || (name == "propagation" && polls == 1) {
-						return nil, nil
-					}
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				c := &catalog{}
+				data := databaseModel{Name: types.StringValue("analytics"), DatashareARN: types.StringValue(shareARN), WithPermissions: types.BoolValue(true)}
+				switch name {
+				case "invalid ARN":
+					data.DatashareARN = types.StringValue("invalid")
+				case "admin conflict":
+					data.Name = types.StringValue("admin")
+				case "unknown target":
+				case "already bound":
+					c.database = true
+				case "canceled":
+					cancel()
+				case "without permissions":
+					data.WithPermissions = types.BoolValue(false)
 				}
-				return c.Query(ctx, target, sql, parameters)
+				polls := 0
+				client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+					if strings.HasPrefix(sql, "SELECT consumer_database") {
+						polls++
+						if name == "canceled" || (name == "propagation" && polls == 1) {
+							return nil, nil
+						}
+					}
+					return c.Query(ctx, target, sql, parameters)
+				})
+				r := &databaseResource{testResourceClient(client)}
+				if name == "unknown target" {
+					r.warehouse.value = types.StringUnknown()
+				}
+				state := testState(t, r, data)
+				resp := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
+				started := time.Now()
+				r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan(state)}, &resp)
+				assert.Equal(t, name != "propagation" && name != "without permissions", resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+				if name == "propagation" {
+					assert.Equal(t, 2, polls)
+					assert.Equal(t, time.Second, time.Since(started))
+				}
+				if name == "without permissions" {
+					assert.False(t, c.permissions)
+				}
 			})
-			r := &databaseResource{testResourceClient(client)}
-			if name == "unknown target" {
-				r.warehouse.value = types.StringUnknown()
-			}
-			state := testState(t, r, data)
-			resp := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
-			r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan(state)}, &resp)
-			assert.Equal(t, name != "propagation" && name != "without permissions", resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
-			if name == "propagation" {
-				assert.Equal(t, 2, polls)
-			}
-			if name == "without permissions" {
-				assert.False(t, c.permissions)
-			}
 		})
 	}
 	c := &catalog{database: true, permissions: true}

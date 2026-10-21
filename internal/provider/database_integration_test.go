@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -142,60 +143,68 @@ func TestDatabaseIntegrationDrift(t *testing.T) {
 
 // TestDatabaseIntegrationMustConverge reports an acknowledged ALTER whose setting the catalog does not hold.
 func TestDatabaseIntegrationMustConverge(t *testing.T) {
-	c := fullCatalog()
-	configuredIntegrationCatalog(fakeState[*databaseIntegrationFamily](c, "database_integration"))
-	r := &databaseResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
-		if sql == `ALTER DATABASE "replica" INTEGRATION SET REFRESH_INTERVAL 0` {
-			return nil, nil
-		}
-		return c.Query(ctx, target, sql, parameters)
-	}))}
-	planned := integrationState()
-	integration := *planned.Integration
-	integration.RefreshInterval = types.Int64Value(0)
-	planned.Integration = &integration
-	state := testState(t, r, integrationState())
-	plan := withTimeouts(t, testState(t, r, planned), map[string]string{"update": "10ms"})
-	response := resource.UpdateResponse{State: state}
-	r.Update(context.Background(), resource.UpdateRequest{State: state, Plan: tfsdk.Plan(plan)}, &response)
-	require.True(t, response.Diagnostics.HasError())
-	assert.Contains(t, response.Diagnostics.Errors()[0].Detail(), "integration.refresh_interval is 600")
+	synctest.Test(t, func(t *testing.T) {
+		c := fullCatalog()
+		configuredIntegrationCatalog(fakeState[*databaseIntegrationFamily](c, "database_integration"))
+		r := &databaseResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+			if sql == `ALTER DATABASE "replica" INTEGRATION SET REFRESH_INTERVAL 0` {
+				return nil, nil
+			}
+			return c.Query(ctx, target, sql, parameters)
+		}))}
+		planned := integrationState()
+		integration := *planned.Integration
+		integration.RefreshInterval = types.Int64Value(0)
+		planned.Integration = &integration
+		state := testState(t, r, integrationState())
+		plan := withTimeouts(t, testState(t, r, planned), map[string]string{"update": "30s"})
+		response := resource.UpdateResponse{State: state}
+		started := time.Now()
+		r.Update(context.Background(), resource.UpdateRequest{State: state, Plan: tfsdk.Plan(plan)}, &response)
+		require.True(t, response.Diagnostics.HasError())
+		assert.Contains(t, response.Diagnostics.Errors()[0].Detail(), "integration.refresh_interval is 600")
+		assert.Equal(t, 30*time.Second, time.Since(started))
+	})
 }
 
 // TestDatabaseIntegrationDelayedReadback covers acknowledged ALTERs whose catalog settings are initially stale.
 func TestDatabaseIntegrationDelayedReadback(t *testing.T) {
-	c := fullCatalog()
-	configuredIntegrationCatalog(fakeState[*databaseIntegrationFamily](c, "database_integration"))
-	readsAfterAlter := 0
-	altered := false
-	client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
-		if strings.HasPrefix(sql, `ALTER DATABASE "replica" INTEGRATION SET REFRESH_INTERVAL`) {
-			altered = true
-		}
-		rows, err := c.Query(ctx, target, sql, parameters)
-		if altered && strings.HasPrefix(sql, "SELECT TRIM(integration_id)") {
-			readsAfterAlter++
-			if readsAfterAlter == 1 && len(rows) == 1 {
-				rows[0]["refresh_interval"] = "600"
+	synctest.Test(t, func(t *testing.T) {
+		c := fullCatalog()
+		configuredIntegrationCatalog(fakeState[*databaseIntegrationFamily](c, "database_integration"))
+		readsAfterAlter := 0
+		altered := false
+		client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+			if strings.HasPrefix(sql, `ALTER DATABASE "replica" INTEGRATION SET REFRESH_INTERVAL`) {
+				altered = true
 			}
-		}
-		return rows, err
+			rows, err := c.Query(ctx, target, sql, parameters)
+			if altered && strings.HasPrefix(sql, "SELECT TRIM(integration_id)") {
+				readsAfterAlter++
+				if readsAfterAlter == 1 && len(rows) == 1 {
+					rows[0]["refresh_interval"] = "600"
+				}
+			}
+			return rows, err
+		})
+		r := &databaseResource{testResourceClient(client)}
+		planned := integrationState()
+		integration := *planned.Integration
+		integration.RefreshInterval = types.Int64Value(1800)
+		planned.Integration = &integration
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		state := testState(t, r, integrationState())
+		response := resource.UpdateResponse{State: state}
+		started := time.Now()
+		r.Update(ctx, resource.UpdateRequest{State: state, Plan: tfsdk.Plan(testState(t, r, planned))}, &response)
+		require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
+		assert.Equal(t, 2, readsAfterAlter)
+		var observed databaseResourceModel
+		require.False(t, response.State.Get(ctx, &observed).HasError())
+		assert.Equal(t, int64(1800), observed.Integration.RefreshInterval.ValueInt64())
+		assert.Equal(t, time.Second, time.Since(started))
 	})
-	r := &databaseResource{testResourceClient(client)}
-	planned := integrationState()
-	integration := *planned.Integration
-	integration.RefreshInterval = types.Int64Value(1800)
-	planned.Integration = &integration
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	state := testState(t, r, integrationState())
-	response := resource.UpdateResponse{State: state}
-	r.Update(ctx, resource.UpdateRequest{State: state, Plan: tfsdk.Plan(testState(t, r, planned))}, &response)
-	require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
-	assert.Equal(t, 2, readsAfterAlter)
-	var observed databaseResourceModel
-	require.False(t, response.State.Get(ctx, &observed).HasError())
-	assert.Equal(t, int64(1800), observed.Integration.RefreshInterval.ValueInt64())
 }
 
 // TestDatabaseIntegrationReadFailures rejects a destination the provider cannot verify instead of adopting it.
@@ -232,115 +241,127 @@ func TestDatabaseIntegrationReadFailures(t *testing.T) {
 // and drops the block from state, so the plan replaces the database, destroy still drops it, and creation fails
 // verification.
 func TestDatabaseIntegrationHidden(t *testing.T) {
-	hidden := func() *catalog {
-		c := fullCatalog()
+	synctest.Test(t, func(t *testing.T) {
+		hidden := func() *catalog {
+			c := fullCatalog()
+			f := fakeState[*databaseIntegrationFamily](c, "database_integration")
+			configuredIntegrationCatalog(f)
+			f.hidden = true
+			return c
+		}
+		r := newDatabaseResource()
+		configureTestResource(t, r, hidden())
+		state, diagnostics := applyOperation(t, r, "read", integrationState(), nil, nil)
+		require.False(t, diagnostics.HasError(), "%v", diagnostics)
+		require.Len(t, diagnostics.Warnings(), 1)
+		assert.Contains(t, diagnostics.Warnings()[0].Detail(), "plans a replacement")
+		var data databaseResourceModel
+		require.False(t, state.Get(context.Background(), &data).HasError())
+		assert.Nil(t, data.Integration)
+		assert.Equal(t, fakeIntegrationDatabase, data.Name.ValueString())
+
+		c := hidden()
+		r = newDatabaseResource()
+		configureTestResource(t, r, c)
+		_, diagnostics = applyOperation(t, r, "delete", integrationState(), nil, nil)
+		require.False(t, diagnostics.HasError(), "%v", diagnostics)
+		assert.False(t, fakeState[*databaseIntegrationFamily](c, "database_integration").exists)
+
+		c = hidden()
 		f := fakeState[*databaseIntegrationFamily](c, "database_integration")
-		configuredIntegrationCatalog(f)
-		f.hidden = true
-		return c
-	}
-	r := newDatabaseResource()
-	configureTestResource(t, r, hidden())
-	state, diagnostics := applyOperation(t, r, "read", integrationState(), nil, nil)
-	require.False(t, diagnostics.HasError(), "%v", diagnostics)
-	require.Len(t, diagnostics.Warnings(), 1)
-	assert.Contains(t, diagnostics.Warnings()[0].Detail(), "plans a replacement")
-	var data databaseResourceModel
-	require.False(t, state.Get(context.Background(), &data).HasError())
-	assert.Nil(t, data.Integration)
-	assert.Equal(t, fakeIntegrationDatabase, data.Name.ValueString())
-
-	c := hidden()
-	r = newDatabaseResource()
-	configureTestResource(t, r, c)
-	_, diagnostics = applyOperation(t, r, "delete", integrationState(), nil, nil)
-	require.False(t, diagnostics.HasError(), "%v", diagnostics)
-	assert.False(t, fakeState[*databaseIntegrationFamily](c, "database_integration").exists)
-
-	c = hidden()
-	f := fakeState[*databaseIntegrationFamily](c, "database_integration")
-	f.exists = false
-	r = newDatabaseResource()
-	configureTestResource(t, r, c)
-	plan := withTimeouts(t, testState(t, r, configuredIntegrationDatabase()), map[string]string{"create": "10ms"})
-	response := resource.CreateResponse{State: emptyState(t, r)}
-	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(plan)}, &response)
-	require.True(t, response.Diagnostics.HasError())
-	assert.Contains(t, response.Diagnostics.Errors()[0].Detail(), "only superusers")
-	require.False(t, response.State.Get(context.Background(), &data).HasError())
-	require.NotNil(t, data.Integration, "apply verification must keep the binding even when visibility times out")
-	assert.Equal(t, fakeIntegrationID, data.Integration.IntegrationID.ValueString())
-	f.hidden = false
-	refreshed := resource.ReadResponse{State: response.State}
-	r.Read(context.Background(), resource.ReadRequest{State: response.State}, &refreshed)
-	require.False(t, refreshed.Diagnostics.HasError(), "%v", refreshed.Diagnostics)
-	require.False(t, refreshed.State.Get(context.Background(), &data).HasError())
-	require.NotNil(t, data.Integration, "a later refresh must discover the binding after apply-time visibility recovers")
-	assert.Equal(t, fakeIntegrationID, data.Integration.IntegrationID.ValueString())
+		f.exists = false
+		r = newDatabaseResource()
+		configureTestResource(t, r, c)
+		plan := withTimeouts(t, testState(t, r, configuredIntegrationDatabase()), map[string]string{"create": "2m"})
+		response := resource.CreateResponse{State: emptyState(t, r)}
+		started := time.Now()
+		r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(plan)}, &response)
+		require.True(t, response.Diagnostics.HasError())
+		assert.Contains(t, response.Diagnostics.Errors()[0].Detail(), "only superusers")
+		assert.Equal(t, databaseIntegrationReadbackWait, time.Since(started))
+		require.False(t, response.State.Get(context.Background(), &data).HasError())
+		require.NotNil(t, data.Integration, "apply verification must keep the binding even when visibility times out")
+		assert.Equal(t, fakeIntegrationID, data.Integration.IntegrationID.ValueString())
+		f.hidden = false
+		refreshed := resource.ReadResponse{State: response.State}
+		r.Read(context.Background(), resource.ReadRequest{State: response.State}, &refreshed)
+		require.False(t, refreshed.Diagnostics.HasError(), "%v", refreshed.Diagnostics)
+		require.False(t, refreshed.State.Get(context.Background(), &data).HasError())
+		require.NotNil(t, data.Integration, "a later refresh must discover the binding after apply-time visibility recovers")
+		assert.Equal(t, fakeIntegrationID, data.Integration.IntegrationID.ValueString())
+	})
 }
 
 // TestDatabaseIntegrationAbsentThenVisible separates apply-time visibility lag from ordinary deletion refresh.
 func TestDatabaseIntegrationAbsentThenVisible(t *testing.T) {
 	for _, operation := range []string{"create", "update"} {
 		t.Run(operation, func(t *testing.T) {
-			c := fullCatalog()
-			f := fakeState[*databaseIntegrationFamily](c, "database_integration")
-			configuredIntegrationCatalog(f)
-			f.exists = operation == "update"
-			written, hiddenReads := false, 0
-			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
-				if strings.HasPrefix(sql, "CREATE DATABASE") || strings.HasPrefix(sql, "ALTER DATABASE") {
-					written = true
+			synctest.Test(t, func(t *testing.T) {
+				c := fullCatalog()
+				f := fakeState[*databaseIntegrationFamily](c, "database_integration")
+				configuredIntegrationCatalog(f)
+				f.exists = operation == "update"
+				written, hiddenReads := false, 0
+				client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+					if strings.HasPrefix(sql, "CREATE DATABASE") || strings.HasPrefix(sql, "ALTER DATABASE") {
+						written = true
+					}
+					if written && strings.HasPrefix(sql, "SELECT TRIM(integration_id)") && hiddenReads < 2 {
+						hiddenReads++
+						return nil, nil
+					}
+					return c.Query(ctx, target, sql, parameters)
+				})
+				r := &databaseResource{testResourceClient(client)}
+				planned := configuredIntegrationDatabase()
+				if operation == "update" {
+					planned.Integration.RefreshInterval = types.Int64Value(1800)
 				}
-				if written && strings.HasPrefix(sql, "SELECT TRIM(integration_id)") && hiddenReads < 2 {
-					hiddenReads++
-					return nil, nil
-				}
-				return c.Query(ctx, target, sql, parameters)
+				started := time.Now()
+				state, diagnostics := applyOperation(t, r, operation, integrationState(), planned, nil)
+				require.False(t, diagnostics.HasError(), "%v", diagnostics)
+				assert.Equal(t, 2, hiddenReads)
+				var observed databaseResourceModel
+				require.False(t, state.Get(context.Background(), &observed).HasError())
+				require.NotNil(t, observed.Integration)
+				assert.Equal(t, fakeIntegrationID, observed.Integration.IntegrationID.ValueString())
+				assert.Equal(t, planned.Integration.RefreshInterval, observed.Integration.RefreshInterval)
+				assert.Equal(t, 2*time.Second, time.Since(started))
 			})
-			r := &databaseResource{testResourceClient(client)}
-			planned := configuredIntegrationDatabase()
-			if operation == "update" {
-				planned.Integration.RefreshInterval = types.Int64Value(1800)
-			}
-			state, diagnostics := applyOperation(t, r, operation, integrationState(), planned, nil)
-			require.False(t, diagnostics.HasError(), "%v", diagnostics)
-			assert.Equal(t, 2, hiddenReads)
-			var observed databaseResourceModel
-			require.False(t, state.Get(context.Background(), &observed).HasError())
-			require.NotNil(t, observed.Integration)
-			assert.Equal(t, fakeIntegrationID, observed.Integration.IntegrationID.ValueString())
-			assert.Equal(t, planned.Integration.RefreshInterval, observed.Integration.RefreshInterval)
 		})
 	}
 }
 
 func TestDatabaseIntegrationInitiallyAbsentBeforeUpdate(t *testing.T) {
-	c := fullCatalog()
-	f := fakeState[*databaseIntegrationFamily](c, "database_integration")
-	configuredIntegrationCatalog(f)
-	f.refreshInterval = "3600"
-	hiddenReads := 0
-	r := &databaseResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
-		if strings.HasPrefix(sql, "SELECT TRIM(integration_id)") && hiddenReads < 2 {
-			hiddenReads++
-			return nil, nil
-		}
-		return c.Query(ctx, target, sql, parameters)
-	}))}
-	planned := integrationState()
-	integration := *planned.Integration
-	integration.RefreshInterval = types.Int64Value(1800)
-	planned.Integration = &integration
-	state := testState(t, r, integrationState())
-	plan := withTimeouts(t, testState(t, r, planned), map[string]string{"update": "5s"})
-	response := resource.UpdateResponse{State: state}
-	r.Update(context.Background(), resource.UpdateRequest{State: state, Plan: tfsdk.Plan(plan)}, &response)
-	require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
-	var observed databaseResourceModel
-	require.False(t, response.State.Get(context.Background(), &observed).HasError())
-	require.NotNil(t, observed.Integration)
-	assert.Equal(t, int64(1800), observed.Integration.RefreshInterval.ValueInt64(), "initial visibility retries must not wait for stale prior settings")
+	synctest.Test(t, func(t *testing.T) {
+		c := fullCatalog()
+		f := fakeState[*databaseIntegrationFamily](c, "database_integration")
+		configuredIntegrationCatalog(f)
+		f.refreshInterval = "3600"
+		hiddenReads := 0
+		r := &databaseResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+			if strings.HasPrefix(sql, "SELECT TRIM(integration_id)") && hiddenReads < 2 {
+				hiddenReads++
+				return nil, nil
+			}
+			return c.Query(ctx, target, sql, parameters)
+		}))}
+		planned := integrationState()
+		integration := *planned.Integration
+		integration.RefreshInterval = types.Int64Value(1800)
+		planned.Integration = &integration
+		state := testState(t, r, integrationState())
+		plan := withTimeouts(t, testState(t, r, planned), map[string]string{"update": "2m"})
+		response := resource.UpdateResponse{State: state}
+		started := time.Now()
+		r.Update(context.Background(), resource.UpdateRequest{State: state, Plan: tfsdk.Plan(plan)}, &response)
+		require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
+		var observed databaseResourceModel
+		require.False(t, response.State.Get(context.Background(), &observed).HasError())
+		require.NotNil(t, observed.Integration)
+		assert.Equal(t, int64(1800), observed.Integration.RefreshInterval.ValueInt64(), "initial visibility retries must not wait for stale prior settings")
+		assert.Equal(t, 2*time.Second, time.Since(started))
+	})
 }
 
 // TestDatabaseIntegrationDeleteActive explains the teardown order when Redshift refuses to drop a destination whose

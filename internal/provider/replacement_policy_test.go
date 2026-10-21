@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 	"slices"
 	"strings"
@@ -11,7 +10,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/float64planmodifier"
@@ -24,10 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
-	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -511,36 +506,4 @@ func TestReplacingNestedAttributesFound(t *testing.T) {
 	}}}
 	assert.Equal(t, []string{"inner", "inner.child"}, replacingNestedAttributes(t, parent))
 	assert.Empty(t, replacingNestedAttributes(t, schema.StringAttribute{Optional: true}))
-}
-
-// TestReferencedRoleNameChangeReplacesMembership verifies Terraform propagates names without caller lifecycle triggers.
-func TestReferencedRoleNameChangeReplacesMembership(t *testing.T) {
-	c := &catalog{identity: true, privileges: map[string]bool{}}
-	configuration := func(name string) string {
-		return fmt.Sprintf(`
-provider "redshift" {
-  region = "eu-central-1"
-  workgroup_name = "warehouse"
-  database = "admin"
-}
-resource "redshift_role" "reader" { name = %q }
-resource "redshift_role_grant" "reader" {
-  role = "sys:dba"
-  to_role = redshift_role.reader.name
-}`, name)
-	}
-	testresource.UnitTest(t, testresource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})},
-		Steps: []testresource.TestStep{
-			{Config: configuration("before")},
-			{Config: configuration("after"), ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
-				plancheck.ExpectResourceAction("redshift_role.reader", plancheck.ResourceActionDestroyBeforeCreate),
-				plancheck.ExpectResourceAction("redshift_role_grant.reader", plancheck.ResourceActionDestroyBeforeCreate),
-			}}, Check: testresource.ComposeTestCheckFunc(
-				testresource.TestCheckResourceAttr("redshift_role.reader", "name", "after"),
-				testresource.TestCheckResourceAttr("redshift_role_grant.reader", "to_role", "after"),
-			)},
-			{Config: configuration("after"), PlanOnly: true},
-		},
-	})
 }

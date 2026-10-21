@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -34,27 +35,31 @@ func TestCoverageDatabaseIntegrationReads(t *testing.T) {
 func TestCoverageDatabaseIntegrationWaitFailures(t *testing.T) {
 	for _, missing := range []bool{false, true} {
 		t.Run(map[bool]string{false: "read error", true: "vanished"}[missing], func(t *testing.T) {
-			failure := errors.New("catalog denied")
-			client := queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+			synctest.Test(t, func(t *testing.T) {
+				failure := errors.New("catalog denied")
+				client := queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+					if missing {
+						return nil, nil
+					}
+					return nil, failure
+				})
+				r := &databaseResource{testResourceClient(client)}
+				expected := integrationState()
+				observed := integrationState()
+				integration := *observed.Integration
+				observed.Integration = &integration
+				observed.Integration.RefreshInterval = types.Int64Value(1)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				defer cancel()
+				started := time.Now()
+				err := r.waitDatabaseIntegration(ctx, expected, &observed)
 				if missing {
-					return nil, nil
+					require.ErrorIs(t, err, errDatabaseVanished)
+				} else {
+					require.ErrorIs(t, err, failure)
 				}
-				return nil, failure
+				assert.Equal(t, time.Second, time.Since(started))
 			})
-			r := &databaseResource{testResourceClient(client)}
-			expected := integrationState()
-			observed := integrationState()
-			integration := *observed.Integration
-			observed.Integration = &integration
-			observed.Integration.RefreshInterval = types.Int64Value(1)
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			err := r.waitDatabaseIntegration(ctx, expected, &observed)
-			if missing {
-				require.ErrorIs(t, err, errDatabaseVanished)
-			} else {
-				require.ErrorIs(t, err, failure)
-			}
 		})
 	}
 }

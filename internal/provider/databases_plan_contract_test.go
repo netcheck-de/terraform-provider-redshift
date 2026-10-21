@@ -38,9 +38,10 @@ func databasesPlanCase(t *testing.T, c *catalog, address, before, after string) 
 	})
 }
 
-// TestExternalSchemaInPlacePlans keeps in-place ALTER EXTERNAL SCHEMA changes from replacing a schema whose
+// TestContractExternalSchemaInPlacePlans keeps in-place ALTER EXTERNAL SCHEMA changes from replacing a schema whose
 // region is left to the warehouse.
-func TestExternalSchemaInPlacePlans(t *testing.T) {
+func TestContractExternalSchemaInPlacePlans(t *testing.T) {
+	t.Parallel()
 	glue := func(role, owner string) string {
 		return fmt.Sprintf(`
 resource "redshift_external_schema" "example" {
@@ -62,19 +63,22 @@ resource "redshift_external_schema" "example" {
 }`, uri)
 	}
 	t.Run("glue role and owner", func(t *testing.T) {
+		t.Parallel()
 		databasesPlanCase(t, &catalog{}, "redshift_external_schema.example",
 			glue("arn:aws:iam::123456789012:role/spectrum", "admin"),
 			glue("arn:aws:iam::123456789012:role/rotated", "etl"))
 	})
 	t.Run("msk uri", func(t *testing.T) {
+		t.Parallel()
 		databasesPlanCase(t, &catalog{}, "redshift_external_schema.example",
 			msk("b-1.example.kafka.eu-central-1.amazonaws.com:9092"),
 			msk("b-2.example.kafka.eu-central-1.amazonaws.com:9092"))
 	})
 }
 
-// TestDatabaseAndSchemaInPlacePlans keeps owner and option changes of databases and schemas in place.
-func TestDatabaseAndSchemaInPlacePlans(t *testing.T) {
+// TestContractDatabaseAndSchemaInPlacePlans keeps owner and option changes of databases and schemas in place.
+func TestContractDatabaseAndSchemaInPlacePlans(t *testing.T) {
+	t.Parallel()
 	database := func(owner string, limit int, isolation string) string {
 		return fmt.Sprintf(`
 resource "redshift_database" "warehouse" {
@@ -94,9 +98,11 @@ resource "redshift_schema" "serving" {
 }`, owner, quota)
 	}
 	t.Run("database", func(t *testing.T) {
+		t.Parallel()
 		databasesPlanCase(t, &catalog{}, "redshift_database.warehouse", database("admin", -1, "SNAPSHOT"), database("etl", 0, "SERIALIZABLE"))
 	})
 	t.Run("schema", func(t *testing.T) {
+		t.Parallel()
 		databasesPlanCase(t, &catalog{}, "redshift_schema.serving", localSchema("admin", -1), localSchema("etl", 2048))
 	})
 }
