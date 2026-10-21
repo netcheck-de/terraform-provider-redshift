@@ -196,7 +196,7 @@ func TestAccLanguageGrantPublicDefault(t *testing.T) {
 	})
 	_, err = admin.Query(ctx, adminDB, "CREATE USER "+sqlclient.Identifier(userName)+" PASSWORD "+sqlclient.Literal(password)+" NOCREATEDB NOCREATEUSER", nil)
 	require.NoError(t, err)
-	probe := &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: routing.Host, Port: routing.Port, Username: userName, Password: password}, SSLMode: testAccSSLMode(), Timeout: 30 * time.Second}
+	probe := &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: routing.Host, Port: routing.Port, Username: userName, Password: password}, CACertFile: testAccCACertFile(), SSLMode: testAccSSLMode(), Timeout: 30 * time.Second}
 	// Every user may create in the public schema by default, so only language USAGE decides the outcome.
 	createProcedure := func(procedure string) error {
 		_, err := probe.Query(ctx, target, "CREATE PROCEDURE public."+procedure+"() AS $$ BEGIN RAISE INFO 'probe'; END; $$ LANGUAGE plpgsql", nil)

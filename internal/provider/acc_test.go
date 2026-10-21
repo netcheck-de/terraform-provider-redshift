@@ -39,10 +39,32 @@ func testAccSSLMode() string {
 	return os.Getenv("REDSHIFT_ACC_SSLMODE")
 }
 
-// testAccSSLModeHCL renders the optional sslmode argument for a direct_connection block.
+// testAccSSLModeHCL renders optional TLS settings for a direct_connection block.
 func testAccSSLModeHCL() string {
+	var settings string
 	if mode := testAccSSLMode(); mode != "" {
-		return fmt.Sprintf("sslmode = %q\n", mode)
+		settings += fmt.Sprintf("sslmode = %q\n", mode)
 	}
-	return ""
+	if bundle := testAccCACertFile(); bundle != "" {
+		settings += fmt.Sprintf("ca_cert_file = %q\n", bundle)
+	}
+	return settings
+}
+
+// testAccCACertFile allows explicit trust without weakening hostname or certificate verification.
+func testAccCACertFile() string { return os.Getenv("REDSHIFT_ACC_CA_CERT_FILE") }
+
+func TestAcceptanceTLSOverrides(t *testing.T) {
+	for _, test := range []struct{ name, mode, bundle, want string }{
+		{"defaults", "", "", ""},
+		{"verified root", "", "/fixtures/amazon.pem", "ca_cert_file = \"/fixtures/amazon.pem\"\n"},
+		{"explicit mode", "require", "", "sslmode = \"require\"\n"},
+		{"both", "verify-full", "/fixtures/amazon.pem", "sslmode = \"verify-full\"\nca_cert_file = \"/fixtures/amazon.pem\"\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("REDSHIFT_ACC_SSLMODE", test.mode)
+			t.Setenv("REDSHIFT_ACC_CA_CERT_FILE", test.bundle)
+			require.Equal(t, test.want, testAccSSLModeHCL())
+		})
+	}
 }

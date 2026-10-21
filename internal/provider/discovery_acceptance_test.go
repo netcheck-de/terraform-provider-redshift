@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,6 +93,17 @@ data "redshift_comment" "key" {
 	require.NoError(t, err)
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
+	// Quoted identifiers still fold unless the warehouse enables case-sensitive identifiers.
+	show, err := readConfigurationStatement("enable_case_sensitive_identifier")
+	require.NoError(t, err)
+	rows, err := client.Query(ctx, admin, show, nil)
+	require.NoError(t, err)
+	caseSensitive, err := configurationValue("enable_case_sensitive_identifier", rows)
+	require.NoError(t, err)
+	regionColumn := "region"
+	if tableCatalogBool(caseSensitive) || strings.EqualFold(caseSensitive, "on") {
+		regionColumn = "Region"
+	}
 	// A failed test may leave the database behind; its fixtures live in public and go with it.
 	t.Cleanup(func() {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
@@ -132,7 +144,7 @@ data "redshift_comment" "key" {
 					resource.TestCheckResourceAttr("data.redshift_columns.orders", "columns.#", "3"),
 					resource.TestCheckResourceAttr("data.redshift_columns.orders", "columns.0.name", "id"),
 					resource.TestCheckResourceAttr("data.redshift_columns.orders", "columns.0.nullable", "false"),
-					resource.TestCheckResourceAttr("data.redshift_columns.orders", "columns.1.name", "Region"),
+					resource.TestCheckResourceAttr("data.redshift_columns.orders", "columns.1.name", regionColumn),
 					resource.TestCheckResourceAttr("data.redshift_columns.orders", "columns.1.character_maximum_length", "16"),
 					resource.TestCheckResourceAttr("data.redshift_columns.orders", "columns.2.nullable", "true"),
 					resource.TestCheckResourceAttrSet("data.redshift_columns.orders", "columns.2.default"),
@@ -144,7 +156,7 @@ data "redshift_comment" "key" {
 					resource.TestCheckResourceAttr("data.redshift_constraints.lines", "constraints.0.referenced_columns.0", "id"),
 					resource.TestCheckResourceAttr("data.redshift_constraints.orders", "constraints.#", "1"),
 					resource.TestCheckResourceAttr("data.redshift_constraints.orders", "constraints.0.columns.#", "2"),
-					resource.TestCheckResourceAttr("data.redshift_constraints.orders", "constraints.0.columns.1", "Region"),
+					resource.TestCheckResourceAttr("data.redshift_constraints.orders", "constraints.0.columns.1", regionColumn),
 					resource.TestCheckResourceAttr("data.redshift_comment.key", "text", "O'Reilly key"),
 				),
 			},
