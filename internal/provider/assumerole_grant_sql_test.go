@@ -18,6 +18,9 @@ func TestAssumeroleGrantSQL(t *testing.T) {
 	}
 	checkSQL(t, "assumerole_grant", []sqlCase{
 		{"default_role", render(nil, "COPY")},
+		{"result_offload_default", render(nil, "RESULT_OFFLOAD")},
+		{"result_offload_arn", render(map[string]string{"iam_role_arn": "arn:aws:iam::123456789012:role/loader"}, "RESULT_OFFLOAD")},
+		{"result_offload_all", render(map[string]string{"iam_role_arn": "ALL"}, "RESULT_OFFLOAD")},
 		{"default_public", render(map[string]string{"grantee_type": "PUBLIC", "grantee": "public"}, "EXTERNAL FUNCTION")},
 		{"default_group", render(map[string]string{"grantee_type": "GROUP"}, "CREATE MODEL")},
 		{"arn_user", render(map[string]string{"iam_role_arn": "arn:aws:iam::123456789012:role/loader", "grantee_type": "USER", "grantee": "analyst"}, "UNLOAD")},
