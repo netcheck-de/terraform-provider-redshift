@@ -21,18 +21,93 @@ type fakeDatashares struct {
 	privileges map[string]map[string]bool
 	// adminOption marks every reported permission as held with grant option.
 	adminOption bool
+	// objects preserves catalog names verbatim, including function overload spellings unknown to the provider.
+	objects          []dataapi.Row
+	bulkCandidates   map[string][]string
+	bulkMembers      map[string][]string
+	bulkOtherMembers map[string][]dataapi.Row
+	// restricted represents a connection identity without guaranteed full catalog visibility.
+	restricted bool
 }
 
 // populate gives the representative share an owner and an ALTER permission for a role.
 func (f *fakeDatashares) populate() {
 	f.owner = "admin"
 	f.privileges["role:example:readers"] = map[string]bool{"ALTER": true}
+	// Live Redshift reports duplicate name-only rows for shared overloads.
+	f.objects = []dataapi.Row{
+		{"object_name": "serving", "object_type": "schema", "include_new": "true"},
+		{"object_name": "serving.table", "object_type": "table"},
+		{"object_name": "serving.function", "object_type": "function"},
+		{"object_name": "serving.function", "object_type": "function"},
+	}
+	f.bulkCandidates = map[string][]string{"TABLES": {"table"}, "FUNCTIONS": {"f_shared", "f_shared"}}
+	f.bulkMembers = map[string][]string{"TABLES": {"table"}, "FUNCTIONS": {"f_shared", "f_shared"}}
 }
 
 // query answers the share metadata and listing reads, the share check of datashare permissions, and their
 // catalog reads and GRANT/REVOKE statements.
 func (f *fakeDatashares) query(c *catalog, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
 	switch {
+	case sql == "SELECT usesuper FROM pg_user WHERE usename = current_user":
+		return []dataapi.Row{{"usesuper": fmt.Sprint(!f.restricted)}}, true, nil
+	case strings.HasPrefix(sql, "SELECT table_name AS member_name FROM svv_all_tables"), strings.HasPrefix(sql, "SELECT p.proname AS member_name FROM pg_proc_info"):
+		kind := "TABLES"
+		if strings.Contains(sql, "pg_proc_info") {
+			kind = "FUNCTIONS"
+		}
+		var rows []dataapi.Row
+		for _, name := range f.bulkCandidates[kind] {
+			rows = append(rows, dataapi.Row{"member_name": name})
+		}
+		return rows, true, nil
+	case strings.HasPrefix(sql, "SELECT object_name FROM svv_datashare_objects") && parameters["object"] == "":
+		kind := "TABLES"
+		if strings.Contains(sql, "object_type = 'function'") {
+			kind = "FUNCTIONS"
+		}
+		var rows []dataapi.Row
+		if c.share && c.shareSchema {
+			for _, name := range f.bulkMembers[kind] {
+				rows = append(rows, dataapi.Row{"object_name": "serving." + name})
+			}
+			for _, row := range f.bulkOtherMembers[kind] {
+				rows = append(rows, maps.Clone(row))
+			}
+		}
+		return rows, true, nil
+	case strings.Contains(sql, " ADD ALL TABLES IN SCHEMA "), strings.Contains(sql, " ADD ALL FUNCTIONS IN SCHEMA "), strings.Contains(sql, " REMOVE ALL TABLES IN SCHEMA "), strings.Contains(sql, " REMOVE ALL FUNCTIONS IN SCHEMA "):
+		kind := "TABLES"
+		if strings.Contains(sql, "FUNCTIONS") {
+			kind = "FUNCTIONS"
+		}
+		if f.bulkMembers == nil {
+			f.bulkMembers = map[string][]string{}
+		}
+		if strings.Contains(sql, " ADD ALL ") {
+			f.bulkMembers[kind] = slices.Clone(f.bulkCandidates[kind])
+		} else {
+			f.bulkMembers[kind] = nil
+		}
+		return nil, true, nil
+	case strings.HasPrefix(sql, "SELECT share_name, object_name, object_type, include_new FROM svv_datashare_objects"):
+		var rows []dataapi.Row
+		if c.share && (parameters["share"] == "" || parameters["share"] == "producer") {
+			for _, row := range f.objects {
+				if parameters["object_type"] == "" || parameters["object_type"] == row["object_type"] {
+					item := maps.Clone(row)
+					item["share_name"] = "producer"
+					rows = append(rows, item)
+				}
+			}
+		}
+		slices.SortFunc(rows, func(a, b dataapi.Row) int {
+			if order := strings.Compare(a["object_type"], b["object_type"]); order != 0 {
+				return order
+			}
+			return strings.Compare(a["object_name"], b["object_name"])
+		})
+		return rows, true, nil
 	case strings.HasPrefix(sql, "SELECT d.share_name") && strings.Contains(sql, "FROM svv_datashares d"):
 		return f.shares(c, connection, sql, parameters), true, nil
 	case strings.HasPrefix(sql, "SELECT share_name FROM svv_datashares") && strings.Contains(sql, "source_database"):

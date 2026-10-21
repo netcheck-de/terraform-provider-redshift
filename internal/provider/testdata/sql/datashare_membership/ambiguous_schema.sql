@@ -1,0 +1,1 @@
+-- error: exclusive membership cannot distinguish catalog names for a schema containing a period

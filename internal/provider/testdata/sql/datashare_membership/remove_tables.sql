@@ -1,0 +1,1 @@
+ALTER DATASHARE "producer" REMOVE ALL TABLES IN SCHEMA "serving";

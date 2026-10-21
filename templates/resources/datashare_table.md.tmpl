@@ -21,6 +21,7 @@ ALTER DATASHARE datashare REMOVE TABLE schema.table;
 {{ tffile "examples/resources/redshift_datashare_table/resource.tf" }}
 
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -29,6 +30,12 @@ ALTER DATASHARE datashare REMOVE TABLE schema.table;
 Uses `ALTER DATASHARE ... ADD/REMOVE TABLE` and reads `svv_datashare_objects` for tables, views, late-binding views, and
 materialized views. It does not create or drop the underlying table/view. Add the schema to the share first; remove
 member tables/views before removing the shared schema. New objects need separate membership resources.
+
+Give each relation membership one owner. Do not also manage it through scoped grants or an authoritative bulk
+membership owner. `include_new` on `redshift_datashare_schema` adds future objects only; create explicitly managed
+relations before enabling it, as the complete example does. The catalog does not record whether a member was added
+explicitly, in bulk, or automatically. This resource removes its relation on destroy regardless of how it was added.
+Use `redshift_datashare_objects` to observe all current members without adopting them.
 
 ## Reconciliation
 

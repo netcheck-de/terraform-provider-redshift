@@ -1,0 +1,1 @@
+SELECT p.proname AS member_name FROM pg_proc_info p JOIN pg_namespace n ON n.oid = p.pronamespace JOIN pg_language l ON l.oid = p.prolang WHERE n.nspname = :schema AND p.prokind = 'f' AND l.lanname = 'sql';
