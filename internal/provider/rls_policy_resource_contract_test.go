@@ -68,7 +68,6 @@ resource "redshift_rls_policy_attachment" "everyone" {
 				plancheck.ExpectResourceAction("redshift_rls_policy.own_region", plancheck.ResourceActionNoop),
 				plancheck.ExpectResourceAction("redshift_rls_policy_attachment.everyone", plancheck.ResourceActionCreate),
 			}}},
-			{Config: configuration(region, "t"), PlanOnly: true},
 			{Config: configuration(`column {
     name = "REGION"
     type = "varchar(64)"
@@ -86,7 +85,6 @@ resource "redshift_rls_policy_attachment" "everyone" {
 					return nil
 				},
 			},
-			{Config: configuration(region+added, "t"), PlanOnly: true},
 		},
 	})
 }
@@ -126,7 +124,6 @@ resource "redshift_rls_policy" "auditor" {
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})},
 		Steps: []testresource.TestStep{
 			{Config: configuration(""), Check: testresource.TestCheckResourceAttr("redshift_rls_policy.auditor", "column.#", "0")},
-			{Config: configuration(""), PlanOnly: true},
 			{
 				Config: configuration(columns), ConfigPlanChecks: replaced,
 				Check: testresource.ComposeAggregateTestCheckFunc(
@@ -139,9 +136,7 @@ resource "redshift_rls_policy" "auditor" {
 					},
 				),
 			},
-			{Config: configuration(columns), PlanOnly: true},
 			{Config: configuration(""), ConfigPlanChecks: replaced},
-			{Config: configuration(""), PlanOnly: true},
 		},
 	})
 }

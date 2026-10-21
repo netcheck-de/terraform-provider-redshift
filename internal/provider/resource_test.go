@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -34,17 +35,24 @@ func testResourceClient(client dataapi.Client) resourceClient {
 func testState(t *testing.T, r resource.Resource, model any) tfsdk.State {
 	t.Helper()
 	ctx := context.Background()
-	var schema resource.SchemaResponse
-	r.Schema(ctx, resource.SchemaRequest{}, &schema)
-	state := tfsdk.State{Schema: schema.Schema}
-	block, hasTimeouts := schema.Schema.Blocks[timeoutsBlockName]
+	var response resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &response)
+	return testStateWithSchema(t, response.Schema, model)
+}
+
+// testStateWithSchema lets a test reuse its resource schema without bypassing timeout serialization.
+func testStateWithSchema(t *testing.T, schema schema.Schema, model any) tfsdk.State {
+	t.Helper()
+	ctx := context.Background()
+	state := tfsdk.State{Schema: schema}
+	block, hasTimeouts := schema.Blocks[timeoutsBlockName]
 	if !hasTimeouts || modelHasField(model, timeoutsBlockName) {
 		diagnostics := state.Set(ctx, model)
 		require.False(t, diagnostics.HasError(), "invalid test state: %v", diagnostics)
 		return state
 	}
-	without := schema.Schema
-	without.Blocks = maps.Clone(schema.Schema.Blocks)
+	without := schema
+	without.Blocks = maps.Clone(schema.Blocks)
 	delete(without.Blocks, timeoutsBlockName)
 	partial := tfsdk.State{Schema: without}
 	diagnostics := partial.Set(ctx, model)
@@ -52,7 +60,7 @@ func testState(t *testing.T, r resource.Resource, model any) tfsdk.State {
 	values := map[string]tftypes.Value{}
 	require.NoError(t, partial.Raw.As(&values))
 	values[timeoutsBlockName] = tftypes.NewValue(block.Type().TerraformType(ctx), nil)
-	state.Raw = tftypes.NewValue(schema.Schema.Type().TerraformType(ctx), values)
+	state.Raw = tftypes.NewValue(schema.Type().TerraformType(ctx), values)
 	return state
 }
 

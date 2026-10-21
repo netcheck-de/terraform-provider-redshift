@@ -65,7 +65,13 @@ var requiredBlockNote = regexp.MustCompile(`^At least one [^.]* is required\.\s*
 
 // lookupDescription removes replacement and required-block notes from a paired resource's description.
 func lookupDescription(description string) string {
-	description = requiredBlockNote.ReplaceAllString(description, "")
+	// Most schema descriptions contain neither note; avoid regex scratch allocations for those unchanged strings.
+	if strings.HasPrefix(description, "At least one ") {
+		description = requiredBlockNote.ReplaceAllString(description, "")
+	}
+	if !strings.Contains(description, "hanging it replaces the ") {
+		return description
+	}
 	return replacementNote.ReplaceAllStringFunc(description, func(note string) string {
 		if strings.HasPrefix(note, ";") {
 			return "."

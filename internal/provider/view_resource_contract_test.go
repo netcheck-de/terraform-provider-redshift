@@ -48,7 +48,6 @@ resource "redshift_view" "labels" {
 					return nil
 				},
 			},
-			{Config: configuration, PlanOnly: true},
 		},
 	})
 	assert.Nil(t, views.get(fakeViewName), "destroy drops the view")

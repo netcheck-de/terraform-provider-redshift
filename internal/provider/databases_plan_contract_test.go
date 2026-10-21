@@ -19,11 +19,12 @@ provider "redshift" {
 }
 `
 
-// databasesPlanCase applies before, then plans and applies after expecting an in-place update of address, and
-// finally plans after again expecting no diff. The modifier tests call plan modifiers directly, so only a real
-// plan shows computed attributes the framework marks unknown during an update.
+// databasesPlanCase applies before, then plans and applies after expecting an in-place update of address.
+// The modifier tests call plan modifiers directly, so only a real plan shows computed attributes the framework
+// marks unknown during an update.
 func databasesPlanCase(t *testing.T, c *catalog, address, before, after string) {
 	t.Helper()
+	// The harness already checks empty non-refresh and refresh plans after each apply, so no extra plan step is needed.
 	testresource.UnitTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
 			"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c}),
@@ -33,7 +34,6 @@ func databasesPlanCase(t *testing.T, c *catalog, address, before, after string) 
 			{Config: databasesPlanProvider + after, ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
 				plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate),
 			}}},
-			{Config: databasesPlanProvider + after, PlanOnly: true},
 		},
 	})
 }

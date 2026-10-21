@@ -46,7 +46,6 @@ resource "redshift_copy_job" "events" {
 		Steps: []testresource.TestStep{
 			{Config: configuration("s3://example-bucket/events/", "false", ""), ExpectError: regexp.MustCompile(`Block table must have a configuration value`), PlanOnly: true},
 			{Config: first, Check: testresource.TestCheckResourceAttr("redshift_copy_job.events", "auto", "false")},
-			{Config: first, PlanOnly: true},
 			{
 				Config: automatic,
 				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
@@ -60,7 +59,6 @@ resource "redshift_copy_job" "events" {
 					plancheck.ExpectResourceAction("redshift_copy_job.events", plancheck.ResourceActionDestroyBeforeCreate),
 				}},
 			},
-			{Config: moved, PlanOnly: true},
 		},
 	})
 }

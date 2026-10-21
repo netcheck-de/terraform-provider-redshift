@@ -43,7 +43,6 @@ resource "redshift_masking_policy" "email" {
 		Steps: []testresource.TestStep{
 			{Config: configuration(""), ExpectError: regexp.MustCompile(`Block input_column must have a configuration value`), PlanOnly: true},
 			{Config: varchar, Check: testresource.TestCheckResourceAttr("redshift_masking_policy.email", "input_column.0.type", "VARCHAR(256)")},
-			{Config: varchar, PlanOnly: true},
 			{
 				Config: text,
 				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
@@ -51,7 +50,6 @@ resource "redshift_masking_policy" "email" {
 				}},
 				Check: testresource.TestCheckResourceAttr("redshift_masking_policy.email", "input_column.0.type", "TEXT"),
 			},
-			{Config: text, PlanOnly: true},
 		},
 	})
 }

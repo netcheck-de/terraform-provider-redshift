@@ -23,9 +23,7 @@ func TestContractTableRenamePlans(t *testing.T) {
 		Steps: []testresource.TestStep{
 			{Config: before},
 			{Config: after, ConfigPlanChecks: tableExpectUpdate(), Check: testresource.TestCheckResourceAttr("redshift_table.events", "column.0.renamed_from", "id")},
-			{Config: after, PlanOnly: true},
 			{Config: withoutHint, ConfigPlanChecks: tableExpectUpdate()},
-			{Config: withoutHint, PlanOnly: true},
 		},
 	})
 }
@@ -96,7 +94,6 @@ import {
 		Steps: []testresource.TestStep{
 			{Config: imported, ConfigPlanChecks: tableExpectUpdate()},
 			{Config: after, ConfigPlanChecks: tableExpectUpdate(), Check: testresource.TestCheckResourceAttr("redshift_table.events", "column.0.renamed_from", "id")},
-			{Config: after, PlanOnly: true},
 		},
 	})
 	assert.Equal(t, []string{

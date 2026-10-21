@@ -69,18 +69,15 @@ data "redshift_procedure" "scale" {
 				testresource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.2.mode", "OUT"),
 				testresource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.2.type", "CHARACTER VARYING"),
 			)},
-			{Config: configuration("factor", "int"), PlanOnly: true},
 			{Config: configuration("FACTOR", "INTEGER"), ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
 				plancheck.ExpectResourceAction("redshift_procedure.scale", plancheck.ResourceActionUpdate),
 				plancheck.ExpectResourceAction("redshift_procedure.refresh", plancheck.ResourceActionNoop),
 			}}},
-			{Config: configuration("FACTOR", "INTEGER"), PlanOnly: true},
 			// The catalog keeps the folded name and the type without its length.
 			{ResourceName: "redshift_procedure.scale", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"argument.0.name", "argument.2.type"}},
 			{Config: configuration("factor", "bigint"), ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
 				plancheck.ExpectResourceAction("redshift_procedure.scale", plancheck.ResourceActionDestroyBeforeCreate),
 			}}, Check: testresource.TestCheckResourceAttr("data.redshift_procedure.scale", "signature", "BIGINT, BIGINT")},
-			{Config: configuration("factor", "bigint"), PlanOnly: true},
 		},
 	})
 }

@@ -47,12 +47,9 @@ resource "redshift_materialized_view" "summary" {
 				ImportStateId: fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":%q,"name":%q}`, fakeViewSchema, fakeMaterializedViewName),
 			},
 			{Config: configuration(`backup = false`), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: testresource.TestCheckResourceAttr(address, "query", fakeMaterializedQuery)},
-			{Config: configuration(`backup = false`), PlanOnly: true},
 			{Config: configuration(`backup = true`), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
 			{Config: configuration("backup = true\n  sort_key {\n    columns = [\"label\"]\n  }"), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate)},
-			{Config: configuration("backup = true\n  sort_key {\n    columns = [\"label\"]\n  }"), PlanOnly: true},
 			{Config: configuration("backup = true\n  distribution {\n    style = \"ALL\"\n  }"), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate)},
-			{Config: configuration("backup = true\n  distribution {\n    style = \"ALL\"\n  }"), PlanOnly: true},
 		},
 	})
 }
@@ -103,9 +100,7 @@ resource "redshift_materialized_view" "rollup" {
 				testresource.TestCheckNoResourceAttr(address, "distribution.style"),
 				testresource.TestCheckResourceAttr(address, "sort_key.columns.#", "1"),
 			)},
-			{Config: keyed, PlanOnly: true},
 			{Config: even, ConfigPlanChecks: expect(plancheck.ResourceActionUpdate)},
-			{Config: even, PlanOnly: true},
 			{Config: configuration("distribution {}"), PlanOnly: true, ExpectError: regexp.MustCompile(`requires a style or a key`)},
 			{Config: configuration("sort_key {}"), PlanOnly: true, ExpectError: regexp.MustCompile(`requires columns`)},
 			// An unknown owner leaves the configuration partly unknown, which must not defer the empty-block checks to apply.
@@ -116,7 +111,6 @@ resource "redshift_materialized_view" "rollup" {
 				testresource.TestCheckNoResourceAttr(address, "distribution.style"),
 				testresource.TestCheckNoResourceAttr(address, "sort_key.columns.#"),
 			)},
-			{Config: configuration(""), PlanOnly: true},
 		},
 	})
 	var storage []string

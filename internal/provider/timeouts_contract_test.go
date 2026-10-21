@@ -50,10 +50,6 @@ data "redshift_table" "events" {
 				},
 			)},
 			{Config: config(`
-    create = "10m"
-    update = "5m"
-    delete = "2m"`), PlanOnly: true},
-			{Config: config(`
     update = "0s"`), PlanOnly: true, ExpectError: regexp.MustCompile(`must be positive`)},
 			{Config: config(`
     read = "1m"`), PlanOnly: true, ExpectError: regexp.MustCompile(`Unsupported argument`)},

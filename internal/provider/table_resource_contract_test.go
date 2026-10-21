@@ -36,14 +36,12 @@ func TestContractTablePlans(t *testing.T) {
 				testresource.TestCheckResourceAttr("redshift_table.events", "column.1.default", "'none'"),
 				testresource.TestCheckNoResourceAttr("redshift_table.events", "column.1.identity.seed"),
 			)},
-			{Config: tableConfig(tableIDColumn+tableLabelColumn, ""), PlanOnly: true},
 			{Config: tableConfig(tableIDColumn+tableNoteColumn("varchar(32)")+tableLabelColumn, ""), ConfigPlanChecks: tableExpectUpdate(),
 				Check: testresource.ComposeTestCheckFunc(
 					testresource.TestCheckResourceAttr("redshift_table.events", "column.1.name", "note"),
 					testresource.TestCheckResourceAttr("redshift_table.events", "column.1.encoding", "LZO"),
 					testresource.TestCheckResourceAttr("redshift_table.events", "column.2.name", "label"),
 				)},
-			{Config: tableConfig(tableIDColumn+tableNoteColumn("varchar(32)")+tableLabelColumn, ""), PlanOnly: true},
 			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(32)"), ""), ConfigPlanChecks: tableExpectUpdate(),
 				PreConfig: func() { reordered = len(c.writes) },
 				Check: testresource.ComposeTestCheckFunc(
@@ -57,8 +55,6 @@ func TestContractTablePlans(t *testing.T) {
 				)},
 			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(128)"), `
   owner = "analyst"`), ConfigPlanChecks: tableExpectUpdate(), Check: testresource.TestCheckResourceAttr("redshift_table.events", "owner", "analyst")},
-			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(128)"), `
-  owner = "analyst"`), PlanOnly: true},
 			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(16)"), `
   owner = "analyst"`), PlanOnly: true, ExpectNonEmptyPlan: true, ConfigPlanChecks: testresource.ConfigPlanChecks{PostApplyPostRefresh: []plancheck.PlanCheck{
 				plancheck.ExpectResourceAction("redshift_table.events", plancheck.ResourceActionDestroyBeforeCreate),
@@ -93,7 +89,6 @@ func TestContractTableAutoLayoutPlans(t *testing.T) {
 				testresource.TestCheckResourceAttr("redshift_table.events", "effective_sort_key.style", "NONE"),
 				testresource.TestCheckResourceAttr("redshift_table.events", "effective_sort_key.auto", "true"),
 			)},
-			{Config: tableAutoConfig(tableNoteColumn("varchar(32)")), PlanOnly: true},
 			{Config: tableAutoConfig(tableNoteColumn("varchar(32)")), PreConfig: func() { table().distStyle = "0" }, ConfigPlanChecks: tableExpectUpdate(),
 				Check: testresource.TestCheckNoResourceAttr("redshift_table.events", "distribution.style")},
 			{Config: tableAutoConfig(""), ConfigPlanChecks: tableExpectUpdate(), PreConfig: func() {
@@ -101,7 +96,6 @@ func TestContractTableAutoLayoutPlans(t *testing.T) {
 				table().autoDistStyle = "12"
 				table().columns[1].distKey, table().columns[1].sortKey = true, 1
 			}},
-			{Config: tableAutoConfig(""), PlanOnly: true},
 		},
 	})
 	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ALTER DISTSTYLE AUTO`, "drift is planned back to AUTO")
@@ -127,7 +121,6 @@ import {
 		ProtoV6ProviderFactories: tablePlanProviders(c),
 		Steps: []testresource.TestStep{
 			{Config: config, ConfigPlanChecks: tableExpectUpdate()},
-			{Config: config, PlanOnly: true},
 		},
 	})
 	c.mu.Lock()

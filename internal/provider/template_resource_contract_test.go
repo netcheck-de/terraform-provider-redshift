@@ -13,8 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestContractTemplateRenamePlan drives real plans: a rename updates in place and records the new identity, and repeated plans
-// after apply are empty.
+// TestContractTemplateRenamePlan drives real plans: a rename updates in place, records the new identity, and converges.
 func TestContractTemplateRenamePlan(t *testing.T) {
 	t.Parallel()
 	c := &catalog{identity: true, privileges: map[string]bool{}}
@@ -40,7 +39,6 @@ resource "redshift_template" "csv" {
 		Steps: []testresource.TestStep{
 			{Config: configuration("csv_load", `{ MANIFEST = "" }`), ExpectError: regexp.MustCompile(`unsupported COPY parameter`), PlanOnly: true},
 			{Config: first, Check: testresource.TestCheckResourceAttr("redshift_template.csv", "owner", "admin")},
-			{Config: first, PlanOnly: true},
 			{
 				Config: renamed,
 				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
@@ -49,7 +47,6 @@ resource "redshift_template" "csv" {
 				}},
 				Check: testresource.TestCheckResourceAttr("redshift_template.csv", "id", `{"database":"admin","name":"csv_import","schema":"serving","workgroup_name":"warehouse"}`),
 			},
-			{Config: renamed, PlanOnly: true},
 		},
 	})
 	assert.Equal(t, "csv_import", fakeState[*templateFake](c, templateFakeFamily).name)

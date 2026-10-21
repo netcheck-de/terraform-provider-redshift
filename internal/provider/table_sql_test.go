@@ -1,7 +1,7 @@
 package provider
 
 import (
-	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -96,13 +96,10 @@ func TestTableSQL(t *testing.T) {
 	}
 	autoSort := func(m *tableModel) { m.SortKey = types.ObjectNull(tableSortKeyAttributeTypes) }
 	autoDistribution := func(m *tableModel) { m.Distribution = types.ObjectNull(tableDistributionAttributeTypes) }
-	wide := func(count int) tableModel {
-		columns := []tableColumnModel{id, label}
-		for i := range count {
-			columns = append(columns, tableTestColumn(fmt.Sprintf("c%d", i), "int", tableEncoded("AZ64"), tableNullable(true)))
-		}
-		return tableWith(events, func(m *tableModel) { m.Column = tableTestColumns(columns...) })
-	}
+	wide := tableTestWideModel(events, tableEncoded("AZ64"), tableNullable(true))
+	wideColumns := wide.Column.Elements()
+	limitPlan := tableTestWithColumnValues(events, slices.Concat(wideColumns[:2], wideColumns[3:tableMaxColumns-1],
+		tableTestColumns(tableTestColumn("extra", "int", tableNullable(true))).Elements()))
 	checkSQL(t, "table", []sqlCase{
 		{"create_events", create(events)},
 		{"create_minimal", create(tableMinimalModel())},
@@ -151,10 +148,7 @@ func TestTableSQL(t *testing.T) {
 			m.SortKey = tableTestSortKey("INTERLEAVED", "id")
 		}), pkey)},
 		{"alter_drop_column_keeps_auto_keys", alter(tableWith(withNote, tableAuto("id", "id")), tableWith(events, tableAuto("id", "id")), pkey)},
-		{"alter_column_limit", alter(wide(tableMaxColumns-2), tableWith(wide(tableMaxColumns-3), func(m *tableModel) {
-			columns := tableTestColumnsOf(t, m.Column)
-			m.Column = tableTestColumns(append(columns[:2], append(columns[3:], tableTestColumn("extra", "int", tableNullable(true)))...)...)
-		}), pkey)},
+		{"alter_column_limit", alter(wide, limitPlan, pkey)},
 		{"alter_encoding", alter(withNote, tableWith(events, func(m *tableModel) { m.Column = eventColumns(note("varchar(32)", "ZSTD")) }), pkey)},
 		{"alter_widen", alter(withNote, tableWith(events, func(m *tableModel) { m.Column = eventColumns(note("varchar(max)", "ZSTD")) }), pkey)},
 		{"alter_narrow", alter(withNote, tableWith(events, func(m *tableModel) { m.Column = eventColumns(note("varchar(16)", "LZO")) }), pkey)},

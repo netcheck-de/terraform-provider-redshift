@@ -47,6 +47,10 @@ Use explicit `t.Parallel()` in isolated tests and subtests. Keep unit tests and 
 Live tests stay in `*_acceptance_test.go` files with `TestAcc...` names and the existing acceptance prechecks; do not
 use `TF_ACC` to enable offline contracts.
 
+After each successful apply, `resource.UnitTest` already checks empty plans both without refresh and with refresh.
+Do not add an unchanged `PlanOnly` step just to repeat convergence. Keep explicit plans for changed configuration,
+drift, validation errors, failed applies, and import-only convergence, which exercise distinct behavior.
+
 ### Isolation and assertions
 
 Use `t.Parallel` only with isolated per-test fixtures; do not mutate process environment or shared globals from a

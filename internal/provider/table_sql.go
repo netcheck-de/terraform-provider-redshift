@@ -235,6 +235,7 @@ func tableDefinitionSpec(data tableModel, migrationHints bool) (tableSpec, error
 	if len(columns) == 0 || len(columns) > tableMaxColumns {
 		return spec, fmt.Errorf("a table needs between 1 and %d columns", tableMaxColumns)
 	}
+	seenNames := make(map[string]struct{}, len(columns))
 	for index, model := range columns {
 		if !migrationHints {
 			model.RenamedFrom = types.StringNull()
@@ -243,9 +244,10 @@ func tableDefinitionSpec(data tableModel, migrationHints bool) (tableSpec, error
 		if err != nil {
 			return spec, fmt.Errorf("column[%d]: %w", index, err)
 		}
-		if _, duplicate := spec.column(column.name); duplicate {
+		if _, duplicate := seenNames[column.name]; duplicate {
 			return spec, fmt.Errorf("column %q is declared twice", column.name)
 		}
+		seenNames[column.name] = struct{}{}
 		spec.columns = append(spec.columns, column)
 	}
 	sources := map[string]bool{}

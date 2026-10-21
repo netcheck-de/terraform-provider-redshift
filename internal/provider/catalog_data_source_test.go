@@ -346,6 +346,35 @@ func TestLookupBlocksRead(t *testing.T) {
 }
 
 // TestLookupDescriptions replaces top-level and nested descriptions and rejects paths that do not exist.
+// TestLookupDescriptionRegexSemantics preserves the regex boundary and whitespace rules in the fast paths.
+func TestLookupDescriptionRegexSemantics(t *testing.T) {
+	for _, description := range []string{
+		"", "Current catalog value.",
+		"At least one column is required. Details.",
+		"At least one café\ncolumn is required.\nDetails.",
+		"At least one column is required.\u00a0Details.",
+		"At least one column is required.\t Details;changing it replaces the table.",
+		"At least one column is required", "At least one . is required.",
+		";changing it replaces the table.", "Changing it replaces the table.",
+		"prefixChanging it replaces the table.", "changing it replaces the table.",
+		"Changing it replaces the table", "Changing it replaces the tåble.",
+		"Changing it  replaces the table.",
+		"Changing it replaces the table.\nChanging it replaces the view.",
+		"data; \nchanging it replaces the table.",
+	} {
+		t.Run(description, func(t *testing.T) {
+			expected := requiredBlockNote.ReplaceAllString(description, "")
+			expected = replacementNote.ReplaceAllStringFunc(expected, func(note string) string {
+				if strings.HasPrefix(note, ";") {
+					return "."
+				}
+				return ""
+			})
+			assert.Equal(t, expected, lookupDescription(description))
+		})
+	}
+}
+
 func TestLookupDescriptions(t *testing.T) {
 	source := lookupDescriptions(blockTestLookup(), map[string]string{
 		"owner": "Observed owner.", "column": "Observed columns.", "column.identity.seed": "Observed seed.", "distribution.style": "Observed style.",

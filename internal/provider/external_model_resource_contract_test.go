@@ -68,7 +68,6 @@ resource "redshift_external_model" "summarizer" {
 				Config:           configuration("unified", "amazon.nova-pro-v1:0"),
 				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionDestroyBeforeCreate)}},
 			},
-			{Config: configuration("unified", "amazon.nova-pro-v1:0"), PlanOnly: true},
 		},
 	})
 	assert.Nil(t, models.get(fakeModelName), "destroy drops the model")

@@ -38,7 +38,6 @@ resource "redshift_role_grant" "reader" {
 				testresource.TestCheckResourceAttr("redshift_role.reader", "name", "after"),
 				testresource.TestCheckResourceAttr("redshift_role_grant.reader", "to_role", "after"),
 			)},
-			{Config: configuration("after"), PlanOnly: true},
 		},
 	})
 }

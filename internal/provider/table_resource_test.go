@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -89,16 +90,52 @@ func tableTestList(names ...string) types.List {
 	return tableStringListValue(names)
 }
 
-// tableTestColumns builds the column block list.
+// tableTestColumns avoids reflecting over every column when constructing wide fixtures.
 func tableTestColumns(columns ...tableColumnModel) types.List {
-	if columns == nil {
-		columns = []tableColumnModel{}
+	elements := make([]attr.Value, len(columns))
+	for i, column := range columns {
+		elements[i] = types.ObjectValueMust(tableColumnAttributeTypes, map[string]attr.Value{
+			"name": column.Name, "renamed_from": column.RenamedFrom, "type": column.Type,
+			"encoding": column.Encoding, "nullable": column.Nullable, "default": column.Default, "identity": column.Identity,
+		})
 	}
-	list, diagnostics := types.ListValueFrom(context.Background(), types.ObjectType{AttrTypes: tableColumnAttributeTypes}, columns)
-	if diagnostics.HasError() {
-		panic(fmt.Sprint(diagnostics))
+	return types.ListValueMust(types.ObjectType{AttrTypes: tableColumnAttributeTypes}, elements)
+}
+
+// TestTableColumnFixtureMatchesModel keeps the reflection-free helper faithful to Terraform's model conversion.
+func TestTableColumnFixtureMatchesModel(t *testing.T) {
+	unknown := tableTestColumn("pending", "varchar(64)")
+	unknown.Name, unknown.RenamedFrom = types.StringUnknown(), types.StringValue("previous")
+	unknown.Type, unknown.Encoding = types.StringUnknown(), types.StringUnknown()
+	unknown.Nullable, unknown.Default = types.BoolUnknown(), types.StringUnknown()
+	unknown.Identity = types.ObjectUnknown(tableIdentityAttributeTypes)
+	columns := []tableColumnModel{
+		tableTestColumn("id", "bigint", tableEncoded("AZ64"), tableNullable(false), tableIdentity(1, 1, false)),
+		tableTestColumn("label", "varchar(64)", tableNullable(true), tableDefault("'none'")),
+		unknown,
 	}
-	return list
+	expected, diagnostics := types.ListValueFrom(context.Background(), types.ObjectType{AttrTypes: tableColumnAttributeTypes}, columns)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	assert.True(t, expected.Equal(tableTestColumns(columns...)))
+	assert.False(t, tableTestColumns().IsNull())
+	assert.False(t, tableTestColumns().IsUnknown())
+	assert.Empty(t, tableTestColumns().Elements())
+}
+
+// tableTestWideModel converts the wide fixture once; variants can reuse its typed elements without reflection.
+func tableTestWideModel(base tableModel, options ...func(*tableColumnModel)) tableModel {
+	columns := make([]tableColumnModel, tableMaxColumns-2)
+	for i := range columns {
+		columns[i] = tableTestColumn(fmt.Sprintf("c%d", i), "int", options...)
+	}
+	elements := slices.Concat(base.Column.Elements(), tableTestColumns(columns...).Elements())
+	return tableTestWithColumnValues(base, elements)
+}
+
+// tableTestWithColumnValues isolates each variant's backing array while retaining already typed column values.
+func tableTestWithColumnValues(base tableModel, elements []attr.Value) tableModel {
+	base.Column = types.ListValueMust(types.ObjectType{AttrTypes: tableColumnAttributeTypes}, slices.Clone(elements))
+	return base
 }
 
 // tableTestKey builds a primary_key or unique block.
@@ -213,12 +250,18 @@ func TestTableConditionalReplacement(t *testing.T) {
 	interleaved := func(m *tableModel) { m.SortKey = tableTestSortKey("INTERLEAVED", "id") }
 	autoSort := func(m *tableModel) { m.SortKey = types.ObjectNull(tableSortKeyAttributeTypes) }
 	autoDistribution := func(m *tableModel) { m.Distribution = types.ObjectNull(tableDistributionAttributeTypes) }
-	wide := func(count int) tableModel {
-		columns := []tableColumnModel{id, label}
-		for i := range count {
-			columns = append(columns, tableTestColumn(fmt.Sprintf("c%d", i), "int"))
-		}
-		return withColumns(columns...)
+	wide := tableTestWideModel(base)
+	wideColumns := wide.Column.Elements()
+	belowLimit := tableTestWithColumnValues(base, wideColumns[:tableMaxColumns-1])
+	extra := tableTestColumns(tableTestColumn("extra", "int")).Elements()
+	atLimit := tableTestWithColumnValues(base, slices.Concat(wideColumns[:tableMaxColumns-1], extra))
+	overLimit := tableTestWithColumnValues(base, slices.Concat(wideColumns[1:tableMaxColumns-1], extra))
+	overLimit.PrimaryKey, overLimit.Distribution, overLimit.SortKey = types.ObjectNull(tableKeyAttributeTypes), types.ObjectNull(tableDistributionAttributeTypes), types.ObjectNull(tableSortKeyAttributeTypes)
+	var schema resource.SchemaResponse
+	newTableResource().Schema(context.Background(), resource.SchemaRequest{}, &schema)
+	stateOf := func(t *testing.T, model tableModel) tfsdk.State {
+		t.Helper()
+		return testStateWithSchema(t, schema.Schema, model)
 	}
 	for _, test := range []struct {
 		name      string
@@ -233,13 +276,8 @@ func TestTableConditionalReplacement(t *testing.T) {
 		{"reorder columns", withNote, withColumns(note(), label, id), "column", false},
 		{"drop middle column", withColumns(id, note(), label), withColumns(id, label), "column", false},
 		{"rename column", withNote, withColumns(id, label, tableTestColumn("remark", "varchar(32)", tableEncoded("LZO"), tableNullable(true))), "column", false},
-		{"column limit", wide(tableMaxColumns - 3), tableWith(wide(tableMaxColumns-3), func(m *tableModel) {
-			m.Column = tableTestColumns(append(tableTestColumnsOf(t, m.Column), tableTestColumn("extra", "int"))...)
-		}), "column", false},
-		{"column limit exceeded", wide(tableMaxColumns - 2), tableWith(wide(tableMaxColumns-3), func(m *tableModel) {
-			m.Column = tableTestColumns(append(tableTestColumnsOf(t, m.Column)[1:], tableTestColumn("extra", "int"))...)
-			m.PrimaryKey, m.Distribution, m.SortKey = types.ObjectNull(tableKeyAttributeTypes), types.ObjectNull(tableDistributionAttributeTypes), types.ObjectNull(tableSortKeyAttributeTypes)
-		}), "column", true},
+		{"column limit", belowLimit, atLimit, "column", false},
+		{"column limit exceeded", wide, overLimit, "column", true},
 		{"append identity column", base, withColumns(id, label, tableTestColumn("seq", "integer", tableIdentity(1, 1, true))), "column", true},
 		{"append NOT NULL column without default", base, withColumns(id, label, tableTestColumn("code", "char(2)", tableNullable(false))), "column", true},
 		{"append NOT NULL column with default", base, withColumns(id, label, tableTestColumn("code", "char(2)", tableNullable(false), tableDefault("'xx'"))), "column", false},
@@ -319,32 +357,30 @@ func TestTableConditionalReplacement(t *testing.T) {
 			reasons := tableReplacements(tableSpecMust(t, test.prev), tableSpecMust(t, test.plan))
 			assert.Equal(t, test.replace, reasons[test.attribute] != "", "%v", reasons)
 			// The schema's plan modifier reaches the same decision from Terraform state and plan.
-			r := newTableResource()
-			state := testState(t, r, test.prev)
-			planned := testState(t, r, test.plan)
+			state := stateOf(t, test.prev)
+			planned := stateOf(t, test.plan)
 			assert.Equal(t, test.replace, tableRequiresReplace(context.Background(), tfsdk.Config(planned), state, tfsdk.Plan(planned), test.attribute))
 		})
 	}
 	t.Run("undecodable state replaces", func(t *testing.T) {
-		r := newTableResource()
 		invalid := tableWith(base, func(m *tableModel) { m.Distribution = tableTestDistribution("", "missing") })
-		valid := testState(t, r, base)
-		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(valid), testState(t, r, invalid), tfsdk.Plan(valid), "distribution"))
-		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(testState(t, r, invalid)), valid, tfsdk.Plan(testState(t, r, invalid)), "distribution"))
+		valid := stateOf(t, base)
+		invalidState := stateOf(t, invalid)
+		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(valid), invalidState, tfsdk.Plan(valid), "distribution"))
+		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(invalidState), valid, tfsdk.Plan(invalidState), "distribution"))
 		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(emptyState(t, newSchemaResource())), valid, tfsdk.Plan(valid), "distribution"))
 	})
 	// The plan may still hold an unknown style that tableDerivedStyle fills in later, so an unknown style decides
 	// nothing; only a configured one that resolves during apply, possibly to INTERLEAVED, replaces.
 	t.Run("unknown configured style replaces", func(t *testing.T) {
-		r := newTableResource()
-		state := testState(t, r, base)
+		state := stateOf(t, base)
 		pending := func(m *tableModel) {
 			m.SortKey = types.ObjectValueMust(tableSortKeyAttributeTypes, map[string]attr.Value{"style": types.StringUnknown(), "columns": tableStringListValue([]string{"id"})})
 		}
-		planned := testState(t, r, tableWith(base, pending))
+		planned := stateOf(t, tableWith(base, pending))
 		assert.False(t, tableRequiresReplace(context.Background(), tfsdk.Config(state), state, tfsdk.Plan(planned), "sort_key"), "an unknown planned style alone is not configuration")
 		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(planned), state, tfsdk.Plan(planned), "sort_key"))
-		distribution := testState(t, r, tableWith(base, func(m *tableModel) {
+		distribution := stateOf(t, tableWith(base, func(m *tableModel) {
 			m.Distribution = types.ObjectValueMust(tableDistributionAttributeTypes, map[string]attr.Value{"style": types.StringUnknown(), "key": types.StringNull()})
 		}))
 		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(distribution), state, tfsdk.Plan(distribution), "distribution"))
@@ -379,6 +415,36 @@ func TestTableColumnOrder(t *testing.T) {
 // TestTableAlterCoverage keeps an update step for every in-place attribute and block.
 func TestTableAlterCoverage(t *testing.T) {
 	assertAlterCoverage(t, newTableResource(), tableAlterSteps(tablePhaseDropConstraints))
+}
+
+// TestTableDuplicateColumnValidationOrder pins the first failure and the successfully parsed prefix.
+func TestTableDuplicateColumnValidationOrder(t *testing.T) {
+	unknownType := tableTestColumn("a", "int", func(c *tableColumnModel) { c.Type = types.StringUnknown() })
+	unknownName := tableTestColumn("a", "int", func(c *tableColumnModel) { c.Name = types.StringUnknown() })
+	for _, test := range []struct {
+		name    string
+		columns []tableColumnModel
+		message string
+		prefix  []string
+	}{
+		{"first duplicate in input order", []tableColumnModel{tableTestColumn("b", "int"), tableTestColumn("a", "int"), tableTestColumn("b", "int"), tableTestColumn("a", "int")}, `column "b" is declared twice`, []string{"b", "a"}},
+		{"duplicate before later invalid column", []tableColumnModel{tableTestColumn("a", "int"), tableTestColumn("a", "int"), unknownName}, `column "a" is declared twice`, []string{"a"}},
+		{"duplicate column parsed before lookup", []tableColumnModel{tableTestColumn("a", "int"), unknownType}, "column[1]: type must be known", []string{"a"}},
+		{"unknown name before duplicate", []tableColumnModel{unknownName, tableTestColumn("a", "int"), tableTestColumn("a", "int")}, "column[0]: name must be known", nil},
+		{"case is rejected rather than folded", []tableColumnModel{tableTestColumn("a", "int"), tableTestColumn("A", "int")}, `column[1]: column name "A" contains uppercase letters, which Redshift folds to lowercase; use the lowercase name`, []string{"a"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			model := tableMinimalModel()
+			model.Column = tableTestColumns(test.columns...)
+			spec, err := tableSpecOf(model)
+			require.EqualError(t, err, test.message)
+			var names []string
+			for _, column := range spec.columns {
+				names = append(names, column.name)
+			}
+			assert.Equal(t, test.prefix, names, "partial definition retains every successfully parsed column in input order")
+		})
+	}
 }
 
 // TestTableSpecValidation rejects definitions Redshift would refuse before any SQL runs.

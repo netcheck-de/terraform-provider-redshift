@@ -32,19 +32,31 @@ func registerDataSource(factory func() datasource.DataSource) bool {
 // registeredResources returns a fresh slice sorted by type name, because package initialization order across
 // files is an implementation detail and callers may modify the result.
 func registeredResources() []func() resource.Resource {
-	factories := slices.Clone(resourceFactories)
-	slices.SortStableFunc(factories, func(a, b func() resource.Resource) int {
-		return strings.Compare(registeredResourceName(a), registeredResourceName(b))
-	})
-	return factories
+	return sortedFactories(resourceFactories, registeredResourceName)
 }
 
 // registeredDataSources returns a fresh slice sorted by type name; see registeredResources.
 func registeredDataSources() []func() datasource.DataSource {
-	factories := slices.Clone(dataSourceFactories)
-	slices.SortStableFunc(factories, func(a, b func() datasource.DataSource) int {
-		return strings.Compare(registeredDataSourceName(a), registeredDataSourceName(b))
+	return sortedFactories(dataSourceFactories, registeredDataSourceName)
+}
+
+// Factories can build entire schemas, so discover names once instead of inside every sort comparison.
+func sortedFactories[T any](registered []T, name func(T) string) []T {
+	type namedFactory struct {
+		factory T
+		name    string
+	}
+	entries := make([]namedFactory, len(registered))
+	for i, factory := range registered {
+		entries[i] = namedFactory{factory: factory, name: name(factory)}
+	}
+	slices.SortStableFunc(entries, func(a, b namedFactory) int {
+		return strings.Compare(a.name, b.name)
 	})
+	factories := slices.Clone(registered)
+	for i, entry := range entries {
+		factories[i] = entry.factory
+	}
 	return factories
 }
 

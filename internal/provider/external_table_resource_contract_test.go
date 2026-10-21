@@ -44,7 +44,6 @@ func TestContractExternalTablePropertiesPlan(t *testing.T) {
 			Steps: []testresource.TestStep{
 				{Config: externalTableProviderConfig("")},
 				{Config: externalTableProviderConfig(gzip), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate), Check: parameter(c, "compression_type", "gzip")},
-				{Config: externalTableProviderConfig(gzip), PlanOnly: true},
 			},
 		})
 	})
@@ -70,7 +69,6 @@ func TestContractExternalTablePropertiesPlan(t *testing.T) {
 					},
 					{Config: externalTableProviderConfig(""), PlanOnly: true},
 					{Config: externalTableProviderConfig(test.properties), ConfigPlanChecks: expect(test.action), Check: parameter(c, test.key, test.value)},
-					{Config: externalTableProviderConfig(test.properties), PlanOnly: true},
 				},
 			})
 		})
@@ -124,19 +122,15 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 				ProtoV6ProviderFactories: providers(c),
 				Steps: []testresource.TestStep{
 					{Config: created, Check: catalogColumns(c, []string{`CREATE EXTERNAL TABLE "example_external"."events" ("id" INTEGER, "label" VARCHAR(64)) STORED AS ` + format + ` LOCATION 's3://example-bucket/events/'`}, "id", "label")},
-					{Config: created, PlanOnly: true},
 					{Config: inserted, ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: testresource.ComposeTestCheckFunc(
 						catalogColumns(c, []string{alter + `ADD COLUMN "amount" DECIMAL(8, 2)`}, "id", "label", "amount"),
 						testresource.TestCheckResourceAttr(address, "column.1.name", "amount"),
 					)},
-					{Config: inserted, PlanOnly: true},
 					{Config: reordered, ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: testresource.ComposeTestCheckFunc(
 						catalogColumns(c, nil, "id", "label", "amount"),
 						testresource.TestCheckResourceAttr(address, "column.0.name", "label"),
 					)},
-					{Config: reordered, PlanOnly: true},
 					{Config: dropped, ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: catalogColumns(c, []string{alter + `DROP COLUMN "amount"`}, "id", "label")},
-					{Config: dropped, PlanOnly: true},
 				},
 			})
 		})
@@ -155,7 +149,6 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 				{Config: externalTableOrderConfig("PARQUET", "", "id", "INTEGER", "label", "VARCHAR(64)")},
 				{Config: externalTableOrderConfig("PARQUET", "", "id", "INTEGER", "amount", "DECIMAL(8,2)", "label", "VARCHAR(64)")},
 				{Config: switched, ConfigPlanChecks: expect(action)},
-				{Config: switched, PlanOnly: true},
 			}})
 		})
 	}
@@ -167,7 +160,6 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 			Steps: []testresource.TestStep{
 				{Config: externalTableOrderConfig("TEXTFILE", "", "id", "INTEGER", "label", "VARCHAR(64)")},
 				{Config: inserted, ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
-				{Config: inserted, PlanOnly: true},
 			},
 		})
 	})
@@ -205,7 +197,6 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 					`DROP TABLE "example_external"."events"`,
 					`CREATE EXTERNAL TABLE "example_external"."events" ("id" INTEGER, "amount" DECIMAL(8, 2), "label" VARCHAR(64)) STORED AS ORC LOCATION 's3://example-bucket/events/' TABLE PROPERTIES ('orc.schema.resolution' = 'position')`,
 				}, "id", "amount", "label")},
-				{Config: switched, PlanOnly: true},
 			},
 		})
 	})
@@ -219,7 +210,6 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 				{Config: externalTableOrderConfig("ORC", "", "id", "INTEGER", "label", "VARCHAR(64)"), Check: catalogColumns(c, []string{create}, "id", "label")},
 				{Config: externalTableOrderConfig("ORC", "", "id", "INTEGER", "amount", "DECIMAL(8,2)", "label", "VARCHAR(64)"), Check: catalogColumns(c, []string{alter + `ADD COLUMN "amount" DECIMAL(8, 2)`}, "id", "label", "amount")},
 				{Config: switched, ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: catalogColumns(c, []string{alter + `SET TABLE PROPERTIES ('orc.schema.resolution' = 'position')`}, "id", "label", "amount")},
-				{Config: switched, PlanOnly: true},
 			},
 		})
 	})

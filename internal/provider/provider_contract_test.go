@@ -196,7 +196,6 @@ func TestContractProviderLifecycle(t *testing.T) {
 				checkAttributes(t, "data.redshift_datashare.producer", map[string]string{"publicly_accessible": "false"}),
 				checkAttributes(t, "redshift_grant.read", map[string]string{"privileges.#": "1"}),
 			)},
-			{Config: config, PlanOnly: true},
 			{ResourceName: "redshift_role.readers", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_database.analytics", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_database.producer", ImportState: true, ImportStateVerify: true},
@@ -260,10 +259,6 @@ func TestContractProviderLifecycle(t *testing.T) {
 					checkAttributes(t, "redshift_database.analytics", map[string]string{"with_permissions": "false"}),
 					checkAttributes(t, "redshift_grant.read", map[string]string{"privileges.#": "2"}),
 				),
-			},
-			{
-				Config:   replacement,
-				PlanOnly: true,
 			},
 		},
 	})

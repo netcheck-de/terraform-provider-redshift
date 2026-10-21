@@ -105,6 +105,73 @@ func TestRegistryIsSortedAndUnique(t *testing.T) {
 	assert.NotNil(t, p.DataSources(context.Background())[0]())
 }
 
+type registryTestResource struct {
+	resource.Resource
+	name string
+}
+
+func (r *registryTestResource) Metadata(_ context.Context, request resource.MetadataRequest, response *resource.MetadataResponse) {
+	response.TypeName = request.ProviderTypeName + "_" + r.name
+}
+
+type registryTestDataSource struct {
+	datasource.DataSource
+	name string
+}
+
+func (d *registryTestDataSource) Metadata(_ context.Context, request datasource.MetadataRequest, response *datasource.MetadataResponse) {
+	response.TypeName = request.ProviderTypeName + "_" + d.name
+}
+
+func TestRegistryEnumerationConstructsEachEntryOnce(t *testing.T) {
+	t.Run("resources", func(t *testing.T) {
+		checkRegistryEnumeration(t, &resourceFactories, registeredResources, []resource.Resource{
+			&registryTestResource{name: "z"},
+			&registryTestResource{name: "a"},
+			&registryTestResource{name: "a"},
+			&registryTestResource{name: "A"},
+		})
+	})
+	t.Run("data sources", func(t *testing.T) {
+		checkRegistryEnumeration(t, &dataSourceFactories, registeredDataSources, []datasource.DataSource{
+			&registryTestDataSource{name: "z"},
+			&registryTestDataSource{name: "a"},
+			&registryTestDataSource{name: "a"},
+			&registryTestDataSource{name: "A"},
+		})
+	})
+}
+
+func checkRegistryEnumeration[T any](t *testing.T, registry *[]func() T, enumerate func() []func() T, objects []T) {
+	t.Helper()
+	original := *registry
+	t.Cleanup(func() { *registry = original })
+	counts := make([]int, len(objects))
+	*registry = make([]func() T, len(objects))
+	for i, object := range objects {
+		(*registry)[i] = func() T {
+			counts[i]++
+			return object
+		}
+	}
+
+	first := enumerate()
+	assert.Equal(t, []int{1, 1, 1, 1}, counts, "name discovery constructs each entry only once")
+	second := enumerate()
+	assert.Equal(t, []int{2, 2, 2, 2}, counts, "each enumeration discovers names afresh")
+	require.Len(t, first, len(objects))
+	require.Len(t, second, len(objects))
+	for i, originalIndex := range []int{3, 1, 2, 0} {
+		assert.Same(t, objects[originalIndex], first[i](), "lexical order and duplicate registration order")
+		assert.Same(t, objects[originalIndex], second[i]())
+	}
+	first[0] = nil
+	assert.NotNil(t, second[0], "returned slices are independent")
+	for _, factory := range *registry {
+		assert.NotNil(t, factory, "returned slices do not alias the registry")
+	}
+}
+
 // TestTestRegistryReportsDuplicates checks the shared fixture registry used by the coverage tests.
 func TestTestRegistryReportsDuplicates(t *testing.T) {
 	var registry testRegistry[int]
