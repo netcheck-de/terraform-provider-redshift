@@ -34,6 +34,16 @@ run "models_default_off" {
       length(redshift_external_model.summarizer) == 0 &&
       length(aws_iam_role_policy.consumer_bedrock) == 0 &&
       length(redshift_object_grant.readers_summarizer) == 0 &&
+      length(redshift_user.model_delegate) == 0 &&
+      length(redshift_object_grant.model_delegate_schema) == 0 &&
+      length(redshift_object_grant.delegate_summarizer) == 0 &&
+      length(redshift_object_grant.group_summarizer) == 0 &&
+      length(redshift_object_grant.public_summarizer) == 0 &&
+      length(data.redshift_user.model_delegate) == 0 &&
+      length(data.redshift_object_grant.model_delegate_schema) == 0 &&
+      length(data.redshift_object_grant.delegate_summarizer) == 0 &&
+      length(data.redshift_object_grant.group_summarizer) == 0 &&
+      length(data.redshift_object_grant.public_summarizer) == 0 &&
       length(data.redshift_external_model.summarizer) == 0
     )
     error_message = "Without bedrock_model_id, no Bedrock permission, model, or model grant may be created."
@@ -60,7 +70,7 @@ run "models_bedrock" {
   command = apply
 
   variables {
-    bedrock_model_id = "anthropic.claude-3-haiku-20240307-v1:0"
+    bedrock_model_id = "amazon.nova-lite-v1:0"
   }
 
   override_data {
@@ -68,7 +78,7 @@ run "models_bedrock" {
     values = {
       id       = "external-model-lookup-identity"
       function = "f_example_summarize"
-      model_id = "anthropic.claude-3-haiku-20240307-v1:0"
+      model_id = "amazon.nova-lite-v1:0"
       owner    = "observed_model_owner"
     }
   }
@@ -76,6 +86,29 @@ run "models_bedrock" {
   override_data {
     target = data.redshift_object_grant.readers_summarizer[0]
     values = { privileges = ["EXECUTE"] }
+  }
+
+  override_data {
+    target = data.redshift_object_grant.model_delegate_schema[0]
+    values = { privileges = ["USAGE"] }
+  }
+
+  override_data {
+    target = data.redshift_object_grant.delegate_summarizer[0]
+    values = {
+      privileges              = ["EXECUTE"]
+      grant_option_privileges = ["EXECUTE"]
+    }
+  }
+
+  override_data {
+    target = data.redshift_object_grant.group_summarizer[0]
+    values = { privileges = ["EXECUTE"] }
+  }
+
+  override_data {
+    target = data.redshift_object_grant.public_summarizer[0]
+    values = { privileges = [] }
   }
 
   assert {
@@ -115,8 +148,48 @@ run "models_bedrock" {
       output.model_checks.summarizer.function == "${redshift_schema.local.name}.f_example_summarize" &&
       output.model_checks.summarizer.model_id == var.bedrock_model_id &&
       output.model_checks.summarizer.owner == "observed_model_owner" &&
-      output.model_checks.summarizer.reader_privileges == toset(["EXECUTE"])
+      output.model_checks.summarizer.reader_privileges == toset(["EXECUTE"]) &&
+      output.model_checks.summarizer.delegate_name == redshift_user.model_delegate[0].name &&
+      output.model_checks.summarizer.delegate_schema_privileges == toset(["USAGE"]) &&
+      output.model_checks.summarizer.user_privileges == toset(["EXECUTE"]) &&
+      output.model_checks.summarizer.user_grant_option_privileges == toset(["EXECUTE"]) &&
+      output.model_checks.summarizer.group_privileges == toset(["EXECUTE"]) &&
+      length(output.model_checks.summarizer.public_privileges) == 0
     )
     error_message = "The model checks must expose what the model and grant lookups observe."
+  }
+
+  assert {
+    condition = (
+      redshift_user.model_delegate[0].password_disabled &&
+      redshift_object_grant.model_delegate_schema[0].object_type == "SCHEMA" &&
+      redshift_object_grant.model_delegate_schema[0].grantee == redshift_user.model_delegate[0].name &&
+      redshift_object_grant.model_delegate_schema[0].privileges == toset(["USAGE"]) &&
+      redshift_object_grant.delegate_summarizer[0].object_type == "MODEL" &&
+      redshift_object_grant.delegate_summarizer[0].object_name == redshift_external_model.summarizer[0].name &&
+      redshift_object_grant.delegate_summarizer[0].grantee_type == "USER" &&
+      redshift_object_grant.delegate_summarizer[0].grantee == redshift_user.model_delegate[0].name &&
+      redshift_object_grant.delegate_summarizer[0].privileges == toset(["EXECUTE"]) &&
+      redshift_object_grant.delegate_summarizer[0].grant_option_privileges == toset(["EXECUTE"])
+    )
+    error_message = "Only the separate IAM-only model delegate receives schema USAGE and user EXECUTE WITH GRANT OPTION."
+  }
+
+  assert {
+    condition = (
+      redshift_object_grant.group_summarizer[0].object_type == "MODEL" &&
+      redshift_object_grant.group_summarizer[0].object_name == redshift_external_model.summarizer[0].name &&
+      redshift_object_grant.group_summarizer[0].grantee_type == "GROUP" &&
+      redshift_object_grant.group_summarizer[0].grantee == redshift_group.readers.name &&
+      redshift_object_grant.group_summarizer[0].privileges == toset(["EXECUTE"]) &&
+      length(redshift_object_grant.group_summarizer[0].grant_option_privileges) == 0 &&
+      redshift_object_grant.public_summarizer[0].object_type == "MODEL" &&
+      redshift_object_grant.public_summarizer[0].object_name == redshift_external_model.summarizer[0].name &&
+      redshift_object_grant.public_summarizer[0].grantee_type == "PUBLIC" &&
+      redshift_object_grant.public_summarizer[0].grantee == "public" &&
+      length(redshift_object_grant.public_summarizer[0].privileges) == 0 &&
+      length(redshift_object_grant.public_summarizer[0].grant_option_privileges) == 0
+    )
+    error_message = "The group receives only EXECUTE, while the PUBLIC tuple remains explicitly empty without widening access."
   }
 }

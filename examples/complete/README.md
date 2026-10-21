@@ -6,7 +6,7 @@ row-level security, masking, comments, and matching read-only lookups and listin
 private endpoints, and managed administrator secrets with the Data API. No existing warehouse, VPC, source table, or
 Glue catalog is needed.
 
-All thirty-six provider resource types and forty-seven data source types are represented, and every data source is
+All 41 provider resource types and 58 data source types are represented, and every data source is
 exposed through an output; `redshift_identity_provider` and its lookup are created only when Identity Center is enabled.
 Identity Center is optional: omitting its instance ARN skips the managed SSO application, directory groups/assignments,
 and SQL identity provider. The connection configurations are in `providers.tf`, with optional read-only probes in
@@ -64,8 +64,8 @@ Both VPCs are created by this root. Keeping them separate also supports profiles
 does not need peering or SQL ingress between the warehouses. Private S3/Glue endpoints support the data fixtures; SSO
 additionally creates consumer-side `sso-oauth` and `identitystore` endpoints when enabled.
 
-The setup uses pinned `terraform-aws-modules` modules: `vpc/aws` and its `vpc-endpoints` submodule (`6.6.1`),
-`s3-bucket/aws` (`5.14.0`), and `secrets-manager/aws` (`2.1.0`). Each module receives the appropriate producer or consumer
+The setup uses pinned `terraform-aws-modules` modules: `vpc/aws` and its `vpc-endpoints` submodule (`6.7.3`),
+`s3-bucket/aws` (`5.17.0`), and `secrets-manager/aws` (`2.2.0`). Each module receives the appropriate producer or consumer
 AWS provider. The VPCs use three isolated subnets by default, or three public subnets when public SQL is enabled;
 neither mode provisions NAT gateways or assigns public IPs to instances on launch.
 
@@ -102,6 +102,16 @@ task terraform -- apply
 task terraform -- output -json warehouses
 task terraform -- output -json verification
 ```
+
+Local builds normally derive their version from the latest Git tag. Before `v0.4.0` is tagged, add `VERSION=0.4.0`
+to each Task invocation so the local mirror satisfies the example's `~> 0.4` constraint, for example:
+
+```sh
+task terraform VERSION=0.4.0 -- init -backend=false
+task terraform VERSION=0.4.0 -- apply
+```
+
+Use the same override for `task terraform-check` and `task terraform-test`; it does not create or publish a release.
 
 No variable file is required for the default. Use the normal AWS credential chain or copy `terraform.tfvars.example`
 to `terraform.tfvars` and set `profile`, `region`, or other inputs. The random name suffix isolates AWS resource names.
@@ -154,7 +164,8 @@ documented beside the resources; they are not a production security baseline.
 | `verification.tf`          | Live shared-data and Spectrum queries.                                                               |
 | `identity_center.tf`       | Optional SSO application, directory groups/assignments, SQL identity provider and roles.             |
 | `connections.tf`           | Optional IAM/password connection probes for both warehouse types.                                    |
-| `zero_etl.tf`              | Optional zero-ETL integration from an existing or created Aurora source, destination, and lookup.    |
+| `zero_etl.tf`              | Optional zero-ETL integration, destination database, and lookup.                                     |
+| `zero_etl_dynamodb.tf`     | Existing or disposable DynamoDB source, export permissions, and Redshift integration.                |
 | `variables.tf`             | Deployment inputs and validation.                                                                    |
 | `outputs*.tf`              | Warehouse/fixture metadata, catalog observations, connection checks, query identities.               |
 | `tests/`                   | Mocked `terraform test` suites per feature area and their shared mocks (no AWS access).              |
@@ -178,6 +189,39 @@ ASSUMEROLE defaults to enabled. On the newly owned consumer warehouse, initializ
 `ASSUMEROLE ON ALL FROM PUBLIC FOR ALL` before granting COPY/UNLOAD to the reader role and the attached default IAM
 role, and COPY on the explicit consumer IAM role to the loader user. Set `enable_assumerole_grant = false` to omit both
 initialization and the managed command grants.
+
+## Reconciliation features
+
+The default configuration includes a `SHAPEFILE SIMPLIFY AUTO` COPY template, database-wide template and datashare
+member listings, exclusive table/function membership in a separate producer schema, a Parquet external table, and
+explicit shared-database object grants. The PUBLIC language and function-default lockdowns opt in
+to `restore_default_on_destroy`: deleting those resources restores Redshift's built-in access, rather than retaining
+the revocation. This is appropriate only for these disposable databases.
+
+To exercise the data-preserving column rename, apply the defaults first, optionally insert rows into
+`example_events`, and then run:
+
+```sh
+task terraform -- apply -var=table_rename_event_id=true
+task terraform -- plan -var=table_rename_event_id=true
+```
+
+Keep the variable enabled after migration. Turning it off asks Terraform to remove `event_key` and add `event_id`;
+it is not a reverse-rename operation. The table resource documentation explains how to remove a completed rename hint
+without changing the column name.
+
+Set `spectrum_parquet_add_column = true` on a later apply to insert a column between existing Parquet column blocks.
+Spectrum resolves Parquet fields by name, so the catalog can append the new column while Terraform keeps the configured
+order. The example creates the definition and lookups, not Parquet data files; the acceptance fixture tests row mapping.
+
+Set `database_collation_insensitive = true` on a later apply to change the deliberately empty
+`example_collation_probe` database in place. Keep that probe empty: Redshift rejects collation changes when user tables
+exist. A rejected change does not fall back to dropping the database; replacing a populated database requires an
+explicit user decision.
+
+Set `copy_job = { auto = false }` to include the S3 integration, target table, job definition readback, and lookups.
+Once the integration is active, changing `auto` to `true` exercises the in-place job update. COPY JOB can load data and
+incur ingestion charges.
 
 ## Optional Identity Center
 
@@ -216,10 +260,15 @@ requires for zero-ETL. Instead, `zero_etl_create_source = true` creates a dispos
 cluster with those settings and an `orders` database in the consumer VPC; it adds about 20 minutes to apply and Aurora
 charges while it exists.
 
-Either way, the consumer workgroup turns on `enable_case_sensitive_identifier`, a namespace resource policy authorizes
-the source, an `aws_rds_integration` replicates it, and `redshift_database`'s `integration` block creates the read-only
+For DynamoDB, set `zero_etl_create_dynamodb_source = true` to create a disposable on-demand table with PITR and scoped
+export permissions, or supply an existing DynamoDB table ARN in `zero_etl_source_arn`. Existing tables need those
+prerequisites already configured. Leave `zero_etl_source_database` null. Choose only 1 existing or created source.
+
+In each case, the consumer workgroup turns on `enable_case_sensitive_identifier`, a namespace resource policy authorizes
+the source, and an `aws_rds_integration` (Aurora/RDS) or `aws_redshift_integration` (DynamoDB) replicates it.
+`redshift_database`'s `integration` block creates the read-only
 `example_zero_etl` destination database from it. The admin connection creates the database, so replication runs with
-its permissions.
+its permissions. DynamoDB uses a 900-second refresh interval; Aurora/RDS uses 600 seconds.
 
 Redshift refuses to drop the destination database while the integration is active, and Terraform drops the database
 first, so delete the integration before destroying the example:
@@ -227,18 +276,23 @@ first, so delete the integration before destroying the example:
 ```sh
 aws rds delete-integration --profile <consumer profile> \
   --integration-identifier "$(terraform output -json zero_etl_database | jq -r .integration_arn)"
+# For DynamoDB, use this instead:
+aws redshift delete-integration --profile <consumer profile> \
+  --integration-arn "$(terraform output -json zero_etl_database | jq -r .integration_arn)"
 # Wait until the integration no longer exists, then destroy as usual.
 ```
 
 ## Optional DEBUG grant
 
 ```hcl
-federated_debug_database = "sales_db@finance-catalog"
+federated_debug_database = "sales_db"
 ```
 
 Setting a database grants `DEBUG` on it to the administrators of the consumer account with `redshift_debug_grant` and
-reads the grant back with its lookup. The database must use federated permissions and be visible to the consumer
-workgroup; the example does not register such a warehouse. Without the variable, only the configuration lookups run.
+reads the grant back with its lookup. The database must be owned by the warehouse configured as `redshift.consumer`
+and use federated permissions; this example does not register such a warehouse. Remote `db@catalog` ACCOUNT grants
+have no reliable readback, so use the producer-local database and provider for that recipient type. Without the
+variable, only the configuration lookups run.
 
 `user_lockouts = true` adds the reader's row from `SHOW USER LOCKOUT`. It is off by default, because warehouses that
 do not support account lockout reject the command.

@@ -40,8 +40,30 @@ override_data {
   values = { location = "s3://mock-fixture/spectrum/events/event_date=2024-01-01" }
 }
 
+override_data {
+  target = data.redshift_external_table.parquet_events
+  values = {
+    location     = "s3://mock-fixture/spectrum/parquet_events/"
+    input_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+  }
+}
+
 run "spectrum_apply" {
   command = apply
+
+  assert {
+    condition = (
+      redshift_external_table.parquet_events.stored_as == "PARQUET" &&
+      [for column in redshift_external_table.parquet_events.column : column.name] == ["id", "label"] &&
+      redshift_external_table.parquet_events.schema == redshift_external_schema.glue.name &&
+      data.redshift_external_table.parquet_events.name == redshift_external_table.parquet_events.name &&
+      output.spectrum_parquet_table.location == "s3://mock-fixture/spectrum/parquet_events/" &&
+      output.spectrum_parquet_table.input_format == "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat" &&
+      length(output.spectrum_parquet_table.columns) == length(data.redshift_external_table.parquet_events.column) &&
+      contains(jsondecode(aws_iam_role_policy.producer_spectrum_tables.policy).Statement[0].Resource, "arn:aws:glue:eu-central-1:111111111111:table/mock_fixture/parquet_events")
+    )
+    error_message = "The Parquet table, catalog permission, lookup, and output must be wired to the fixture."
+  }
 
   assert {
     condition = (
@@ -85,5 +107,22 @@ run "spectrum_apply" {
       data.redshift_external_partition.events_first_day.values == redshift_external_partition.events_first_day.values
     )
     error_message = "The Spectrum lookups must be wired to the managed table and partition and exposed as outputs."
+  }
+}
+
+run "spectrum_parquet_insert_column" {
+  command = apply
+
+  variables {
+    spectrum_parquet_add_column = true
+  }
+
+  assert {
+    condition = (
+      [for column in redshift_external_table.parquet_events.column : column.name] == ["id", "amount", "label"] &&
+      redshift_external_table.parquet_events.column[1].type == "DECIMAL(8,2)" &&
+      redshift_external_table.parquet_events.stored_as == "PARQUET"
+    )
+    error_message = "The toggle must insert the Parquet amount block between the existing columns."
   }
 }

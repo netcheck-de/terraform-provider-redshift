@@ -98,6 +98,14 @@ resource "redshift_table" "orders" {
 
 # Distribution and sort key are left to Redshift: without the blocks both are AUTO, and effective_distribution and
 # effective_sort_key report what Redshift chose.
+# Apply normally first, insert any test rows, then apply with -var=table_rename_event_id=true. Keep it true on later
+# applies: the retained renamed_from hint is retry-safe and event_id values survive as event_key.
+variable "table_rename_event_id" {
+  type        = bool
+  default     = false
+  description = "Opt in to the data-preserving events.event_id to event_key migration after the initial apply."
+}
+
 resource "redshift_table" "events" {
   provider = redshift.consumer
   database = redshift_schema.local.database
@@ -105,8 +113,9 @@ resource "redshift_table" "events" {
   name     = "example_events"
 
   column {
-    name = "event_id"
-    type = "BIGINT"
+    name         = var.table_rename_event_id ? "event_key" : "event_id"
+    renamed_from = var.table_rename_event_id ? "event_id" : null
+    type         = "BIGINT"
   }
 
   column {

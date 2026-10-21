@@ -31,7 +31,8 @@ run "zero_etl_disabled" {
 
   assert {
     condition = (
-      length(aws_rds_integration.zero_etl) == 0 && length(aws_redshift_resource_policy.inbound_integrations) == 0 &&
+      length(aws_rds_integration.zero_etl) == 0 && length(aws_redshift_integration.zero_etl) == 0 &&
+      length(aws_dynamodb_table.zero_etl_source) == 0 && length(aws_redshift_resource_policy.inbound_integrations) == 0 &&
       length(redshift_database.zero_etl) == 0 && output.zero_etl_database == null
     )
     error_message = "Without zero_etl_source_arn the example must not create a zero-ETL integration or destination."
@@ -44,6 +45,119 @@ run "zero_etl_disabled" {
     )
     error_message = "Case-sensitive identifiers must stay off without the zero-ETL integration."
   }
+}
+
+run "zero_etl_dynamodb_existing" {
+  command = apply
+
+  variables {
+    zero_etl_source_arn = "arn:aws:dynamodb:eu-central-1:111111111111:table/orders"
+  }
+
+  override_resource {
+    target = aws_redshift_integration.zero_etl[0]
+    values = { arn = "arn:aws:redshift:eu-central-1:111111111111:integration:a1b2c3d4-5678-90ab-cdef-example11111" }
+  }
+
+  override_data {
+    target = data.redshift_database.zero_etl[0]
+    values = {
+      name          = "example_zero_etl"
+      database_type = "LOCAL"
+      owner         = "admin"
+      integration = {
+        integration_id       = "a1b2c3d4-5678-90ab-cdef-example11111"
+        source_database      = null
+        refresh_interval     = 900
+        history_mode         = false
+        auto_remediation     = false
+        query_all_states     = null
+        accept_invalid_chars = null
+        truncate_columns     = null
+      }
+    }
+  }
+
+  assert {
+    condition = (
+      length(aws_rds_integration.zero_etl) == 0 && length(aws_dynamodb_table.zero_etl_source) == 0 &&
+      length(aws_dynamodb_resource_policy.zero_etl_source) == 0 &&
+      aws_redshift_integration.zero_etl[0].source_arn == var.zero_etl_source_arn &&
+      aws_redshift_integration.zero_etl[0].target_arn == aws_redshiftserverless_namespace.consumer.arn &&
+      contains(jsondecode(aws_redshift_resource_policy.inbound_integrations[0].policy).Statement[0].Condition.StringEquals["aws:SourceArn"], var.zero_etl_source_arn)
+    )
+    error_message = "An existing DynamoDB source must use the Redshift API and namespace policy without managing the source table or its policy."
+  }
+
+  assert {
+    condition = (
+      redshift_database.zero_etl[0].integration.integration_id == "a1b2c3d4-5678-90ab-cdef-example11111" &&
+      redshift_database.zero_etl[0].integration.refresh_interval == 900 &&
+      local.zero_etl_source_database == null &&
+      output.zero_etl_database.source_database == null && output.zero_etl_database.refresh_interval == 900 &&
+      output.zero_etl_database.integration_arn == aws_redshift_integration.zero_etl[0].arn &&
+      contains([for parameter in aws_redshiftserverless_workgroup.consumer.config_parameter : "${parameter.parameter_key}=${parameter.parameter_value}"], "enable_case_sensitive_identifier=true")
+    )
+    error_message = "DynamoDB must omit DATABASE, use a supported interval, enable case-sensitive identifiers, and expose the Redshift integration ARN."
+  }
+}
+
+run "zero_etl_dynamodb_created" {
+  command = apply
+
+  variables {
+    zero_etl_create_dynamodb_source = true
+  }
+
+  override_resource {
+    target = aws_dynamodb_table.zero_etl_source[0]
+    values = { arn = "arn:aws:dynamodb:eu-central-1:111111111111:table/example-zero-etl-source" }
+  }
+
+  assert {
+    condition = (
+      length(aws_rds_cluster.zero_etl_source) == 0 && length(aws_rds_integration.zero_etl) == 0 &&
+      aws_dynamodb_table.zero_etl_source[0].billing_mode == "PAY_PER_REQUEST" &&
+      one(aws_dynamodb_table.zero_etl_source[0].point_in_time_recovery).enabled &&
+      aws_redshift_integration.zero_etl[0].source_arn == aws_dynamodb_table.zero_etl_source[0].arn &&
+      aws_dynamodb_resource_policy.zero_etl_source[0].resource_arn == aws_dynamodb_table.zero_etl_source[0].arn &&
+      redshift_database.zero_etl[0].integration.refresh_interval == 900
+    )
+    error_message = "The disposable DynamoDB source must enable PITR and use a Redshift integration with a supported interval."
+  }
+
+  assert {
+    condition = (
+      jsondecode(aws_dynamodb_resource_policy.zero_etl_source[0].policy).Statement[0].Principal.Service == "redshift.amazonaws.com" &&
+      toset(jsondecode(aws_dynamodb_resource_policy.zero_etl_source[0].policy).Statement[0].Action) == toset(["dynamodb:DescribeTable", "dynamodb:ExportTableToPointInTime"]) &&
+      jsondecode(aws_dynamodb_resource_policy.zero_etl_source[0].policy).Statement[1].Action == "dynamodb:DescribeExport" &&
+      jsondecode(aws_dynamodb_resource_policy.zero_etl_source[0].policy).Statement[1].Resource == "${aws_dynamodb_table.zero_etl_source[0].arn}/export/*" &&
+      jsondecode(aws_dynamodb_resource_policy.zero_etl_source[0].policy).Statement[0].Condition.StringEquals["aws:SourceAccount"] == data.aws_caller_identity.consumer.account_id
+    )
+    error_message = "The source policy must authorize Redshift table exports and export-status reads, scoped to the consumer account."
+  }
+}
+
+run "zero_etl_dynamodb_source_conflict" {
+  command = plan
+
+  variables {
+    zero_etl_create_dynamodb_source = true
+    zero_etl_source_arn             = "arn:aws:dynamodb:eu-central-1:111111111111:table/orders"
+  }
+
+  expect_failures = [var.zero_etl_create_dynamodb_source]
+}
+
+run "zero_etl_created_source_kind_conflict" {
+  command = plan
+
+  variables {
+    zero_etl_create_source          = true
+    zero_etl_create_dynamodb_source = true
+  }
+
+  expect_failures = [var.zero_etl_create_source]
 }
 
 run "zero_etl_apply" {

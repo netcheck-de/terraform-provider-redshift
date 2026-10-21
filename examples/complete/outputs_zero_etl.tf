@@ -8,6 +8,6 @@ output "zero_etl_database" {
     source_database  = data.redshift_database.zero_etl[0].integration.source_database
     refresh_interval = data.redshift_database.zero_etl[0].integration.refresh_interval
     history_mode     = data.redshift_database.zero_etl[0].integration.history_mode
-    integration_arn  = aws_rds_integration.zero_etl[0].arn
+    integration_arn  = local.zero_etl_integration_arn
   } : null
 }

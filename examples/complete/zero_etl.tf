@@ -1,18 +1,18 @@
-# Optional zero-ETL integration into the consumer warehouse, either from an existing Aurora or RDS source, which needs
-# the engine settings AWS documents for zero-ETL, or from a disposable Aurora PostgreSQL source the example creates.
+# Optional zero-ETL integration from Aurora, RDS, or DynamoDB into the consumer warehouse. Existing sources need the
+# AWS-documented prerequisites; the example can instead create a disposable Aurora PostgreSQL cluster or DynamoDB table.
 variable "zero_etl_source_arn" {
-  description = "Existing Aurora or RDS DB cluster or instance ARN to replicate into the consumer warehouse, which then also sets enable_case_sensitive_identifier; null skips the integration unless zero_etl_create_source is set."
+  description = "Existing Aurora/RDS cluster or instance ARN, or DynamoDB table ARN, in the consumer Region to replicate. Existing DynamoDB sources need PITR, supported encryption, and a resource policy authorizing Redshift exports. Null skips the integration unless a create-source option is set."
   type        = string
   default     = null
 
   validation {
-    condition     = var.zero_etl_source_arn == null ? true : can(regex("^arn:[a-z0-9-]+:rds:[a-z0-9-]+:[0-9]{12}:(cluster|db):[a-zA-Z0-9-]+$", var.zero_etl_source_arn))
-    error_message = "Supply an RDS DB cluster or instance ARN, or leave it null."
+    condition     = var.zero_etl_source_arn == null ? true : can(regex("^arn:[a-z0-9-]+:(rds:[a-z0-9-]+:[0-9]{12}:(cluster|db):[a-zA-Z0-9-]+|dynamodb:[a-z0-9-]+:[0-9]{12}:table/[a-zA-Z0-9_.-]+)$", var.zero_etl_source_arn))
+    error_message = "Supply an RDS DB cluster or instance ARN, a DynamoDB table ARN, or leave it null."
   }
 }
 
 variable "zero_etl_source_database" {
-  description = "Source database to replicate; required for Aurora PostgreSQL, RDS for PostgreSQL, and RDS for Oracle sources, and null for MySQL sources. Ignored with zero_etl_create_source."
+  description = "Source database to replicate; required for PostgreSQL and Oracle sources, and null for MySQL and DynamoDB sources. Ignored with a create-source option."
   type        = string
   default     = null
 }
@@ -23,15 +23,16 @@ variable "zero_etl_create_source" {
   default     = false
 
   validation {
-    condition     = !(var.zero_etl_create_source && var.zero_etl_source_arn != null)
-    error_message = "Set either zero_etl_create_source or zero_etl_source_arn, not both."
+    condition     = !var.zero_etl_create_source || (!var.zero_etl_create_dynamodb_source && var.zero_etl_source_arn == null)
+    error_message = "Choose only one of zero_etl_create_source, zero_etl_create_dynamodb_source, or zero_etl_source_arn."
   }
 }
 
 locals {
-  zero_etl_enabled         = var.zero_etl_create_source || var.zero_etl_source_arn != null
-  zero_etl_source_arn      = var.zero_etl_create_source ? aws_rds_cluster.zero_etl_source[0].arn : var.zero_etl_source_arn
-  zero_etl_source_database = var.zero_etl_create_source ? aws_rds_cluster.zero_etl_source[0].database_name : var.zero_etl_source_database
+  zero_etl_enabled         = var.zero_etl_create_source || var.zero_etl_create_dynamodb_source || var.zero_etl_source_arn != null
+  zero_etl_dynamodb        = var.zero_etl_create_dynamodb_source || can(regex(":dynamodb:", var.zero_etl_source_arn))
+  zero_etl_source_arn      = var.zero_etl_create_source ? aws_rds_cluster.zero_etl_source[0].arn : (var.zero_etl_create_dynamodb_source ? aws_dynamodb_table.zero_etl_source[0].arn : var.zero_etl_source_arn)
+  zero_etl_source_database = var.zero_etl_create_source ? aws_rds_cluster.zero_etl_source[0].database_name : (local.zero_etl_dynamodb ? null : var.zero_etl_source_database)
 }
 
 # Aurora PostgreSQL replicates through enhanced logical replication; these static parameters must be in place when the
@@ -108,7 +109,7 @@ resource "aws_rds_cluster_instance" "zero_etl_source" {
 
 resource "aws_rds_integration" "zero_etl" {
   provider         = aws.consumer
-  count            = local.zero_etl_enabled ? 1 : 0
+  count            = local.zero_etl_enabled && !local.zero_etl_dynamodb ? 1 : 0
   integration_name = "${local.name}-zero-etl"
   source_arn       = local.zero_etl_source_arn
   target_arn       = aws_redshiftserverless_namespace.consumer.arn
@@ -131,7 +132,8 @@ resource "aws_rds_integration" "zero_etl" {
 
 locals {
   # SVV_INTEGRATION identifies the integration by the last segment of its ARN.
-  zero_etl_integration_id = local.zero_etl_enabled ? element(reverse(split(":", aws_rds_integration.zero_etl[0].arn)), 0) : null
+  zero_etl_integration_arn = local.zero_etl_enabled ? (local.zero_etl_dynamodb ? aws_redshift_integration.zero_etl[0].arn : aws_rds_integration.zero_etl[0].arn) : null
+  zero_etl_integration_id  = local.zero_etl_enabled ? element(reverse(split(":", local.zero_etl_integration_arn)), 0) : null
 }
 
 # The destination is read-only and replicates with the admin connection's permissions. Destroying it drops the
@@ -144,7 +146,7 @@ resource "redshift_database" "zero_etl" {
   integration {
     integration_id   = local.zero_etl_integration_id
     source_database  = local.zero_etl_source_database
-    refresh_interval = 600
+    refresh_interval = local.zero_etl_dynamodb ? 900 : 600
     query_all_states = true
   }
 }

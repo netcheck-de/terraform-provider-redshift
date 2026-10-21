@@ -2,7 +2,7 @@
 version: '3'
 
 vars:
-  # The newest release tag is the only version source; the fallback must satisfy the examples' "~> 0.2" constraint.
+  # Releases use the newest tag; prerelease examples require an explicit VERSION override.
   VERSION:
     sh: git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//' | grep . || echo 0.2.0
   PACKAGE_DIR: '{{.ROOT_DIR}}/.cache/mirror/registry.terraform.io/netcheck-de/redshift/{{.VERSION}}/{{OS}}_{{ARCH}}'

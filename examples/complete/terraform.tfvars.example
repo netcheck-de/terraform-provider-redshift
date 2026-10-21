@@ -1,5 +1,5 @@
 # The defaults create both warehouses, private networks, and all non-SSO SQL/data fixtures in one account.
-# Every input is listed with its default; uncomment and adjust only what you need.
+# Uncomment and adjust only the optional inputs you need; passwords stay in ephemeral environment variables.
 region = "eu-central-1"
 # profile = "sandbox-admin"
 
@@ -11,6 +11,11 @@ region = "eu-central-1"
 # serverless_capacity = 8
 # admin_username      = "tfadmin"
 # admin_database      = "dev"
+
+# Forward-only migration probes: apply defaults first, then opt in and keep the new setting enabled.
+# table_rename_event_id          = false
+# database_collation_insensitive = false
+# spectrum_parquet_add_column    = false
 
 # Revoke PUBLIC ASSUMEROLE on the consumer and grant COPY/UNLOAD explicitly.
 # enable_assumerole_grant = true
@@ -37,12 +42,17 @@ region = "eu-central-1"
 # zero_etl_source_database = "orders" # PostgreSQL and Oracle sources only.
 # Or create a disposable Aurora PostgreSQL Serverless v2 source instead (about 20 more minutes, Aurora charges).
 # zero_etl_create_source = true
+# Or create a disposable DynamoDB source with PITR and scoped export permissions.
+# zero_etl_create_dynamodb_source = false
 
 # Grant DEBUG on a federated-permissions database to the administrators of the consumer account.
 # federated_debug_database = "sales_db"
 
 # Read the reader's lockout state; warehouses without account lockout support reject SHOW USER LOCKOUT.
 # user_lockouts = true
+
+# Only read a context variable that exists in newly opened consumer-provider sessions.
+# session_context_variable = null
 
 # Optional cross-account mode: distinct profiles create separate networks and warehouses in those accounts.
 # producer_profile = "producer-admin"
@@ -51,6 +61,7 @@ region = "eu-central-1"
 # Direct probes require private connectivity or an explicit public SQL opt-in with restricted client CIDRs.
 # allow_public_sql = false
 # public_sql_cidrs = ["203.0.113.10/32"]
+# direct_sslmode = "verify-full"
 
 # Read-only connection probes. IAM Data API probes need no TCP connectivity; direct probes do, and direct password
 # probes additionally use ephemeral TF_VAR_producer_password / TF_VAR_consumer_password (never set them here).

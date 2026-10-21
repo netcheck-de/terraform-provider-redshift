@@ -153,8 +153,10 @@ standard acceptance environment plus `REDSHIFT_ACC_DIRECT=1`:
 - `TestAccLanguageGrantPublicDefault`: a disposable non-superuser can create a procedure until a `PUBLIC`
   `redshift_language_grant` without `USAGE` revokes the built-in default, and still cannot after destroy.
 
-Set `REDSHIFT_ACC_SSLMODE` (for example `require`) to override the default `verify-full` for direct tests; on macOS
-this is needed for Serverless endpoints, whose certificates lack Certificate Transparency timestamps.
+Set `REDSHIFT_ACC_CA_CERT_FILE` to a PEM bundle containing the Amazon Trust Services root when macOS rejects a
+Serverless certificate for missing Certificate Transparency timestamps; this keeps `verify-full` and hostname checks.
+`REDSHIFT_ACC_SSLMODE` explicitly overrides the default `verify-full`; `require` encrypts without authenticating the
+server and should be restricted to disposable fixtures.
 
 `TestAccClusterTransportLifecycle` additionally requires `REDSHIFT_ACC_CLUSTER` and `REDSHIFT_ACC_DB_USER`, with a
 provisioned test warehouse and an existing privileged SQL identity. `REDSHIFT_ACC_SECRET_ARN` optionally adds a
@@ -163,6 +165,33 @@ created by CI.
 
 Provisioned cluster and Secrets Manager tests require separately configured test fixtures. Cross-account reader testing
 requires producer/consumer fixture connectivity in addition to the normal lifecycle suite.
+
+### Focused live verification
+
+The complete example provides disposable warehouses and optional COPY, Bedrock, DynamoDB, and Identity Center
+fixtures. Every live test still requires `TF_ACC=1`; skipped fixture-dependent tests are not verification. Keep each
+warehouse's environment separate, especially its `REDSHIFT_ACC_SECRET_ARN`, and never run fixture mutations against a
+shared production warehouse.
+
+- `TestAccTableColumnRename` verifies preserved rows and no-change plans. The database collation tests verify
+  empty-database updates and rejection without data loss when the database is populated.
+- `TestAccLiveValidation*` exercises actual catalog visibility, table/key restrictions, materialized-view resets,
+  template syntax, and user session defaults. `REDSHIFT_ACC_LARGE_TABLES=1` additionally loads about 1 GiB into a
+  temporary RAW-encoded table to verify the AUTO distribution-key detour; the test removes its data afterward.
+- Model import and permission tests use `REDSHIFT_ACC_MODEL_ROLE`, an IAM role already attached to the warehouse.
+  They create metadata and exercise grants, but never invoke Bedrock or train a model.
+- COPY job lifecycle tests use `REDSHIFT_ACC_COPY_SOURCE` and `REDSHIFT_ACC_COPY_ROLE`; the S3 prefix must belong to an
+  active warehouse integration. Separate catalog-scope probes accept an existing job name and its database.
+- Zero-ETL metadata tests accept existing isolated destination/integration identifiers. Only set
+  `REDSHIFT_ACC_INTEGRATION_MUTATIONS` for a disposable destination whose settings the test may change and restore.
+- `REDSHIFT_ACC_SYSTEM_SETTINGS` enables a warehouse-wide effective-value probe. It restores the prior effective
+  value and skips before mutation if the engine cannot read it; this is not persisted-state support for a system-setting
+  resource.
+
+Acceptance tests create uniquely named SQL objects and register cleanup before destructive probes. Infrastructure
+fixtures need their own isolated Terraform state, explicit ownership inventory, and a final resource inventory after
+destroy. Remove zero-ETL integrations before their destination databases, and remove consumer sharing associations
+before producer shares and warehouses. Never change existing directory memberships to prepare Identity Center tests.
 
 ## Lint policy
 

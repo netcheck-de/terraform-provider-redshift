@@ -21,7 +21,7 @@ resource "aws_redshift_integration" "copy_job" {
   source_arn       = module.fixture_bucket.s3_bucket_arn
   target_arn       = aws_redshiftserverless_namespace.consumer.arn
 
-  depends_on = [module.fixture_bucket, aws_redshift_resource_policy.inbound_integrations]
+  depends_on = [module.fixture_bucket, aws_redshift_resource_policy.inbound_integrations, aws_redshiftserverless_workgroup.consumer]
 }
 
 resource "redshift_template" "csv_events" {
@@ -53,6 +53,31 @@ resource "redshift_template" "json_events" {
     MAXERROR        = "10"
     TRUNCATECOLUMNS = ""
   }
+}
+
+# A reusable spatial ingestion definition; this creates no load or geometry data.
+resource "redshift_template" "shapefile" {
+  provider        = redshift.consumer
+  database        = redshift_schema.local.database
+  schema          = redshift_schema.local.name
+  name            = "example_shapefile"
+  format          = "SHAPEFILE"
+  format_argument = "SIMPLIFY AUTO 0.000001"
+}
+
+data "redshift_template" "shapefile" {
+  provider = redshift.consumer
+  database = redshift_template.shapefile.database
+  schema   = redshift_template.shapefile.schema
+  name     = redshift_template.shapefile.name
+}
+
+# Database-wide listing observes catalog-visible rows without probing unrelated schemas.
+data "redshift_templates" "database" {
+  provider = redshift.consumer
+  database = redshift_schema.local.database
+
+  depends_on = [redshift_template.csv_events, redshift_template.json_events, redshift_template.shapefile]
 }
 
 resource "redshift_object_grant" "loader_template" {

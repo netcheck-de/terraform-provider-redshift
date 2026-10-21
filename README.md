@@ -2,7 +2,7 @@
 
 This Go provider manages Redshift Serverless and provisioned SQL objects through the Data API or direct TLS connections.
 Use the AWS provider for workgroups, namespaces, IAM, Identity Center applications, and datashare
-association/authorization. Its forty resources and fifty-six data sources cover:
+association/authorization. Its 41 resources and 58 data sources cover:
 
 - databases, including zero-ETL integration destinations, local and external schemas, tables, views, materialized
   views, and Spectrum external tables and partitions;
@@ -12,7 +12,8 @@ association/authorization. Its forty resources and fifty-six data sources cover:
   `DEBUG` privileges;
 - row-level security and dynamic data masking;
 - COPY templates and automatic COPY jobs;
-- datashares, comments, configuration parameters, and catalog listings, including models.
+- datashares with explicit or exclusive schema-kind membership, comments, configuration parameters, and catalog
+  listings, including models.
 
 The [resource index](docs/index.md#ownership-boundaries) shows which resource owns which part of a table or datashare.
 
@@ -23,7 +24,7 @@ terraform {
   required_providers {
     redshift = {
       source  = "netcheck-de/redshift"
-      version = "~> 0.2"
+      version = "~> 0.4"
     }
   }
 }
@@ -104,6 +105,8 @@ strict TLS and parameter/result handling. `TestAccTransportSwitchLifecycle` veri
 IAM, imports, updates, and cleanup. `TestAccDirectPasswordPrivileges` verifies a disposable non-superuser password
 identity can SELECT its fixture but cannot INSERT. Run each using
 `go test ./internal/provider -run '^<test-name>$' -count=1 -v`.
+Set `REDSHIFT_ACC_CA_CERT_FILE` to an Amazon Trust Services PEM bundle if macOS rejects the Serverless certificate;
+the tests still verify the certificate chain and hostname.
 
 ## Known limitations
 
@@ -111,9 +114,9 @@ identity can SELECT its fixture but cannot INSERT. Run each using
   these objects.
 - `redshift_database` with `with_permissions = false` and cross-account datashare grants have not been tested against
   live warehouses yet.
-- On macOS, direct connections to Serverless endpoints fail certificate verification because those certificates lack
-  Certificate Transparency timestamps. Add the Amazon Trust Services root through `ca_cert_file`, use
-  `sslmode = "require"`, or connect through the Data API.
+- On macOS, native trust can reject Serverless certificates that lack Certificate Transparency timestamps. Add the
+  Amazon Trust Services root through `ca_cert_file` to retain full certificate and hostname verification, or connect
+  through the Data API. `sslmode = "require"` disables server authentication and is only a disposable-fixture fallback.
 
 ## License
 

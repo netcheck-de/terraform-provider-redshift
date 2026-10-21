@@ -53,6 +53,80 @@ data "redshift_datashare_table" "source" {
   table     = redshift_datashare_table.source.table
 }
 
+# Observe automatic and explicit membership without claiming ownership of bulk-added objects or UDF overloads.
+data "redshift_datashare_objects" "producer" {
+  provider  = redshift.producer
+  database  = redshift_datashare.producer.database
+  datashare = redshift_datashare.producer.name
+
+  depends_on = [
+    redshift_datashare_table.source,
+    redshift_datashare_membership.bulk,
+    aws_redshiftdata_statement.share_procedure,
+  ]
+}
+
+# Bulk owners use a dedicated source schema: no overlap with the explicit table above or its include_new policy.
+resource "redshift_schema" "bulk_share" {
+  provider = redshift.producer
+  database = redshift_database.producer.name
+  name     = "example_bulk_share"
+}
+
+resource "redshift_table" "bulk_share" {
+  provider = redshift.producer
+  database = redshift_schema.bulk_share.database
+  schema   = redshift_schema.bulk_share.name
+  name     = "events"
+
+  column {
+    name = "id"
+    type = "INTEGER"
+  }
+}
+
+resource "redshift_function" "bulk_share" {
+  for_each    = toset(["INTEGER", "VARCHAR"])
+  provider    = redshift.producer
+  database    = redshift_schema.bulk_share.database
+  schema      = redshift_schema.bulk_share.name
+  name        = "f_shared_identity"
+  arguments   = [each.key]
+  return_type = each.key
+  volatility  = "IMMUTABLE"
+  body        = "SELECT $1"
+}
+
+resource "redshift_datashare_schema" "bulk" {
+  provider    = redshift.producer
+  database    = redshift_datashare.producer.database
+  datashare   = redshift_datashare.producer.name
+  schema      = redshift_schema.bulk_share.name
+  include_new = false
+}
+
+resource "redshift_datashare_membership" "bulk" {
+  for_each  = toset(["TABLES", "FUNCTIONS"])
+  provider  = redshift.producer
+  database  = redshift_datashare_schema.bulk.database
+  datashare = redshift_datashare_schema.bulk.datashare
+  schema    = redshift_datashare_schema.bulk.schema
+  kind      = each.key
+  all       = true
+
+  # Both overloaded SQL UDFs and the table exist before exclusive coverage is established.
+  depends_on = [redshift_table.bulk_share, redshift_function.bulk_share]
+}
+
+data "redshift_datashare_membership" "bulk" {
+  for_each  = redshift_datashare_membership.bulk
+  provider  = redshift.producer
+  database  = each.value.database
+  datashare = each.value.datashare
+  schema    = each.value.schema
+  kind      = each.value.kind
+}
+
 # Same-account sharing is namespace-scoped; cross-account mode uses an account grant plus AWS authorization.
 resource "redshift_datashare_grant" "consumer" {
   provider     = redshift.producer

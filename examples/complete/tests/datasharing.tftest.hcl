@@ -51,8 +51,38 @@ override_data {
   values = { id = "inbound-listing-identity" }
 }
 
+override_data {
+  target = data.redshift_datashare_objects.producer
+  values = { id = "producer-objects-identity" }
+}
+
+override_data {
+  target = data.redshift_datashare_membership.bulk["TABLES"]
+  values = { all = true, exists = true }
+}
+
+override_data {
+  target = data.redshift_datashare_membership.bulk["FUNCTIONS"]
+  values = { all = true, exists = true }
+}
+
 run "datasharing_apply" {
   command = apply
+
+  assert {
+    condition = (
+      redshift_datashare_schema.bulk.include_new == false &&
+      redshift_datashare_schema.bulk.schema != redshift_datashare_table.source.schema &&
+      redshift_datashare_membership.bulk["TABLES"].kind == "TABLES" &&
+      redshift_datashare_membership.bulk["FUNCTIONS"].kind == "FUNCTIONS" &&
+      alltrue([for membership in redshift_datashare_membership.bulk : membership.all]) &&
+      alltrue([for membership in data.redshift_datashare_membership.bulk : membership.all && membership.exists]) &&
+      output.datasharing.bulk_membership == { TABLES = true, FUNCTIONS = true } &&
+      length(redshift_function.bulk_share) == 2 &&
+      redshift_function.bulk_share["INTEGER"].name == redshift_function.bulk_share["VARCHAR"].name
+    )
+    error_message = "Exclusive TABLES and FUNCTIONS owners must cover both overloads in an isolated schema without include_new or explicit membership overlap."
+  }
 
   assert {
     condition = (
@@ -80,6 +110,10 @@ run "datasharing_apply" {
       output.datasharing.producer_owner == "observed_share_owner" && output.datasharing.producer_share_id == 100 &&
       output.datasharing.producer_namespace == "11111111-2222-3333-4444-555555555555" &&
       output.datasharing.share_operator_privileges == toset(["ALTER", "SHARE"]) &&
+      data.redshift_datashare_objects.producer.id == "producer-objects-identity" &&
+      data.redshift_datashare_objects.producer.database == redshift_datashare.producer.database &&
+      data.redshift_datashare_objects.producer.datashare == redshift_datashare.producer.name &&
+      output.datasharing.producer_objects == data.redshift_datashare_objects.producer.datashare_objects &&
       data.redshift_datashares.outbound.id == "outbound-listing-identity" && data.redshift_datashares.inbound.id == "inbound-listing-identity" &&
       output.datasharing.outbound_shares == [for share in data.redshift_datashares.outbound.datashares : share.name] &&
       length(output.datasharing.inbound_shares) == length(data.redshift_datashares.inbound.datashares)
