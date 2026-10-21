@@ -9,6 +9,7 @@ import (
 )
 
 var _ = registerReplacementPolicy("redshift_object_grant", map[string]replaceRule{
+	"database_type":           replaceAlways,
 	"database_name":           replaceAlways,
 	"schema_name":             replaceAlways,
 	"object_name":             replaceAlways,
