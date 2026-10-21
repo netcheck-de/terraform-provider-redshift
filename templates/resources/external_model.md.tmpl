@@ -25,6 +25,7 @@ DROP MODEL schema.name;
 {{ tffile "examples/resources/redshift_external_model/resource.tf" }}
 
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -58,15 +59,15 @@ transaction block.
 Refresh finds the model in `SHOW MODEL ALL` of its database and reads its settings from the `SHOW MODEL` key and value
 rows; Redshift has no `ALTER MODEL`, so no change runs SQL in place, and every change replaces the model.
 
-| Change                                                      | Result                                                                      |
-|-------------------------------------------------------------|-----------------------------------------------------------------------------|
-| `database`, `schema`, or `name`                             | replaces the model: the provider never moves or renames a model             |
-| `function`                                                  | replaces the model: the inference function is created with the model        |
-| `iam_role` changed                                          | replaces the model                                                          |
-| `iam_role` respelled as another case of `DEFAULT`           | no SQL; the state records the configured spelling                           |
-| `model_id`, `prompt`, or `suffix` set, changed, or removed  | replaces the model                                                          |
-| `request_type` or `response_type` changed                   | replaces the model; an omitted value is the default, `UNIFIED` or `VARCHAR` |
-| `request_type` or `response_type` respelled in another case | no SQL; the state records the configured spelling                           |
+| Change                                                      | Result                                                                                                                          |
+|-------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------|
+| `database`, `schema`, or `name`                             | replaces the model: the provider never moves or renames a model                                                                 |
+| `function`                                                  | replaces the model: the inference function is created with the model                                                            |
+| `iam_role` changed                                          | replaces the model, except when adopting an unread value after import                                                           |
+| `iam_role` respelled as another case of `DEFAULT`           | no SQL; the state records the configured spelling                                                                               |
+| `model_id`, `prompt`, or `suffix` set, changed, or removed  | replaces the model                                                                                                              |
+| `request_type` or `response_type` changed                   | replaces the model, except when adopting an unread response type after import; omitted values default to `UNIFIED` or `VARCHAR` |
+| `request_type` or `response_type` respelled in another case | no SQL; the state records the configured spelling                                                                               |
 
 **Drift.** `SHOW MODEL` documents the owner and the function name, but not the keys of the Bedrock settings, so refresh
 reads `function`, `iam_role`, `model_id`, `prompt`, `suffix`, `request_type`, and `response_type` only where
@@ -91,6 +92,6 @@ Alternatively, use `terraform import`:
 
 Import reads the settings `SHOW MODEL` reports. To the model's owner it prints the model ID, prompt, suffix, request
 type, function, and IAM role (`DEFAULT` as `default-aws-iam-role`); other users see no role. It never prints the
-response type, so import records the Redshift default for the request type: `VARCHAR` for `UNIFIED`, `SUPER` for `RAW`.
-A setting that is not reported stays unset, so the first plan afterwards replaces the model when the configuration
-sets it, as for a `UNIFIED` model created with `response_type = "SUPER"` or a role imported by a non-owner.
+response type, so import leaves it null until the first apply adopts configuration, including the `VARCHAR` default.
+The first apply adopts the configured response type and an unreported IAM role without SQL or replacement. Import
+cannot verify these values: configure the model's actual settings. Later changes replace the model normally.
