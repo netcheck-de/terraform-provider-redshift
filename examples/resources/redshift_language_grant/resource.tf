@@ -19,9 +19,11 @@ resource "redshift_language_grant" "sql_udfs" {
 
 # Only the grantees above may create stored procedures: this revokes the built-in USAGE that PUBLIC holds.
 resource "redshift_language_grant" "public_procedures" {
-  database_name = "analytics"
-  language_name = "PLPGSQL"
-  grantee       = "public"
-  grantee_type  = "PUBLIC"
-  privileges    = []
+  # Opt in only if removal should let everyone create procedures again.
+  restore_default_on_destroy = true
+  database_name              = "analytics"
+  language_name              = "PLPGSQL"
+  grantee                    = "public"
+  grantee_type               = "PUBLIC"
+  privileges                 = []
 }

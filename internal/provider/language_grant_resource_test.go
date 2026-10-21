@@ -13,17 +13,20 @@ import (
 )
 
 var _ = registerReplacementPolicy("redshift_language_grant", map[string]replaceRule{
-	"database_name":           replaceAlways,
-	"language_name":           replaceAlways,
-	"grantee":                 replaceAlways,
-	"grantee_type":            replaceAlways,
-	"privileges":              replaceNever,
-	"grant_option_privileges": replaceNever,
+	"restore_default_on_destroy": replaceNever,
+	"database_name":              replaceAlways,
+	"language_name":              replaceAlways,
+	"grantee":                    replaceAlways,
+	"grantee_type":               replaceAlways,
+	"privileges":                 replaceNever,
+	"grant_option_privileges":    replaceNever,
 })
 
 // languageGrantTestModel mirrors the language grant schema as a struct, because the shared lifecycle tests replace
 // the ID field of their models by name.
 type languageGrantTestModel struct {
+	// RestoreDefaultOnDestroy opts into restoring PUBLIC's built-in USAGE.
+	RestoreDefaultOnDestroy types.Bool `tfsdk:"restore_default_on_destroy"`
 	// ID is the JSON import identity.
 	ID types.String `tfsdk:"id"`
 	// DatabaseName is the database whose language privileges are managed.

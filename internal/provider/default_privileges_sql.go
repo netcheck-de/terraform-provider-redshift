@@ -50,11 +50,24 @@ func readDefaultPrivilegesPublicQuery(owner string) sqlclient.Query {
 
 // defaultPrivilegesImplicit reports the tuple Redshift grants without being asked: EXECUTE on every new function
 // to PUBLIC, database-wide. Procedures run only for their owner by default, and schema defaults only add to it.
-// Deleting the tuple revokes what it owns like any other and never grants the default back, so removing a lockdown
-// cannot widen access.
+// Deleting the tuple leaves it revoked unless cleanup explicitly opts into restoring this default.
 // https://docs.aws.amazon.com/redshift/latest/dg/stored-procedure-security-and-privileges.html
 func defaultPrivilegesImplicit(data types.Object) bool {
 	return objectString(data, "grantee_type") == "PUBLIC" && objectString(data, "object_type") == "FUNCTIONS" && objectString(data, "schema_name") == ""
+}
+
+func defaultPrivilegesConfigAllowed(data types.Object) ([]sqlclient.Keyword, error) {
+	if !privilegeFieldsKnown(data, "object_type") {
+		return nil, nil
+	}
+	switch objectString(data, "object_type") {
+	case "TABLES":
+		return []sqlclient.Keyword{"SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "REFERENCES", "TRUNCATE"}, nil
+	case "FUNCTIONS", "PROCEDURES":
+		return []sqlclient.Keyword{"EXECUTE"}, nil
+	default:
+		return nil, fmt.Errorf("unsupported default object_type %q", objectString(data, "object_type"))
+	}
 }
 
 // defaultPrivilegesTarget validates a future-object tuple and renders its checks, catalog read, and
