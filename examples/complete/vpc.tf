@@ -28,7 +28,7 @@ locals {
 # trivy:ignore:AWS-0178
 module "producer_vpc" {
   source    = "terraform-aws-modules/vpc/aws"
-  version   = "6.6.1"
+  version   = "6.7.3"
   providers = { aws = aws.producer }
 
   name = "${local.name}-producer"
@@ -45,7 +45,7 @@ module "producer_vpc" {
 # trivy:ignore:AWS-0178
 module "consumer_vpc" {
   source    = "terraform-aws-modules/vpc/aws"
-  version   = "6.6.1"
+  version   = "6.7.3"
   providers = { aws = aws.consumer }
 
   name = "${local.name}-consumer"
@@ -134,7 +134,7 @@ resource "aws_vpc_security_group_egress_rule" "consumer_s3" {
 
 module "producer_endpoints" {
   source    = "terraform-aws-modules/vpc/aws//modules/vpc-endpoints"
-  version   = "6.6.1"
+  version   = "6.7.3"
   providers = { aws = aws.producer }
 
   vpc_id                     = module.producer_vpc.vpc_id
@@ -163,7 +163,7 @@ module "producer_endpoints" {
 
 module "consumer_endpoints" {
   source    = "terraform-aws-modules/vpc/aws//modules/vpc-endpoints"
-  version   = "6.6.1"
+  version   = "6.7.3"
   providers = { aws = aws.consumer }
 
   vpc_id                     = module.consumer_vpc.vpc_id
