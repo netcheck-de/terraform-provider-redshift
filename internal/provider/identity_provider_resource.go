@@ -125,7 +125,7 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"iam_role_arn": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "IAM role attached to the Redshift namespace for the Identity Center connection. Required for `AWSIDC`; not allowed for `AZURE`. Updated in place and reapplied on every update.",
+				Optional: true, MarkdownDescription: "IAM role attached to the Redshift namespace for the Identity Center connection. Required for `AWSIDC`; not allowed for `AZURE`. Updated in place when changed; catalog refresh detects drift.",
 			},
 			"issuer": schema.StringAttribute{
 				Optional: true, MarkdownDescription: "Token issuer URL of the Microsoft Entra ID tenant (`issuer` in `PARAMETERS`). Required for `AZURE`; not allowed for `AWSIDC`. Updated in place together with `client_secret_wo`.",
@@ -154,7 +154,7 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 			"auto_create_roles_exclude_groups": identityProviderGroupFilter("EXCLUDE", "auto_create_roles_include_groups"),
 			"enabled": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(true),
-				MarkdownDescription: "Whether the provider is enabled; defaults to `true`. Updated in place and reapplied on every update.",
+				MarkdownDescription: "Whether the provider is enabled; defaults to `true`. Updated in place when changed; catalog refresh detects drift.",
 			},
 			"provider_id": schema.Int64Attribute{
 				Computed: true, MarkdownDescription: "Catalog ID of the identity provider (`svv_identity_providers.uid`).",
@@ -406,6 +406,16 @@ func (r *identityProviderResource) Update(ctx context.Context, req resource.Upda
 		resp.Diagnostics.AddError("Update identity provider", err.Error())
 		return
 	}
+	// Even a role/status change after planning must not turn into a redundant assignment: Redshift rejects those.
+	found, err := r.read(ctx, &previous)
+	if err != nil {
+		resp.Diagnostics.AddError("Read identity provider before update", err.Error())
+		return
+	}
+	if !found {
+		resp.Diagnostics.AddError("Update identity provider", "The identity provider disappeared before updating; refresh and retry.")
+		return
+	}
 	role, options, status, err := identityProviderAlterBatches(previous, data, identityProviderSecret(ctx, req.Config))
 	if err != nil {
 		resp.Diagnostics.AddError("Update identity provider", err.Error())
@@ -427,7 +437,7 @@ func (r *identityProviderResource) Update(ctx context.Context, req resource.Upda
 		}
 	}
 	expected := data
-	found, err := r.read(ctx, &data)
+	found, err = r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify identity provider", err.Error())
 		return

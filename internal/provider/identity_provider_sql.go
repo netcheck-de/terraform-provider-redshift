@@ -215,7 +215,7 @@ func identityProviderParametersChange(prev, plan identityProviderModel) bool {
 }
 
 // identityProviderAlterSteps change the options that ALTER IDENTITY PROVIDER sets one per statement and that are
-// applied only when they change. The IAM role and the status are reapplied on every update instead, and the Azure
+// applied only when they change. The IAM role and status also change only when needed, and the Azure
 // parameters are rendered together by identityProviderParametersChange, because PARAMETERS replaces all of them.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_IDENTITY_PROVIDER.html
 var identityProviderAlterSteps = []alterStep[identityProviderModel]{
@@ -239,13 +239,14 @@ var identityProviderAlterSteps = []alterStep[identityProviderModel]{
 }
 
 // identityProviderAlterBatches renders the update from prev to plan in execution order, split so a refused statement
-// names its setting: the AWSIDC IAM role, then namespace, parameters and role creation, then the status. secret is
+// names its setting: a changed AWSIDC IAM role, then namespace, parameters and role creation, then changed status. secret is
 // the configured client secret, required when the Azure parameters change.
 func identityProviderAlterBatches(prev, plan identityProviderModel, secret string) (role, options, status []string, err error) {
 	if err := identityProviderValidated(plan, secret); err != nil {
 		return nil, nil, nil, err
 	}
-	if identityProviderType(plan) == identityProviderAWSIDC {
+	// Redshift rejects setting IAM_ROLE to its current value rather than treating it as a no-op.
+	if identityProviderType(plan) == identityProviderAWSIDC && !prev.IAMRoleARN.Equal(plan.IAMRoleARN) {
 		role = []string{identityProviderRoleStatement(plan)}
 	}
 	options = alterStatements(prev, plan, identityProviderAlterSteps[:1])
@@ -260,11 +261,14 @@ func identityProviderAlterBatches(prev, plan identityProviderModel, secret strin
 		options = append(options, parameters.String())
 	}
 	options = append(options, alterStatements(prev, plan, identityProviderAlterSteps[1:])...)
-	return role, options, []string{identityProviderStatusStatement(plan)}, nil
+	if !prev.Enabled.Equal(plan.Enabled) {
+		status = []string{identityProviderStatusStatement(plan)}
+	}
+	return role, options, status, nil
 }
 
 // alterIdentityProviderStatements renders every update statement from prev to plan. The role and status are
-// reapplied whatever the prior state, so an update also repairs drift that a refresh did not observe yet.
+// changed only when needed, because Redshift rejects redundant assignments. Refresh detects their catalog drift.
 func alterIdentityProviderStatements(prev, plan identityProviderModel, secret string) ([]string, error) {
 	role, options, status, err := identityProviderAlterBatches(prev, plan, secret)
 	return slices.Concat(role, options, status), err

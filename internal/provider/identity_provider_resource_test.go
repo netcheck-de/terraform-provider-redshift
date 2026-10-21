@@ -229,9 +229,11 @@ func TestIdentityProviderUpdateNamesFailedStatement(t *testing.T) {
 			})
 			r := newIdentityProviderResource()
 			configureTestResource(t, r, client)
-			prior := identityProviderAWSIDCFixture("identity", "example", "role-two", false)
+			prior := identityProviderAWSIDCFixture("identity", "example", "role-one", false)
 			prior.ID = r.(*identityProviderResource).identity("admin", map[string]string{"name": "identity"})
 			planned := prior
+			planned.IAMRoleARN = types.StringValue("role-two")
+			prior.Enabled = types.BoolValue(true)
 			planned.Namespace = types.StringValue("renamed")
 			_, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
 			require.True(t, diagnostics.HasError())
@@ -313,7 +315,7 @@ func TestIdentityProviderRejectsInvalidPlan(t *testing.T) {
 }
 
 // TestIdentityProviderAlterCoverage checks the in-place attributes: namespace and role creation have diff steps, while
-// the IAM role and status are reapplied on every update and the Azure parameters are rendered together.
+// the IAM role and status compare catalog values and the Azure parameters are rendered together.
 func TestIdentityProviderAlterCoverage(t *testing.T) {
 	assertAlterCoverage(t, newIdentityProviderResource(), identityProviderAlterSteps,
 		"iam_role_arn", "enabled", "issuer", "client_id", "audience", "client_secret_wo", "client_secret_wo_version",
