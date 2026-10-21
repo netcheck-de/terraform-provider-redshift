@@ -154,8 +154,14 @@ func columnGrantDesired(value types.Map) columnGrantColumns {
 
 // validateColumnGrant checks the tuple and the configured privileges without issuing SQL.
 func validateColumnGrant(m columnGrantModel) error {
-	if _, err := prepareColumnGrant(m); err != nil {
-		return err
+	if !m.DatabaseName.IsUnknown() && !m.SchemaName.IsUnknown() && !m.ObjectName.IsUnknown() && !m.Grantee.IsUnknown() && !m.GranteeType.IsUnknown() {
+		if _, err := prepareColumnGrant(m); err != nil {
+			return err
+		}
+	} else if !m.Grantee.IsUnknown() && !m.GranteeType.IsUnknown() {
+		if _, _, err := principal(columnGrantPrincipal(m)); err != nil {
+			return err
+		}
 	}
 	if m.Privileges.IsNull() || m.Privileges.IsUnknown() {
 		return nil

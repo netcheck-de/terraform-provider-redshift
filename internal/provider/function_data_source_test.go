@@ -5,10 +5,41 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	datasourceschema "github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	resourceschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestFunctionArgumentsRejectNullElements(t *testing.T) {
+	ctx := context.Background()
+	var lookup datasource.SchemaResponse
+	newFunctionDataSource().Schema(ctx, datasource.SchemaRequest{}, &lookup)
+	var managed resource.SchemaResponse
+	newFunctionResource().Schema(ctx, resource.SchemaRequest{}, &managed)
+	for name, checks := range map[string][]validator.List{
+		"resource": managed.Schema.Attributes["arguments"].(resourceschema.ListAttribute).Validators,
+		"lookup":   lookup.Schema.Attributes["arguments"].(datasourceschema.ListAttribute).Validators,
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, value := range []types.List{
+				types.ListValueMust(types.StringType, []attr.Value{types.StringValue("integer"), types.StringNull()}),
+				types.ListValueMust(types.StringType, []attr.Value{types.StringNull()}),
+			} {
+				var response validator.ListResponse
+				for _, check := range checks {
+					check.ValidateList(ctx, validator.ListRequest{Path: path.Root("arguments"), ConfigValue: value}, &response)
+				}
+				assert.True(t, response.Diagnostics.HasError(), "%s", value)
+			}
+		})
+	}
+}
 
 var _ = registerParity(parityCase{source: newFunctionDataSource, resource: newFunctionResource, selectors: []string{"database", "schema", "name", "arguments"}})
 

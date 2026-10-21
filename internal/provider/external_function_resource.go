@@ -170,20 +170,65 @@ func (r *externalFunctionResource) Schema(_ context.Context, _ resource.SchemaRe
 	}
 }
 
-// externalFunctionCheck validates the configuration exactly as Create renders it.
-func externalFunctionCheck(data externalFunctionModel) error {
-	_, err := createExternalFunctionStatements(data)
+// externalFunctionKnownConfig validates independent known options without rendering an unresolved definition.
+func externalFunctionKnownConfig(data externalFunctionModel) error {
+	if !data.Arguments.IsUnknown() {
+		if len(data.Arguments.Elements()) > externalFunctionMaxArguments {
+			return fmt.Errorf("a function accepts at most %d arguments", externalFunctionMaxArguments)
+		}
+		for _, element := range data.Arguments.Elements() {
+			value := element.(types.String)
+			if !value.IsUnknown() {
+				if _, err := externalFunctionType(value.ValueString()); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if !data.ReturnType.IsUnknown() {
+		if _, err := externalFunctionType(data.ReturnType.ValueString()); err != nil {
+			return err
+		}
+	}
+	if _, err := optOneOf(data.Volatility, externalFunctionVolatilities...); err != nil {
+		return err
+	}
+	if !data.LambdaFunction.IsUnknown() && data.LambdaFunction.ValueString() == "" {
+		return fmt.Errorf("lambda_function must not be empty")
+	}
+	if !data.IAMRole.IsUnknown() {
+		if _, err := externalFunctionIAMRole(data.IAMRole.ValueString()); err != nil {
+			return err
+		}
+	}
+	if timeout := knownInt64(data.RetryTimeout); timeout != nil && *timeout < 0 {
+		return fmt.Errorf("retry_timeout must be at least 0 milliseconds")
+	}
+	if rows := knownInt64(data.MaxBatchRows); rows != nil && (*rows < 1 || *rows > externalFunctionMaxBatchRows) {
+		return fmt.Errorf("max_batch_rows must be between 1 and %d", externalFunctionMaxBatchRows)
+	}
+	if _, err := optOneOf(data.MaxBatchSizeUnit, externalFunctionBatchUnits...); err != nil {
+		return err
+	}
+	if data.MaxBatchSize.IsUnknown() {
+		return nil
+	}
+	if data.MaxBatchSizeUnit.IsUnknown() {
+		// KB has the widest numeric range; a size outside it cannot become valid with either unit.
+		data.MaxBatchSizeUnit = types.StringNull()
+	}
+	_, err := externalFunctionBatchSize(data)
 	return err
 }
 
-// ValidateConfig reports definitions Create would reject, during planning once the configuration is known.
+// ValidateConfig checks known definition options independently of unresolved fields.
 func (r *externalFunctionResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data externalFunctionModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := externalFunctionCheck(data); err != nil {
+	if err := externalFunctionKnownConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid external function", err.Error())
 	}
 }

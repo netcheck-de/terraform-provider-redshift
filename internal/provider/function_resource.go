@@ -116,7 +116,7 @@ func (r *functionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				ElementType: types.StringType, Optional: true,
 				MarkdownDescription: "Ordered input argument data types, at most 32, referenced in `body` as `$1`, `$2`, and so on. SQL UDF arguments have no names. Omit for a function without arguments. The types identify the overload; another spelling of the same types, such as `INT` for `INTEGER`, is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the function.",
 				PlanModifiers:       []planmodifier.List{listplanmodifier.RequiresReplaceIf(functionArgumentsChanged, "Changing the argument types replaces the function.", "Changing the argument types replaces the function.")},
-				Validators:          []validator.List{listvalidator.SizeAtMost(routineMaxArguments)},
+				Validators:          []validator.List{listvalidator.SizeAtMost(routineMaxArguments), listvalidator.NoNullValues()},
 			},
 			"signature": schema.StringAttribute{
 				Computed: true, MarkdownDescription: "Canonical input argument types without modifiers, as `ALTER FUNCTION`, `DROP FUNCTION`, and `GRANT ... ON FUNCTION` identify the overload, for example `INTEGER, CHARACTER VARYING`.",
@@ -162,6 +162,28 @@ func (r *functionResource) ValidateConfig(ctx context.Context, req resource.Vali
 		return
 	}
 	if !req.Config.Raw.IsFullyKnown() {
+		for i, value := range data.Arguments.Elements() {
+			argument := value.(types.String)
+			if argument.IsUnknown() || argument.IsNull() {
+				continue
+			}
+			name, err := routineType(argument.ValueString())
+			if err == nil {
+				err = routineRejectedType(routineBaseType(name), "function")
+			}
+			if err != nil {
+				resp.Diagnostics.AddAttributeError(path.Root("arguments").AtListIndex(i), "Invalid function argument", err.Error())
+			}
+		}
+		if !data.ReturnType.IsUnknown() && !data.ReturnType.IsNull() {
+			name, err := routineType(data.ReturnType.ValueString())
+			if err == nil {
+				err = routineRejectedType(routineBaseType(name), "function")
+			}
+			if err != nil {
+				resp.Diagnostics.AddAttributeError(path.Root("return_type"), "Invalid function return type", err.Error())
+			}
+		}
 		return
 	}
 	if _, err := newFunctionSpec(data); err != nil {

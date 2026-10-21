@@ -181,11 +181,11 @@ func columnGrantField(data columnGrantModel, field string) string {
 	}[field].ValueString()
 }
 
-// ValidateConfig reports invalid tuples and privileges during planning once the configuration is known.
+// ValidateConfig checks known tuple fields and privilege elements independently.
 func (r *columnGrantResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data columnGrantModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	if err := validateColumnGrant(data); err != nil {

@@ -198,14 +198,14 @@ func (r *viewResource) Create(ctx context.Context, req resource.CreateRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// ValidateConfig reports a definition Create would reject, during planning once the configuration is known.
+// ValidateConfig checks known query and identity inputs independently.
 func (r *viewResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data viewModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if _, err := createViewStatements(data); err != nil {
+	if err := validateViewConfig(data.Schema, data.Name, data.Query); err != nil {
 		resp.Diagnostics.AddError("Invalid view", err.Error())
 	}
 }

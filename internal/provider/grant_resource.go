@@ -117,39 +117,31 @@ func (r *grantResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 // validate checks scope, recipient, privilege, and grant option rules without issuing SQL.
 func (data grantModel) validate() error {
 	schemaName, scope := knownString(data.SchemaName), data.Scope.ValueString()
-	if _, ok := grantScopePrivileges[scope]; !ok {
+	if _, ok := grantScopePrivileges[scope]; !ok && !data.Scope.IsUnknown() {
 		return fmt.Errorf("unsupported scope %q", scope)
 	}
-	if (scope == "SCHEMA" && schemaName == "") || (schemaName != "" && !slices.Contains(grantSchemaScopes, scope)) {
+	if !data.Scope.IsUnknown() && !data.SchemaName.IsUnknown() && ((scope == "SCHEMA" && schemaName == "") || (schemaName != "" && !slices.Contains(grantSchemaScopes, scope))) {
 		return fmt.Errorf("schema_name is required for SCHEMA and only valid with SCHEMA, TABLES, FUNCTIONS, PROCEDURES, or TEMPLATES scope")
 	}
 	kind, _, err := data.recipient()
-	if err != nil {
+	recipientKnown := !data.Role.IsUnknown() && !data.User.IsUnknown() && !data.Datashare.IsUnknown()
+	if err != nil && recipientKnown {
 		return err
 	}
-	if kind == "DATASHARE" && (schemaName == "" || (scope != "SCHEMA" && scope != "TABLES")) {
+	if knownString(data.Datashare) != "" && ((!data.SchemaName.IsUnknown() && schemaName == "") || (!data.Scope.IsUnknown() && scope != "SCHEMA" && scope != "TABLES")) {
 		return fmt.Errorf("datashare grants require a local database, schema_name, SCHEMA or TABLES scope, and no role")
 	}
 	allowed := data.allowed()
 	privileges := knownStrings(data.Privileges)
 	for _, privilege := range privileges {
-		if !privilegeAllowed(allowed, privilege) {
+		if !data.Scope.IsUnknown() && !privilegeAllowed(allowed, privilege) {
 			if kind == "DATASHARE" {
 				return fmt.Errorf("datashare %s grants support only %s", scope, allowed[0])
 			}
 			return fmt.Errorf("%s grants support only %s, not %q", scope, strings.Join(privilegeNames(allowed), ", "), privilege)
 		}
 	}
-	options := knownStrings(data.GrantOptionPrivileges)
-	if len(options) != 0 && kind != "USER" {
-		return fmt.Errorf("grant_option_privileges requires a user recipient; Redshift grants options only to users")
-	}
-	for _, option := range options {
-		if !slices.Contains(privileges, option) {
-			return fmt.Errorf("grant option privilege %q is not in privileges", option)
-		}
-	}
-	return nil
+	return validateGrantOptions(data.Privileges, data.GrantOptionPrivileges, recipientKnown, kind == "USER")
 }
 
 // read refreshes explicit scoped privileges and grant options, routing local grants to their database and shared
@@ -319,7 +311,7 @@ func grantStringValues(names []string) []attr.Value {
 func (r *grantResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data grantModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	if err := data.validate(); err != nil {

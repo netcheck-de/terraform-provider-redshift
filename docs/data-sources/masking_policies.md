@@ -46,7 +46,7 @@ output "masking_policy_names" {
 Read-Only:
 
 - `database` (String) Local database that holds the policy; the policy can only be attached to relations in this database.
-- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
+- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; equals the paired resource's `definition_fingerprint` for the same definition.
 - `expression` (String) SQL expression of the `USING` clause that computes the masked value from the input columns, for example `'XXXX'::VARCHAR(256)` or a `CASE` over the inputs. A constant must be cast to the input type. Updated in place with `ALTER MASKING POLICY`. Redshift stores its own rendering, so refresh keeps the configured text while `definition_fingerprint` matches and shows the catalog text after a change made outside Terraform.
 - `input_column` (Attributes List) Ordered input columns of the `WITH` clause that the expression reads. (see [below for nested schema](#nestedatt--masking_policies--input_column))
 - `name` (String) Policy name, unique among the masking policies of the database.

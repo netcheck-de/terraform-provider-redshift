@@ -83,7 +83,7 @@ const privilegesLookupDescription = "Current explicit privileges for the selecte
 // disabled password.
 func lookupExcluded(name string, attribute resourceschema.Attribute) bool {
 	return attribute.IsWriteOnly() || name == "password_wo" || strings.HasSuffix(name, "_wo_version") ||
-		name == "refresh_revision" || name == "password_disabled"
+		name == "refresh_revision" || name == "password_disabled" || name == "restore_default_on_destroy"
 }
 
 // lookupAttributes converts resource attributes for a lookup; observed attributes, and those listed in

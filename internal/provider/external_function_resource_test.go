@@ -48,7 +48,7 @@ var _ = registerValidateConfigCase("external_function", validateConfigCase{
 	valid:   externalFunctionTestModel(),
 	invalid: externalFunctionWith(func(data *externalFunctionModel) { data.ReturnType = types.StringValue("super") }),
 	unknown: externalFunctionWith(func(data *externalFunctionModel) {
-		data.ReturnType, data.IAMRole = types.StringValue("super"), types.StringUnknown()
+		data.ReturnType, data.IAMRole = types.StringUnknown(), types.StringUnknown()
 	}),
 })
 

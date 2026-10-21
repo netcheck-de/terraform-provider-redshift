@@ -42,7 +42,7 @@ data "redshift_function" "greater" {
 ### Read-Only
 
 - `body` (String) SQL `SELECT` clause without `FROM`, `INTO`, `WHERE`, `GROUP BY`, `ORDER BY`, or `LIMIT`, sent dollar-quoted and verbatim. Changed in place with `CREATE OR REPLACE FUNCTION`. A body changed outside Terraform appears here as the catalog text.
-- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
+- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; equals the paired resource's `definition_fingerprint` for the same definition.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `language` (String) Function language; only `SQL`, in any case, is accepted, and another spelling of it is recorded in place. `PLPYTHONU` is rejected because AWS ends Python UDF support after June 30, 2026.
 - `owner` (String) SQL user owning the function. When set, applied with `ALTER FUNCTION ... OWNER TO`, which requires a superuser; when omitted, the catalog owner is reported.

@@ -148,14 +148,14 @@ func (r *commentResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 }
 
-// ValidateConfig reports invalid comment targets during planning once the configuration is known.
+// ValidateConfig reports target errors without waiting for unrelated inputs such as the comment text.
 func (r *commentResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data commentModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if _, _, err := commentTarget(data); err != nil {
+	if err := commentKnownTarget(data); err != nil {
 		resp.Diagnostics.AddError("Invalid comment target", err.Error())
 	}
 }

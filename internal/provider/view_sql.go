@@ -5,8 +5,21 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
+
+// validateViewConfig checks each known input independently of the identity and computed options.
+func validateViewConfig(schema, name, query types.String) error {
+	if (!schema.IsUnknown() && schema.ValueString() == "") || (!name.IsUnknown() && name.ValueString() == "") {
+		return fmt.Errorf("a view requires a nonempty schema and name")
+	}
+	if !query.IsUnknown() {
+		_, err := viewQuery(query.ValueString())
+		return err
+	}
+	return nil
+}
 
 // viewRelation renders the schema-qualified relation. Empty parts are rejected because Qualified omits an empty
 // schema, which would create or drop the relation through the search path instead.

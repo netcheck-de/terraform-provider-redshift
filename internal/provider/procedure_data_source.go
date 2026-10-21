@@ -69,9 +69,10 @@ func newProcedureDataSource() datasource.DataSource {
 			return true, nil
 		},
 	}), map[string]string{
-		"argument":      "Every argument in order, including `OUT` arguments, as `SHOW PARAMETERS` reports it.",
-		"argument.name": "Argument name; `null` when the catalog does not keep it, as for an unnamed argument.",
-		"argument.mode": "`OUT` or `INOUT`, or `null` for an `IN` argument. `OUT` arguments are returned by `CALL` and are not part of the signature.",
-		"argument.type": "Argument data type without length or precision, such as `INTEGER` or `CHARACTER VARYING`.",
+		"definition_fingerprint": viewLookupFingerprintDescription,
+		"argument":               "Every argument in order, including `OUT` arguments, as `SHOW PARAMETERS` reports it.",
+		"argument.name":          "Argument name; `null` when the catalog does not keep it, as for an unnamed argument.",
+		"argument.mode":          "`OUT` or `INOUT`, or `null` for an `IN` argument. `OUT` arguments are returned by `CALL` and are not part of the signature.",
+		"argument.type":          "Argument data type without length or precision, such as `INTEGER` or `CHARACTER VARYING`.",
 	})
 }

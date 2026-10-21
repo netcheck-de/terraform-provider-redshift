@@ -145,7 +145,32 @@ func (r *procedureResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 func (r *procedureResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data procedureModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !req.Config.Raw.IsFullyKnown() {
+		for i, value := range data.Arguments.Elements() {
+			argument := value.(types.Object)
+			if argument.IsUnknown() || argument.IsNull() {
+				continue
+			}
+			dataType := argument.Attributes()["type"].(types.String)
+			if !dataType.IsUnknown() && !dataType.IsNull() {
+				name, err := routineType(dataType.ValueString())
+				if err == nil {
+					err = routineRejectedType(routineBaseType(name), "procedure")
+				}
+				if err != nil {
+					resp.Diagnostics.AddAttributeError(path.Root("argument").AtListIndex(i).AtName("type"), "Invalid procedure argument", err.Error())
+				}
+			}
+		}
+		if data.Nonatomic.ValueBool() && strings.EqualFold(knownString(data.Security), "DEFINER") {
+			resp.Diagnostics.AddError("Invalid procedure definition", "SECURITY DEFINER is not supported for a NONATOMIC procedure")
+		}
+		if data.Nonatomic.ValueBool() && len(data.Configuration.Elements()) > 0 {
+			resp.Diagnostics.AddError("Invalid procedure definition", "SET configuration parameters are not supported for a NONATOMIC procedure")
+		}
 		return
 	}
 	if _, err := newProcedureSpec(data); err != nil {

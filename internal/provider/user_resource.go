@@ -420,11 +420,16 @@ func userSecret(ctx context.Context, config tfsdk.Config) (string, diag.Diagnost
 func (r *userResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data userModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := userTupleError(data, !data.Password.IsNull(), true); err != nil {
+	if err := userTupleError(data, !data.Password.IsNull() && !data.Password.IsUnknown(), true); err != nil {
 		resp.Diagnostics.AddError("Invalid Redshift user", err.Error())
+	}
+	for name := range data.SessionDefaults.Elements() {
+		if _, err := userSessionParameter(name); err != nil {
+			resp.Diagnostics.AddError("Invalid Redshift user", err.Error())
+		}
 	}
 }
 

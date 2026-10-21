@@ -314,10 +314,7 @@ func (r *materializedViewResource) ValidateConfig(ctx context.Context, req resou
 		resp.Diagnostics.AddError("Invalid materialized view", err.Error())
 		return
 	}
-	if !req.Config.Raw.IsFullyKnown() {
-		return
-	}
-	if _, err := createMaterializedViewStatements(data); err != nil {
+	if err := validateViewConfig(data.Schema, data.Name, data.Query); err != nil {
 		resp.Diagnostics.AddError("Invalid materialized view", err.Error())
 	}
 }

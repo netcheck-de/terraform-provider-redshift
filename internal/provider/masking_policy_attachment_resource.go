@@ -152,14 +152,14 @@ func (r *maskingPolicyAttachmentResource) verify(ctx context.Context, data *mask
 	return nil
 }
 
-// ValidateConfig reports invalid tuples during planning once the configuration is known.
+// ValidateConfig checks known tuple inputs while deferring only dependent unknown values.
 func (r *maskingPolicyAttachmentResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data maskingPolicyAttachmentModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := maskingAttachmentValidate(data); err != nil {
+	if err := maskingAttachmentKnownConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid masking policy attachment", err.Error())
 	}
 }

@@ -113,14 +113,14 @@ func (r *rlsPolicyAttachmentResource) Create(ctx context.Context, req resource.C
 	}
 }
 
-// ValidateConfig reports a tuple Create would reject, during planning once the configuration is known.
+// ValidateConfig checks known attachment inputs independently of unresolved identity fields.
 func (r *rlsPolicyAttachmentResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data rlsPolicyAttachmentModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if _, err := createRlsPolicyAttachmentStatement(data); err != nil {
+	if err := rlsPolicyAttachmentKnownConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid RLS policy attachment", err.Error())
 	}
 }

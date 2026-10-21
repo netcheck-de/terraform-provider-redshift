@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // maskingPolicyResource manages one dynamic data masking policy.
@@ -142,7 +143,23 @@ func (r *maskingPolicyResource) ValidateConfig(ctx context.Context, req resource
 	var data maskingPolicyModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	// The schema's IsRequired validator already reports absent input_column blocks; repeating it doubles the error.
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() || data.InputColumn.IsNull() {
+	if resp.Diagnostics.HasError() || data.InputColumn.IsNull() {
+		return
+	}
+	if !req.Config.Raw.IsFullyKnown() {
+		if !data.Expression.IsUnknown() && !data.Expression.IsNull() {
+			if _, err := sqlclient.CheckUserSQL(data.Expression.ValueString()); err != nil {
+				resp.Diagnostics.AddError("Invalid masking policy", err.Error())
+			}
+		}
+		columns, err := data.InputColumn.ToTerraformValue(ctx)
+		if err == nil && columns.IsFullyKnown() {
+			// Validate the known inputs independently of the name and expression, which may be references.
+			data.Name, data.Expression = types.StringValue("policy"), types.StringValue("NULL")
+			if err := maskingPolicyValidate(data); err != nil {
+				resp.Diagnostics.AddError("Invalid masking policy", err.Error())
+			}
+		}
 		return
 	}
 	if err := maskingPolicyValidate(data); err != nil {

@@ -246,7 +246,21 @@ func (r *rlsPolicyResource) Create(ctx context.Context, req resource.CreateReque
 func (r *rlsPolicyResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data rlsPolicyModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !req.Config.Raw.IsFullyKnown() {
+		if !data.Predicate.IsUnknown() && !data.Predicate.IsNull() {
+			if _, err := rlsPolicyPredicate(data); err != nil {
+				resp.Diagnostics.AddError("Invalid RLS policy", err.Error())
+			}
+		}
+		columns, err := data.Column.ToTerraformValue(ctx)
+		if err == nil && columns.IsFullyKnown() {
+			if _, err := rlsPolicyColumns(data.Column); err != nil {
+				resp.Diagnostics.AddError("Invalid RLS policy", err.Error())
+			}
+		}
 		return
 	}
 	if _, err := createRlsPolicyStatement(data); err != nil {
