@@ -12,8 +12,9 @@ resource "redshift_database" "local" {
   name             = "warehouse"
   owner            = "etl"
   connection_limit = 50
-  collation        = "CASE_INSENSITIVE"
-  isolation_level  = "SNAPSHOT"
+  # On an empty database, changing this runs ALTER in place; existing user tables make Redshift reject it safely.
+  collation       = "CASE_INSENSITIVE"
+  isolation_level = "SNAPSHOT"
 }
 
 # The read-only destination of an active zero-ETL integration. The warehouse must set enable_case_sensitive_identifier.
@@ -25,5 +26,16 @@ resource "redshift_database" "replica" {
     source_database  = "orders"
     refresh_interval = 600
     query_all_states = true
+  }
+}
+
+# DynamoDB uses aws_redshift_integration, not aws_rds_integration. Its source needs PITR and an export resource policy.
+resource "redshift_database" "dynamodb_replica" {
+  name = "dynamodb_replica"
+
+  integration {
+    integration_id   = "b2c3d4e5-6789-01ab-cdef-example22222"
+    refresh_interval = 900
+    # DynamoDB sources do not take source_database.
   }
 }

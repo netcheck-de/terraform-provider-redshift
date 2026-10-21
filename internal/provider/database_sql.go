@@ -81,11 +81,19 @@ func createDatabaseStatement(data databaseModel) (string, error) {
 	return statement.String(), statement.Err()
 }
 
-// databaseAlterSteps change one option per statement. Collation is absent because it replaces the database; the
-// integration step changes only the settings that ALTER DATABASE ... INTEGRATION SET accepts, since the block's
+// databaseAlterSteps change one option per statement. Collation comes first so a server restriction fails before
+// other options change. The integration step changes only the settings that ALTER DATABASE ... INTEGRATION SET accepts, since the block's
 // binding replaces the database.
 // The values were checked by databaseOptions, so the renders cannot meet an invalid keyword.
 var databaseAlterSteps = []alterStep[databaseModel]{
+	{
+		attribute: "collation",
+		value:     func(data databaseModel) attr.Value { return data.Collation },
+		render: func(_, plan databaseModel) []string {
+			collation, _ := optOneOf(plan.Collation, databaseCollations...)
+			return []string{databaseAlter(plan).Kw("COLLATE", collation).String()}
+		},
+	},
 	{
 		attribute: "owner",
 		value:     func(data databaseModel) attr.Value { return data.Owner },

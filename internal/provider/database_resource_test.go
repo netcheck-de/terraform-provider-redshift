@@ -37,7 +37,7 @@ var _ = registerReplacementPolicy("redshift_database", map[string]replaceRule{
 	"with_permissions": replaceAlways,
 	"owner":            replaceNever,
 	"connection_limit": replaceNever,
-	"collation":        replaceAlways,
+	"collation":        replaceNever,
 	"isolation_level":  replaceNever,
 	"integration":      replaceConditional("TestDatabaseIntegrationReplacement"),
 })

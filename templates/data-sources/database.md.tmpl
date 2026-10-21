@@ -27,6 +27,7 @@ SELECT ... FROM svv_integration WHERE target_database = 'name';
 {{ tffile "examples/data-sources/redshift_database/data-source.tf" }}
 
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -35,9 +36,11 @@ read by running `DB_COLLATION()` in the looked-up database, so the caller must b
 
 Every database that is not `SHARED` is a zero-ETL destination candidate, because `SHOW DATABASES` does not document the
 type of a destination: its `integration` comes from `SVV_INTEGRATION`, which only superusers can see, and is null when
-the view shows no row for the database.
-`query_all_states`, `accept_invalid_chars`, and `truncate_columns` have no catalog column and are always null. A
-destination's `id` includes `integration_id`, so it can be used to import the database.
+the view shows no row for the database. A non-superuser denied access to the view gets ordinary database metadata,
+with a warning and a null `integration`, rather than a failed lookup. A database resource managing an integration
+still requires the view and treats permission errors as failures.
+`query_all_states`, `accept_invalid_chars`, and `truncate_columns` have no supported catalog readback and are always null.
+A destination's `id` includes `integration_id`, so it can be used to import the database.
 
 Shared-database lookups discover the complete producer ARN through
 `redshift:DescribeDataShares` in the consumer account. The caller needs that permission and AWS credentials

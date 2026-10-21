@@ -23,7 +23,7 @@ ALTER DATABASE "replica" INTEGRATION SET REFRESH_INTERVAL 0;
 -- params: {}
 
 -- database: admin
-ALTER DATABASE "replica" INTEGRATION SET HISTORY_MODE = FALSE;
+ALTER DATABASE "replica" INTEGRATION SET HISTORY_MODE = FALSE FOR ALL TABLES;
 -- params: {}
 
 -- database: admin

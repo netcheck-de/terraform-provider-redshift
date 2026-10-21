@@ -63,6 +63,7 @@ func TestDatabaseSQL(t *testing.T) {
 		{"create_shared_with_owner", create(sharedOwner)},
 		{"alter_unchanged", alter(configured, configured)},
 		{"alter_all", alter(configured, changed)},
+		{"alter_collation", alter(configured, options("warehouse", "etl", 25, "CASE_INSENSITIVE", "SNAPSHOT"))},
 		{"alter_owner_quoted", alter(options(`Sales"DB`, "etl", 25, "CASE_SENSITIVE", "SNAPSHOT"), options(`Sales"DB`, `New"Owner`, 25, "CASE_SENSITIVE", "SNAPSHOT"))},
 		{"alter_connection_limit", alter(changed, configured)},
 		{"alter_unknown_plan", alter(configured, unknownPlan)},

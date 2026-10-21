@@ -178,6 +178,9 @@ func (f *databasesFamily) query(c *catalog, connection dataapi.Connection, sql s
 		f.applyDatabaseOptions(sql)
 		return nil, true, nil
 	case strings.HasPrefix(sql, `ALTER DATABASE "warehouse" `):
+		if fakeCollation.MatchString(sql) && connection.Database != "warehouse" {
+			return nil, true, fmt.Errorf("Cannot change case sensitivity for a database that you are not connected to")
+		}
 		if !c.localDB {
 			return nil, true, fmt.Errorf("database does not exist")
 		}
