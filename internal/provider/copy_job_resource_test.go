@@ -32,11 +32,11 @@ var _ = registerReplacementPolicy("redshift_copy_job", map[string]replaceRule{
 	"database":        replaceAlways,
 	"name":            replaceAlways,
 	"iam_role":        replaceAlways,
-	"source":          replaceConditional("TestCopyJobImportAdoptsDefinition"),
+	"source":          replaceAlways,
 	"format":          replaceConditional("TestCopyJobImportAdoptsDefinition"),
-	"format_argument": replaceConditional("TestCopyJobImportAdoptsDefinition"),
-	"parameters":      replaceConditional("TestCopyJobImportAdoptsDefinition"),
-	"table":           replaceConditional("TestCopyJobImportAdoptsDefinition"),
+	"format_argument": replaceAlways,
+	"parameters":      replaceAlways,
+	"table":           replaceAlways,
 	"auto":            replaceNever,
 })
 
@@ -149,8 +149,7 @@ func TestCopyJobCreateRejectsInvalidBeforeState(t *testing.T) {
 	assert.False(t, validated.Diagnostics.HasError(), "the schema reports an absent table block once: %v", validated.Diagnostics)
 }
 
-// TestCopyJobImportAdoptsDefinition replaces the job when a definition argument changes, except on the first plan after
-// an import, whose state holds no definition because SYS_COPY_JOB does not report it.
+// TestCopyJobImportAdoptsDefinition compares imports to the actual definition, never adopting mismatched configuration.
 func TestCopyJobImportAdoptsDefinition(t *testing.T) {
 	ctx := context.Background()
 	r := newCopyJobResource()
@@ -165,7 +164,8 @@ func TestCopyJobImportAdoptsDefinition(t *testing.T) {
 	var state copyJobModel
 	require.False(t, refreshed.State.Get(ctx, &state).HasError())
 	assert.Equal(t, copyJobFakeRole, state.IAMRole.ValueString())
-	assert.True(t, state.Source.IsNull() && state.Table.IsNull(), "the definition is not read back")
+	assert.Equal(t, copyJobLifecycleModel.Source, state.Source, "imports read the actual definition")
+	assert.Equal(t, copyJobLifecycleModel.Table, state.Table)
 
 	var response resource.SchemaResponse
 	r.Schema(ctx, resource.SchemaRequest{}, &response)
@@ -227,7 +227,7 @@ func TestCopyJobImportAdoptsDefinition(t *testing.T) {
 		modifier.PlanModifyString(ctx, planmodifier.StringRequest{Path: path.Root("format"), State: managed, Plan: plan, StateValue: format, PlanValue: lower, ConfigValue: lower}, &resp)
 		assert.False(t, resp.RequiresReplace)
 	}
-	// The first apply after the import records the configured definition with no statement beyond AUTO.
+	// Matching imported definitions require no statement.
 	statements, err := alterCopyJobStatements(state, copyJobLifecycleModel)
 	require.NoError(t, err)
 	assert.Empty(t, statements)

@@ -3,6 +3,7 @@ package provider
 import (
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -181,6 +182,50 @@ func copyCanonicalValue(name string, parameter copyParameter, value string) (str
 	return value, nil
 }
 
+// copyLiteralValue decodes the server's quoted literal once, before doubled backslashes lose their meaning.
+// Configured strings never pass through this decoder: literal backslash+n and newline are different values.
+// Unknown escapes such as NULL AS '\N' remain literal.
+func copyLiteralValue(token sqlclient.Token) string {
+	if token.Raw == "" {
+		return token.Text
+	}
+	value := token.Raw[1 : len(token.Raw)-1]
+	var result strings.Builder
+	for i := 0; i < len(value); i++ {
+		if value[i] == '\'' && i+1 < len(value) && value[i+1] == '\'' {
+			result.WriteByte('\'')
+			i++
+			continue
+		}
+		if value[i] == '\\' && i+1 < len(value) {
+			var control byte
+			switch value[i+1] {
+			case '\\', '\'':
+				control = value[i+1]
+			case 't':
+				control = '\t'
+			case 'n':
+				control = '\n'
+			case 'r':
+				control = '\r'
+			case 'b':
+				control = '\b'
+			case 'f':
+				control = '\f'
+			case 'v':
+				control = '\v'
+			}
+			if control != 0 {
+				result.WriteByte(control)
+				i++
+				continue
+			}
+		}
+		result.WriteByte(value[i])
+	}
+	return result.String()
+}
+
 // copyCanonicalParameters validates configured parameters and returns them in their catalog spelling.
 func copyCanonicalParameters(parameters map[string]string, job bool) (map[string]string, error) {
 	canonical := make(map[string]string, len(parameters))
@@ -208,6 +253,10 @@ func copyCheckFormat(format, argument string) (sqlclient.Keyword, error) {
 	if err != nil {
 		return "", fmt.Errorf("format: %w", err)
 	}
+	if keyword == "SHAPEFILE" {
+		_, err := copySimplify(argument)
+		return keyword, err
+	}
 	switch copyFormats[keyword] {
 	case copyText:
 		if argument == "" {
@@ -228,10 +277,63 @@ func copyFormatFragment(format, argument string) (sqlclient.Statement, error) {
 		return sqlclient.Fragment(), err
 	}
 	fragment := sqlclient.Kw("FORMAT AS", keyword)
+	if keyword == "SHAPEFILE" {
+		simplify, err := copySimplify(argument)
+		return fragment.Append(simplify), err
+	}
 	if argument != "" {
 		fragment = fragment.Lit(argument)
 	}
 	return fragment, nil
+}
+
+// copySimplify models the documented SHAPEFILE subclause without accepting arbitrary SQL.
+func copySimplify(argument string) (sqlclient.Statement, error) {
+	fragment := sqlclient.Fragment()
+	fields := strings.Fields(argument)
+	if len(fields) == 0 {
+		return fragment, nil
+	}
+	if !strings.EqualFold(fields[0], "SIMPLIFY") {
+		return fragment, fmt.Errorf("SHAPEFILE format_argument must be SIMPLIFY [AUTO] [tolerance]")
+	}
+	fragment = fragment.Kw("SIMPLIFY")
+	fields = fields[1:]
+	if len(fields) > 0 && strings.EqualFold(fields[0], "AUTO") {
+		fragment = fragment.Kw("AUTO")
+		fields = fields[1:]
+	}
+	if len(fields) == 0 {
+		return fragment, nil
+	}
+	value, err := strconv.ParseFloat(fields[0], 64)
+	if len(fields) != 1 || err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
+		return fragment, fmt.Errorf("SHAPEFILE SIMPLIFY tolerance must be a finite non-negative number")
+	}
+	// The command reference shows quotes, but the live parser requires an unquoted decimal, not a string literal.
+	if value == 0 {
+		value = 0 // Normalize negative zero before emitting an unsigned decimal.
+	}
+	tolerance := sqlclient.Keyword(strconv.FormatFloat(value, 'f', -1, 64)) //sql:trusted ParseFloat checked a finite non-negative number; FormatFloat emits only decimal digits and a decimal point.
+	return fragment.Kw(tolerance), nil
+}
+
+// copyFormatArgumentValue preserves equivalent configured SHAPEFILE spelling and numeric precision.
+func copyFormatArgumentValue(configured types.String, format, catalog string) types.String {
+	if strings.EqualFold(format, "SHAPEFILE") && !configured.IsUnknown() && !configured.IsNull() {
+		before, err := copySimplify(configured.ValueString())
+		after, otherErr := copySimplify(catalog)
+		if err == nil && otherErr == nil && before.String() == after.String() {
+			return configured
+		}
+	}
+	if catalog == "" {
+		if !configured.IsUnknown() && !configured.IsNull() && configured.ValueString() == "" {
+			return configured
+		}
+		return types.StringNull()
+	}
+	return types.StringValue(catalog)
 }
 
 // copyParameterFragment renders one parameter with its argument, for CREATE and ALTER TEMPLATE ... ADD.
@@ -299,6 +401,7 @@ type copyDefinition struct {
 // an error, so an option this provider cannot manage is reported rather than dropped.
 func parseCopyOptions(tokens []sqlclient.Token) (copyDefinition, error) {
 	definition := copyDefinition{parameters: map[string]string{}}
+	simplify := ""
 	next := func(i int) (sqlclient.Token, bool) {
 		if i < len(tokens) {
 			return tokens[i], true
@@ -321,6 +424,30 @@ func parseCopyOptions(tokens []sqlclient.Token) (copyDefinition, error) {
 			return copyDefinition{}, fmt.Errorf("unexpected %q in COPY options", token.Text)
 		}
 		word := strings.ToUpper(token.Text)
+		if word == "SIMPLIFY" {
+			if simplify != "" {
+				return copyDefinition{}, fmt.Errorf("COPY options name SIMPLIFY twice")
+			}
+			simplify = "SIMPLIFY"
+			if isWord(i+1, "AUTO") {
+				i++
+				simplify += " AUTO"
+			}
+			if value, ok := next(i + 1); ok && (value.Kind == sqlclient.TokenString || value.Kind == sqlclient.TokenWord && len(value.Text) > 0 && value.Text[0] >= '0' && value.Text[0] <= '9') {
+				i++
+				tolerance := value.Text
+				// Unquoted decimal and exponent tolerances are split at punctuation by Tokens.
+				for value.Kind != sqlclient.TokenString && i+2 < len(tokens) && tokens[i+1].Kind == sqlclient.TokenSymbol && strings.ContainsAny(tokens[i+1].Text, ".+-") && tokens[i+2].Kind == sqlclient.TokenWord {
+					tolerance += tokens[i+1].Text + tokens[i+2].Text
+					i += 2
+				}
+				simplify += " " + tolerance
+			}
+			if _, err := copySimplify(simplify); err != nil {
+				return copyDefinition{}, err
+			}
+			continue
+		}
 		explicitFormat := word == "FORMAT"
 		if explicitFormat {
 			i++
@@ -346,7 +473,7 @@ func parseCopyOptions(tokens []sqlclient.Token) (copyDefinition, error) {
 				if !ok || value.Kind != sqlclient.TokenString {
 					return copyDefinition{}, fmt.Errorf("format %s without its argument in COPY options", word)
 				}
-				definition.formatArgument = value.Text
+				definition.formatArgument = copyLiteralValue(value)
 				i++
 			}
 			continue
@@ -369,7 +496,7 @@ func parseCopyOptions(tokens []sqlclient.Token) (copyDefinition, error) {
 		switch parameter.argument {
 		case copyText, copyOptionalText:
 			if present && following.Kind == sqlclient.TokenString {
-				value = following.Text
+				value = copyLiteralValue(following)
 				i++
 			} else if parameter.argument == copyText {
 				return copyDefinition{}, fmt.Errorf("COPY parameter %s without its string argument", word)
@@ -386,6 +513,12 @@ func parseCopyOptions(tokens []sqlclient.Token) (copyDefinition, error) {
 			i++
 		}
 		definition.parameters[word] = value
+	}
+	if simplify != "" {
+		if definition.format != "SHAPEFILE" {
+			return copyDefinition{}, fmt.Errorf("COPY SIMPLIFY requires SHAPEFILE format")
+		}
+		definition.formatArgument = simplify
 	}
 	return definition, nil
 }
@@ -417,7 +550,10 @@ func copyParameterByWord(word string) (copyParameter, bool) {
 // unset or empty configuration as it is.
 func copyParametersValue(configured types.Map, catalog map[string]string, job bool) types.Map {
 	known := knownMap(configured)
-	if canonical, err := copyCanonicalParameters(known, job); err == nil && maps.Equal(canonical, catalog) {
+	if canonical, err := copyCanonicalParameters(known, job); !configured.IsUnknown() && err == nil && maps.Equal(canonical, catalog) {
+		if configured.IsNull() {
+			return types.MapNull(types.StringType)
+		}
 		return configured
 	}
 	if len(catalog) == 0 {
@@ -435,4 +571,48 @@ func copyParametersValue(configured types.Map, catalog map[string]string, job bo
 		}
 	}
 	return types.MapValueMust(types.StringType, elements)
+}
+
+// copyValidateKnown checks independent known options even while other inputs await planning.
+func copyValidateKnown(format, argument types.String, parameters types.Map, job bool) error {
+	if !format.IsUnknown() {
+		if !argument.IsUnknown() {
+			if _, err := copyCheckFormat(knownString(format), knownString(argument)); err != nil {
+				return err
+			}
+		} else if knownString(format) != "" {
+			if _, err := sqlclient.OneOf(format.ValueString(), copyFormatKeywords()...); err != nil {
+				return err
+			}
+		}
+	}
+	for name, value := range parameters.Elements() {
+		_, parameter, err := copyParameterKeyword(name, job)
+		if err != nil {
+			return err
+		}
+		if value.IsUnknown() {
+			continue
+		}
+		if value.IsNull() {
+			return fmt.Errorf("COPY parameter %s must not be null", name)
+		}
+		if _, err := copyCanonicalValue(name, parameter, value.(types.String).ValueString()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// copyOptionsKnown prevents apply renderers from treating deferred options as absent.
+func copyOptionsKnown(format, argument types.String, parameters types.Map) bool {
+	if format.IsUnknown() || argument.IsUnknown() || parameters.IsUnknown() {
+		return false
+	}
+	for _, value := range parameters.Elements() {
+		if value.IsUnknown() {
+			return false
+		}
+	}
+	return true
 }

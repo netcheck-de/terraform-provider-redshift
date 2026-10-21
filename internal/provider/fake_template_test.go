@@ -74,11 +74,8 @@ func templateFakeLike(pattern, name string) bool {
 func (f *templateFake) templateFakeShow(database string) string {
 	parts := []string{fmt.Sprintf("CREATE OR REPLACE TEMPLATE %s.%s.%s FOR COPY AS", database, templateFakeSchema, templateFakeName(f.name))}
 	if f.definition.format != "" {
-		format := "FORMAT AS " + f.definition.format
-		if f.definition.formatArgument != "" {
-			format += " " + dataapi.Literal(f.definition.formatArgument)
-		}
-		parts = append(parts, format)
+		format, _ := copyFormatFragment(f.definition.format, f.definition.formatArgument)
+		parts = append(parts, format.String())
 	}
 	names := slices.Sorted(maps.Keys(f.definition.parameters))
 	slices.Reverse(names)
@@ -137,6 +134,18 @@ func templateFakeTarget(tokens []dataapi.Token) (string, int) {
 // query answers template reads and applies template DDL and grants; other SQL passes to the next family.
 func (f *templateFake) query(_ *catalog, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
 	switch {
+	case strings.Contains(sql, "FROM sys_redshift_template"):
+		if f.schemaMissing || parameters["database"] != connection.Database || parameters["schema"] != "" && parameters["schema"] != templateFakeSchema {
+			return nil, true, nil
+		}
+		var rows []dataapi.Row
+		for _, name := range []string{f.name, templateFakeDecoy} {
+			if name == f.name && f.exists || name == templateFakeDecoy && !f.withoutDecoy {
+				rows = append(rows, dataapi.Row{"schema_name": templateFakeSchema, "template_name": name, "template_owner": f.owner})
+			}
+		}
+		slices.SortFunc(rows, func(a, b dataapi.Row) int { return strings.Compare(a["template_name"], b["template_name"]) })
+		return rows, true, nil
 	case sql == "SELECT usename FROM pg_user WHERE usename = :name" && parameters["name"] == templateFakeUser:
 		return []dataapi.Row{{"usename": templateFakeUser}}, true, nil
 	case sql == "SELECT schema_name FROM svv_all_schemas WHERE database_name = :database AND schema_name = :schema" && parameters["schema"] == templateFakeSchema:

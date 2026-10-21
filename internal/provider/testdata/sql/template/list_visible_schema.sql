@@ -1,0 +1,1 @@
+SELECT schema_name, template_name, u.usename AS template_owner FROM sys_redshift_template t JOIN pg_user u ON t.owner_id = u.usesysid WHERE database_name = :database AND template_type = 1 AND schema_name = :schema ORDER BY schema_name, template_name;

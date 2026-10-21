@@ -18,7 +18,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -62,45 +61,18 @@ func (r *copyJobResource) Metadata(_ context.Context, req resource.MetadataReque
 	resp.TypeName = req.ProviderTypeName + "_copy_job"
 }
 
-// copyJobImported reports whether state holds an imported job. Its COPY definition cannot be read back, so the
-// definition arguments stay null after the import, and the first plan records the configured definition in place
-// instead of replacing the job; source is required, so it is null only then.
-func copyJobImported(ctx context.Context, state tfsdk.State) bool {
-	var source types.String
-	if diagnostics := state.GetAttribute(ctx, path.Root("source"), &source); diagnostics.HasError() {
-		return false
-	}
-	return source.IsNull()
-}
+// copyJobDefinitionNote describes the immutable job definition.
+const copyJobDefinitionNote = "Changing the COPY definition replaces the job."
 
-// copyJobDefinitionNote describes the replacement of an unreadable definition argument.
-const copyJobDefinitionNote = "Replaces the job, except when the first plan after an import records the definition."
-
-// copyJobDefinitionString replaces the job when a definition argument changes, unless the job was just imported.
-func copyJobDefinitionString(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
-	resp.RequiresReplace = !copyJobImported(ctx, req.State)
-}
-
-// copyJobDefinitionFormat is copyJobDefinitionString for the format keyword, which compares without case.
+// copyJobDefinitionFormat compares the immutable format keyword without case.
 func copyJobDefinitionFormat(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
 	keywordChanged(ctx, req, resp)
-	resp.RequiresReplace = resp.RequiresReplace && !copyJobImported(ctx, req.State)
-}
-
-// copyJobDefinitionMap is copyJobDefinitionString for parameters.
-func copyJobDefinitionMap(ctx context.Context, req planmodifier.MapRequest, resp *mapplanmodifier.RequiresReplaceIfFuncResponse) {
-	resp.RequiresReplace = !copyJobImported(ctx, req.State)
-}
-
-// copyJobDefinitionObject is copyJobDefinitionString for the table block.
-func copyJobDefinitionObject(ctx context.Context, req planmodifier.ObjectRequest, resp *objectplanmodifier.RequiresReplaceIfFuncResponse) {
-	resp.RequiresReplace = !copyJobImported(ctx, req.State)
 }
 
 // Schema defines the job's COPY command, which only replacement changes, and its in-place AUTO setting.
 func (r *copyJobResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	replace := []planmodifier.String{stringplanmodifier.RequiresReplace()}
-	definition := []planmodifier.String{stringplanmodifier.RequiresReplaceIf(copyJobDefinitionString, copyJobDefinitionNote, copyJobDefinitionNote)}
+	definition := replace
 	nonEmpty := []validator.String{stringvalidator.LengthAtLeast(1)}
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a `COPY JOB` that loads files newly created under an Amazon S3 prefix into a table.",
@@ -127,10 +99,10 @@ func (r *copyJobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"format_argument": schema.StringAttribute{
 				Optional: true, PlanModifiers: definition,
-				MarkdownDescription: "Argument of the format, required for `JSON` and `AVRO` (`auto`, `auto ignorecase`, `noshred`, or an `s3://` JSONPaths file) and `FIXEDWIDTH`, and rejected for the others. Changing it replaces the job.",
+				MarkdownDescription: "Argument of the format, required for `JSON` and `AVRO` (`auto`, `auto ignorecase`, `noshred`, or an `s3://` JSONPaths file) and `FIXEDWIDTH`. For `SHAPEFILE`, optionally use `SIMPLIFY [AUTO] [tolerance]`, with a finite non-negative numeric tolerance. Rejected for other formats. Changing it replaces the job.",
 			},
 			"parameters": schema.MapAttribute{
-				Optional: true, ElementType: types.StringType, PlanModifiers: []planmodifier.Map{mapplanmodifier.RequiresReplaceIf(copyJobDefinitionMap, copyJobDefinitionNote, copyJobDefinitionNote)},
+				Optional: true, ElementType: types.StringType, PlanModifiers: []planmodifier.Map{mapplanmodifier.RequiresReplace()},
 				MarkdownDescription: "COPY parameters keyed by their UPPERCASE keyword, with `\"\"` for keywords without an argument, such as `{ IGNOREHEADER = \"1\", GZIP = \"\" }`. " +
 					"Accepted: `" + strings.Join(copyParameterNames(true), "`, `") + "`. COPY JOB rejects `MAXERROR`, `IGNOREALLERRORS`, `MANIFEST`, and key-based credentials. Changing it replaces the job.",
 			},
@@ -143,12 +115,12 @@ func (r *copyJobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			"table": schema.SingleNestedBlock{
 				MarkdownDescription: "At least one `table` block is required. Target table of the COPY command. Changing it replaces the job.",
 				Validators:          []validator.Object{objectvalidator.IsRequired(), objectvalidator.AlsoRequires(path.MatchRelative().AtName("schema"), path.MatchRelative().AtName("name"))},
-				PlanModifiers:       []planmodifier.Object{objectplanmodifier.RequiresReplaceIf(copyJobDefinitionObject, copyJobDefinitionNote, copyJobDefinitionNote)},
+				PlanModifiers:       []planmodifier.Object{objectplanmodifier.RequiresReplace()},
 				Attributes: map[string]schema.Attribute{
 					"schema": schema.StringAttribute{Optional: true, Validators: nonEmpty, MarkdownDescription: "Schema of the target table; required in the block."},
 					"name":   schema.StringAttribute{Optional: true, Validators: nonEmpty, MarkdownDescription: "Target table; required in the block."},
 					"columns": schema.ListAttribute{
-						Optional: true, ElementType: types.StringType, Validators: []validator.List{listvalidator.SizeAtLeast(1)},
+						Optional: true, ElementType: types.StringType, Validators: []validator.List{listvalidator.SizeAtLeast(1), listvalidator.NoNullValues()},
 						MarkdownDescription: "Columns to load, in the order of the fields in the files; all columns when omitted.",
 					},
 				},
@@ -157,7 +129,7 @@ func (r *copyJobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 	}
 }
 
-// read checks the binding and reads the job's AUTO setting and role; a missing database or job is not found.
+// read checks the binding; a missing database or job is not found.
 func (r *copyJobResource) read(ctx context.Context, data *copyJobModel) (bool, error) {
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, err
@@ -183,10 +155,13 @@ func readCopyJob(ctx context.Context, client *resourceClient, data *copyJobModel
 	}
 	data.Auto = types.BoolValue(auto)
 	data.IAMRole = copyJobRoleValue(data.IAMRole, rows[0]["iam_role"])
+	if err := readCopyJobDefinition(data, rows[0]["copy_query"]); err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
-// verify re-reads the job after apply and checks the planned AUTO setting and role.
+// verify checks that the complete planned definition, AUTO setting, and role took effect.
 func (r *copyJobResource) verify(ctx context.Context, data *copyJobModel) error {
 	planned := *data
 	found, err := r.read(ctx, data)
@@ -199,6 +174,8 @@ func (r *copyJobResource) verify(ctx context.Context, data *copyJobModel) error 
 		return fmt.Errorf("the copy job's auto is %t after apply, expected %t", data.Auto.ValueBool(), planned.Auto.ValueBool())
 	case !data.IAMRole.Equal(planned.IAMRole):
 		return fmt.Errorf("the copy job uses IAM role %q after apply, expected %q", data.IAMRole.ValueString(), planned.IAMRole.ValueString())
+	case !data.Table.Equal(planned.Table) || !data.Source.Equal(planned.Source) || !data.Format.Equal(planned.Format) || !data.FormatArgument.Equal(planned.FormatArgument) || !data.Parameters.Equal(planned.Parameters):
+		return errors.New("the copy job definition differs from the configuration after apply")
 	}
 	return nil
 }
@@ -208,7 +185,7 @@ func (r *copyJobResource) ValidateConfig(ctx context.Context, req resource.Valid
 	var data copyJobModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	// The schema's IsRequired validator already reports an absent table block; repeating it doubles the error.
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() || data.Table.IsNull() {
+	if resp.Diagnostics.HasError() || data.Table.IsNull() {
 		return
 	}
 	if err := copyJobValidate(data); err != nil {
@@ -245,7 +222,7 @@ func (r *copyJobResource) Create(ctx context.Context, req resource.CreateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Read refreshes the AUTO setting and role, or removes a missing job; the COPY definition is not readable.
+// Read refreshes the definition, AUTO setting and role, or removes a missing job.
 func (r *copyJobResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data copyJobModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -317,8 +294,7 @@ func (r *copyJobResource) Delete(ctx context.Context, req resource.DeleteRequest
 	}
 }
 
-// ImportState restores the job's database and name from its JSON identity. Read fills in auto and iam_role; the
-// COPY definition cannot be read back, so it stays null until the first apply records the configured one.
+// ImportState restores the identity; Read fills in the actual COPY definition, AUTO setting, and role.
 func (r *copyJobResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importIdentity(ctx, req, resp, "database", "name")
 }

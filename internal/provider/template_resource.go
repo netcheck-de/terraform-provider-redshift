@@ -108,7 +108,7 @@ func (r *templateResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"format_argument": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Argument of the format, required for `JSON` and `AVRO` (`auto`, `auto ignorecase`, `noshred`, or an `s3://` JSONPaths file) and `FIXEDWIDTH` (the column specification), and rejected for the others. A change runs `CREATE OR REPLACE TEMPLATE`.",
+				MarkdownDescription: "Argument of the format, required for `JSON` and `AVRO` (`auto`, `auto ignorecase`, `noshred`, or an `s3://` JSONPaths file) and `FIXEDWIDTH` (the column specification). For `SHAPEFILE`, optionally use `SIMPLIFY [AUTO] [tolerance]`, with a finite non-negative numeric tolerance. Rejected for other formats. A change runs `CREATE OR REPLACE TEMPLATE`.",
 			},
 			"parameters": schema.MapAttribute{
 				Optional: true, ElementType: types.StringType,
@@ -181,10 +181,7 @@ func (entry templateCatalog) applyCatalog(data *templateModel) {
 	if entry.definition.format != "" {
 		data.Format = keywordValue(configured, entry.definition.format)
 	}
-	data.FormatArgument = types.StringNull()
-	if entry.definition.formatArgument != "" {
-		data.FormatArgument = types.StringValue(entry.definition.formatArgument)
-	}
+	data.FormatArgument = copyFormatArgumentValue(data.FormatArgument, entry.definition.format, entry.definition.formatArgument)
 	data.Parameters = copyParametersValue(data.Parameters, entry.definition.parameters, false)
 }
 
@@ -207,7 +204,7 @@ func (r *templateResource) converge(ctx context.Context, data *templateModel) er
 		return errors.New("the template is absent after apply")
 	case knownString(data.Owner) != "" && entry.owner != data.Owner.ValueString():
 		return fmt.Errorf("the template is owned by %q after apply, expected %q", entry.owner, data.Owner.ValueString())
-	case !strings.EqualFold(entry.definition.format, knownString(data.Format)) || entry.definition.formatArgument != knownString(data.FormatArgument):
+	case !strings.EqualFold(entry.definition.format, knownString(data.Format)) || !copyFormatArgumentValue(data.FormatArgument, entry.definition.format, entry.definition.formatArgument).Equal(data.FormatArgument):
 		return fmt.Errorf("the template's format is %q %q after apply, expected %q %q", entry.definition.format, entry.definition.formatArgument, knownString(data.Format), knownString(data.FormatArgument))
 	}
 	planned, _ := copyCanonicalParameters(knownMap(data.Parameters), false) // validated before apply.
@@ -222,7 +219,7 @@ func (r *templateResource) converge(ctx context.Context, data *templateModel) er
 func (r *templateResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data templateModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	if err := templateValidate(data); err != nil {

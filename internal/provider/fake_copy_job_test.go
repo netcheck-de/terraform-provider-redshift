@@ -25,12 +25,14 @@ type copyJobFake struct {
 	// role is the IAM role ARN of the job's COPY command.
 	role string
 	// auto records AUTO ON.
-	auto bool
+	auto       bool
+	definition string
 }
 
 // populate makes the representative job exist with AUTO OFF.
 func (f *copyJobFake) populate() {
 	f.exists, f.name, f.role, f.auto = true, "events_load", copyJobFakeRole, false
+	f.definition, _ = createCopyJobStatement(copyJobLifecycleModel)
 }
 
 // copyJobFakeChar pads a value to a character column's width, as Redshift returns char(n).
@@ -54,10 +56,10 @@ func (f *copyJobFake) query(_ *catalog, _ dataapi.Connection, sql string, parame
 		if f.auto {
 			isAuto = "1"
 		}
-		return dataapi.Row{"job_name": copyJobFakeChar(f.name, 128), "iam_role": copyJobFakeChar(f.role, copyJobRoleLength), "is_auto": isAuto}
+		return dataapi.Row{"job_name": copyJobFakeChar(f.name, 128), "iam_role": copyJobFakeChar(f.role, copyJobRoleLength), "is_auto": isAuto, "copy_query": f.definition}
 	}
 	switch {
-	case strings.HasPrefix(sql, "SELECT job_name, iam_role, is_auto FROM sys_copy_job WHERE job_name = :name"):
+	case strings.HasPrefix(sql, "SELECT * FROM sys_copy_job WHERE job_name = :name"):
 		if !f.exists || parameters["name"] != f.name {
 			return nil, true, nil
 		}
@@ -93,6 +95,7 @@ func (f *copyJobFake) query(_ *catalog, _ dataapi.Connection, sql string, parame
 			return nil, true, fmt.Errorf("copy job without explicit AUTO: %s", sql)
 		}
 		f.exists, f.name, f.role, f.auto = true, copyJobFakeAfter(sql, "JOB CREATE"), role, strings.HasSuffix(sql, " AUTO ON")
+		f.definition = sql
 	default:
 		return nil, false, nil
 	}

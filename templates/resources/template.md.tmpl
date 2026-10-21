@@ -32,6 +32,7 @@ DROP TEMPLATE schema.name;
 {{ tffile "examples/resources/redshift_template/resource.tf" }}
 
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -45,6 +46,10 @@ without SQL quotes; the provider quotes them. `IGNOREHEADER`, `COMPROWS`, and `M
 while planning, among them the source, authorization, and `MANIFEST` options that a template cannot hold. The data
 format is `format` with its `format_argument`, not a parameter. Redshift validates combinations, such as `CSV` with
 `FIXEDWIDTH`, only when the template is created or used.
+
+For `format = "SHAPEFILE"`, `format_argument` optionally holds `SIMPLIFY [AUTO] [tolerance]`, for example
+`"SIMPLIFY AUTO 0.000001"`. Omit it to keep the original geometries. Tolerance is a finite non-negative number;
+the provider renders it as an unquoted decimal and preserves equivalent configured spelling on refresh.
 
 ## Lifecycle and Ownership
 

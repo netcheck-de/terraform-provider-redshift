@@ -24,20 +24,18 @@ func templateRelation(schema, name string) (sqlclient.Statement, error) {
 // templateValidate checks what CREATE TEMPLATE needs before any SQL runs: a lowercase name, a known format with
 // its argument, known parameters with valid values, and at least one of them, as the command requires.
 func templateValidate(data templateModel) error {
-	if _, err := templateRelation(data.Schema.ValueString(), data.Name.ValueString()); err != nil {
-		return err
+	if !data.Schema.IsUnknown() && !data.Name.IsUnknown() {
+		if _, err := templateRelation(data.Schema.ValueString(), data.Name.ValueString()); err != nil {
+			return err
+		}
 	}
 	if name := data.Name.ValueString(); name != strings.ToLower(name) {
 		return fmt.Errorf("name %q must be lowercase, because Redshift folds template names to lowercase", name)
 	}
-	if _, err := copyCheckFormat(knownString(data.Format), knownString(data.FormatArgument)); err != nil {
+	if err := copyValidateKnown(data.Format, data.FormatArgument, data.Parameters, false); err != nil {
 		return err
 	}
-	parameters, err := copyCanonicalParameters(knownMap(data.Parameters), false)
-	if err != nil {
-		return err
-	}
-	if knownString(data.Format) == "" && len(parameters) == 0 {
+	if !data.Format.IsUnknown() && !data.Parameters.IsUnknown() && knownString(data.Format) == "" && len(data.Parameters.Elements()) == 0 {
 		return fmt.Errorf("a template needs a format or at least one parameter")
 	}
 	return nil
@@ -46,6 +44,9 @@ func templateValidate(data templateModel) error {
 // templateDefinitionStatement renders CREATE [OR REPLACE] TEMPLATE ... FOR COPY AS with the format first and the
 // parameters in keyword order.
 func templateDefinitionStatement(verb sqlclient.Keyword, data templateModel) (string, error) {
+	if data.Schema.IsUnknown() || data.Name.IsUnknown() || !copyOptionsKnown(data.Format, data.FormatArgument, data.Parameters) {
+		return "", fmt.Errorf("the template definition must be known before apply")
+	}
 	if err := templateValidate(data); err != nil {
 		return "", err
 	}
@@ -86,7 +87,7 @@ func createTemplateStatements(data templateModel) ([]string, error) {
 // templateReplaced reports whether the data format changes, which runs CREATE OR REPLACE TEMPLATE with the complete
 // planned definition instead of ALTER TEMPLATE ... ADD and DROP.
 func templateReplaced(prev, plan templateModel) bool {
-	return !strings.EqualFold(knownString(prev.Format), knownString(plan.Format)) || knownString(prev.FormatArgument) != knownString(plan.FormatArgument)
+	return !strings.EqualFold(knownString(prev.Format), knownString(plan.Format)) || !copyFormatArgumentValue(plan.FormatArgument, knownString(plan.Format), knownString(prev.FormatArgument)).Equal(plan.FormatArgument)
 }
 
 // templateReplaceStatements renders CREATE OR REPLACE TEMPLATE and, when an owner is known, restores it, because the
@@ -235,12 +236,16 @@ func showTemplateStatement(data templateModel) string {
 	return sqlclient.Stmt("SHOW TEMPLATE").Append(relation).String()
 }
 
-// templateSchemasQuery lists the local schemas of a database, which a listing without a schema filter scans.
-func templateSchemasQuery(database string) sqlclient.Query {
-	return sqlclient.Select("schema_name").From("svv_all_schemas").
-		Where("database_name = :database", sqlclient.Bind("database", database)).
-		Where("LOWER(schema_type) = 'local'").
-		OrderBy("schema_name")
+// listTemplatesQuery uses documented row visibility rather than probing schemas the caller cannot use.
+// https://docs.aws.amazon.com/redshift/latest/dg/SYS_REDSHIFT_TEMPLATE.html
+func listTemplatesQuery(database, schema string) sqlclient.Query {
+	query := sqlclient.Select("schema_name", "template_name", "u.usename AS template_owner").
+		From("sys_redshift_template t JOIN pg_user u ON t.owner_id = u.usesysid").Where("database_name = :database", sqlclient.Bind("database", database)).
+		Where("template_type = 1")
+	if schema != "" {
+		query = query.Where("schema_name = :schema", sqlclient.Bind("schema", schema))
+	}
+	return query.OrderBy("schema_name, template_name")
 }
 
 // templateDefinitionText returns the statement of a SHOW TEMPLATE row. The column name is not documented, so a row

@@ -56,29 +56,31 @@ func copyJobTarget(table types.Object) copyJobTable {
 // default role is not supported.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_COPY-JOB.html
 func copyJobValidate(data copyJobModel) error {
-	if !copyJobName.MatchString(data.Name.ValueString()) {
+	if !data.Name.IsUnknown() && !copyJobName.MatchString(data.Name.ValueString()) {
 		return fmt.Errorf("name %q must be 1 to 127 lowercase letters, digits, or underscores, starting with a letter or underscore; COPY JOB names cannot contain hyphens", data.Name.ValueString())
 	}
-	target := copyJobTarget(data.Table)
-	if target.schema == "" || target.name == "" {
-		return fmt.Errorf("the table block needs a nonempty schema and name")
-	}
-	for _, column := range target.columns {
-		if column == "" {
-			return fmt.Errorf("table.columns must not contain empty names")
+	if !data.Table.IsUnknown() && !data.Table.IsNull() {
+		for _, name := range []string{"schema", "name"} {
+			value := data.Table.Attributes()[name].(types.String)
+			if !value.IsUnknown() && value.ValueString() == "" {
+				return fmt.Errorf("the table block needs a nonempty schema and name")
+			}
+		}
+		if columns, ok := data.Table.Attributes()["columns"].(types.List); ok {
+			for _, column := range columns.Elements() {
+				if !column.IsUnknown() && (column.IsNull() || column.(types.String).ValueString() == "") {
+					return fmt.Errorf("table.columns must not contain null or empty names")
+				}
+			}
 		}
 	}
-	if !copyJobSourcePattern.MatchString(data.Source.ValueString()) {
+	if !data.Source.IsUnknown() && !copyJobSourcePattern.MatchString(data.Source.ValueString()) {
 		return fmt.Errorf("source %q must be an s3:// prefix", data.Source.ValueString())
 	}
-	if !copyJobRolePattern.MatchString(data.IAMRole.ValueString()) {
+	if !data.IAMRole.IsUnknown() && !copyJobRolePattern.MatchString(data.IAMRole.ValueString()) {
 		return fmt.Errorf("iam_role %q must be an IAM role ARN; COPY JOB does not support the default role", data.IAMRole.ValueString())
 	}
-	if _, err := copyCheckFormat(knownString(data.Format), knownString(data.FormatArgument)); err != nil {
-		return err
-	}
-	_, err := copyCanonicalParameters(knownMap(data.Parameters), true)
-	return err
+	return copyValidateKnown(data.Format, data.FormatArgument, data.Parameters, true)
 }
 
 // copyJobKeyword renders the job name, which copyJobValidate restricted to unquoted identifier characters.
@@ -96,6 +98,24 @@ func copyJobAuto(statement sqlclient.Statement, auto types.Bool) sqlclient.State
 // on the documented default.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_COPY-JOB.html
 func createCopyJobStatement(data copyJobModel) (string, error) {
+	if data.Name.IsUnknown() || data.Source.IsUnknown() || data.IAMRole.IsUnknown() || !copyOptionsKnown(data.Format, data.FormatArgument, data.Parameters) {
+		return "", fmt.Errorf("the COPY job definition must be known before apply")
+	}
+	if data.Table.IsNull() || data.Table.IsUnknown() {
+		return "", fmt.Errorf("the table block needs a nonempty schema and name")
+	}
+	for _, value := range data.Table.Attributes() {
+		if value.IsUnknown() {
+			return "", fmt.Errorf("the COPY job table must be known before apply")
+		}
+		if columns, ok := value.(types.List); ok {
+			for _, column := range columns.Elements() {
+				if column.IsUnknown() {
+					return "", fmt.Errorf("the COPY job columns must be known before apply")
+				}
+			}
+		}
+	}
 	if err := copyJobValidate(data); err != nil {
 		return "", err
 	}
@@ -143,15 +163,16 @@ func dropCopyJobStatement(data copyJobModel) (string, error) {
 	return sqlclient.Stmt("COPY JOB DROP").Kw(copyJobKeyword(data.Name.ValueString())).String(), nil
 }
 
-// copyJobCatalogColumns are the SYS_COPY_JOB columns refresh reads. job_text holds the COPY parameters but is cut at
-// 256 characters in an undocumented form, so the definition is not read back.
+// copyJobCatalogColumns are the documented summary columns the lightweight listing exposes.
 // https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html
 var copyJobCatalogColumns = []sqlclient.Keyword{"job_name", "iam_role", "is_auto"}
 
 // readCopyJobQuery reads one job of the connected database. SYS_COPY_JOB shows superusers every job and other users
 // only their own.
 func readCopyJobQuery(name string) sqlclient.Query {
-	return sqlclient.Select(copyJobCatalogColumns...).From("sys_copy_job").Where("job_name = :name", sqlclient.Bind("name", name))
+	// copy_query is not documented on every engine version. SELECT * lets read report its absence explicitly,
+	// rather than failing at SQL binding or silently using the truncated documented job_text column.
+	return sqlclient.Select("*").From("sys_copy_job").Where("job_name = :name", sqlclient.Bind("name", name))
 }
 
 // listCopyJobsQuery lists the visible jobs by name.
