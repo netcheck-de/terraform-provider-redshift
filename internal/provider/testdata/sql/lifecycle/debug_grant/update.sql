@@ -1,3 +1,3 @@
 -- database: admin
-SHOW GRANTS ON DATABASE "sales_db@finance-catalog";
+SHOW GRANTS ON DATABASE "warehouse";
 -- params: {}

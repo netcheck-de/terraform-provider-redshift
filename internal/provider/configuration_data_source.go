@@ -20,7 +20,7 @@ type configurationDataSource struct {
 type configurationModel struct {
 	// ID records the warehouse binding, the provider database, and the parameter name.
 	ID types.String `tfsdk:"id"`
-	// Name is the bare lowercase parameter name.
+	// Name is the lowercase parameter or dotted session context name.
 	Name types.String `tfsdk:"name"`
 	// Value is the textual value SHOW reports.
 	Value types.String `tfsdk:"value"`
@@ -43,8 +43,8 @@ func (d *configurationDataSource) Schema(_ context.Context, _ datasource.SchemaR
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{Computed: true, MarkdownDescription: "JSON identity of this read: the warehouse binding, the provider database, and `name`."},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Bare lowercase parameter name, such as `search_path`, `datestyle`, or `enable_case_sensitive_identifier`. `all` is rejected; dotted session context variables are not supported.",
-				Validators: []validator.String{stringvalidator.RegexMatches(configurationParameterName, "must be a bare lowercase parameter name such as search_path"), stringvalidator.NoneOf("all")},
+				Required: true, MarkdownDescription: "Lowercase parameter name, such as `search_path`, `datestyle`, or `enable_case_sensitive_identifier`, or a dotted session context name such as `app_context.user_id`. `all` is rejected. A context variable must exist in the provider's session; a value set in another session is not visible.",
+				Validators: []validator.String{stringvalidator.RegexMatches(configurationParameterName, "must be a lowercase parameter or dotted session context name such as app_context.user_id"), stringvalidator.NoneOf("all")},
 			},
 			"value": schema.StringAttribute{Computed: true, MarkdownDescription: "Value `SHOW` reports for the provider's session, as text."},
 		},

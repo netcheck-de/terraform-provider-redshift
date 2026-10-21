@@ -33,6 +33,8 @@ var _ = registerFakeFamily("debug_grant", func() fakeFamily { return &debugGrant
 // debugGrantStatement parses the GRANT and REVOKE statements the renderers produce.
 var debugGrantStatement = regexp.MustCompile(`^(GRANT|REVOKE) DEBUG ON DATABASE ("(?:[^"]|"")*") (?:TO|FROM) (?:ROLE ("(?:[^"]|"")*")|ADMINS OF ACCOUNT '([0-9]+)'|("(?:[^"]|"")*"))$`)
 
+var debugGrantForStatement = regexp.MustCompile(`^SHOW GRANTS FOR (ROLE )?("(?:[^"]|"")*") FROM DATABASE ("(?:[^"]|"")*")$`)
+
 // grant records or removes one grantee on database.
 func (f *debugGrantFakeFamily) grant(database string, key debugGrantKey, granted bool) {
 	if f.grants[database] == nil {
@@ -54,11 +56,35 @@ func (f *debugGrantFakeFamily) clear() {
 
 // query answers SHOW GRANTS ON DATABASE for databases with DEBUG state and applies GRANT and REVOKE DEBUG.
 func (f *debugGrantFakeFamily) query(_ *catalog, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, bool, error) {
+	if sql == readDebugGrantAuthStatement() {
+		return []dataapi.Row{{"auth_method": "IAM AssumeUser"}}, true, nil
+	}
+	if match := debugGrantForStatement.FindStringSubmatch(sql); match != nil {
+		name, principal := fakeUnquote(match[3]), fakeUnquote(match[2])
+		grants, found := f.grants[name]
+		if !found {
+			return nil, false, nil
+		}
+		identityType, sourceType := "user", "global_user"
+		if match[1] != "" {
+			identityType, sourceType = "role", "global_group"
+		}
+		var rows []dataapi.Row
+		for key := range grants {
+			if key.identityType == sourceType && strings.EqualFold(key.name, principal) {
+				rows = append(rows, dataapi.Row{"database_name": name, "object_type": "DATABASE", "privilege_scope": "DATABASE", "privilege_type": "DEBUG", "identity_name": key.name, "identity_type": identityType})
+			}
+		}
+		return rows, true, nil
+	}
 	if database, ok := strings.CutPrefix(sql, "SHOW GRANTS ON DATABASE "); ok && !strings.Contains(database, " FOR ") {
 		name := fakeUnquote(database)
 		grantees, found := f.grants[name]
 		if !found {
 			return nil, false, nil
+		}
+		if strings.Contains(name, "@") {
+			return nil, true, nil
 		}
 		// A database privilege of another identity shows that rows are matched by privilege and grantee.
 		rows := []dataapi.Row{{"database_name": name, "privilege_type": "TEMP", "identity_id": "0", "identity_name": "public", "identity_type": "public", "admin_option": "f", "privilege_scope": "DATABASE", "grantor_name": "admin"}}

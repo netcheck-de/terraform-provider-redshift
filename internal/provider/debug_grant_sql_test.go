@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -26,14 +27,22 @@ func TestDebugGrantSQL(t *testing.T) {
 			if err != nil {
 				return nil, err
 			}
-			return []string{readDebugGrantStatement(data.Database.ValueString()), create, drop}, nil
+			read := readDebugGrantStatement(data.Database.ValueString())
+			if strings.Contains(data.Database.ValueString(), "@") {
+				read, err = readDebugGrantRemoteStatement(data)
+				if err != nil {
+					return nil, err
+				}
+			}
+			return []string{read, create, drop}, nil
 		}
 	}
 	checkSQL(t, "debug_grant", []sqlCase{
 		{"iam_user", render(debugGrantFixture(debugGrantTestDatabase, "IAM:sales_auditor", "USER"))},
 		{"iam_role", render(debugGrantFixture(debugGrantTestDatabase, "IAMR:audit_role", "USER"))},
 		{"idc_group", render(debugGrantFixture(debugGrantTestDatabase, "myidc:audit_team", "ROLE"))},
-		{"account_admins", render(debugGrantFixture(debugGrantTestDatabase, "123456789012", "ACCOUNT"))},
+		{"account_admins", render(debugGrantFixture("sales_db", "123456789012", "ACCOUNT"))},
+		{"remote_account_rejected", render(debugGrantFixture(debugGrantTestDatabase, "123456789012", "ACCOUNT"))},
 		{"local_database_lowercase_type", render(debugGrantFixture("sales_db", "IAM:sales_auditor", "user"))},
 		{"quoted_identifiers", render(debugGrantFixture(`Odd"Db@catalog`, `myidc:Audit "Team"`, "ROLE"))},
 		{"local_user_rejected", render(debugGrantFixture(debugGrantTestDatabase, "alice", "USER"))},

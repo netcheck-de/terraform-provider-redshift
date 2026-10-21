@@ -1,1 +1,1 @@
--- error: parameter name "\"search_path\"" must be a bare lowercase identifier, such as search_path
+-- error: parameter name "\"search_path\"" must be a lowercase identifier or dotted session context name, such as search_path or app_context.user_id

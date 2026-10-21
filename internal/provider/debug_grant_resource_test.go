@@ -22,8 +22,8 @@ func debugGrantSetup(c *catalog) {
 
 var _ = registerLifecycleCase(lifecycleCase{
 	name: "debug grant", kind: lifecyclePermission, new: newDebugGrantResource,
-	model: debugGrantFixture(debugGrantTestDatabase, "IAM:sales_auditor", "USER"),
-	setup: debugGrantSetup,
+	model: debugGrantFixture("warehouse", "IAM:sales_auditor", "USER"),
+	setup: func(c *catalog) { debugGrantSetup(c); c.databaseName = "warehouse" },
 	absent: func(c *catalog) {
 		fakeState[*debugGrantFakeFamily](c, "debug_grant").clear()
 	},
@@ -54,7 +54,7 @@ func TestDebugGrantRecipients(t *testing.T) {
 	for _, data := range []debugGrantModel{
 		debugGrantFixture(debugGrantTestDatabase, "IAMR:audit_role", "USER"),
 		debugGrantFixture(debugGrantTestDatabase, "myidc:audit_team", "role"),
-		debugGrantFixture(debugGrantTestDatabase, "123456789012", "ACCOUNT"),
+		debugGrantFixture("warehouse", "123456789012", "ACCOUNT"),
 	} {
 		t.Run(data.GranteeType.ValueString(), func(t *testing.T) {
 			c := debugGrantCatalog()
@@ -64,13 +64,13 @@ func TestDebugGrantRecipients(t *testing.T) {
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			var id types.String
 			require.False(t, state.GetAttribute(context.Background(), path.Root("id"), &id).HasError())
-			assertLookupIdentity(t, id, debugGrantTestDatabase, map[string]string{"grantee": data.Grantee.ValueString(), "grantee_type": strings.ToUpper(data.GranteeType.ValueString())})
+			assertLookupIdentity(t, id, data.Database.ValueString(), map[string]string{"grantee": data.Grantee.ValueString(), "grantee_type": strings.ToUpper(data.GranteeType.ValueString())})
 			data.ID = id
 			_, diagnostics = applyOperation(t, r, "read", data, nil, nil)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			_, diagnostics = applyOperation(t, r, "delete", data, nil, nil)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
-			assert.Len(t, fakeState[*debugGrantFakeFamily](c, "debug_grant").grants[debugGrantTestDatabase], 1, "only the representative grant remains")
+			assert.Len(t, fakeState[*debugGrantFakeFamily](c, "debug_grant").grants[data.Database.ValueString()], 1, "only the representative grant remains")
 		})
 	}
 }
@@ -111,12 +111,12 @@ func TestDebugGrantReadFailures(t *testing.T) {
 					return nil, errors.New("listing unavailable")
 				case test.listed:
 					// LIKE matches _ as a wildcard, so only the exact name counts.
-					return []sqlclient.Row{{"database_name": "salesXdb@finance-catalog"}, {"database_name": debugGrantTestDatabase}}, nil
+					return []sqlclient.Row{{"database_name": "salesXdb"}, {"database_name": "sales_db"}}, nil
 				}
-				return []sqlclient.Row{{"database_name": "salesXdb@finance-catalog"}}, nil
+				return []sqlclient.Row{{"database_name": "salesXdb"}}, nil
 			})
 			r := &debugGrantResource{testResourceClient(client)}
-			found, err := r.read(context.Background(), debugGrantFixture(debugGrantTestDatabase, "IAM:sales_auditor", "USER"))
+			found, err := r.read(context.Background(), debugGrantFixture("sales_db", "IAM:sales_auditor", "USER"))
 			assert.False(t, found)
 			if test.removed {
 				require.NoError(t, err)
@@ -124,8 +124,8 @@ func TestDebugGrantReadFailures(t *testing.T) {
 				require.EqualError(t, err, "database does not exist")
 			}
 			assert.Equal(t, []string{
-				`admin: SHOW GRANTS ON DATABASE "sales_db@finance-catalog"`,
-				`admin: SHOW DATABASES LIKE 'sales_db@finance-catalog'`,
+				`admin: SHOW GRANTS ON DATABASE "sales_db"`,
+				`admin: SHOW DATABASES LIKE 'sales_db'`,
 			}, statements)
 		})
 	}
@@ -164,10 +164,10 @@ func TestDebugGrantUpdateRecordsKeywordCase(t *testing.T) {
 // database, which the representative global identity case does not reach.
 func TestDebugGrantTranscripts(t *testing.T) {
 	group := debugGrantFixture(debugGrantTestDatabase, "myidc:audit_team", "ROLE")
-	account := debugGrantFixture(debugGrantTestDatabase, "123456789012", "ACCOUNT")
+	account := debugGrantFixture("warehouse", "123456789012", "ACCOUNT")
 	granted := func(data debugGrantModel, identityType string) func(*catalog) {
 		return func(c *catalog) {
-			fakeState[*debugGrantFakeFamily](c, "debug_grant").grant(debugGrantTestDatabase, debugGrantKey{identityType: identityType, name: data.Grantee.ValueString()}, true)
+			fakeState[*debugGrantFakeFamily](c, "debug_grant").grant(data.Database.ValueString(), debugGrantKey{identityType: identityType, name: data.Grantee.ValueString()}, true)
 		}
 	}
 	runTranscripts(t, "lifecycle/debug_grant_recipients", newDebugGrantResource, []transcriptCase{

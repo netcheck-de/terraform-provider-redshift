@@ -20,6 +20,9 @@ account. See AWS [GRANT DEBUG](https://docs.aws.amazon.com/redshift/latest/dg/r_
 GRANT DEBUG ON DATABASE database TO ...;
 REVOKE DEBUG ON DATABASE database FROM ...;
 SHOW GRANTS ON DATABASE database;
+SHOW GRANTS FOR ... FROM DATABASE database;
+SHOW DATABASES LIKE 'database';
+SELECT TRIM(auth_method) ... FROM sys_connection_log WHERE session_id = pg_backend_pid() ...;
 ```
 
 ## Example Usage
@@ -27,6 +30,7 @@ SHOW GRANTS ON DATABASE database;
 {{ tffile "examples/resources/redshift_debug_grant/resource.tf" }}
 
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -49,7 +53,23 @@ while it is granted.
 
 Only a superuser or the owner of the database can grant or revoke `DEBUG`, and only on a database in a warehouse with
 federated permissions. Statements run in the provider's administration database and name the database, so a
-cross-warehouse name such as `sales_db@finance-catalog` works without connecting to it. `DEBUG` is not part of
+cross-warehouse `USER` or `ROLE` name such as `sales_db@finance-catalog` does not require connecting to that database.
+Before a remote GRANT or remote absence inference, the provider verifies the current session's authentication event
+in `SYS_CONNECTION_LOG`, filtered by `session_id = pg_backend_pid()`, `user_name = current_user`, and
+`event = 'authenticated'`, taking only the latest record. The exact supported result is `IAM AssumeUser`, verified
+with IAM Data API sessions. That system view requires a SQL superuser. Password authentication, an unavailable or
+ambiguous record, and other unverified authentication methods fail closed, even if `SHOW DATABASES` lists the alias.
+A local-secret session can list the alias yet return no remote DEBUG rows for a grant that actually exists; alias
+visibility, IAM-looking usernames, `SHOW GLOBAL IDENTITY`, and external user IDs alone are not sufficient proof.
+No direct-TLS or Identity Center authentication-method spelling is guessed or accepted without evidence.
+
+The provider also requires `SHOW DATABASES` to list the exact alias and proves the scoped grant read can run before
+mutation. `ACCOUNT` must use a producer-local database name and a provider connected
+to the warehouse hosting that database. No authoritative remote ACCOUNT read shape is available, so remote ACCOUNT
+configuration, imported-state reads, and deletion are explicitly refused with instructions to use the producer.
+Legacy remote ACCOUNT state is retained with an error: manage or revoke the actual grant through the producer-local
+provider and explicitly migrate/import its local identity. Changing authentication must not silently relinquish a grant.
+`DEBUG` is not part of
 `GRANT ALL ON DATABASE` and never carries a grant option, so this resource owns exactly one grant and other database
 privileges, managed by `redshift_object_grant` and `redshift_grant`, are unaffected. Deregistering the warehouse from
 the AWS Glue Data Catalog keeps the grant without effect; dropping the database removes it. A query that joins several
@@ -62,6 +82,13 @@ Refresh runs `SHOW GRANTS ON DATABASE` and looks for the `DEBUG` row whose `iden
 is no in-place SQL; every change replaces the grant: `REVOKE DEBUG` from the old grantee, `GRANT DEBUG` to the new
 one, each followed by a `SHOW GRANTS` read that verifies it.
 
+Remote `USER` and `ROLE` tuples instead use `SHOW GRANTS FOR ... FROM DATABASE "db@catalog"` as the primary read:
+remote `SHOW GRANTS ON DATABASE` can return an empty result even while the grant exists. Only the matching database,
+`DATABASE` object/scope, exact grantee name (case-insensitive), `DEBUG` privilege, and scoped `user` or `role` identity
+type count. These scoped row types are normalized only for the corresponding remote USER/ROLE tuple; local matching
+still requires the global identity types above. Every remote read proves authentication and alias visibility,
+including Delete's pre-revoke and post-revoke checks.
+
 | Change                                 | Result                                                                      |
 |----------------------------------------|-----------------------------------------------------------------------------|
 | `database`                             | replaces the grant: `DEBUG` is granted on one database per statement        |
@@ -70,8 +97,13 @@ one, each followed by a `SHOW GRANTS` read that verifies it.
 | `grantee_type` spelled in another case | no SQL; the update checks that the grant still exists and records the value |
 
 **Drift.** A `DEBUG` grant revoked outside Terraform is removed from state, and the next plan grants it again. When
-`SHOW GRANTS` fails and `SHOW DATABASES` no longer lists the database, the database counts as dropped and the grant is
-removed from state too; any other failure is an error. Other grants on the database are never read.
+`SHOW GRANTS` fails for a local name and `SHOW DATABASES` no longer lists the database, the database counts as dropped
+and the grant is removed from state too. An unverified remote authentication context, an alias omitted by
+`SHOW DATABASES`, a failed remote query, or a remote
+ACCOUNT tuple always preserves state and reports an actionable error; none is treated as an absent grant or a reason
+to silently skip revocation. Only a verified IAM remote USER/ROLE session with a visible alias and no matching scoped
+grant row reports absence. If an
+invisible alias was actually dropped, remove its obsolete grant from state explicitly. Other grants are never owned.
 
 ## Import
 

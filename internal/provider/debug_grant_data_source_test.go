@@ -15,7 +15,7 @@ var _ = registerParity(parityCase{source: newDebugGrantDataSource, resource: new
 // TestDebugGrantLookup checks an existing grant, its identity, absence, and read-only execution.
 func TestDebugGrantLookup(t *testing.T) {
 	exerciseCatalogLookup(t, newDebugGrantDataSource,
-		map[string]string{"database": debugGrantTestDatabase, "grantee": "IAM:sales_auditor", "grantee_type": "USER"},
+		map[string]string{"database": "warehouse", "grantee": "IAM:sales_auditor", "grantee_type": "USER"},
 		map[string]attr.Value{"exists": types.BoolValue(true)}, debugGrantCatalog())
 }
 
