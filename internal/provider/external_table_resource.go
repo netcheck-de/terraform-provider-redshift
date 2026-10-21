@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
@@ -108,9 +109,22 @@ func externalTablePartitionKeysReplace(_ context.Context, req planmodifier.ListR
 	resp.RequiresReplace = !externalTableColumnsEquivalent(before, after)
 }
 
-// externalTableStoredAsReplace replaces the table unless SET FILE FORMAT can switch between the formats.
-func externalTableStoredAsReplace(_ context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+// externalTableStoredAsReplace also checks unchanged blocks: switching away from name mapping makes physical order
+// significant even when Terraform does not invoke the column modifier.
+func externalTableStoredAsReplace(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
 	resp.RequiresReplace = req.PlanValue.IsUnknown() || !externalTableStoredAsInPlace(knownString(req.StateValue), knownString(req.PlanValue))
+	if resp.RequiresReplace {
+		return
+	}
+	var prior, plan externalTableModel
+	_ = req.State.Get(ctx, &prior)
+	_ = req.Plan.Get(ctx, &plan)
+	prior.StoredAs, plan.StoredAs = req.StateValue, req.PlanValue
+	_, priorKnown := externalTableColumns(prior.Columns)
+	_, planKnown := externalTableColumns(plan.Columns)
+	if priorKnown && planKnown {
+		resp.RequiresReplace = !externalTableColumnsAlterable(prior, plan, externalTableRecordedLayout(ctx, req.Private))
+	}
 }
 
 // externalTableLayoutKey names the private state that holds the catalog layout of the last read or apply, so plans
@@ -215,8 +229,8 @@ func (r *externalTableResource) Schema(_ context.Context, _ resource.SchemaReque
 				MarkdownDescription: "`WITH SERDEPROPERTIES` pairs for `serde`, such as `{ \"strip.outer.array\" = \"true\" }`. Changing it replaces the table.",
 			},
 			"stored_as": schema.StringAttribute{
-				Optional: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(externalTableStoredAsReplace, "Changing stored_as replaces the table unless SET FILE FORMAT supports both formats.", "Changing `stored_as` replaces the table unless `SET FILE FORMAT` supports both formats.")},
-				MarkdownDescription: "File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; other changes replace the table.",
+				Optional: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(externalTableStoredAsReplace, "Changing stored_as replaces the table unless SET FILE FORMAT supports both formats and the columns fit the resulting mapping.", "Changing `stored_as` replaces the table unless `SET FILE FORMAT` supports both formats and the columns fit the resulting mapping.")},
+				MarkdownDescription: "File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; switching from name to position mapping also requires the `column` blocks to follow catalog order. Other changes replace the table.",
 			},
 			"input_format": schema.StringAttribute{
 				Optional: true, Computed: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIfConfigured()},
@@ -234,7 +248,7 @@ func (r *externalTableResource) Schema(_ context.Context, _ resource.SchemaReque
 			},
 		},
 		Blocks: map[string]schema.Block{
-			"column": externalTableColumnsBlock("At least one `column` block is required. Data columns in file order. Dropping columns and appending them at the end run `ALTER TABLE ... DROP COLUMN` and `ADD COLUMN`; reordering, inserting, or retyping columns replaces the table, because Spectrum matches columns to the file by position. `ORC` tables map columns by name unless their `orc.schema.resolution` table property, configured or in the catalog, is anything but `name`: they add and drop columns anywhere in place, and reordering their blocks runs no statement. Any column change of an `AVRO` table except a respelling replaces it.",
+			"column": externalTableColumnsBlock("At least one `column` block is required. Data columns in file order for positional formats. Dropping columns and appending them at the end run `ALTER TABLE ... DROP COLUMN` and `ADD COLUMN`; positional formats replace the table for reordering or inserting columns. `PARQUET` tables map columns by name, as do `ORC` tables unless their `orc.schema.resolution` table property, configured or in the catalog, is anything but `name`: they add and drop columns anywhere in place, and reordering their blocks runs no statement. Retyping a column replaces the table. Any column change of an `AVRO` table except a respelling replaces it.",
 				[]validator.List{listvalidator.IsRequired(), listvalidator.SizeAtLeast(1)},
 				listplanmodifier.RequiresReplaceIf(externalTableColumnsReplace, "Changing columns other than by adding or dropping them where the format allows replaces the table.", "Changing columns other than by adding or dropping them where the format allows replaces the table.")),
 			"partition_key": externalTableColumnsBlock("Ordered `PARTITIONED BY` columns; their names must differ from the data columns. Spelling a name in another case or a type with an alias stays in place; any other change replaces the table.", nil,
@@ -243,11 +257,98 @@ func (r *externalTableResource) Schema(_ context.Context, _ resource.SchemaReque
 	}
 }
 
-// ValidateConfig reports a definition Create would reject, during planning once the configuration is known.
+// validateExternalTableKnownColumns checks independent fields even when another field or block is unknown. Names
+// share one namespace across data columns and partition keys; validating types must not prevent recording a name.
+func validateExternalTableKnownColumns(kind string, list types.List, seen map[string]string) diag.Diagnostics {
+	var diagnostics diag.Diagnostics
+	if list.IsUnknown() {
+		return diagnostics
+	}
+	if kind == "column" && len(list.Elements()) == 0 {
+		diagnostics.AddAttributeError(path.Root(kind), "Invalid external table", "external table requires at least one column block")
+	}
+	for i, element := range list.Elements() {
+		columnPath := path.Root(kind).AtListIndex(i)
+		object, ok := element.(types.Object)
+		if !ok || object.IsNull() {
+			diagnostics.AddAttributeError(columnPath, "Invalid external table", fmt.Sprintf("%s blocks must not be null", kind))
+			continue
+		}
+		if object.IsUnknown() {
+			continue
+		}
+		attributes := object.Attributes()
+		name := attributes["name"].(types.String)
+		dataType := attributes["type"].(types.String)
+		if !name.IsUnknown() {
+			value := name.ValueString()
+			key := strings.ToLower(value)
+			switch {
+			case strings.TrimSpace(value) == "":
+				diagnostics.AddAttributeError(columnPath.AtName("name"), "Invalid external table", fmt.Sprintf("%s blocks need nonempty names", kind))
+			case slices.Contains(externalTablePseudoColumns, key):
+				diagnostics.AddAttributeError(columnPath.AtName("name"), "Invalid external table", fmt.Sprintf("%s cannot use the pseudocolumn name %q", kind, value))
+			default:
+				if previous, ok := seen[key]; ok {
+					diagnostics.AddAttributeError(columnPath.AtName("name"), "Invalid external table", fmt.Sprintf("%s name %q repeats %s", kind, value, previous))
+				}
+				seen[key] = fmt.Sprintf("%q", value)
+			}
+		}
+		if !dataType.IsUnknown() {
+			if _, err := parseExternalTableType(dataType.ValueString()); err != nil {
+				diagnostics.AddAttributeError(columnPath.AtName("type"), "Invalid external table", fmt.Sprintf("%s type: %v", kind, err))
+			}
+		}
+	}
+	return diagnostics
+}
+
+// ValidateConfig reports known invalid fields during planning without requiring unrelated references to resolve.
 func (r *externalTableResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data externalTableModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !req.Config.Raw.IsFullyKnown() {
+		seen := map[string]string{}
+		for _, columns := range []struct {
+			name  string
+			value types.List
+		}{{"column", data.Columns}, {"partition_key", data.PartitionKeys}} {
+			resp.Diagnostics.Append(validateExternalTableKnownColumns(columns.name, columns.value, seen)...)
+		}
+		if knownString(data.StoredAs) != "" && (knownString(data.InputFormat) != "" || knownString(data.OutputFormat) != "") {
+			resp.Diagnostics.AddError("Invalid external table", "stored_as conflicts with input_format and output_format")
+		}
+		if knownString(data.Serde) != "" && (knownString(data.FieldDelimiter) != "" || knownString(data.LineDelimiter) != "") {
+			resp.Diagnostics.AddError("Invalid external table", "serde conflicts with field_delimiter and line_delimiter: ROW FORMAT is either DELIMITED or SERDE")
+		}
+		// Map keys are known even when their values are not; an unknown value cannot make an empty key valid.
+		for _, properties := range []struct {
+			name  string
+			value types.Map
+		}{{"table_properties", data.TableProperties}, {"serde_properties", data.SerdeProperties}} {
+			for key := range properties.value.Elements() {
+				if key == "" {
+					resp.Diagnostics.AddAttributeError(path.Root(properties.name).AtMapKey(key), "Invalid external table", properties.name+" need nonempty names")
+				}
+			}
+		}
+		if !data.SerdeProperties.IsUnknown() && len(data.SerdeProperties.Elements()) > 0 && !data.Serde.IsUnknown() && knownString(data.Serde) == "" {
+			resp.Diagnostics.AddAttributeError(path.Root("serde_properties"), "Invalid external table", "serde_properties require serde")
+		}
+		for name, value := range map[string]types.String{"field_delimiter": data.FieldDelimiter, "line_delimiter": data.LineDelimiter} {
+			if err := externalTableDelimiter(name, knownString(value)); err != nil {
+				resp.Diagnostics.AddError("Invalid external table", err.Error())
+			}
+		}
+		if !data.Location.IsUnknown() && !data.Location.IsNull() {
+			if err := externalLocation(data.Location.ValueString()); err != nil {
+				resp.Diagnostics.AddError("Invalid external table", err.Error())
+			}
+		}
 		return
 	}
 	if err := validateExternalTableConfig(data); err != nil {

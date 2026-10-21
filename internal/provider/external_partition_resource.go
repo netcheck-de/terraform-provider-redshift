@@ -72,10 +72,10 @@ func (r *externalPartitionResource) Schema(_ context.Context, _ resource.SchemaR
 func (r *externalPartitionResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data externalPartitionModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := validateExternalPartitionConfig(data); err != nil {
+	if err := validateExternalPartitionKnownConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid external partition", err.Error())
 	}
 }

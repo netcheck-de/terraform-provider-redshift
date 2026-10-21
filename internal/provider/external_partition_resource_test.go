@@ -39,7 +39,7 @@ var _ = registerValidateConfigCase("external_partition", validateConfigCase{
 	unknown: func() externalPartitionModel {
 		model := externalPartitionTestModel()
 		model.Location = types.StringUnknown()
-		model.Values = externalTableTestMap()
+		model.Values = types.MapUnknown(types.StringType)
 		return model
 	}(),
 })

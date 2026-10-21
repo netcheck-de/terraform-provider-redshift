@@ -41,8 +41,9 @@ func newExternalTableDataSource() datasource.DataSource {
 			return true, nil
 		},
 	}), map[string]string{
-		"column":        "Data columns in catalog order.",
-		"partition_key": "`PARTITIONED BY` columns in key order; null for an unpartitioned table.",
+		"table_properties": "Table properties reported by `SHOW EXTERNAL TABLE`, including properties set outside Terraform.",
+		"column":           "Data columns in catalog order.",
+		"partition_key":    "`PARTITIONED BY` columns in key order; null for an unpartitioned table.",
 	})
 }
 

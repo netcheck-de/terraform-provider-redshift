@@ -482,11 +482,16 @@ func externalTableAvro(storedAs, inputFormat types.String) bool {
 }
 
 // externalTableMapsByName reports whether Spectrum matches the table's columns to the file's columns by name, so
-// the catalog's column order carries no meaning. AWS documents name mapping only for ORC, where it is the default
+// the catalog's column order carries no meaning. The live Parquet fixture pins name mapping; for ORC it is the default
 // unless orc.schema.resolution is set; any value but name maps by position, so another spelling such as NAME counts
-// as position, which never skips a replacement. Every other format maps by position.
+// as position, which never skips a replacement. Other formats map by position.
+// TestAccSpectrumParquetColumnMapping also checks that parquet.column.index.access=true and
+// parquet.schema.resolution=position do not switch Spectrum's Parquet mapping, unlike Athena's index-access option.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_TABLE.html
 func externalTableMapsByName(spec externalTableSpec) bool {
+	if spec.storedAs == "PARQUET" || spec.storedAs == "" && spec.inputFormat == externalTableFileFormats["PARQUET"] {
+		return true
+	}
 	orc := spec.storedAs == "ORC" || spec.storedAs == "" && spec.inputFormat == externalTableFileFormats["ORC"]
 	resolution, set := spec.tableProperties["orc.schema.resolution"]
 	return orc && (!set || resolution == "name")
@@ -549,8 +554,8 @@ func (l *externalTableLayout) physical(columns []externalTableColumnValue) ([]ex
 // externalTableColumnsAlterable reports whether ALTER TABLE can bring the columns from prev to plan. ADD COLUMN
 // appends to the catalog order, and a table that maps by position after the change matches that order to the files,
 // so the check starts from the catalog order. That holds even when the blocks do not change, because switching
-// orc.schema.resolution to position makes the order of a name-mapped table matter. State holds the catalog order
-// only for a table that maps by position, so without a layout a switch away from name mapping is refused.
+// the file format or orc.schema.resolution to position makes the order of a name-mapped table matter. State holds the
+// catalog order only for a table that maps by position, so without a layout a switch away from name mapping is refused.
 func externalTableColumnsAlterable(prev, plan externalTableModel, layout *externalTableLayout) bool {
 	before, beforeKnown := externalTableColumns(prev.Columns)
 	after, afterKnown := externalTableColumns(plan.Columns)
@@ -728,7 +733,7 @@ func alterExternalTableStatements(prev, plan externalTableModel, layout *externa
 		return nil, err
 	}
 	if !externalTableColumnsAlterable(prev, plan, layout) {
-		return nil, fmt.Errorf("column blocks change in place only by adding or dropping columns, at the end unless an ORC table maps columns by name, and never retype a column or change an AVRO table's columns; replace the table")
+		return nil, fmt.Errorf("column blocks change in place only by adding or dropping columns, at the end unless a PARQUET or ORC table maps columns by name, and never retype a column or change an AVRO table's columns; switching to positional mapping also requires catalog column order; replace the table")
 	}
 	if !prev.StoredAs.Equal(plan.StoredAs) && !externalTableStoredAsInPlace(knownString(prev.StoredAs), knownString(plan.StoredAs)) {
 		return nil, fmt.Errorf("stored_as can change in place only between %s; replace the table", strings.Join(stringsOf(externalTableSetFileFormats), ", "))

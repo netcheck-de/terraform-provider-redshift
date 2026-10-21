@@ -43,7 +43,28 @@ func validateExternalPartitionValues(values map[string]string) error {
 	return nil
 }
 
-// validateExternalPartitionConfig is the check ValidateConfig and Create share before the catalog is read.
+// validateExternalPartitionKnownConfig checks known key names independently of their values and location.
+func validateExternalPartitionKnownConfig(data externalPartitionModel) error {
+	if (!data.Schema.IsUnknown() && data.Schema.ValueString() == "") || (!data.Table.IsUnknown() && data.Table.ValueString() == "") {
+		return fmt.Errorf("external partition requires a nonempty schema and table")
+	}
+	if !data.Values.IsUnknown() {
+		// Keys are known even when a partition value is not yet available.
+		values := make(map[string]string, len(data.Values.Elements()))
+		for key := range data.Values.Elements() {
+			values[key] = ""
+		}
+		if err := validateExternalPartitionValues(values); err != nil {
+			return err
+		}
+	}
+	if !data.Location.IsUnknown() {
+		return externalLocation(data.Location.ValueString())
+	}
+	return nil
+}
+
+// validateExternalPartitionConfig keeps apply-time validation strict.
 func validateExternalPartitionConfig(data externalPartitionModel) error {
 	if data.Schema.ValueString() == "" || data.Table.ValueString() == "" {
 		return fmt.Errorf("external partition requires a nonempty schema and table")

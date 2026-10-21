@@ -25,6 +25,7 @@ DROP TABLE schema.name;
 {{ tffile "examples/resources/redshift_external_table/resource.tf" }}
 
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -63,7 +64,7 @@ catalog to verify the result; every other change replaces the table, which drops
 | `partition_key.name` spelled in another case, or `partition_key.type` respelled with the same type                    | no SQL; the state records the configured spelling                                                                                                                                                                                                                                                                                                                                       |
 | `partition_key` block added, removed, or reordered, or `partition_key.name` or `partition_key.type` changed otherwise | replaces the table: partition keys cannot be altered                                                                                                                                                                                                                                                                                                                                    |
 | `field_delimiter`, `line_delimiter`, `serde`, or `serde_properties` set, changed, or removed                          | replaces the table: `ALTER TABLE` cannot change the row format                                                                                                                                                                                                                                                                                                                          |
-| `stored_as` changed between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE`                               | `ALTER TABLE ... SET FILE FORMAT`                                                                                                                                                                                                                                                                                                                                                       |
+| `stored_as` changed between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE`                               | `ALTER TABLE ... SET FILE FORMAT`; switching from name to position mapping replaces the table unless the `column` blocks follow catalog order                                                                                                                                                                                                                                           |
 | `stored_as` spelled in another case                                                                                   | no SQL                                                                                                                                                                                                                                                                                                                                                                                  |
 | `stored_as` changed to or from `ORC`, or switched to or from `input_format` and `output_format`                       | replaces the table: `SET FILE FORMAT` accepts neither `ORC` nor format classes                                                                                                                                                                                                                                                                                                          |
 | `input_format` or `output_format` set or changed                                                                      | replaces the table; when not configured, both report the classes the catalog records and never plan a replacement                                                                                                                                                                                                                                                                       |
@@ -74,11 +75,16 @@ catalog to verify the result; every other change replaces the table, which drops
 | a `column`, `partition_key`, `stored_as`, or `table_properties` value known only during apply                         | replaces the table: the plan cannot tell whether `ALTER TABLE` could make the change; only a `numRows`, `skip.header.line.count`, or `orc.schema.resolution` value that the state does not record yet stays in place, and an unknown `orc.schema.resolution` of an `ORC` table counts as position mapping, so it stays in place only while the `column` blocks follow the catalog order |
 
 How `column` blocks may change depends on how Spectrum matches them to the files. Most formats match by position, so
-the remaining blocks must keep the catalog order and new blocks must follow them. `ORC` tables match by name unless
+the remaining blocks must keep the catalog order and new blocks must follow them. `PARQUET` tables match by name.
+`ORC` tables also match by name unless
 `orc.schema.resolution` is set to anything but `name`; when `table_properties` leaves it out, the catalog's value
 decides. `ADD COLUMN` always appends, so the catalog order of a table that maps by name can differ from the
 configuration. Switching such a table to position mapping therefore stays in place only while the blocks follow the
 catalog order of the last refresh, and replaces the table otherwise.
+
+Live checks on Redshift `1.0.485645` found no Parquet position-mapping switch: tables with
+`parquet.column.index.access=true` or `parquet.schema.resolution=position` still matched fields by name, as did a
+Parquet table with `orc.schema.resolution=position`. Athena's index-access behavior must not be assumed for Spectrum.
 
 An update runs its statements one at a time, in this order: added columns, dropped columns, `SET FILE FORMAT`,
 `SET LOCATION`, and `SET TABLE PROPERTIES`. Columns are added before others are dropped, because a table cannot lose
@@ -181,9 +187,9 @@ table_properties = {
 
 Removing `skip.header.line.count`, or adding a property such as `compression_type`, replaces the table instead.
 
-### Columns of an ORC Table
+### Columns of a Parquet or ORC Table
 
-The same table stored as `ORC`, without `field_delimiter` and `table_properties`, maps columns by name. A block
+The same table stored as `PARQUET` or `ORC`, without `field_delimiter` and `table_properties`, maps columns by name. A block
 declared between `id` and `label` is added in place; the catalog stores it after `label`, but the state keeps the
 configured order:
 
@@ -203,14 +209,21 @@ column {
   type = "VARCHAR(64)"
 }
 
-stored_as = "ORC"
+stored_as = "PARQUET"
 ```
 
-{{ codefile "sql" "internal/provider/testdata/sql/external_table/alter_orc_insert_column.sql" }}
+{{ codefile "sql" "internal/provider/testdata/sql/external_table/alter_parquet_insert_column.sql" }}
 
-Swapping the `id` and `label` blocks of the `ORC` table before `amount` was added runs no statement:
+Swapping the `id` and `label` blocks of the `PARQUET` or `ORC` table before `amount` was added runs no statement:
 
-{{ codefile "sql" "internal/provider/testdata/sql/external_table/alter_orc_reorder_columns.sql" }}
+{{ codefile "sql" "internal/provider/testdata/sql/external_table/alter_parquet_reorder_columns.sql" }}
+
+Changing `PARQUET` to `TEXTFILE` also switches to position mapping. After the insertion above, declaring the blocks
+in catalog order (`id`, `label`, `amount`) permits the format change in place:
+
+{{ codefile "sql" "internal/provider/testdata/sql/external_table/alter_parquet_to_text_in_catalog_order.sql" }}
+
+Keeping the configured order (`id`, `amount`, `label`) instead replaces the table, even when only `stored_as` changes.
 
 Switching that `ORC` table to position mapping stays in place while its blocks follow the catalog order, here `id`
 and `label`:

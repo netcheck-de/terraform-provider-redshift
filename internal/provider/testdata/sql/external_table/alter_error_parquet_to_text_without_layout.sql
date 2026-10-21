@@ -1,0 +1,1 @@
+-- error: column blocks change in place only by adding or dropping columns, at the end unless a PARQUET or ORC table maps columns by name, and never retype a column or change an AVRO table's columns; switching to positional mapping also requires catalog column order; replace the table
