@@ -381,8 +381,12 @@ func tableReconcile(prior tableModel, catalog tableCatalog) (tableModel, map[str
 		before, known := priorColumns[column.name]
 		model := tableColumnModel{
 			Name: types.StringValue(column.name), Type: types.StringValue(column.dataType),
-			Encoding: types.StringValue(column.encoding), Nullable: types.BoolValue(!column.notNull),
+			RenamedFrom: types.StringNull(),
+			Encoding:    types.StringValue(column.encoding), Nullable: types.BoolValue(!column.notNull),
 			Default: types.StringNull(), Identity: types.ObjectNull(tableIdentityAttributeTypes),
+		}
+		if known {
+			model.RenamedFrom = before.RenamedFrom
 		}
 		if known && !before.Type.IsNull() && !before.Type.IsUnknown() {
 			if canonical, err := sqlclient.ColumnType(before.Type.ValueString()); err == nil && string(canonical) == column.dataType {

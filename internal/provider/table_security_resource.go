@@ -171,15 +171,18 @@ func (r *tableSecurityResource) Create(ctx context.Context, req resource.CreateR
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// ValidateConfig reports settings Create would reject, during planning once the configuration is known.
+// ValidateConfig checks known settings independently of unresolved relation names.
 func (r *tableSecurityResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data tableSecurityModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if _, err := createTableSecurityStatements(data); err != nil {
+	if _, err := optOneOf(data.ConjunctionType, tableSecurityConjunctions...); err != nil {
 		resp.Diagnostics.AddError("Invalid table security", err.Error())
+	}
+	if (!data.Schema.IsUnknown() && data.Schema.ValueString() == "") || (!data.Relation.IsUnknown() && data.Relation.ValueString() == "") {
+		resp.Diagnostics.AddError("Invalid table security", "table security requires a nonempty schema and relation")
 	}
 }
 

@@ -25,6 +25,7 @@ DROP TABLE schema.name;
 {{ tffile "examples/resources/redshift_table/resource.tf" }}
 
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -60,6 +61,10 @@ Schema, table, column, and referenced names must be lowercase: Redshift folds AS
 quoted identifiers to lowercase unless `enable_case_sensitive_identifier` is set, so a mixed-case name would never
 match the catalog. Distribution and sort key columns must have a type that
 [CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html) allows for keys.
+
+Configuration validation rejects known invalid column definitions, duplicate names, identity options, and key or
+constraint settings even when unrelated nested values are unknown. Only checks that depend on an unknown value are
+deferred; creation still validates the complete definition before issuing SQL.
 
 The resource never reads or changes comments, row-level security, masking, grants, or datashare membership of the
 table; use `redshift_comment`, the permission resources, and the datashare resources for those.
@@ -111,7 +116,9 @@ objects keep the table, and the deletion fails until they are removed.
 | `column` blocks added while the existing and new columns together exceed 1600                                                                                                | replaces the table: new columns are added before removed ones are dropped                                                                                                                                                                                                            |
 | `column` block removed                                                                                                                                                       | `ALTER TABLE ... DROP COLUMN`, without `CASCADE`; a key column only after the sort key and distribution moved off it, as the examples show; while the planned sort key is interleaved, dropping the distribution key Redshift chose replaces the table                               |
 | `column` blocks reordered                                                                                                                                                    | no SQL; the state records the configured order                                                                                                                                                                                                                                       |
-| `column.name`                                                                                                                                                                | `ADD COLUMN` for the new name and `DROP COLUMN` for the old one: an in-place update that loses the column's data, which `prevent_destroy` does not stop; a renamed identity or NOT NULL column without `default` replaces the table, as when it is added                             |
+| `column.name` without `column.renamed_from`                                                                                                                                  | `ADD COLUMN` for the new name and `DROP COLUMN` for the old one: loses the column's data, which `prevent_destroy` does not stop; an identity or NOT NULL column without `default` replaces the table, as when it is added                                                            |
+| `column.renamed_from` configured with a new `column.name`                                                                                                                    | `ALTER TABLE ... RENAME COLUMN` before other changes, preserving data, identity, keys, and constraints; reference the new name in configured keys and constraints. An already-renamed destination runs no rename SQL; ambiguous or missing endpoints fail without SQL                |
+| `column.renamed_from` retained or removed after success                                                                                                                      | no SQL; a retained hint is retry-safe and is not catalog metadata. Creating a table with a hint creates only the destination column                                                                                                                                                  |
 | `column.type` respelled with the same canonical form, such as `INT8` for `BIGINT`                                                                                            | no SQL; the state records the configured spelling                                                                                                                                                                                                                                    |
 | `column.type` widened to a longer VARCHAR or VARBYTE                                                                                                                         | `ALTER TABLE ... ALTER COLUMN ... TYPE` when the column has no `default`, belongs to no `primary_key`, `unique`, or `foreign_key`, and is not encoded with `BYTEDICT`, `RUNLENGTH`, `TEXT255`, or `TEXT32K`; otherwise replaces the table                                            |
 | `column.type`, any other change                                                                                                                                              | replaces the table: Redshift widens only VARCHAR and VARBYTE columns in place                                                                                                                                                                                                        |
@@ -138,10 +145,43 @@ objects keep the table, and the deletion fails until they are removed.
 | `timeouts.create`, `timeouts.update`, or `timeouts.delete`                                                                                                                   | no DDL of its own, but an in-place update that re-reads and verifies the catalog: it restores settings changed outside Terraform since the plan, and the plan shows the effective layout of an `AUTO` table as known after apply                                                     |
 
 `column` blocks are matched to the catalog by name, never by position. An update runs its statements one at a time, in
-this order: dropped constraints (foreign keys first), added columns, the sort key and then the distribution,
+this order: explicit column renames, dropped constraints (foreign keys first), added columns, the sort key and distribution,
 `ALTER COLUMN ... TYPE` and `ENCODE`, dropped columns, the return to `AUTO` after a detour, added constraints (the
 primary key first, foreign keys last), and `OWNER TO`. The statements share no transaction: when one fails, for example
 a `DROP COLUMN` that a view depends on, the earlier ones stay applied and the next plan shows what is left.
+
+To preserve a column's data, set `renamed_from` to its old name and `name` to its new name. Update every configured
+primary, unique, foreign, distribution, and sort key reference to the new name in the same change. Redshift updates
+existing catalog references in place; the provider does not drop and recreate otherwise unchanged constraints or keys.
+Renames may be combined with other supported changes, which run against the new name. A concurrent incompatible type,
+default, identity, or nullability change still replaces the table: use `prevent_destroy` to guard against replacement.
+
+For example, change an identity/key column from `name = "id"` to:
+
+```terraform
+column {
+  name         = "event_id"
+  renamed_from = "id"
+  type         = "BIGINT"
+  identity {
+    seed = 1
+    step = 1
+  }
+}
+primary_key { columns = ["event_id"] }
+distribution { key = "event_id" }
+sort_key { columns = ["event_id"] }
+```
+
+{{ codefile "sql" "internal/provider/testdata/sql/table_rename/identity_primary_distribution_sort.sql" }}
+
+Keep the hint until the migration succeeds; it can then stay or be removed without SQL. Each retry checks the catalog:
+source only means rename, destination only means already complete, and both or neither means fail before any writes.
+The destination-only case cannot distinguish a completed rename from a destination created outside Terraform; inspect
+the table before supplying a migration hint. Duplicate sources, self-renames, chains, and swaps are rejected. Rename
+back in a later, separate apply with the inverse hint if needed. Hints are preserved in resource state but are null
+after import and in lookups, because no catalog stores them. The complete example demonstrates a two-apply migration:
+apply normally, then apply with `-var=table_rename_event_id=true`, retaining that value on subsequent applies.
 
 A sort key change can re-encode columns of the old and new sort key, for example to `RAW`. The plan therefore shows
 omitted encodings of those columns as known after apply, and of every column when the previous sort key was `AUTO`;
