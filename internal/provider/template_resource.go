@@ -303,11 +303,23 @@ func (r *templateResource) Update(ctx context.Context, req resource.UpdateReques
 		resp.Diagnostics.AddError("Update template", "The template disappeared during the update; refresh the plan.")
 		return
 	}
+	data.ID = r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
+	if !previous.Name.Equal(data.Name) {
+		if err := r.exec(ctx, data.Database.ValueString(), statements[0]); err != nil {
+			resp.Diagnostics.AddError("Update template", err.Error())
+			return
+		}
+		// A later failure must still record the new name, or the next refresh would look for the old one, drop the
+		// template from state, and plan a CREATE that fails because the renamed template exists.
+		renamed := previous
+		renamed.ID, renamed.Name = data.ID, data.Name
+		resp.Diagnostics.Append(resp.State.Set(ctx, &renamed)...)
+		statements = statements[1:]
+	}
 	if err := r.exec(ctx, data.Database.ValueString(), statements...); err != nil {
 		resp.Diagnostics.AddError("Update template", err.Error())
 		return
 	}
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
 	if err := r.converge(ctx, &data); err != nil {
 		resp.Diagnostics.AddError("Verify template", err.Error())
 		return

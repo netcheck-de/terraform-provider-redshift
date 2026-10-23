@@ -72,6 +72,34 @@ func TestTemplateTranscripts(t *testing.T) {
 	})
 }
 
+// TestTemplateRenameRecordedWhenLaterStepFails keeps the new name in state when a statement after the rename fails, so
+// the next refresh finds the renamed template instead of dropping it from state.
+func TestTemplateRenameRecordedWhenLaterStepFails(t *testing.T) {
+	prior := templateLifecycleModel
+	prior.Owner = types.StringValue("admin")
+	planned := prior
+	planned.Name, planned.Owner = types.StringValue("csv_import"), types.StringValue("loader")
+	c := catalogWith()()
+	r := newTemplateResource().(*templateResource)
+	configureTestResource(t, r, queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		if strings.Contains(sql, " OWNER TO ") {
+			return nil, errors.New("user loader does not exist")
+		}
+		return c.Query(ctx, target, sql, parameters)
+	}))
+	prior.ID = r.identity("admin", map[string]string{"schema": prior.Schema.ValueString(), "name": prior.Name.ValueString()})
+	state, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
+	require.True(t, diagnostics.HasError())
+	var recorded templateModel
+	require.False(t, state.Get(context.Background(), &recorded).HasError())
+	assert.Equal(t, "csv_import", recorded.Name.ValueString())
+	assert.Equal(t, r.identity("admin", map[string]string{"schema": prior.Schema.ValueString(), "name": "csv_import"}), recorded.ID)
+	assert.Equal(t, "admin", recorded.Owner.ValueString(), "the failed owner change is not recorded")
+	refreshed, diagnostics := applyOperation(t, r, "read", recorded, nil, nil)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	assert.False(t, refreshed.Raw.IsNull(), "refresh finds the renamed template")
+}
+
 // TestTemplateReadReconciles keeps configured spellings the catalog reports canonically, surfaces outside changes,
 // and removes state when the schema is gone.
 func TestTemplateReadReconciles(t *testing.T) {
