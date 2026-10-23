@@ -48,7 +48,9 @@ external SQL clients are not coordinated by this gate.
   both transports, including IAM credential lookup, connecting, and reading results. An earlier deadline of the running
   Terraform operation wins. When either expires or Terraform is interrupted, a running statement is cancelled: through
   the Data API, or with a cancel request on a direct connection, which is closed if the statement has not stopped five
-  seconds later.
+  seconds later. A cancelled Data API statement is awaited for up to 30 seconds until Redshift reports it stopped.
+  When a statement's outcome cannot be confirmed, for example because it did not stop or the connection was lost after
+  sending it, that provider instance sends no further changes, and the affected operations fail until the next run.
 - `direct_connection.connect_timeout` (default `30s`) bounds opening one direct connection: TCP connect, TLS
   handshake, and authentication. `PGCONNECT_TIMEOUT` does not override it.
 - A `timeouts` block on [`redshift_table`](resources/table.md),

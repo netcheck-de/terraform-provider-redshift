@@ -1,9 +1,12 @@
 package redshiftdata
 
 import (
+	"cmp"
 	"context"
 	"errors"
+	"net/http"
 	"strconv"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -11,6 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata/types"
+	"github.com/aws/smithy-go"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,6 +31,13 @@ type apiStub struct {
 	result func(*redshiftdata.GetStatementResultInput) (*redshiftdata.GetStatementResultOutput, error)
 	// cancelError simulates a failed cancellation request.
 	cancelError error
+	// cancelRefused reports cancellation requests as not accepted.
+	cancelRefused bool
+	// afterCancel is the status reported once a cancellation was requested; empty selects ABORTED, and Started keeps
+	// the statement running.
+	afterCancel types.StatusString
+	// afterCancelError fails status requests once a cancellation was requested.
+	afterCancelError error
 	// cancels counts attempted cancellation calls.
 	cancels int
 	// waits records the WaitTimeSeconds of each status request.
@@ -43,6 +55,12 @@ func (s *apiStub) ExecuteStatement(_ context.Context, input *redshiftdata.Execut
 // DescribeStatement dispatches polling to a callback or reports completed execution.
 func (s *apiStub) DescribeStatement(ctx context.Context, input *redshiftdata.DescribeStatementInput, _ ...func(*redshiftdata.Options)) (*redshiftdata.DescribeStatementOutput, error) {
 	s.waits = append(s.waits, input.WaitTimeSeconds)
+	if s.cancels > 0 && s.afterCancelError != nil {
+		return nil, s.afterCancelError
+	}
+	if s.cancels > 0 {
+		return &redshiftdata.DescribeStatementOutput{Status: cmp.Or(s.afterCancel, types.StatusStringAborted)}, nil
+	}
 	if s.describe != nil {
 		return s.describe(ctx)
 	}
@@ -60,7 +78,7 @@ func (s *apiStub) CancelStatement(_ context.Context, _ *redshiftdata.CancelState
 	if s.cancelError != nil {
 		return nil, s.cancelError
 	}
-	return &redshiftdata.CancelStatementOutput{}, nil
+	return &redshiftdata.CancelStatementOutput{Status: aws.Bool(!s.cancelRefused)}, nil
 }
 
 // TestQueryIAMAuthentication checks workgroup routing and deterministic named-parameter binding.
@@ -295,8 +313,10 @@ func TestQueryInterruptedDuringSubmission(t *testing.T) {
 			require.ErrorIs(t, err, context.Canceled)
 			if idReturned {
 				assert.Equal(t, 1, s.cancels)
+				require.NotErrorIs(t, err, sqlclient.ErrUnsettled)
 			} else {
-				require.ErrorContains(t, err, "may have been submitted and still be running")
+				require.ErrorContains(t, err, "may have been submitted: the statement may still be running")
+				require.ErrorIs(t, err, sqlclient.ErrUnsettled)
 				assert.Zero(t, s.cancels)
 			}
 		})
@@ -329,22 +349,104 @@ func TestQueryRetriesRefusedLongPolls(t *testing.T) {
 }
 
 // TestQueryCancelsAfterStatusErrors cancels a statement whose status can no longer be observed and reports a failed
-// cancellation together with the original error.
+// cancellation together with the original error while the statement has not stopped.
 func TestQueryCancelsAfterStatusErrors(t *testing.T) {
 	describeError, cancelError := errors.New("access denied"), errors.New("cancel refused")
 	for _, cancelFails := range []bool{false, true} {
 		t.Run(strconv.FormatBool(cancelFails), func(t *testing.T) {
-			s := &apiStub{describe: func(context.Context) (*redshiftdata.DescribeStatementOutput, error) {
-				return nil, describeError
+			synctest.Test(t, func(t *testing.T) {
+				s := &apiStub{describe: func(context.Context) (*redshiftdata.DescribeStatementOutput, error) {
+					return nil, describeError
+				}, afterCancel: types.StatusStringStarted}
+				if cancelFails {
+					s.cancelError = cancelError
+				}
+				client := Client{API: s, Timeout: time.Minute}
+				_, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
+				require.ErrorIs(t, err, describeError)
+				require.ErrorIs(t, err, sqlclient.ErrUnsettled)
+				assert.Equal(t, cancelFails, errors.Is(err, cancelError))
+				assert.Equal(t, 1, s.cancels)
+			})
+		})
+	}
+}
+
+// TestQuerySettlesAbandonedStatements releases an abandoned statement only once Redshift reports a final state, even
+// after an accepted cancellation, and keeps a refused or failed cancellation visible while it may still run.
+func TestQuerySettlesAbandonedStatements(t *testing.T) {
+	describeError, cancelError := errors.New("access denied"), errors.New("cancel throttled")
+	for _, cancel := range []string{"accepted", "refused", "failed"} {
+		for _, after := range []types.StatusString{types.StatusStringAborted, types.StatusStringFailed, types.StatusStringFinished, types.StatusStringStarted} {
+			t.Run(cancel+"/"+string(after), func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					s := &apiStub{describe: func(context.Context) (*redshiftdata.DescribeStatementOutput, error) {
+						return nil, describeError
+					}, afterCancel: after, cancelRefused: cancel == "refused"}
+					if cancel == "failed" {
+						s.cancelError = cancelError
+					}
+					client := Client{API: s, Timeout: time.Minute}
+					started := time.Now()
+					_, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "ALTER TABLE sales", nil)
+					require.ErrorIs(t, err, describeError)
+					assert.Equal(t, 1, s.cancels)
+					if after != types.StatusStringStarted {
+						require.NotErrorIs(t, err, sqlclient.ErrUnsettled)
+						require.NotErrorIs(t, err, cancelError)
+						assert.Equal(t, after == types.StatusStringFinished, strings.Contains(err.Error(), "finished before it could be cancelled"))
+						assert.Zero(t, time.Since(started))
+						return
+					}
+					require.ErrorIs(t, err, sqlclient.ErrUnsettled)
+					assert.Equal(t, cancel == "failed", errors.Is(err, cancelError))
+					assert.Equal(t, cancel == "refused", strings.Contains(err.Error(), "was not accepted"))
+					assert.Equal(t, settleTimeout, time.Since(started))
+				})
+			})
+		}
+	}
+}
+
+// TestQuerySettlementKeepsStatusErrors reports why an abandoned statement's state stayed unknown when status requests
+// keep failing after cancellation.
+func TestQuerySettlementKeepsStatusErrors(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		statusError := errors.New("service unavailable")
+		s := &apiStub{describe: func(context.Context) (*redshiftdata.DescribeStatementOutput, error) {
+			return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringStarted}, nil
+		}, afterCancelError: statusError}
+		client := Client{API: s, Timeout: time.Minute, Poll: time.Hour}
+		_, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "ALTER TABLE sales", nil)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		require.ErrorIs(t, err, sqlclient.ErrUnsettled)
+		require.ErrorIs(t, err, statusError)
+	})
+}
+
+// TestQueryFlagsUncertainSubmission marks a failed ExecuteStatement unsettled only when the request may have reached
+// AWS: lost in transit, an unreadable response, or a service fault. A client-fault response or an error raised before
+// sending means nothing ran.
+func TestQueryFlagsUncertainSubmission(t *testing.T) {
+	for name, tc := range map[string]struct {
+		err       error
+		unsettled bool
+	}{
+		"send":        {&smithyhttp.RequestSendError{Err: errors.New("connection reset")}, true},
+		"response":    {&smithy.DeserializationError{Err: errors.New("truncated")}, true},
+		"server":      {&smithy.GenericAPIError{Code: "InternalServerException", Fault: smithy.FaultServer}, true},
+		"status 503":  {&smithyhttp.ResponseError{Response: &smithyhttp.Response{Response: &http.Response{StatusCode: 503}}, Err: errors.New("unavailable")}, true},
+		"validation":  {&types.ValidationException{Message: aws.String("bad SQL")}, false},
+		"credentials": {errors.New("failed to refresh cached credentials"), false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := &apiStub{execute: func(*redshiftdata.ExecuteStatementInput) (*redshiftdata.ExecuteStatementOutput, error) {
+				return nil, tc.err
 			}}
-			if cancelFails {
-				s.cancelError = cancelError
-			}
 			client := Client{API: s, Timeout: time.Minute}
-			_, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
-			require.ErrorIs(t, err, describeError)
-			assert.Equal(t, cancelFails, errors.Is(err, cancelError))
-			assert.Equal(t, 1, s.cancels)
+			_, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "GRANT", nil)
+			require.ErrorIs(t, err, tc.err)
+			assert.Equal(t, tc.unsettled, errors.Is(err, sqlclient.ErrUnsettled))
 		})
 	}
 }
@@ -363,8 +465,8 @@ func TestQueryHonorsEarlierCallerDeadline(t *testing.T) {
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 		assert.Equal(t, 1, s.cancels)
 		assert.Equal(t, 1500*time.Millisecond, time.Since(started))
-		assert.Len(t, s.waits, 2)
-		for _, wait := range s.waits {
+		require.Len(t, s.waits, 3, "two polls, then the settlement check after cancellation")
+		for _, wait := range s.waits[:2] {
 			assert.Nil(t, wait)
 		}
 	})

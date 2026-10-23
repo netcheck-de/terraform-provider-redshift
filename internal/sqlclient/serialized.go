@@ -2,6 +2,8 @@ package sqlclient
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"strings"
 )
@@ -12,6 +14,8 @@ type serializedClient struct {
 	client Client
 	// mutation permits one autocommit catalog write at a time across databases.
 	mutation chan struct{}
+	// unsettled is the first mutation error wrapping ErrUnsettled; it is accessed only while holding mutation.
+	unsettled error
 }
 
 // observationVerbs lead the statements that only read the catalog.
@@ -25,7 +29,8 @@ func ObservationVerbs() []string {
 
 // SerializeMutations serializes writes while allowing SELECT, SHOW and DESC observations to run concurrently.
 // Redshift catalog writes can conflict even when they target different grant tuples.
-// The gate covers statement completion, including Data API polling, without retrying mutations.
+// The gate covers statement completion, including Data API polling, without retrying mutations. After a mutation
+// whose outcome is unknown, later mutations fail instead of risking an overlap with a statement that is still running.
 func SerializeMutations(client Client) Client {
 	return &serializedClient{client: client, mutation: make(chan struct{}, 1)}
 }
@@ -42,7 +47,14 @@ func (c *serializedClient) Query(ctx context.Context, target Connection, sql str
 	select {
 	case c.mutation <- struct{}{}:
 		defer func() { <-c.mutation }()
-		return c.client.Query(ctx, target, sql, parameters)
+		if c.unsettled != nil {
+			return nil, fmt.Errorf("refusing to send another change while an earlier statement may still be running: %w", c.unsettled)
+		}
+		rows, err := c.client.Query(ctx, target, sql, parameters)
+		if errors.Is(err, ErrUnsettled) {
+			c.unsettled = err
+		}
+		return rows, err
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}

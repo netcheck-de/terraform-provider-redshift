@@ -143,7 +143,7 @@ func TestDirectQueryFailureCleanup(t *testing.T) {
 			case "configuration":
 				client.Credentials.Host = ""
 			case "query":
-				session.queryError = errors.New("query failed")
+				session.queryError = &pgconn.PgError{Severity: "ERROR", Code: "42601", Message: "syntax error"}
 			case "values":
 				rows.valueError = errors.New("decode failed")
 			case "metadata":
@@ -151,7 +151,7 @@ func TestDirectQueryFailureCleanup(t *testing.T) {
 			case "unsupported":
 				rows.values = []any{struct{}{}}
 			case "completion":
-				rows.resultError = errors.New("server error")
+				rows.resultError = &pgconn.PgError{Severity: "ERROR", Code: "42501", Message: "permission denied"}
 			case "command":
 				rows.values = nil
 			case "default dial":
@@ -164,6 +164,7 @@ func TestDirectQueryFailureCleanup(t *testing.T) {
 				require.NoError(t, err)
 			} else {
 				require.Error(t, err)
+				require.NotErrorIs(t, err, sqlclient.ErrUnsettled, "the server reported the outcome or nothing was sent")
 			}
 			if mode == "query" || mode == "values" || mode == "metadata" || mode == "unsupported" || mode == "completion" || mode == "command" {
 				assert.True(t, session.closed)
@@ -360,30 +361,14 @@ func TestDirectConfigurationSSLModes(t *testing.T) {
 // TestDirectQueryDeadlineCancelsStatement sends a cancel request for the running statement when its context ends, so
 // Redshift stops an autocommit statement instead of committing it after the provider reported a failure.
 func TestDirectQueryDeadlineCancelsStatement(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = listener.Close() })
 	server := &stalledServer{secret: []byte{1, 2, 3, 4}, cancels: make(chan *pgproto3.CancelRequest, 1), cancelled: make(chan struct{})}
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
-			go server.serve(conn)
-		}
-	}()
-	address := listener.Addr().(*net.TCPAddr)
-	client := &Client{
-		Credentials: Credentials{Host: "127.0.0.1", Port: uint16(address.Port), Username: "admin", Password: "secret"},
-		SSLMode:     SSLModeDisable,
-		Timeout:     time.Hour,
-	}
+	client := server.start(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 	started := time.Now()
-	_, err = client.Query(ctx, sqlclient.Connection{Database: "analytics"}, "CREATE MATERIALIZED VIEW slow AS SELECT 1", nil)
+	_, err := client.Query(ctx, sqlclient.Connection{Database: "analytics"}, "CREATE MATERIALIZED VIEW slow AS SELECT 1", nil)
 	require.Error(t, err)
+	require.NotErrorIs(t, err, sqlclient.ErrUnsettled, "Redshift confirmed the cancellation")
 	select {
 	case request := <-server.cancels:
 		assert.Equal(t, uint32(42), request.ProcessID)
@@ -395,15 +380,58 @@ func TestDirectQueryDeadlineCancelsStatement(t *testing.T) {
 	assert.Less(t, time.Since(started), cancelGrace)
 }
 
+// TestDirectQueryFlagsLostStatements reports a statement whose outcome the server never sent as unsettled, so the
+// mutation gate stops sending changes that could overlap it.
+func TestDirectQueryFlagsLostStatements(t *testing.T) {
+	t.Run("dropped connection", func(t *testing.T) {
+		server := &stalledServer{secret: []byte{1, 2, 3, 4}, drop: true}
+		_, err := server.start(t).Query(context.Background(), sqlclient.Connection{Database: "analytics"}, "ALTER TABLE sales ALTER DISTSTYLE EVEN", nil)
+		require.ErrorIs(t, err, sqlclient.ErrUnsettled)
+	})
+	t.Run("network error", func(t *testing.T) {
+		client := directTestClient()
+		session := &connectionStub{rows: &rowsStub{resultError: &net.OpError{Op: "read", Err: errors.New("connection reset by peer")}}}
+		client.dial = func(context.Context, *pgx.ConnConfig) (connection, error) { return session, nil }
+		_, err := client.Query(context.Background(), sqlclient.Connection{Database: "analytics"}, "GRANT", nil)
+		require.ErrorIs(t, err, sqlclient.ErrUnsettled)
+		assert.True(t, session.closed)
+	})
+}
+
 // stalledServer completes a password-less startup and holds every statement until a cancel request arrives on another
 // connection, as Redshift does for a long-running statement.
 type stalledServer struct {
+	// drop closes the session after receiving a statement instead of answering it.
+	drop bool
 	// secret is the cancel key announced in BackendKeyData.
 	secret []byte
 	// cancels receives the first cancel request.
 	cancels chan *pgproto3.CancelRequest
 	// cancelled closes when the first cancel request arrives.
 	cancelled chan struct{}
+}
+
+// start serves the protocol on a loopback listener for the test's lifetime and returns a client routed to it.
+func (s *stalledServer) start(t *testing.T) *Client {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go s.serve(conn)
+		}
+	}()
+	address := listener.Addr().(*net.TCPAddr)
+	return &Client{
+		Credentials: Credentials{Host: "127.0.0.1", Port: uint16(address.Port), Username: "admin", Password: "secret"},
+		SSLMode:     SSLModeDisable,
+		Timeout:     time.Hour,
+	}
 }
 
 // serve handles one connection: either a cancel request or a session whose statements wait for one.
@@ -434,6 +462,9 @@ func (s *stalledServer) serve(conn net.Conn) {
 		case *pgproto3.Terminate:
 			return
 		case *pgproto3.Sync:
+			if s.drop {
+				return
+			}
 			select {
 			case <-s.cancelled:
 			case <-time.After(time.Minute):

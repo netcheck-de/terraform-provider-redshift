@@ -3,6 +3,7 @@ package sqlclient
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -97,6 +98,46 @@ func TestSerializedMutationsReleaseAfterErrors(t *testing.T) {
 		require.ErrorIs(t, err, failure)
 	}
 	assert.Equal(t, 2, calls)
+}
+
+// TestSerializedMutationsStopAfterUnsettledMutation keeps a writer queued behind a statement that may still be running,
+// and every later writer, from overlapping it, while observations keep working.
+func TestSerializedMutationsStopAfterUnsettledMutation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		started, release := make(chan struct{}), make(chan struct{})
+		unsettled := fmt.Errorf("cancel statement: %w", ErrUnsettled)
+		var mutations atomic.Int32
+		client := SerializeMutations(queryFunc(func(_ context.Context, _ Connection, sql string, _ map[string]string) ([]Row, error) {
+			if sql == "SELECT 1" {
+				return []Row{{"value": "1"}}, nil
+			}
+			mutations.Add(1)
+			close(started)
+			<-release
+			return nil, unsettled
+		}))
+		var workers sync.WaitGroup
+		workers.Go(func() {
+			_, err := client.Query(context.Background(), Connection{}, "ALTER TABLE sales", nil)
+			assert.ErrorIs(t, err, ErrUnsettled)
+		})
+		<-started
+		workers.Go(func() {
+			_, err := client.Query(context.Background(), Connection{}, "GRANT", nil)
+			if assert.ErrorIs(t, err, ErrUnsettled) {
+				assert.Contains(t, err.Error(), "refusing to send another change")
+			}
+		})
+		synctest.Wait()
+		close(release)
+		workers.Wait()
+		_, err := client.Query(context.Background(), Connection{}, "REVOKE", nil)
+		require.ErrorIs(t, err, unsettled)
+		rows, err := client.Query(context.Background(), Connection{}, "SELECT 1", nil)
+		require.NoError(t, err)
+		assert.Equal(t, []Row{{"value": "1"}}, rows)
+		assert.Equal(t, int32(1), mutations.Load())
+	})
 }
 
 // TestObservationVerbsAreACopy keeps callers from changing which statements bypass the mutation gate.

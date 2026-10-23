@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -251,7 +252,7 @@ func (c *Client) Query(ctx context.Context, target sqlclient.Connection, sql str
 	}()
 	rows, err := session.Query(ctx, statement, arguments...)
 	if err != nil {
-		return nil, fmt.Errorf("execute direct SQL: %w", err)
+		return nil, fmt.Errorf("execute direct SQL: %w", unsettled(err))
 	}
 	defer rows.Close()
 	var result []sqlclient.Row
@@ -275,7 +276,18 @@ func (c *Client) Query(ctx context.Context, target sqlclient.Connection, sql str
 		result = append(result, row)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("finish direct SQL: %w", err)
+		return nil, fmt.Errorf("finish direct SQL: %w", unsettled(err))
 	}
 	return result, nil
+}
+
+// unsettled marks an execution failure the server did not report, such as a dropped connection or a cancel request
+// it never answered: the statement may still be running, or may have committed. A server error, including a
+// confirmed cancellation, and a failure before anything was sent are settled.
+func unsettled(err error) error {
+	var server *pgconn.PgError
+	if errors.As(err, &server) || pgconn.SafeToRetry(err) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", err, sqlclient.ErrUnsettled)
 }
