@@ -331,6 +331,42 @@ func TestUserOptionFailures(t *testing.T) {
 	}
 }
 
+// TestUserCreateRecordsUserWhenDefaultsFail keeps a user whose CREATE USER succeeded in state, without unknown
+// values, when a later stored default fails, so Terraform replaces the tainted user instead of failing to create it
+// again.
+func TestUserCreateRecordsUserWhenDefaultsFail(t *testing.T) {
+	ctx := context.Background()
+	c := &catalog{}
+	failing := true
+	r := &userResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		if failing && strings.HasPrefix(sql, "ALTER USER ") && strings.Contains(sql, " SET ") {
+			return nil, errors.New("invalid value for parameter")
+		}
+		return c.Query(ctx, target, sql, parameters)
+	}))}
+	plan := userWith(grafanaUser(), userAllOptions)
+	userObservedOptions(&plan)
+	config := plan
+	config.Password = types.StringValue("Secret123")
+	resp := resource.CreateResponse{State: emptyState(t, r)}
+	r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan(testState(t, r, plan)), Config: tfsdk.Config(testState(t, r, config))}, &resp)
+	require.True(t, resp.Diagnostics.HasError())
+	assert.Equal(t, "Configure Redshift user", resp.Diagnostics.Errors()[0].Summary())
+	assert.True(t, resp.State.Raw.IsFullyKnown(), "state cannot hold unknown values")
+	var recorded userModel
+	require.False(t, resp.State.Get(ctx, &recorded).HasError())
+	assert.Equal(t, userCreated(r, plan).ID, recorded.ID, "the created user is tracked")
+	require.True(t, c.user)
+
+	// Terraform replaces the tainted user: Delete drops it, and a new Create succeeds.
+	failing = false
+	require.False(t, runUser(t, r, "delete", recorded, recorded, "").HasError())
+	assert.False(t, c.user)
+	created, diagnostics := runUserState(t, r, "create", plan, plan, "Secret123")
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	assert.Equal(t, userWith(grafanaUser(), userAllOptions).SessionDefaults, created.SessionDefaults)
+}
+
 // TestUserOptionTranscripts records the SQL conversation of users with options, the IdP-linked form, and
 // password re-enabling.
 func TestUserOptionTranscripts(t *testing.T) {

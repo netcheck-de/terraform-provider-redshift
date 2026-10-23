@@ -451,14 +451,23 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 	statements, err := createUserStatements(data, secret)
 	if err == nil {
-		err = r.exec(ctx, r.database.ValueString(), statements...)
+		err = r.exec(ctx, r.database.ValueString(), statements[0])
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Create Redshift user", err.Error())
 		return
 	}
+	// A failed session default must still record the created user, or the next apply would fail to create it again
+	// instead of replacing the tainted user. Unknown values cannot be saved; the verification read fills them in.
 	data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	recorded := data
+	recorded.ConnectionLimit, recorded.SessionTimeout = userKnownInt(data.ConnectionLimit), userKnownInt(data.SessionTimeout)
+	recorded.SyslogAccess, recorded.ExternalID = roleKnown(data.SyslogAccess), roleKnown(data.ExternalID)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &recorded)...)
+	if err := r.exec(ctx, r.database.ValueString(), statements[1:]...); err != nil {
+		resp.Diagnostics.AddError("Configure Redshift user", err.Error())
+		return
+	}
 	expected := data
 	found, err := r.read(ctx, &data)
 	if err != nil {
@@ -470,6 +479,14 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// userKnownInt replaces an unknown planned number with null, which state can hold.
+func userKnownInt(value types.Int64) types.Int64 {
+	if value.IsUnknown() {
+		return types.Int64Null()
+	}
+	return value
 }
 
 // Read refreshes non-secret user attributes or removes a missing user from state.
