@@ -27,5 +27,6 @@ func newDatasharePrivilegeResource() resource.Resource {
 	return &privilegeResource{
 		name: "datashare_privilege", attributes: attributes, prepare: datasharePrivilegeTarget,
 		fields: []string{"database_name", "datashare_name", "grantee", "grantee_type"},
+		folded: []string{"database_name", "datashare_name"},
 	}
 }

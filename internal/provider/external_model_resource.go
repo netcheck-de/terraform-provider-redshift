@@ -149,6 +149,7 @@ func (r *externalModelResource) Schema(_ context.Context, _ resource.SchemaReque
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "name", "function")
 }
 
 // ValidateConfig reports settings Create would reject, during planning once the configuration is known.

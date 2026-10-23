@@ -107,6 +107,7 @@ func (r *datashareGrantResource) Schema(_ context.Context, _ resource.SchemaRequ
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "datashare")
 }
 
 // datashareGrantFormChange explains the conditional replacement of via_data_catalog.

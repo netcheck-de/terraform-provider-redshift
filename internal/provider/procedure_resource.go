@@ -139,6 +139,7 @@ func (r *procedureResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "name")
 }
 
 // ValidateConfig reports an invalid procedure definition during planning once the configuration is known.

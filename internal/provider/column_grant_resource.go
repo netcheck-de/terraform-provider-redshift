@@ -73,6 +73,7 @@ func (r *columnGrantResource) Schema(_ context.Context, _ resource.SchemaRequest
 		MarkdownDescription: "Owns the exact column-level `SELECT` and `UPDATE` privileges of one grantee on one table or view. Table-level grants, other grantees, and other relations are independent.",
 		Attributes:          attributes,
 	}
+	foldNames(&resp.Schema, "database_name", "schema_name", "object_name")
 }
 
 // read refreshes the tuple's column privileges, reporting false when the grantee, database, or relation is gone.

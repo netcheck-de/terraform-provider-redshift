@@ -147,6 +147,7 @@ func (r *functionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "name")
 }
 
 // ValidateConfig reports an invalid function definition during planning once the configuration is known.

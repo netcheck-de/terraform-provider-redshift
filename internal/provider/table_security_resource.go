@@ -75,6 +75,7 @@ func (r *tableSecurityResource) Schema(_ context.Context, _ resource.SchemaReque
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "relation")
 }
 
 // tableSecurityIdentity is the JSON identity shared by the resource, its lookup, and imports.

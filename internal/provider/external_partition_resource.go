@@ -66,6 +66,7 @@ func (r *externalPartitionResource) Schema(_ context.Context, _ resource.SchemaR
 			"location": schema.StringAttribute{Required: true, MarkdownDescription: "`s3://` folder or manifest file holding the partition's data. Changes run `ALTER TABLE ... PARTITION (...) SET LOCATION`."},
 		},
 	}
+	foldNames(&resp.Schema, "database")
 }
 
 // ValidateConfig reports values or a location Create would reject, during planning once they are known.

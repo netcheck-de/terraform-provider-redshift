@@ -44,6 +44,7 @@ func (r *groupMembershipResource) Schema(_ context.Context, _ resource.SchemaReq
 		"group": schema.StringAttribute{Required: true, MarkdownDescription: "SQL group name.", PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
 		"user":  schema.StringAttribute{Required: true, MarkdownDescription: "SQL user name.", PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
 	}}
+	foldNames(&resp.Schema, "group")
 }
 
 // read checks whether the selected user belongs to the group.

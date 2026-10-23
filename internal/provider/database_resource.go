@@ -179,6 +179,7 @@ func (r *databaseResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 			"integration": databaseIntegrationBlock(),
 		},
 	}
+	foldNames(&resp.Schema, "name")
 }
 
 // databaseLocalOptions lists the configured options that only a local database accepts; CREATE DATABASE ...

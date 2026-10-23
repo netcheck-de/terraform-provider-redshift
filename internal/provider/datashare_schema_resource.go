@@ -55,6 +55,7 @@ func (r *datashareSchemaResource) Schema(_ context.Context, _ resource.SchemaReq
 			"include_new": schema.BoolAttribute{Optional: true, Computed: true, Default: booldefault.StaticBool(false), MarkdownDescription: "Automatically include future objects added to this schema; existing objects still need separate memberships."},
 		},
 	}
+	foldNames(&resp.Schema, "database", "datashare", "schema")
 }
 
 // read refreshes schema membership and its include_new catalog setting.

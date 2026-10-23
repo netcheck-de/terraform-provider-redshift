@@ -143,6 +143,7 @@ func (r *datashareResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "name")
 }
 
 // read verifies outbound share ownership and refreshes public accessibility.

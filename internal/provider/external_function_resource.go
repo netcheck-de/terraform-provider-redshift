@@ -168,6 +168,7 @@ func (r *externalFunctionResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "name")
 }
 
 // externalFunctionKnownConfig validates independent known options without rendering an unresolved definition.

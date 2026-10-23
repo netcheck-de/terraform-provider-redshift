@@ -97,6 +97,7 @@ func (r *viewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			"definition_fingerprint": definitionFingerprintAttribute(),
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "name")
 }
 
 // viewCatalogEntry is one pg_views row, classified by its definition text.

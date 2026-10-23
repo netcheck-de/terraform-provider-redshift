@@ -20,5 +20,6 @@ func newObjectGrantResource() resource.Resource {
 	return &privilegeResource{
 		name: "object_grant", attributes: attributes, grantOptions: true, prepare: objectGrantTarget, partialAllowed: objectGrantConfigAllowed,
 		fields: []string{"database_name", "database_type", "schema_name", "object_name", "object_type", "arguments", "grantee", "grantee_type"},
+		folded: []string{"database_name", "schema_name", "object_name"},
 	}
 }

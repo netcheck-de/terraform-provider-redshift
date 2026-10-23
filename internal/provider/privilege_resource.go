@@ -49,6 +49,8 @@ type privilegeResource struct {
 	destroyPrivileges func(types.Object) ([]string, error)
 	// partialAllowed validates known selectors and supplies their allowlist without requiring generated names.
 	partialAllowed func(types.Object) ([]sqlclient.Keyword, error)
+	// folded lists the identity attributes that name objects Redshift folds to lowercase.
+	folded []string
 }
 
 // catalogCheck is a parameterized statement used for parent existence or permission reads.
@@ -174,7 +176,8 @@ func (r *privilegeResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		attributes = maps.Clone(attributes)
 		attributes["grant_option_privileges"] = grantOptionAttribute()
 	}
-	resp.Schema = schema.Schema{MarkdownDescription: description, Attributes: attributes}
+	resp.Schema = schema.Schema{MarkdownDescription: description, Attributes: maps.Clone(attributes)}
+	foldNames(&resp.Schema, r.folded...)
 }
 
 // grantOptionAttribute defines the grant option subset. It defaults to none, so options granted outside Terraform

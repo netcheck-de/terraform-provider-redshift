@@ -112,6 +112,7 @@ func (r *grantResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"grant_option_privileges": grantOptionAttribute(),
 		},
 	}
+	foldNames(&resp.Schema, "database_name", "schema_name", "datashare")
 }
 
 // validate checks scope, recipient, privilege, and grant option rules without issuing SQL.

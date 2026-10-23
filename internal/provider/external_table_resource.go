@@ -255,6 +255,7 @@ func (r *externalTableResource) Schema(_ context.Context, _ resource.SchemaReque
 				listplanmodifier.RequiresReplaceIf(externalTablePartitionKeysReplace, "Changing partition keys replaces the table.", "Changing partition keys replaces the table.")),
 		},
 	}
+	foldNames(&resp.Schema, "database")
 }
 
 // validateExternalTableKnownColumns checks independent fields even when another field or block is unknown. Names

@@ -73,6 +73,7 @@ func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			},
 		},
 	}
+	foldNames(&resp.Schema, "name")
 }
 
 // read verifies warehouse ownership and refreshes an existing role.

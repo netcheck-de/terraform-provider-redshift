@@ -42,6 +42,7 @@ func newPolicyGrantResource() resource.Resource {
 func (r *policyGrantResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	r.privilegeResource.Schema(ctx, req, resp)
 	resp.Schema.MarkdownDescription = "Grants `SELECT` on one lookup table to one row-level security or masking policy. Redshift does not report grants to policies, so the provider tracks the grant in state and refresh only checks that the table and policy still exist."
+	foldNames(&resp.Schema, "database_name", "schema_name", "object_name", "policy_name")
 }
 
 // parents checks that the tuple's database, schema, table, and policy exist, the only catalog facts the grant can be

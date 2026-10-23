@@ -398,6 +398,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database")
 }
 
 // tableKeywordStrings converts an allowlist for schema validators.

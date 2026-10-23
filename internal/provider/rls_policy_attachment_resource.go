@@ -65,6 +65,7 @@ func (r *rlsPolicyAttachmentResource) Schema(_ context.Context, _ resource.Schem
 			"grantee_type": rlsPolicyAttachmentString("`USER`, `ROLE`, or `PUBLIC`.", stringvalidator.OneOf(rlsPolicyAttachmentGranteeTypes...)),
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "relation", "policy")
 }
 
 // rlsPolicyAttachmentIdentity is the JSON identity shared by the resource, its lookup, and imports.

@@ -84,6 +84,7 @@ func (r *rlsPolicyResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "name")
 }
 
 // rlsPolicyColumnsEquivalent plans the prior columns when the configuration only respells them. RequiresReplace

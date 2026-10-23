@@ -168,6 +168,7 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 		},
 	}
+	foldNames(&resp.Schema, "name")
 }
 
 // identityProviderInstanceModifier keeps the catalog instance identifiers through updates. For AWSIDC they follow the

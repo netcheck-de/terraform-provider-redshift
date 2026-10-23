@@ -17,5 +17,6 @@ func newLanguageGrantResource() resource.Resource {
 	return &privilegeResource{
 		name: "language_grant", attributes: attributes, grantOptions: true, prepare: languageGrantTarget, canonical: languageGrantCanonical, partialAllowed: fixedPrivilegeAllowlist(languageGrantPrivileges),
 		fields: []string{"database_name", "language_name", "grantee", "grantee_type"}, destroyPrivileges: languageGrantDestroyPrivileges,
+		folded: []string{"database_name"},
 	}
 }

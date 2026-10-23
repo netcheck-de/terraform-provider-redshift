@@ -127,6 +127,7 @@ func (r *copyJobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "name")
 }
 
 // read checks the binding; a missing database or job is not found.

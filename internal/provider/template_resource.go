@@ -119,6 +119,7 @@ func (r *templateResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database")
 }
 
 // templateCatalog is what refresh reads about one template.

@@ -170,6 +170,7 @@ func (r *materializedViewResource) Schema(ctx context.Context, _ resource.Schema
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "name")
 }
 
 // materializedViewOwnerAttribute adds the SVV_MV_INFO visibility rule to the shared owner attribute, because a

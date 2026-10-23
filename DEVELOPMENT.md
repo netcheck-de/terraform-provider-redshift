@@ -75,6 +75,8 @@ New types add files rather than modifying shared infrastructure. Follow this che
 - Data sources never declare blocks. `newCatalogDataSource` / `collectionElement` convert resource blocks to computed
   nested attributes. Lookup-only inputs go in `catalogSpec.selectors`; listing results use the data-source name.
   Use `lookupDescriptions` for resource wording that does not apply to lookups.
+- Pass every attribute that names an object Redshift folds to lowercase to `foldNames` at the end of `Schema` (or
+  `folded` for privilege contracts); `TestEveryIdentifierRejectsUppercase` lists the exemptions.
 - Resource descriptions say what a field holds, not whether changing it replaces the object; the template's
   Reconciliation table records that, so lookups reuse resource descriptions verbatim.
 - Register replacement rules for every configurable attribute/block. Parity registration covers shared readable

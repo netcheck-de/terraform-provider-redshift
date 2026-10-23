@@ -59,6 +59,7 @@ func (r *datashareMembershipResource) Schema(_ context.Context, _ resource.Schem
 			"all":       schema.BoolAttribute{Required: true, Validators: []validator.Bool{boolvalidator.Equals(true)}, MarkdownDescription: "Must be true to acknowledge exclusive ownership. Refresh reports false when any current source object of this kind is not shared; the next apply adds all current objects. An empty schema is fully covered."},
 		},
 	}
+	foldNames(&resp.Schema, "database", "datashare", "schema")
 }
 
 // ValidateConfig rejects ambiguous catalog identities before a mutation can be planned.

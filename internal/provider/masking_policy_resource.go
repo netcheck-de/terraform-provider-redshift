@@ -84,6 +84,7 @@ func (r *maskingPolicyResource) Schema(_ context.Context, _ resource.SchemaReque
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "name")
 }
 
 // maskingPolicyInputsReplacement replaces the policy only when the inputs really change. The catalog spells types

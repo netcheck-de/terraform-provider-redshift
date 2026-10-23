@@ -52,6 +52,7 @@ func (r *datashareTableResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"table":     schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Existing table or view to include."},
 		},
 	}
+	foldNames(&resp.Schema, "database", "datashare", "schema", "table")
 }
 
 // read checks explicit table membership under the configured warehouse binding.

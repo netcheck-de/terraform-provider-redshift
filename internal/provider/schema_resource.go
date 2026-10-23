@@ -78,6 +78,7 @@ func (r *schemaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "name")
 }
 
 // catalogRow finds the schema's catalog row, returning a nil row when it or its database is gone. Delete needs only

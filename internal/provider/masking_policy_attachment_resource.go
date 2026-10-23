@@ -101,6 +101,7 @@ func (r *maskingPolicyAttachmentResource) Schema(_ context.Context, _ resource.S
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "relation", "policy")
 }
 
 // read refreshes the attachment's inputs and priority from the catalog; a missing database or row is not found.

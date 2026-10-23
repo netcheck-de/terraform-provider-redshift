@@ -166,6 +166,7 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"refresh_revision": schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "Bump to recreate the external schema after a source catalog change; deletion is restrictive."},
 		},
 	}
+	foldNames(&resp.Schema, "database", "name")
 }
 
 // ValidateConfig surfaces options that the source form requires or rejects at plan time; unknown values are

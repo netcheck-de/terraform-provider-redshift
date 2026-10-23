@@ -59,6 +59,7 @@ func (r *commentResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 		"constraint_name": privilegeString("Primary key, unique, or foreign key constraint on the table `object_name`; required for `CONSTRAINT` and rejected otherwise.", true),
 		"text":            schema.StringAttribute{Required: true, MarkdownDescription: "Comment text. An empty string represents no annotation and clears it with `IS NULL`."},
 	}}
+	foldNames(&resp.Schema, "database_name", "schema_name", "object_name", "column_name", "constraint_name")
 }
 
 // read checks local target existence and retrieves its annotation from the target database.

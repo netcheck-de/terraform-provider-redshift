@@ -56,6 +56,7 @@ func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			MarkdownDescription: "Names of the users currently in the group, read from `pg_group`. Informational only: this resource never changes membership, which `redshift_group_membership` manages, and refresh records members added elsewhere.",
 		},
 	}}
+	foldNames(&resp.Schema, "name")
 }
 
 // read verifies the binding, checks group existence in pg_group, and records its ID and members.
