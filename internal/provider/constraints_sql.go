@@ -19,8 +19,7 @@ var constraintsNames = []string{"PRIMARY KEY", "UNIQUE", "FOREIGN KEY"}
 // conkey arrays are an unsupported type for both transports.
 const constraintsSource sqlclient.Keyword = "pg_constraint k JOIN pg_class c ON c.oid = k.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_class f ON f.oid = k.confrelid LEFT JOIN pg_namespace fn ON fn.oid = f.relnamespace"
 
-// constraintsTypeColumn renders contype as its constraint_type name on the server. contype has PostgreSQL's
-// one-byte "char" type, which the direct transport decodes as a rune and would hand back as its decimal code.
+// constraintsTypeColumn renders contype's one-letter code as its constraint_type name on the server.
 const constraintsTypeColumn = "CASE k.contype WHEN 'p' THEN 'PRIMARY KEY' WHEN 'u' THEN 'UNIQUE' WHEN 'f' THEN 'FOREIGN KEY' END AS constraint_type"
 
 // readConstraintsQuery lists the key constraints of the current database. pg_constraint only covers the database

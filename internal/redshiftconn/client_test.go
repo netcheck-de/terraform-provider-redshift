@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -121,6 +122,17 @@ func TestDirectQueryBindsRowsAndCloses(t *testing.T) {
 	assert.Equal(t, []sqlclient.Row{{"value": "value", "enabled": "true", "null": "", "count": "42", "bytes": "text"}}, result)
 	assert.True(t, session.closed)
 	assert.True(t, rows.closed)
+}
+
+// TestDirectQueryDecodesCatalogCodes returns one-byte "char" catalog codes as their letter, as the Data API does, while
+// ordinary integers keep their decimal text.
+func TestDirectQueryDecodesCatalogCodes(t *testing.T) {
+	client := directTestClient()
+	rows := &rowsStub{values: []any{'v', int32(118)}, columns: []pgconn.FieldDescription{{Name: "volatility", DataTypeOID: pgtype.QCharOID}, {Name: "count", DataTypeOID: pgtype.Int4OID}}}
+	client.dial = func(context.Context, *pgx.ConnConfig) (connection, error) { return &connectionStub{rows: rows}, nil }
+	result, err := client.Query(context.Background(), sqlclient.Connection{Database: "analytics"}, "SELECT provolatile", nil)
+	require.NoError(t, err)
+	assert.Equal(t, []sqlclient.Row{{"volatility": "v", "count": "118"}}, result)
 }
 
 // TestDirectQueryFailureCleanup checks binding, dialing, execution, decoding, metadata, and completion failures.

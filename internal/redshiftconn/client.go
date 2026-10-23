@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
@@ -267,6 +268,11 @@ func (c *Client) Query(ctx context.Context, target sqlclient.Connection, sql str
 		}
 		row := sqlclient.Row{}
 		for index, value := range values {
+			// pgx decodes the one-byte "char" type of catalog codes such as provolatile as a rune, which would
+			// otherwise read back as its decimal code instead of the letter the Data API returns.
+			if code, ok := value.(rune); ok && columns[index].DataTypeOID == pgtype.QCharOID {
+				value = string(code)
+			}
 			text, err := valueText(value)
 			if err != nil {
 				return nil, err
