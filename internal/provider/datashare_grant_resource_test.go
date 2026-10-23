@@ -366,8 +366,12 @@ func TestDatashareGrantFailures(t *testing.T) {
 // TestDatashareGrantRejectsInvalidConsumers ensures invalid and unresolved identities never execute SQL.
 func TestDatashareGrantRejectsInvalidConsumers(t *testing.T) {
 	for _, data := range []datashareGrantModel{
-		{}, {AccountID: types.StringValue("123456789012"), NamespaceID: types.StringValue("12345678-1234-1234-1234-123456789abc")},
-		{AccountID: types.StringValue("bad")}, {NamespaceID: types.StringValue("bad")}, {AccountID: types.StringUnknown()}, {NamespaceID: types.StringUnknown()},
+		{},
+		{AccountID: types.StringValue("123456789012"), NamespaceID: types.StringValue("12345678-1234-1234-1234-123456789abc")},
+		{AccountID: types.StringValue("bad")},
+		{NamespaceID: types.StringValue("bad")},
+		{AccountID: types.StringUnknown()},
+		{NamespaceID: types.StringUnknown()},
 	} {
 		r := &datashareGrantResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			t.Fatal("invalid consumer reached SQL")

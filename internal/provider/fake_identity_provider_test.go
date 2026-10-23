@@ -39,8 +39,10 @@ func (f *identityProviderFakeFamily) query(c *catalog, _ sqlclient.Connection, s
 		if namespace == "" {
 			namespace = "example"
 		}
-		row := sqlclient.Row{"name": parameters["name"], "type": "awsidc", "instanceid": "application", "namespc": namespace, "enabled": fmt.Sprint(c.enabled), "uid": "126692",
-			"params": fmt.Sprintf(`{"iam_role":%q,"instance_arn":"arn:aws:sso:::instance/ssoins-1234567890abcdef","is_lakehouse_app":"false"}`, c.iamRole)}
+		row := sqlclient.Row{
+			"name": parameters["name"], "type": "awsidc", "instanceid": "application", "namespc": namespace, "enabled": fmt.Sprint(c.enabled), "uid": "126692",
+			"params": fmt.Sprintf(`{"iam_role":%q,"instance_arn":"arn:aws:sso:::instance/ssoins-1234567890abcdef","is_lakehouse_app":"false"}`, c.iamRole),
+		}
 		if f.azure {
 			row["type"], row["instanceid"], row["params"] = "azure", "e40d4bb2-7670-44ae-bfb8-5db013221d73", f.parameters
 		}

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"maps"
 	"strconv"
 	"strings"
 	"testing"
@@ -163,9 +164,7 @@ func TestObjectGrantRoutineValidation(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			r := newObjectGrantResource().(*privilegeResource)
 			base := map[string]string{"database_name": "warehouse", "schema_name": "serving", "grantee_type": "USER", "grantee": "analyst"}
-			for key, value := range fields {
-				base[key] = value
-			}
+			maps.Copy(base, fields)
 			var privileges, options []string
 			if fields["privilege"] != "" {
 				privileges = []string{fields["privilege"]}

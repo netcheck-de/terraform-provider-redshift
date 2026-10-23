@@ -32,6 +32,7 @@ type collectionSpec struct {
 type collectionDataSource struct {
 	// dataSourceClient provides transport-neutral catalog execution.
 	dataSourceClient
+
 	// spec is the listing's schema and catalog read.
 	spec collectionSpec
 }

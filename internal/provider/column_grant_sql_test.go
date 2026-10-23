@@ -86,8 +86,10 @@ func TestColumnGrantStatementsRejectCatalogPrivileges(t *testing.T) {
 // TestColumnGrantRowsGroupColumns checks grouping, sorting, and de-duplication of catalog rows.
 func TestColumnGrantRowsGroupColumns(t *testing.T) {
 	columns := columnGrantRows([]sqlclient.Row{
-		{"column_name": "label", "privilege_type": "SELECT"}, {"column_name": "id", "privilege_type": "SELECT"},
-		{"column_name": "id", "privilege_type": "SELECT"}, {"column_name": "label", "privilege_type": "UPDATE"},
+		{"column_name": "label", "privilege_type": "SELECT"},
+		{"column_name": "id", "privilege_type": "SELECT"},
+		{"column_name": "id", "privilege_type": "SELECT"},
+		{"column_name": "label", "privilege_type": "UPDATE"},
 	})
 	assert.Equal(t, columnGrantColumns{"SELECT": {"id", "label"}, "UPDATE": {"label"}}, columns)
 	assert.Equal(t, columns, columnGrantDesired(columnGrantValue(columns)))

@@ -115,32 +115,32 @@ func (r *datashareMembershipResource) readManaged(ctx context.Context, data *dat
 // read is observational: lookups compare only visible objects and do not claim exclusive ownership.
 func (r *datashareMembershipResource) read(ctx context.Context, data *datashareMembershipModel) (found, includeNew bool, members int, err error) {
 	if _, err = datashareMembershipKind(*data); err != nil {
-		return
+		return found, includeNew, members, err
 	}
 	parent := datashareSchemaModel{ID: data.ID, Database: data.Database, Datashare: data.Datashare, Schema: data.Schema}
 	found, err = (&datashareSchemaResource{r.resourceClient}).read(ctx, &parent)
 	if err != nil || !found {
-		return
+		return found, includeNew, members, err
 	}
 	includeNew = parent.IncludeNew.ValueBool()
 	candidates, readErr := r.selectRows(ctx, data.Database.ValueString(), readDatashareMembershipCandidatesQuery(*data))
 	if readErr != nil {
 		err = readErr
-		return
+		return found, includeNew, members, err
 	}
 	wanted := map[string]int{}
 	for _, row := range candidates {
 		name := row["member_name"]
 		if name == "" || strings.Contains(name, ".") {
 			err = fmt.Errorf("exclusive membership cannot distinguish catalog member name %q", name)
-			return
+			return found, includeNew, members, err
 		}
 		wanted[data.Schema.ValueString()+"."+name]++
 	}
 	rows, readErr := r.selectRows(ctx, data.Database.ValueString(), readDatashareMembershipObjectsQuery(*data))
 	if readErr != nil {
 		err = readErr
-		return
+		return found, includeNew, members, err
 	}
 	actual := map[string]int{}
 	for _, row := range rows {
@@ -156,7 +156,7 @@ func (r *datashareMembershipResource) read(ctx context.Context, data *datashareM
 		}
 	}
 	data.All = types.BoolValue(complete)
-	return
+	return found, includeNew, members, err
 }
 
 // apply adds every current member of the selected kind after checking that the schema is shared without include_new.

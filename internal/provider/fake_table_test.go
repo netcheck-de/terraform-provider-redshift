@@ -75,8 +75,8 @@ func (t *tableFakeTable) sortKey1() string {
 	return "AUTO(SORTKEY(" + first + "))"
 }
 
-// clone copies the table so templates and tables never share slices.
-func (t tableFakeTable) clone() *tableFakeTable {
+// cloneTableFake copies a table so templates and tables never share slices.
+func cloneTableFake(t tableFakeTable) *tableFakeTable {
 	t.columns, t.constraints = slices.Clone(t.columns), slices.Clone(t.constraints)
 	return &t
 }
@@ -105,7 +105,7 @@ func tableFakeEvents() tableFakeTable {
 // populate creates the representative table.
 func (f *tableFake) populate() {
 	f.templates["serving.events"] = tableFakeEvents()
-	f.tables["serving.events"] = tableFakeEvents().clone()
+	f.tables["serving.events"] = cloneTableFake(tableFakeEvents())
 }
 
 // tableFakeIdent parses one leading quoted identifier.
@@ -415,7 +415,7 @@ func (f *tableFake) query(_ *catalog, _ sqlclient.Connection, sql string, parame
 		if f.tables[name] != nil {
 			return nil, true, fmt.Errorf("table %s already exists", name)
 		}
-		f.tables[name] = template.clone()
+		f.tables[name] = cloneTableFake(template)
 		return nil, true, nil
 	case strings.HasPrefix(sql, "DROP TABLE "):
 		name, rest, ok := tableFakeQualified(strings.TrimPrefix(sql, "DROP TABLE "))

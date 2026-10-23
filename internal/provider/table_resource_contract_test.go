@@ -36,13 +36,16 @@ func TestContractTablePlans(t *testing.T) {
 				testresource.TestCheckResourceAttr("redshift_table.events", "column.1.default", "'none'"),
 				testresource.TestCheckNoResourceAttr("redshift_table.events", "column.1.identity.seed"),
 			)},
-			{Config: tableConfig(tableIDColumn+tableNoteColumn("varchar(32)")+tableLabelColumn, ""), ConfigPlanChecks: tableExpectUpdate(),
+			{
+				Config: tableConfig(tableIDColumn+tableNoteColumn("varchar(32)")+tableLabelColumn, ""), ConfigPlanChecks: tableExpectUpdate(),
 				Check: testresource.ComposeTestCheckFunc(
 					testresource.TestCheckResourceAttr("redshift_table.events", "column.1.name", "note"),
 					testresource.TestCheckResourceAttr("redshift_table.events", "column.1.encoding", "LZO"),
 					testresource.TestCheckResourceAttr("redshift_table.events", "column.2.name", "label"),
-				)},
-			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(32)"), ""), ConfigPlanChecks: tableExpectUpdate(),
+				),
+			},
+			{
+				Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(32)"), ""), ConfigPlanChecks: tableExpectUpdate(),
 				PreConfig: func() { reordered = len(c.writes) },
 				Check: testresource.ComposeTestCheckFunc(
 					testresource.TestCheckResourceAttr("redshift_table.events", "column.0.name", "label"),
@@ -52,7 +55,8 @@ func TestContractTablePlans(t *testing.T) {
 						}
 						return nil
 					},
-				)},
+				),
+			},
 			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(128)"), `
   owner = "analyst"`), ConfigPlanChecks: tableExpectUpdate(), Check: testresource.TestCheckResourceAttr("redshift_table.events", "owner", "analyst")},
 			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(16)"), `
@@ -89,8 +93,10 @@ func TestContractTableAutoLayoutPlans(t *testing.T) {
 				testresource.TestCheckResourceAttr("redshift_table.events", "effective_sort_key.style", "NONE"),
 				testresource.TestCheckResourceAttr("redshift_table.events", "effective_sort_key.auto", "true"),
 			)},
-			{Config: tableAutoConfig(tableNoteColumn("varchar(32)")), PreConfig: func() { table().distStyle = "0" }, ConfigPlanChecks: tableExpectUpdate(),
-				Check: testresource.TestCheckNoResourceAttr("redshift_table.events", "distribution.style")},
+			{
+				Config: tableAutoConfig(tableNoteColumn("varchar(32)")), PreConfig: func() { table().distStyle = "0" }, ConfigPlanChecks: tableExpectUpdate(),
+				Check: testresource.TestCheckNoResourceAttr("redshift_table.events", "distribution.style"),
+			},
 			{Config: tableAutoConfig(""), ConfigPlanChecks: tableExpectUpdate(), PreConfig: func() {
 				detour = len(c.writes)
 				table().autoDistStyle = "12"

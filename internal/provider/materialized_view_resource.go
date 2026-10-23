@@ -55,6 +55,7 @@ type materializedViewModel struct {
 // resource has.
 type materializedViewResourceModel struct {
 	materializedViewModel
+
 	// Timeouts bounds create, update, and delete.
 	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
@@ -78,15 +79,10 @@ const materializedViewAdoptionNote = "An import leaves it unset; the first apply
 // configuration. Only then is a null query or backup unknown rather than absent from CREATE.
 const materializedViewImportedKey = "materialized_view_imported"
 
-// materializedViewPrivate is the private state accessor of plan modifier, import, and update requests.
-type materializedViewPrivate interface {
-	GetKey(ctx context.Context, key string) ([]byte, diag.Diagnostics)
-}
-
 // materializedViewReplaces reports whether a changed query or backup replaces the view: always, except for
 // a null prior right after an import, which cannot read the option back, so adopting the configured value must
 // not recreate the view. A null prior on a view Terraform created means the option was omitted from CREATE.
-func materializedViewReplaces(ctx context.Context, state interface{ IsNull() bool }, private materializedViewPrivate) bool {
+func materializedViewReplaces(ctx context.Context, state interface{ IsNull() bool }, private privateState) bool {
 	if !state.IsNull() || private == nil {
 		return true
 	}

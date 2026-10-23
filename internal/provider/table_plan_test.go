@@ -311,7 +311,7 @@ func TestTablePlanningWithPartialColumns(t *testing.T) {
 		})
 	}
 	assert.True(t, tableStyleUnknown(types.ObjectUnknown(tableSortKeyAttributeTypes)))
-	assert.True(t, (tableSpec{primaryKey: []string{"id"}}).constrained("id"))
+	assert.True(t, (&tableSpec{primaryKey: []string{"id"}}).constrained("id"))
 	model := tableMinimalModel()
 	model.Backup = types.StringUnknown()
 	observed, _, err := tableReconcile(model, tableCatalog{owner: "admin", distStyle: "AUTO", columns: []tableCatalogColumn{{name: "payload", dataType: "SUPER", encoding: "RAW"}}})

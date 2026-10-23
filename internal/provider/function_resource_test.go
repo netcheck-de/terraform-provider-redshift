@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 
@@ -166,9 +167,7 @@ func TestFunctionReadRejectsIncompleteMetadata(t *testing.T) {
 	valid := sqlclient.Row{"owner": "admin", "language": "sql", "volatility": "i", "return_type": "integer", "arguments": "integer", "body": "SELECT 1"}
 	without := func(key, value string) sqlclient.Row {
 		row := sqlclient.Row{}
-		for name, current := range valid {
-			row[name] = current
-		}
+		maps.Copy(row, valid)
 		row[key] = value
 		return row
 	}

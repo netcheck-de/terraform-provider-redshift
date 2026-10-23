@@ -154,10 +154,14 @@ data "redshift_identity_provider" "this" { name = redshift_identity_provider.thi
 				resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "audience.#", "1"),
 			)},
 			{Config: configuration("acc"+suffix, issuer, 1, true), PlanOnly: true},
-			{Config: configuration("acc"+suffix, "https://sts.windows.net/e40d4bb2-7670-44ae-bfb8-5db013221d73/", 2, true),
-				Check: resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "issuer", "https://sts.windows.net/e40d4bb2-7670-44ae-bfb8-5db013221d73/")},
-			{Config: configuration("accb"+suffix, "https://sts.windows.net/e40d4bb2-7670-44ae-bfb8-5db013221d73/", 2, false),
-				Check: resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "namespace", "accb"+suffix)},
+			{
+				Config: configuration("acc"+suffix, "https://sts.windows.net/e40d4bb2-7670-44ae-bfb8-5db013221d73/", 2, true),
+				Check:  resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "issuer", "https://sts.windows.net/e40d4bb2-7670-44ae-bfb8-5db013221d73/"),
+			},
+			{
+				Config: configuration("accb"+suffix, "https://sts.windows.net/e40d4bb2-7670-44ae-bfb8-5db013221d73/", 2, false),
+				Check:  resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "namespace", "accb"+suffix),
+			},
 			{Config: configuration("accb"+suffix, "https://sts.windows.net/e40d4bb2-7670-44ae-bfb8-5db013221d73/", 2, false), PlanOnly: true},
 			{
 				ResourceName: "redshift_identity_provider.this", ImportState: true, ImportStateVerify: true,

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"testing"
 
@@ -75,9 +76,7 @@ func TestDefaultPrivilegesImplicitScope(t *testing.T) {
 		{map[string]string{"object_type": "FUNCTIONS", "grantee_type": "ROLE", "grantee": "readers"}, false},
 	} {
 		fields := map[string]string{"database_name": "warehouse", "owner": "loader"}
-		for key, value := range test.fields {
-			fields[key] = value
-		}
+		maps.Copy(fields, test.fields)
 		target, err := r.prepare(privilegeObject(t, r, fields))
 		require.NoError(t, err)
 		assert.Equal(t, test.implicit, strings.Contains(target.query.sql, "pg_default_acl"), "%v", test.fields)

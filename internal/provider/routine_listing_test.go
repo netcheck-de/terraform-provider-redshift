@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"strings"
 	"testing"
 
@@ -96,9 +97,7 @@ func TestRoutineListingsReportFailures(t *testing.T) {
 	routine := sqlclient.Row{"schema_name": "serving", "routine_name": "f", "arguments": "integer", "return_type": "integer", "volatility": "v", "security_definer": "false", "language": "sql", "owner": "admin", "kind": "f"}
 	with := func(change func(sqlclient.Row)) sqlclient.Row {
 		row := sqlclient.Row{}
-		for key, value := range routine {
-			row[key] = value
-		}
+		maps.Copy(row, routine)
 		change(row)
 		return row
 	}

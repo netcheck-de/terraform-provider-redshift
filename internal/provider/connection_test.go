@@ -53,7 +53,8 @@ func TestDatashareDiscoveryMatchesProducerAcrossPages(t *testing.T) {
 					return &redshift.DescribeDataSharesOutput{
 						Marker: aws.String("next"),
 						DataShares: []redshifttypes.DataShare{
-							{}, {DataShareArn: aws.String("invalid")},
+							{},
+							{DataShareArn: aws.String("invalid")},
 							{DataShareArn: aws.String(strings.Replace(shareARN, "/source", "/another", 1))},
 							{DataShareArn: aws.String(strings.Replace(shareARN, "123456789012", "222222222222", 1))},
 							{DataShareArn: aws.String(strings.Replace(shareARN, "11111111-2222-3333-4444-555555555555", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", 1))},
@@ -172,8 +173,8 @@ func TestDataAPIRetriesUseProviderSettings(t *testing.T) {
 							options.HTTPClient = dataAPIHTTPClientFunc(func(r *http.Request) (*http.Response, error) {
 								attempts++
 								var input struct {
-									StatementName   string
-									WaitTimeSeconds int32
+									StatementName   string `json:"StatementName"`
+									WaitTimeSeconds int32  `json:"WaitTimeSeconds"`
 								}
 								assert.Equal(t, "RedshiftData.ExecuteStatement", r.Header.Get("X-Amz-Target"))
 								require.NoError(t, json.NewDecoder(r.Body).Decode(&input))

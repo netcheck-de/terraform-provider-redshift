@@ -28,6 +28,7 @@ import (
 // avoiding a Secrets Manager or IAM change just to exercise a non-superuser SQL identity.
 type integrationSessionAPI struct {
 	*redshiftdata.Client
+
 	mu      sync.Mutex
 	session *string
 }
@@ -149,10 +150,10 @@ func TestAccDatabaseIntegrationExistingUpdate(t *testing.T) {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, SecretARN: os.Getenv("REDSHIFT_ACC_SECRET_ARN"), Timeout: time.Minute, Poll: time.Second}
-	r := &databaseResource{resourceClient: resourceClient{
+	r := &databaseResource{
 		client: client, database: types.StringValue(database),
 		warehouse: warehouseBinding{field: "workgroup_name", value: types.StringValue(workgroup)},
-	}}
+	}
 	prior := databaseModel{
 		Name: types.StringValue(os.Getenv("REDSHIFT_ACC_DYNAMODB_DATABASE")), DatashareARN: types.StringNull(), WithPermissions: types.BoolValue(true),
 		Integration: &databaseIntegrationModel{IntegrationID: types.StringValue(os.Getenv("REDSHIFT_ACC_DYNAMODB_INTEGRATION_ID"))},

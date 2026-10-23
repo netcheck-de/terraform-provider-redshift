@@ -76,8 +76,10 @@ func (f *routineFamily) query(_ *catalog, _ sqlclient.Connection, sql string, pa
 		if !ok {
 			return nil, true, nil
 		}
-		return []sqlclient.Row{{"owner": routine.owner, "language": strings.ToLower(map[string]string{"FUNCTION": "sql", "PROCEDURE": "plpgsql"}[f.kind]), "volatility": routine.volatility,
-			"return_type": routine.returnType, "arguments": routine.signature(), "body": routine.body, "security_definer": strconv.FormatBool(routine.definer)}}, true, nil
+		return []sqlclient.Row{{
+			"owner": routine.owner, "language": strings.ToLower(map[string]string{"FUNCTION": "sql", "PROCEDURE": "plpgsql"}[f.kind]), "volatility": routine.volatility,
+			"return_type": routine.returnType, "arguments": routine.signature(), "body": routine.body, "security_definer": strconv.FormatBool(routine.definer),
+		}}, true, nil
 	case strings.HasPrefix(sql, "SHOW PARAMETERS OF "+f.kind+" "):
 		key, _, err := fakeRoutineTarget(strings.TrimPrefix(sql, "SHOW PARAMETERS OF "+f.kind+" "))
 		if err != nil {
@@ -172,7 +174,7 @@ func fakeArgumentList(text string) (items []string, rest string, err error) {
 		return nil, "", fmt.Errorf("fake catalog expected an argument list in %q", text)
 	}
 	depth, quoted, start := 0, false, 1
-	for i := 0; i < len(text); i++ {
+	for i := range len(text) {
 		switch char := text[i]; {
 		case char == '"':
 			quoted = !quoted
@@ -208,8 +210,8 @@ func fakeRoutineArguments(items []string) ([]fakeRoutineArgument, error) {
 			argument.name, item = name, strings.TrimSpace(rest)
 		}
 		for _, mode := range []string{"INOUT", "OUT", "IN"} {
-			if strings.HasPrefix(item, mode+" ") {
-				argument.mode, item = mode, strings.TrimPrefix(item, mode+" ")
+			if after, ok := strings.CutPrefix(item, mode+" "); ok {
+				argument.mode, item = mode, after
 				break
 			}
 		}

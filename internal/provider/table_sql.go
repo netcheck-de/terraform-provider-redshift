@@ -114,7 +114,7 @@ type tableSpec struct {
 }
 
 // column returns the named column.
-func (s tableSpec) column(name string) (tableColumnSpec, bool) {
+func (s *tableSpec) column(name string) (tableColumnSpec, bool) {
 	for _, column := range s.columns {
 		if column.name == name {
 			return column, true
@@ -125,7 +125,7 @@ func (s tableSpec) column(name string) (tableColumnSpec, bool) {
 
 // constrained reports whether a column belongs to a primary key, unique, or foreign key constraint, which
 // ALTER COLUMN TYPE refuses to resize.
-func (s tableSpec) constrained(name string) bool {
+func (s *tableSpec) constrained(name string) bool {
 	if slices.Contains(s.primaryKey, name) {
 		return true
 	}
@@ -493,7 +493,7 @@ func tableDistinctNames(what string, names []string) error {
 }
 
 // checkColumns requires a constraint or key list to name distinct columns of this table.
-func (s tableSpec) checkColumns(what string, names []string) error {
+func (s *tableSpec) checkColumns(what string, names []string) error {
 	if err := tableDistinctNames(what, names); err != nil {
 		return err
 	}
@@ -573,7 +573,7 @@ func (s *tableSpec) resolveSortKey(value types.Object) error {
 // checkKeyColumns requires distribution and sort key columns to exist and to have a type CREATE TABLE allows for
 // keys, so SUPER, VARBYTE, GEOMETRY, and similar keys fail during planning instead of in CREATE or ALTER TABLE.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html
-func (s tableSpec) checkKeyColumns(what string, names []string) error {
+func (s *tableSpec) checkKeyColumns(what string, names []string) error {
 	if err := s.checkColumns(what, names); err != nil {
 		return err
 	}
@@ -703,7 +703,7 @@ const tablePrimaryKeyKey = "p"
 func tableDefaultCanonical(text string) string {
 	var out strings.Builder
 	quoted := false
-	for i := 0; i < len(text); i++ {
+	for i := range len(text) {
 		char := text[i]
 		switch {
 		case char == '\'':

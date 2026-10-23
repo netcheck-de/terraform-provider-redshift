@@ -290,8 +290,11 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 // identityProviderConverged reports whether the observed provider matches every planned, observable setting.
 func identityProviderConverged(planned, observed identityProviderModel) bool {
 	for _, pair := range [][2]types.String{
-		{planned.Namespace, observed.Namespace}, {planned.ApplicationARN, observed.ApplicationARN}, {planned.IAMRoleARN, observed.IAMRoleARN},
-		{planned.Issuer, observed.Issuer}, {planned.ClientID, observed.ClientID},
+		{planned.Namespace, observed.Namespace},
+		{planned.ApplicationARN, observed.ApplicationARN},
+		{planned.IAMRoleARN, observed.IAMRoleARN},
+		{planned.Issuer, observed.Issuer},
+		{planned.ClientID, observed.ClientID},
 	} {
 		if knownString(pair[0]) != knownString(pair[1]) {
 			return false

@@ -16,19 +16,19 @@ import (
 // ServerlessAPI supplies endpoint discovery and temporary IAM SQL credentials.
 type ServerlessAPI interface {
 	// GetWorkgroup discovers endpoint settings from a workgroup name.
-	GetWorkgroup(context.Context, *redshiftserverless.GetWorkgroupInput, ...func(*redshiftserverless.Options)) (*redshiftserverless.GetWorkgroupOutput, error)
+	GetWorkgroup(ctx context.Context, input *redshiftserverless.GetWorkgroupInput, options ...func(*redshiftserverless.Options)) (*redshiftserverless.GetWorkgroupOutput, error)
 	// ListWorkgroups resolves workgroup ARN UUIDs to the names required by credential APIs.
-	ListWorkgroups(context.Context, *redshiftserverless.ListWorkgroupsInput, ...func(*redshiftserverless.Options)) (*redshiftserverless.ListWorkgroupsOutput, error)
+	ListWorkgroups(ctx context.Context, input *redshiftserverless.ListWorkgroupsInput, options ...func(*redshiftserverless.Options)) (*redshiftserverless.ListWorkgroupsOutput, error)
 	// GetCredentials obtains database-specific temporary SQL authentication.
-	GetCredentials(context.Context, *redshiftserverless.GetCredentialsInput, ...func(*redshiftserverless.Options)) (*redshiftserverless.GetCredentialsOutput, error)
+	GetCredentials(ctx context.Context, input *redshiftserverless.GetCredentialsInput, options ...func(*redshiftserverless.Options)) (*redshiftserverless.GetCredentialsOutput, error)
 }
 
 // ClusterAPI supplies provisioned endpoint discovery and existing-user temporary credentials.
 type ClusterAPI interface {
 	// DescribeClusters retrieves endpoint routing for the selected cluster.
-	DescribeClusters(context.Context, *redshift.DescribeClustersInput, ...func(*redshift.Options)) (*redshift.DescribeClustersOutput, error)
+	DescribeClusters(ctx context.Context, input *redshift.DescribeClustersInput, options ...func(*redshift.Options)) (*redshift.DescribeClustersOutput, error)
 	// GetClusterCredentials authenticates an existing SQL user without user creation or group assignment.
-	GetClusterCredentials(context.Context, *redshift.GetClusterCredentialsInput, ...func(*redshift.Options)) (*redshift.GetClusterCredentialsOutput, error)
+	GetClusterCredentials(ctx context.Context, input *redshift.GetClusterCredentialsInput, options ...func(*redshift.Options)) (*redshift.GetClusterCredentialsOutput, error)
 }
 
 // credentialCache retains temporary secrets in memory only until shortly before expiration.

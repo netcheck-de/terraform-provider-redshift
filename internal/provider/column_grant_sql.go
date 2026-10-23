@@ -177,10 +177,8 @@ func validateColumnGrant(m columnGrantModel) error {
 		if len(set.Elements()) == 0 {
 			return fmt.Errorf("privilege %s needs at least one column; remove the key to revoke it", privilege)
 		}
-		for _, column := range knownStrings(set) {
-			if column == "" {
-				return fmt.Errorf("privilege %s lists an empty column name", privilege)
-			}
+		if slices.Contains(knownStrings(set), "") {
+			return fmt.Errorf("privilege %s lists an empty column name", privilege)
 		}
 	}
 	return nil

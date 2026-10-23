@@ -151,11 +151,15 @@ resource "redshift_external_model" "summarizer" {
 	testresource.UnitTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})},
 		Steps: []testresource.TestStep{
-			{Config: configuration, ResourceName: address, ImportState: true, ImportStatePersist: true,
-				ImportStateId: fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName)},
+			{
+				Config: configuration, ResourceName: address, ImportState: true, ImportStatePersist: true,
+				ImportStateId: fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName),
+			},
 			{Config: configuration, ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionNoop)}}},
-			{Config: strings.ReplaceAll(configuration, `response_type = "SUPER"`, `response_type = "VARCHAR"`),
-				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionDestroyBeforeCreate)}}},
+			{
+				Config:           strings.ReplaceAll(configuration, `response_type = "SUPER"`, `response_type = "VARCHAR"`),
+				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionDestroyBeforeCreate)}},
+			},
 		},
 	})
 }

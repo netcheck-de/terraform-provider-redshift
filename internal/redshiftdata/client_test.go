@@ -435,7 +435,7 @@ func TestQueryFlagsUncertainSubmission(t *testing.T) {
 		"send":        {&smithyhttp.RequestSendError{Err: errors.New("connection reset")}, true},
 		"response":    {&smithy.DeserializationError{Err: errors.New("truncated")}, true},
 		"server":      {&smithy.GenericAPIError{Code: "InternalServerException", Fault: smithy.FaultServer}, true},
-		"status 503":  {&smithyhttp.ResponseError{Response: &smithyhttp.Response{Response: &http.Response{StatusCode: 503}}, Err: errors.New("unavailable")}, true},
+		"status 503":  {&smithyhttp.ResponseError{Response: &smithyhttp.Response{Response: &http.Response{StatusCode: http.StatusServiceUnavailable}}, Err: errors.New("unavailable")}, true},
 		"validation":  {&types.ValidationException{Message: aws.String("bad SQL")}, false},
 		"credentials": {errors.New("failed to refresh cached credentials"), false},
 	} {

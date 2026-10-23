@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
-
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 

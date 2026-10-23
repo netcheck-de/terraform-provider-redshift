@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"strings"
 	"testing"
 
@@ -27,9 +28,7 @@ func assertLookupIdentity(t *testing.T, id types.String, database string, fields
 	require.False(t, id.IsNull())
 	require.False(t, id.IsUnknown())
 	expected := map[string]string{}
-	for key, value := range fields {
-		expected[key] = value
-	}
+	maps.Copy(expected, fields)
 	client := resourceClient{warehouse: warehouseBinding{field: "workgroup_name", value: types.StringValue("warehouse")}}
 	assert.Equal(t, client.identity(database, expected), id)
 	var decoded map[string]string

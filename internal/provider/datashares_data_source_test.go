@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -46,9 +47,7 @@ func TestDatasharesList(t *testing.T) {
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
 			identity := map[string]string{}
-			for key, value := range test.filters {
-				identity[key] = value
-			}
+			maps.Copy(identity, test.filters)
 			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", identity)
 			items := collectionResult(source, observed).Elements()
 			require.Len(t, items, len(test.shares))

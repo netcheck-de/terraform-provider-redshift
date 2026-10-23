@@ -69,6 +69,7 @@ type tableModel struct {
 // tableResourceModel is the resource state: the definition the lookup shares, plus the timeouts only the resource has.
 type tableResourceModel struct {
 	tableModel
+
 	// Timeouts bounds create, update, and delete.
 	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }

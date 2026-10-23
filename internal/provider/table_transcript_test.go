@@ -36,13 +36,19 @@ func TestTableUpdateTranscripts(t *testing.T) {
 	autoSort := func(m *tableModel) { m.SortKey = types.ObjectNull(tableSortKeyAttributeTypes) }
 	runTranscripts(t, "table_update", newTableResource, []transcriptCase{
 		{name: "add_column", operation: "update", catalog: catalogWith(), prior: events, planned: withNote},
-		{name: "insert_middle_column", operation: "update", catalog: catalogWith(), prior: events,
-			planned: tableWith(events, func(m *tableModel) { m.Column = tableTestColumns(id, note("varchar(32)", "LZO"), label) })},
+		{
+			name: "insert_middle_column", operation: "update", catalog: catalogWith(), prior: events,
+			planned: tableWith(events, func(m *tableModel) { m.Column = tableTestColumns(id, note("varchar(32)", "LZO"), label) }),
+		},
 		{name: "drop_column", operation: "update", catalog: catalogWith(tableCatalogWith(tableFakeNote)), prior: withNote, planned: events},
-		{name: "encode_and_widen", operation: "update", catalog: catalogWith(tableCatalogWith(tableFakeNote)), prior: withNote,
-			planned: tableWith(events, func(m *tableModel) { m.Column = columns(note("varchar(256)", "ZSTD")) })},
-		{name: "diststyle_even", operation: "update", catalog: catalogWith(), prior: events,
-			planned: tableWith(events, func(m *tableModel) { m.Distribution = tableTestDistribution("EVEN", "") })},
+		{
+			name: "encode_and_widen", operation: "update", catalog: catalogWith(tableCatalogWith(tableFakeNote)), prior: withNote,
+			planned: tableWith(events, func(m *tableModel) { m.Column = columns(note("varchar(256)", "ZSTD")) }),
+		},
+		{
+			name: "diststyle_even", operation: "update", catalog: catalogWith(), prior: events,
+			planned: tableWith(events, func(m *tableModel) { m.Distribution = tableTestDistribution("EVEN", "") }),
+		},
 		{name: "sortkey_auto", operation: "update", catalog: catalogWith(), prior: events, planned: tableWith(events, autoSort)},
 		{name: "add_constraints", operation: "update", catalog: catalogWith(), prior: events, planned: constrained},
 		{name: "drop_constraints", operation: "update", catalog: catalogWith(func(c *catalog) {
@@ -50,20 +56,28 @@ func TestTableUpdateTranscripts(t *testing.T) {
 			_, _ = table.alter("events", `ADD UNIQUE ("label")`)
 			_, _ = table.alter("events", `ADD FOREIGN KEY ("id") REFERENCES "serving"."accounts" ("id")`)
 		}), prior: constrained, planned: events},
-		{name: "owner", operation: "update", catalog: catalogWith(), prior: events,
-			planned: tableWith(events, func(m *tableModel) { m.Owner = types.StringValue("analyst") })},
-		{name: "sortkey_reencodes", operation: "update", catalog: catalogWith(tableCatalogWith(tableFakeNote)), prior: withNote,
-			planned: tableWith(withNote, func(m *tableModel) { m.SortKey = tableTestSortKey("", "id", "note") })},
-		{name: "drop_sortkey_column_to_auto", operation: "update", catalog: catalogWith(tableCatalogWith(func(table *tableFakeTable) {
-			tableFakeNote(table)
-			table.columns[0].sortKey, table.columns[2].sortKey = 0, 1
-		})), prior: tableWith(withNote, func(m *tableModel) { m.SortKey = tableTestSortKey("", "note") }),
-			planned: tableWith(events, autoSort)},
-		{name: "drop_distkey_column_to_auto", operation: "update", catalog: catalogWith(tableCatalogWith(func(table *tableFakeTable) {
-			tableFakeNote(table)
-			table.columns[0].distKey, table.columns[2].distKey = false, true
-		})), prior: tableWith(withNote, func(m *tableModel) { m.Distribution = tableTestDistribution("", "note") }),
-			planned: tableWith(events, func(m *tableModel) { m.Distribution = types.ObjectNull(tableDistributionAttributeTypes) })},
+		{
+			name: "owner", operation: "update", catalog: catalogWith(), prior: events,
+			planned: tableWith(events, func(m *tableModel) { m.Owner = types.StringValue("analyst") }),
+		},
+		{
+			name: "sortkey_reencodes", operation: "update", catalog: catalogWith(tableCatalogWith(tableFakeNote)), prior: withNote,
+			planned: tableWith(withNote, func(m *tableModel) { m.SortKey = tableTestSortKey("", "id", "note") }),
+		},
+		{
+			name: "drop_sortkey_column_to_auto", operation: "update", catalog: catalogWith(tableCatalogWith(func(table *tableFakeTable) {
+				tableFakeNote(table)
+				table.columns[0].sortKey, table.columns[2].sortKey = 0, 1
+			})), prior: tableWith(withNote, func(m *tableModel) { m.SortKey = tableTestSortKey("", "note") }),
+			planned: tableWith(events, autoSort),
+		},
+		{
+			name: "drop_distkey_column_to_auto", operation: "update", catalog: catalogWith(tableCatalogWith(func(table *tableFakeTable) {
+				tableFakeNote(table)
+				table.columns[0].distKey, table.columns[2].distKey = false, true
+			})), prior: tableWith(withNote, func(m *tableModel) { m.Distribution = tableTestDistribution("", "note") }),
+			planned: tableWith(events, func(m *tableModel) { m.Distribution = types.ObjectNull(tableDistributionAttributeTypes) }),
+		},
 		{name: "drop_auto_key_column", operation: "update", catalog: catalogWith(tableCatalogWith(func(table *tableFakeTable) {
 			tableFakeNote(table)
 			table.distStyle, table.autoDistStyle, table.autoSortKey = "9", "12", true

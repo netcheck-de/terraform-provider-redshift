@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"maps"
 	"strings"
 	"testing"
 
@@ -90,9 +91,7 @@ func TestDatashareRejectsDifferentOwnerAndInvalidCatalog(t *testing.T) {
 		{"share_id": "invalid"},
 	} {
 		row := sqlclient.Row{"share_name": "producer", "source_database": "admin", "managed_by": "", "is_publicaccessible": "false"}
-		for key, value := range changed {
-			row[key] = value
-		}
+		maps.Copy(row, changed)
 		r := &datashareResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return []sqlclient.Row{row}, nil
 		}))}

@@ -25,6 +25,7 @@ import (
 type privilegeResource struct {
 	// resourceClient provides SQL execution and warehouse ownership checks.
 	resourceClient
+
 	// name is the Terraform resource suffix for this concrete permission contract.
 	name string
 	// attributes defines this contract's identity fields and privilege set.

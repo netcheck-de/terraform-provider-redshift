@@ -4,19 +4,49 @@ version: "2"
 linters:
   default: standard
   enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - containedctx
     - depguard
     - durationcheck
+    - embeddedstructfieldcheck
+    - errname
     - errorlint
-    - godoclint
+    - fatcontext
+    - gocheckcompilerdirectives
+    - gochecknoinits
     - gocritic
+    - godoclint
+    - godot
+    - godox
+    - iface
+    - inamedparam
+    - intrange
+    - makezero
+    - mirror
     - misspell
+    - modernize
+    - musttag
+    - nakedret
     - nilerr
+    - nilnesserr
+    - noctx
     - nolintlint
+    - nosprintfhostport
     - predeclared
+    - reassign
+    - recvcheck
     - revive
+    - sqlclosecheck
     - testifylint
     - thelper
+    - tparallel
     - unconvert
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+    - whitespace
   settings:
     depguard:
       rules:
@@ -49,4 +79,5 @@ linters:
 
 formatters:
   enable:
-    - gofmt
+    - gci
+    - gofumpt

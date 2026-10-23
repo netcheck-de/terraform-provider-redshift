@@ -176,7 +176,7 @@ func forgetRoutines(configuration string) string {
 	}
 	var kept []string
 	skipping := false
-	for _, line := range strings.Split(configuration, "\n") {
+	for line := range strings.SplitSeq(configuration, "\n") {
 		switch {
 		case forgotten[line]:
 			skipping = true

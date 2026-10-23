@@ -13,10 +13,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // TestDocsExistForEveryRegisteredType requires a generated page, a template, and examples for each resource and data source.

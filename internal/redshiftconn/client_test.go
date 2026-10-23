@@ -38,6 +38,7 @@ func (f credentialFunc) Resolve(ctx context.Context, database string) (Credentia
 type rowsStub struct {
 	// Rows supplies unused pgx methods without duplicating its complete interface.
 	pgx.Rows
+
 	// values contains the single result row used in a test.
 	values []any
 	// columns provides the corresponding result column names.
@@ -426,7 +427,7 @@ type stalledServer struct {
 // start serves the protocol on a loopback listener for the test's lifetime and returns a client routed to it.
 func (s *stalledServer) start(t *testing.T) *Client {
 	t.Helper()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
 	go func() {

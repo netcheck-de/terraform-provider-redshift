@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"testing"
 
@@ -200,9 +201,7 @@ func TestAlterCoverageFollowsPolicy(t *testing.T) {
 		"column": false, "distribution": true, "unique": true,
 	}, inPlaceInputs(t, response.Schema, blockTestPolicy))
 	policy := map[string]replaceRule{}
-	for name, rule := range blockTestPolicy {
-		policy[name] = rule
-	}
+	maps.Copy(policy, blockTestPolicy)
 	policy["column"] = replaceConditional
 	assert.True(t, inPlaceInputs(t, response.Schema, policy)["column"], "conditional replacement still needs alter coverage")
 }

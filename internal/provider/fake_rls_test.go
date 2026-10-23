@@ -61,7 +61,7 @@ func rlsFakeWith(sql string) (columns, alias string, err error) {
 		list = strings.TrimSuffix(list, ")")
 	}
 	var parsed []rlsPolicyCatalogColumn
-	for _, item := range strings.Split(list, `, "`) {
+	for item := range strings.SplitSeq(list, `, "`) {
 		name, dataType, ok := strings.Cut(strings.TrimPrefix(item, `"`), `" `)
 		if !ok {
 			return "", "", fmt.Errorf("fake RLS catalog cannot parse WITH item %q", item)

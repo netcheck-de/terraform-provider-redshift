@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -77,13 +76,8 @@ func externalModelRoleChanged(ctx context.Context, req planmodifier.StringReques
 // that SHOW MODEL omits. Keep their adoption distinct from later changes.
 const externalModelUnreadPrefix = "external_model_unread_"
 
-// externalModelPrivate is the private-state reader that plan modifiers and responses share.
-type externalModelPrivate interface {
-	GetKey(context.Context, string) ([]byte, diag.Diagnostics)
-}
-
 // externalModelUnread reports whether private state marks the argument as not read back from the catalog.
-func externalModelUnread(ctx context.Context, private externalModelPrivate, name string) bool {
+func externalModelUnread(ctx context.Context, private privateState, name string) bool {
 	if private == nil {
 		return false
 	}

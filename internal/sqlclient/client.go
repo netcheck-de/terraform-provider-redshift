@@ -24,7 +24,7 @@ type Row map[string]string
 // wraps ErrUnsettled.
 type Client interface {
 	// Query binds named parameters and returns all textual rows after statement completion.
-	Query(context.Context, Connection, string, map[string]string) ([]Row, error)
+	Query(ctx context.Context, target Connection, sql string, parameters map[string]string) ([]Row, error)
 }
 
 // ErrUnsettled marks a failed query whose statement may still be running or may have committed; SerializeMutations

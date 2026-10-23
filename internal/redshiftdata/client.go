@@ -21,13 +21,13 @@ import (
 // API is the AWS statement execution surface required by Client.
 type API interface {
 	// ExecuteStatement submits one IAM-authenticated SQL statement.
-	ExecuteStatement(context.Context, *redshiftdata.ExecuteStatementInput, ...func(*redshiftdata.Options)) (*redshiftdata.ExecuteStatementOutput, error)
+	ExecuteStatement(ctx context.Context, input *redshiftdata.ExecuteStatementInput, options ...func(*redshiftdata.Options)) (*redshiftdata.ExecuteStatementOutput, error)
 	// DescribeStatement reports execution state and result availability.
-	DescribeStatement(context.Context, *redshiftdata.DescribeStatementInput, ...func(*redshiftdata.Options)) (*redshiftdata.DescribeStatementOutput, error)
+	DescribeStatement(ctx context.Context, input *redshiftdata.DescribeStatementInput, options ...func(*redshiftdata.Options)) (*redshiftdata.DescribeStatementOutput, error)
 	// GetStatementResult retrieves a page of result rows and column metadata.
-	GetStatementResult(context.Context, *redshiftdata.GetStatementResultInput, ...func(*redshiftdata.Options)) (*redshiftdata.GetStatementResultOutput, error)
+	GetStatementResult(ctx context.Context, input *redshiftdata.GetStatementResultInput, options ...func(*redshiftdata.Options)) (*redshiftdata.GetStatementResultOutput, error)
 	// CancelStatement requests cancellation of an outstanding statement.
-	CancelStatement(context.Context, *redshiftdata.CancelStatementInput, ...func(*redshiftdata.Options)) (*redshiftdata.CancelStatementOutput, error)
+	CancelStatement(ctx context.Context, input *redshiftdata.CancelStatementInput, options ...func(*redshiftdata.Options)) (*redshiftdata.CancelStatementOutput, error)
 }
 
 // Client routes SQL to one workgroup and handles statement polling and result pagination.

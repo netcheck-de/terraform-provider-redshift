@@ -32,7 +32,6 @@ resource "redshift_database" "warehouse" {
 // A failed multi-option apply must not make reverted configuration look clean, even when CONNECTION LIMIT 0
 // prevents the refresh session from recovering a stale collation: the verified partial value must already be saved.
 func TestContractDatabaseCollationRevertedConfigPlans(t *testing.T) {
-	t.Parallel()
 	for _, mode := range []string{"owner failure", "verification failure with zero limit"} {
 		t.Run(mode, func(t *testing.T) {
 			c := &catalog{}

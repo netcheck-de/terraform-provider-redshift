@@ -30,9 +30,10 @@ tasks:
   # Go
 
   fmt:
-    desc: Format Go code
+    desc: Format Go code with the formatters golangci-lint configures
+    deps: [golangci-lint:install]
     cmds:
-      - gofmt -w .
+      - '"{{.GOLANGCI_LINT}}" fmt ./...'
 
   lint:
     desc: Run the pinned golangci-lint release

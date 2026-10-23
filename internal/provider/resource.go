@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -149,4 +150,9 @@ func importIdentity(ctx context.Context, req resource.ImportStateRequest, resp *
 	for _, field := range fields {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root(field), values[field])...)
 	}
+}
+
+// privateState reads provider private state, which plan modifier, import, and update requests and responses share.
+type privateState interface {
+	GetKey(ctx context.Context, key string) ([]byte, diag.Diagnostics)
 }

@@ -70,6 +70,7 @@ type databaseModel struct {
 // resource has.
 type databaseResourceModel struct {
 	databaseModel
+
 	// Timeouts bounds create, including the wait for an inbound datashare, update, and delete.
 	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }

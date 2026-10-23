@@ -43,6 +43,7 @@ type catalogSpec struct {
 type catalogDataSource struct {
 	// dataSourceClient provides transport-neutral catalog execution.
 	dataSourceClient
+
 	// spec is the lookup's resource pairing, identity contract, and catalog read.
 	spec catalogSpec
 	// attributes contains identity inputs and computed catalog outputs.

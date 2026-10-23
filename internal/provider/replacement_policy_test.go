@@ -53,12 +53,7 @@ func registerReplacementPolicy(typeName string, policy map[string]replaceRule) b
 
 // anyReplaces runs each modifier and reports whether one requests replacement.
 func anyReplaces[M any](modifiers []M, run func(M) bool) bool {
-	for _, modifier := range modifiers {
-		if run(modifier) {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(modifiers, run)
 }
 
 // changeReplaces reports whether an input's plan modifiers replace an existing resource when its value changes.

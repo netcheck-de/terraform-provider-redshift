@@ -287,15 +287,21 @@ func TestTableConditionalReplacement(t *testing.T) {
 		{"widen varchar", withNote, withColumns(id, label, tableTestColumn("note", "varchar(64)", tableEncoded("LZO"), tableNullable(true))), "column", false},
 		{"widen varchar alias", withNote, withColumns(id, label, tableTestColumn("note", "character varying(33)", tableEncoded("LZO"), tableNullable(true))), "column", false},
 		{"same type alias", withNote, withColumns(id, label, tableTestColumn("note", "nvarchar(32)", tableEncoded("LZO"), tableNullable(true))), "column", false},
-		{"widen varbyte", withColumns(id, label, tableTestColumn("blob", "varbyte(16)", tableEncoded("LZO"), tableNullable(true))),
-			withColumns(id, label, tableTestColumn("blob", "varbinary(32)", tableEncoded("LZO"), tableNullable(true))), "column", false},
-		{"varbyte to varchar", withColumns(id, label, tableTestColumn("blob", "varbyte(16)", tableEncoded("LZO"), tableNullable(true))),
-			withColumns(id, label, tableTestColumn("blob", "varchar(32)", tableEncoded("LZO"), tableNullable(true))), "column", true},
+		{
+			"widen varbyte", withColumns(id, label, tableTestColumn("blob", "varbyte(16)", tableEncoded("LZO"), tableNullable(true))),
+			withColumns(id, label, tableTestColumn("blob", "varbinary(32)", tableEncoded("LZO"), tableNullable(true))), "column", false,
+		},
+		{
+			"varbyte to varchar", withColumns(id, label, tableTestColumn("blob", "varbyte(16)", tableEncoded("LZO"), tableNullable(true))),
+			withColumns(id, label, tableTestColumn("blob", "varchar(32)", tableEncoded("LZO"), tableNullable(true))), "column", true,
+		},
 		{"narrow varchar", withNote, withColumns(id, label, tableTestColumn("note", "varchar(16)", tableEncoded("LZO"), tableNullable(true))), "column", true},
 		{"change type", withNote, withColumns(id, label, tableTestColumn("note", "integer", tableEncoded("LZO"), tableNullable(true))), "column", true},
 		{"widen column with default", base, withColumns(id, tableTestColumn("label", "varchar(128)", tableEncoded("LZO"), tableNullable(true), tableDefault("'none'"))), "column", true},
-		{"widen constrained column", tableWith(withNote, func(m *tableModel) { m.Unique = tableTestUnique([]string{"note"}) }),
-			tableWith(withColumns(id, label, tableTestColumn("note", "varchar(64)", tableEncoded("LZO"), tableNullable(true))), func(m *tableModel) { m.Unique = tableTestUnique([]string{"note"}) }), "column", true},
+		{
+			"widen constrained column", tableWith(withNote, func(m *tableModel) { m.Unique = tableTestUnique([]string{"note"}) }),
+			tableWith(withColumns(id, label, tableTestColumn("note", "varchar(64)", tableEncoded("LZO"), tableNullable(true))), func(m *tableModel) { m.Unique = tableTestUnique([]string{"note"}) }), "column", true,
+		},
 		{"widen foreign key column", tableWith(withNote, func(m *tableModel) {
 			m.ForeignKey = tableTestForeignKeys(tableTestForeignKey([]string{"note"}, "serving", "notes", "note"))
 		}), tableWith(withColumns(id, label, tableTestColumn("note", "varchar(64)", tableEncoded("LZO"), tableNullable(true))), func(m *tableModel) {
@@ -309,8 +315,10 @@ func TestTableConditionalReplacement(t *testing.T) {
 		{"default respelled", base, withColumns(id, tableTestColumn("label", "varchar(64)", tableEncoded("LZO"), tableNullable(true), tableDefault("'none'::character varying"))), "column", false},
 		{"change default", base, withColumns(id, tableTestColumn("label", "varchar(64)", tableEncoded("LZO"), tableNullable(true), tableDefault("'other'"))), "column", true},
 		{"change identity", base, withColumns(tableTestColumn("id", "bigint", tableEncoded("AZ64"), tableNullable(false), tableIdentity(1, 2, false)), label), "column", true},
-		{"primary key on not null column", tableWith(withColumns(id, label, note(tableNullable(false))), func(m *tableModel) { m.PrimaryKey = types.ObjectNull(tableKeyAttributeTypes) }),
-			withColumns(id, label, note(tableNullable(false))), "primary_key", false},
+		{
+			"primary key on not null column", tableWith(withColumns(id, label, note(tableNullable(false))), func(m *tableModel) { m.PrimaryKey = types.ObjectNull(tableKeyAttributeTypes) }),
+			withColumns(id, label, note(tableNullable(false))), "primary_key", false,
+		},
 		{"primary key on nullable column", base, tableWith(withColumns(id, tableTestColumn("label", "varchar(64)", tableEncoded("LZO"), tableNullable(false), tableDefault("'none'"))),
 			func(m *tableModel) { m.PrimaryKey = tableTestKey("label") }), "primary_key", true},
 		{"drop primary key", base, tableWith(base, func(m *tableModel) { m.PrimaryKey = types.ObjectNull(tableKeyAttributeTypes) }), "primary_key", false},
@@ -745,7 +753,7 @@ func TestTableReadBlockPopulation(t *testing.T) {
 		}, tableTestDistribution("ALL", ""), types.ObjectNull(tableSortKeyAttributeTypes)},
 	} {
 		t.Run(name, func(t *testing.T) {
-			table := *auto.clone()
+			table := *cloneTableFake(auto)
 			if test.table != nil {
 				test.table(&table)
 			}
@@ -761,7 +769,7 @@ func TestTableReadBlockPopulation(t *testing.T) {
 // SVV_TABLE_INFO, and falls back to the configured sort key style when the view does not list the table.
 func TestTableEffectiveFromCatalog(t *testing.T) {
 	auto := func(change func(*tableFakeTable)) tableFakeTable {
-		table := *tableFakeEvents().clone()
+		table := *cloneTableFake(tableFakeEvents())
 		table.distStyle, table.autoDistStyle, table.autoSortKey = "9", "12", true
 		if change != nil {
 			change(&table)
@@ -777,7 +785,7 @@ func TestTableEffectiveFromCatalog(t *testing.T) {
 		distribution types.Object
 		sortKey      types.Object
 	}{
-		"explicit":           {tableEventsModel(), *tableFakeEvents().clone(), tableEffectiveDistributionValue("KEY", "id", false), tableEffectiveSortKeyValue("COMPOUND", []string{"id"}, false)},
+		"explicit":           {tableEventsModel(), *cloneTableFake(tableFakeEvents()), tableEffectiveDistributionValue("KEY", "id", false), tableEffectiveSortKeyValue("COMPOUND", []string{"id"}, false)},
 		"chosen by Redshift": {omitted, auto(nil), tableEffectiveDistributionValue("KEY", "id", true), tableEffectiveSortKeyValue("COMPOUND", []string{"id"}, true)},
 		"auto even": {omitted, auto(func(table *tableFakeTable) {
 			table.autoDistStyle = "11"

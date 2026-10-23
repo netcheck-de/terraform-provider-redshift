@@ -88,7 +88,7 @@ func codeTokens(text string) []Token {
 			start = -1
 		}
 	}
-	for i := 0; i < len(text); i++ {
+	for i := range len(text) {
 		char := text[i]
 		switch {
 		case identifierByte(char, false) || char == '$' || char >= 0x80:

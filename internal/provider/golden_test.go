@@ -297,6 +297,7 @@ type goldenGroup struct {
 // that run one after the other cannot share a group either.
 var goldenGroups = struct {
 	sync.Mutex
+
 	groups map[string]*goldenGroup
 }{groups: map[string]*goldenGroup{}}
 

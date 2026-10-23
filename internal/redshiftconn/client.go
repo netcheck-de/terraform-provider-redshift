@@ -34,15 +34,15 @@ type Credentials struct {
 // CredentialProvider resolves database-specific temporary credentials without persisting them in Terraform state.
 type CredentialProvider interface {
 	// Resolve obtains credentials valid for opening a connection to this database.
-	Resolve(context.Context, string) (Credentials, error)
+	Resolve(ctx context.Context, database string) (Credentials, error)
 }
 
 // connection is the pgx surface needed for deterministic per-statement connection lifetime.
 type connection interface {
 	// Query executes autocommit SQL and returns its rows or command completion.
-	Query(context.Context, string, ...any) (pgx.Rows, error)
+	Query(ctx context.Context, sql string, arguments ...any) (pgx.Rows, error)
 	// Close releases the SQL session independently of the caller's cancellation.
-	Close(context.Context) error
+	Close(ctx context.Context) error
 }
 
 const (

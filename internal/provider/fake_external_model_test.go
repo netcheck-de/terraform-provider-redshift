@@ -77,9 +77,13 @@ var fakeExternalModelSettingKeys = map[string]string{
 // show renders SHOW MODEL rows in the documented layout: general keys, a blank row, and a PARAMETERS: section.
 func (m *fakeExternalModel) show(hideSettings bool) []sqlclient.Row {
 	rows := []sqlclient.Row{
-		{"Key": "Model Name", "Value": m.name}, {"Key": "Schema Name", "Value": m.schema}, {"Key": "Owner", "Value": m.owner},
-		{"Key": "Creation Time", "Value": "Sat, 15.01.2000 14:45:20"}, {"Key": "Model State", "Value": "READY"},
-		{"Key": "", "Value": ""}, {"Key": "PARAMETERS:", "Value": ""},
+		{"Key": "Model Name", "Value": m.name},
+		{"Key": "Schema Name", "Value": m.schema},
+		{"Key": "Owner", "Value": m.owner},
+		{"Key": "Creation Time", "Value": "Sat, 15.01.2000 14:45:20"},
+		{"Key": "Model State", "Value": "READY"},
+		{"Key": "", "Value": ""},
+		{"Key": "PARAMETERS:", "Value": ""},
 	}
 	if hideSettings {
 		return rows

@@ -21,13 +21,15 @@ func datashareMembershipFixture(kind string) datashareMembershipModel {
 	return datashareMembershipModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), Schema: types.StringValue("serving"), Kind: types.StringValue(kind), All: types.BoolValue(true)}
 }
 
-var _ = registerReplacementPolicy("redshift_datashare_membership", map[string]replaceRule{"database": replaceAlways, "datashare": replaceAlways, "schema": replaceAlways, "kind": replaceAlways, "all": replaceNever})
-var _ = registerLifecycleCase(lifecycleCase{name: "share all tables", new: newDatashareMembershipResource, kind: lifecyclePermission, model: datashareMembershipFixture("TABLES"), setup: func(c *catalog) { c.includeNew = false }, absent: func(c *catalog) { fakeState[*fakeDatashares](c, "datashare").bulkMembers["TABLES"] = nil }, missingRows: func(_ string, sql string) []sqlclient.Row {
-	if sql == "SELECT usesuper FROM pg_user WHERE usename = current_user" {
-		return []sqlclient.Row{{"usesuper": "true"}}
-	}
-	return nil
-}})
+var (
+	_ = registerReplacementPolicy("redshift_datashare_membership", map[string]replaceRule{"database": replaceAlways, "datashare": replaceAlways, "schema": replaceAlways, "kind": replaceAlways, "all": replaceNever})
+	_ = registerLifecycleCase(lifecycleCase{name: "share all tables", new: newDatashareMembershipResource, kind: lifecyclePermission, model: datashareMembershipFixture("TABLES"), setup: func(c *catalog) { c.includeNew = false }, absent: func(c *catalog) { fakeState[*fakeDatashares](c, "datashare").bulkMembers["TABLES"] = nil }, missingRows: func(_ string, sql string) []sqlclient.Row {
+		if sql == "SELECT usesuper FROM pg_user WHERE usename = current_user" {
+			return []sqlclient.Row{{"usesuper": "true"}}
+		}
+		return nil
+	}})
+)
 
 // TestDatashareMembershipFunctionTranscripts pins the SQL of the standard lifecycle for a FUNCTIONS membership.
 func TestDatashareMembershipFunctionTranscripts(t *testing.T) {

@@ -435,13 +435,14 @@ func parseCopyOptions(tokens []sqlclient.Token) (copyDefinition, error) {
 			}
 			if value, ok := next(i + 1); ok && (value.Kind == sqlclient.TokenString || value.Kind == sqlclient.TokenWord && len(value.Text) > 0 && value.Text[0] >= '0' && value.Text[0] <= '9') {
 				i++
-				tolerance := value.Text
+				var tolerance strings.Builder
+				tolerance.WriteString(value.Text)
 				// Unquoted decimal and exponent tolerances are split at punctuation by Tokens.
 				for value.Kind != sqlclient.TokenString && i+2 < len(tokens) && tokens[i+1].Kind == sqlclient.TokenSymbol && strings.ContainsAny(tokens[i+1].Text, ".+-") && tokens[i+2].Kind == sqlclient.TokenWord {
-					tolerance += tokens[i+1].Text + tokens[i+2].Text
+					tolerance.WriteString(tokens[i+1].Text + tokens[i+2].Text)
 					i += 2
 				}
-				simplify += " " + tolerance
+				simplify += " " + tolerance.String()
 			}
 			if _, err := copySimplify(simplify); err != nil {
 				return copyDefinition{}, err
