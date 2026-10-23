@@ -151,13 +151,14 @@ func (r *tableSecurityResource) Create(ctx context.Context, req resource.CreateR
 		resp.Diagnostics.AddError("Invalid table security", err.Error())
 		return
 	}
-	if err := r.exec(ctx, data.Database.ValueString(), statements...); err != nil {
+	if err := r.exec(ctx, data.Database.ValueString(), statements[0]); err != nil {
 		resp.Diagnostics.AddError("Set table row-level security", err.Error())
 		return
 	}
 	data.ID = r.tableSecurityIdentity(data)
 	planned := data
-	// A failed verification must still leave serializable state for the changed relation.
+	// Row-level security is on now, so a failed later statement or verification must still leave serializable
+	// state for the changed relation, or removing the resource from configuration would leave it on.
 	if data.ConjunctionType.IsUnknown() {
 		data.ConjunctionType = types.StringNull()
 	}
@@ -165,6 +166,10 @@ func (r *tableSecurityResource) Create(ctx context.Context, req resource.CreateR
 		data.DatashareRowLevelSecurity = types.BoolNull()
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	if err := r.exec(ctx, data.Database.ValueString(), statements[1:]...); err != nil {
+		resp.Diagnostics.AddError("Set table row-level security", err.Error())
+		return
+	}
 	if err := r.verify(ctx, &data, planned); err != nil {
 		resp.Diagnostics.AddError("Verify table row-level security", err.Error())
 		return

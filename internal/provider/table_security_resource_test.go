@@ -213,3 +213,26 @@ func TestTableSecurityRejectsInvalidPlansBeforeSQL(t *testing.T) {
 	_, diagnostics = applyOperation(t, r, "update", tableSecurityLifecycleModel(), invalid, nil)
 	require.True(t, diagnostics.HasError())
 }
+
+// TestTableSecurityCreateRecordsStateWhenDatashareStatementFails keeps the relation in state once row-level security is
+// on, so removing the resource from configuration later turns it off again.
+func TestTableSecurityCreateRecordsStateWhenDatashareStatementFails(t *testing.T) {
+	c := fullCatalog()
+	f := rlsFakeOf(c)
+	f.rlsOn, f.datashare = false, false
+	client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		if strings.HasSuffix(sql, " FOR DATASHARES") {
+			return nil, errors.New("datashare row-level security refused")
+		}
+		return c.Query(ctx, target, sql, parameters)
+	})
+	planned := tableSecurityLifecycleModel()
+	planned.DatashareRowLevelSecurity = types.BoolValue(true)
+	recorded, failed := tableSecurityOperation(t, client, "create", nil, planned)
+	require.True(t, failed)
+	assert.False(t, recorded.ID.IsNull(), "the relation whose row-level security is on is tracked")
+	assert.True(t, f.rlsOn)
+	_, failed = tableSecurityOperation(t, c, "delete", recorded, nil)
+	require.False(t, failed)
+	assert.False(t, f.rlsOn, "destroy turns row-level security off again")
+}
