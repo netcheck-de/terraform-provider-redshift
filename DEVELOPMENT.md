@@ -5,7 +5,7 @@ catalog behavior, and privileges. See [AGENTS.md](AGENTS.md) for repository layo
 
 ## Local checks
 
-Install Go matching `go.mod`, Terraform 1.14+, Task v3, `curl`, yamllint, and markdownlint-cli. The pinned golangci-lint
+Install Go matching `go.mod`, Terraform 1.16+, Task v3, `curl`, yamllint, and markdownlint-cli. The pinned golangci-lint
 release is installed automatically. Run commands from the repository root.
 
 | Command                                        | Purpose                                                                                     |

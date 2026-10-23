@@ -140,7 +140,7 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 			"client_secret_wo": schema.StringAttribute{
 				Optional: true, WriteOnly: true, Sensitive: true,
-				MarkdownDescription: "Write-only client secret of the Microsoft Entra ID application (requires Terraform 1.11 or later); not allowed for `AWSIDC`. Required to create an `AZURE` provider and whenever `issuer`, `client_id`, `audience`, or `client_secret_wo_version` change, because `ALTER IDENTITY PROVIDER ... PARAMETERS` replaces every parameter. Never stored in plan or state, and the catalog never returns it.",
+				MarkdownDescription: "Write-only client secret of the Microsoft Entra ID application; not allowed for `AWSIDC`. Required to create an `AZURE` provider and whenever `issuer`, `client_id`, `audience`, or `client_secret_wo_version` change, because `ALTER IDENTITY PROVIDER ... PARAMETERS` replaces every parameter. Never stored in plan or state, and the catalog never returns it.",
 			},
 			"client_secret_wo_version": schema.Int64Attribute{
 				Optional:            true,

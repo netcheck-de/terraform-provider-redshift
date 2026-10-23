@@ -97,7 +97,7 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"password_wo": schema.StringAttribute{
-				Optional: true, WriteOnly: true, Sensitive: true, MarkdownDescription: "Write-only password (requires Terraform 1.11 or later); required on creation, on rotation, and when `password_disabled` changes to `false`, and not allowed while `password_disabled` is `true`. Never stored in this resource's plan or state.",
+				Optional: true, WriteOnly: true, Sensitive: true, MarkdownDescription: "Write-only password; required on creation, on rotation, and when `password_disabled` changes to `false`, and not allowed while `password_disabled` is `true`. Never stored in this resource's plan or state.",
 			},
 			"password_wo_version": schema.Int64Attribute{
 				Optional: true, Computed: true, Default: int64default.StaticInt64(0),
