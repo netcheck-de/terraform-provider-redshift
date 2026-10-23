@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // templateFakeFamily names the template family in every fake catalog.
@@ -84,7 +84,7 @@ func (f *templateFake) templateFakeShow(database string) string {
 		parameter, _ := copyParameterByWord(name)
 		switch {
 		case parameter.argument == copyText || parameter.argument == copyOptionalText && value != "":
-			parts = append(parts, name+" "+dataapi.Literal(value))
+			parts = append(parts, name+" "+sqlclient.Literal(value))
 		case parameter.argument == copyInteger || parameter.argument == copyChoice:
 			parts = append(parts, name+" "+value)
 		default:
@@ -102,12 +102,12 @@ func templateFakeName(name string) string {
 	if templateFakePlainName.MatchString(name) {
 		return name
 	}
-	return dataapi.Identifier(name)
+	return sqlclient.Identifier(name)
 }
 
 // templateFakeTokens tokenizes a statement the fake received from the provider.
-func templateFakeTokens(sql string) []dataapi.Token {
-	tokens, err := dataapi.Tokens(sql)
+func templateFakeTokens(sql string) []sqlclient.Token {
+	tokens, err := sqlclient.Tokens(sql)
 	if err != nil {
 		panic("fake template received untokenizable SQL: " + sql)
 	}
@@ -116,12 +116,12 @@ func templateFakeTokens(sql string) []dataapi.Token {
 
 // templateFakeTarget returns the template name of a statement: the last identifier before the first keyword after
 // TEMPLATE.
-func templateFakeTarget(tokens []dataapi.Token) (string, int) {
+func templateFakeTarget(tokens []sqlclient.Token) (string, int) {
 	name, index := "", 0
 	for i := 0; i < len(tokens); i++ {
-		if tokens[i].Kind == dataapi.TokenWord && strings.EqualFold(tokens[i].Text, "TEMPLATE") {
-			for i++; i < len(tokens) && tokens[i].Kind != dataapi.TokenWord; i++ {
-				if tokens[i].Kind == dataapi.TokenIdentifier {
+		if tokens[i].Kind == sqlclient.TokenWord && strings.EqualFold(tokens[i].Text, "TEMPLATE") {
+			for i++; i < len(tokens) && tokens[i].Kind != sqlclient.TokenWord; i++ {
+				if tokens[i].Kind == sqlclient.TokenIdentifier {
 					name = tokens[i].Text
 				}
 			}
@@ -132,41 +132,41 @@ func templateFakeTarget(tokens []dataapi.Token) (string, int) {
 }
 
 // query answers template reads and applies template DDL and grants; other SQL passes to the next family.
-func (f *templateFake) query(_ *catalog, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+func (f *templateFake) query(_ *catalog, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	switch {
 	case strings.Contains(sql, "FROM sys_redshift_template"):
 		if f.schemaMissing || parameters["database"] != connection.Database || parameters["schema"] != "" && parameters["schema"] != templateFakeSchema {
 			return nil, true, nil
 		}
-		var rows []dataapi.Row
+		var rows []sqlclient.Row
 		for _, name := range []string{f.name, templateFakeDecoy} {
 			if name == f.name && f.exists || name == templateFakeDecoy && !f.withoutDecoy {
-				rows = append(rows, dataapi.Row{"schema_name": templateFakeSchema, "template_name": name, "template_owner": f.owner})
+				rows = append(rows, sqlclient.Row{"schema_name": templateFakeSchema, "template_name": name, "template_owner": f.owner})
 			}
 		}
-		slices.SortFunc(rows, func(a, b dataapi.Row) int { return strings.Compare(a["template_name"], b["template_name"]) })
+		slices.SortFunc(rows, func(a, b sqlclient.Row) int { return strings.Compare(a["template_name"], b["template_name"]) })
 		return rows, true, nil
 	case sql == "SELECT usename FROM pg_user WHERE usename = :name" && parameters["name"] == templateFakeUser:
-		return []dataapi.Row{{"usename": templateFakeUser}}, true, nil
+		return []sqlclient.Row{{"usename": templateFakeUser}}, true, nil
 	case sql == "SELECT schema_name FROM svv_all_schemas WHERE database_name = :database AND schema_name = :schema" && parameters["schema"] == templateFakeSchema:
 		if f.schemaMissing {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{"schema_name": templateFakeSchema}}, true, nil
+		return []sqlclient.Row{{"schema_name": templateFakeSchema}}, true, nil
 	case strings.HasPrefix(sql, "SELECT schema_name FROM svv_all_schemas") && strings.Contains(sql, "LOWER(schema_type) = 'local'"):
-		return []dataapi.Row{{"schema_name": "public"}, {"schema_name": templateFakeSchema}}, true, nil
+		return []sqlclient.Row{{"schema_name": "public"}, {"schema_name": templateFakeSchema}}, true, nil
 	case strings.HasPrefix(sql, "SHOW TEMPLATES FROM SCHEMA "):
-		if f.schemaMissing || !strings.Contains(sql, dataapi.Identifier(templateFakeSchema)) {
+		if f.schemaMissing || !strings.Contains(sql, sqlclient.Identifier(templateFakeSchema)) {
 			return nil, true, nil
 		}
 		pattern := "%"
 		if _, rest, found := strings.Cut(sql, " LIKE "); found {
 			pattern = templateFakeTokens(rest)[0].Text
 		}
-		var rows []dataapi.Row
+		var rows []sqlclient.Row
 		for _, name := range []string{f.name, templateFakeDecoy} {
 			if (name == f.name && f.exists || name == templateFakeDecoy && !f.withoutDecoy) && templateFakeLike(pattern, name) {
-				rows = append(rows, dataapi.Row{"template_name": name, "template_id": "107685", "template_type": "COPY", "template_owner": f.owner, "database_name": connection.Database, "schema_name": templateFakeSchema})
+				rows = append(rows, sqlclient.Row{"template_name": name, "template_id": "107685", "template_type": "COPY", "template_owner": f.owner, "database_name": connection.Database, "schema_name": templateFakeSchema})
 			}
 		}
 		return rows, true, nil
@@ -175,7 +175,7 @@ func (f *templateFake) query(_ *catalog, connection dataapi.Connection, sql stri
 		if !f.exists || name != f.name {
 			return nil, true, fmt.Errorf("template %q does not exist", name)
 		}
-		return []dataapi.Row{{"create_template_statement": f.templateFakeShow(connection.Database)}}, true, nil
+		return []sqlclient.Row{{"create_template_statement": f.templateFakeShow(connection.Database)}}, true, nil
 	case strings.HasPrefix(sql, "CREATE TEMPLATE "), strings.HasPrefix(sql, "CREATE OR REPLACE TEMPLATE "):
 		if f.exists && strings.HasPrefix(sql, "CREATE TEMPLATE ") {
 			return nil, true, errors.New("template already exists")
@@ -200,10 +200,10 @@ func (f *templateFake) query(_ *catalog, connection dataapi.Connection, sql stri
 		if !f.exists {
 			return nil, true, errors.New("template does not exist")
 		}
-		var rows []dataapi.Row
+		var rows []sqlclient.Row
 		for _, privilege := range slices.Sorted(maps.Keys(f.grants)) {
 			grant := f.grants[privilege]
-			rows = append(rows, dataapi.Row{"database_name": connection.Database, "schema_name": templateFakeSchema, "object_name": f.name, "object_type": "TEMPLATE", "privilege_type": privilege, "identity_name": grant.identity, "identity_type": grant.kind, "admin_option": grantFakeBool(grant.option), "privilege_scope": "TEMPLATE"})
+			rows = append(rows, sqlclient.Row{"database_name": connection.Database, "schema_name": templateFakeSchema, "object_name": f.name, "object_type": "TEMPLATE", "privilege_type": privilege, "identity_name": grant.identity, "identity_type": grant.kind, "admin_option": grantFakeBool(grant.option), "privilege_scope": "TEMPLATE"})
 		}
 		return rows, true, nil
 	case (strings.HasPrefix(sql, "GRANT ") || strings.HasPrefix(sql, "REVOKE ")) && strings.Contains(sql, " ON TEMPLATE "):
@@ -253,7 +253,7 @@ func (f *templateFake) alter(sql string) error {
 			return fmt.Errorf("cannot set parameter %s", parameter)
 		}
 		f.definition.parameters[parameter] = strings.ToUpper(rest[2].Text)
-		if rest[2].Kind == dataapi.TokenString {
+		if rest[2].Kind == sqlclient.TokenString {
 			f.definition.parameters[parameter] = rest[2].Text
 		}
 	default:

@@ -11,21 +11,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // queryFunc adapts a callback into a SQL client for targeted resource tests.
-type queryFunc func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error)
+type queryFunc func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error)
 
 // Query adapts a test callback to the transport-neutral SQL client interface.
-func (f queryFunc) Query(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+func (f queryFunc) Query(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 	return f(ctx, target, sql, parameters)
 }
 
 // testResourceClient supplies a known warehouse/admin binding around a fake SQL client.
-func testResourceClient(client dataapi.Client) resourceClient {
+func testResourceClient(client sqlclient.Client) resourceClient {
 	return resourceClient{client: client, warehouse: warehouseBinding{field: "workgroup_name", value: types.StringValue("warehouse")}, database: types.StringValue("admin")}
 }
 
@@ -101,7 +101,7 @@ func TestResourceClientConfiguration(t *testing.T) {
 	assert.False(t, resp.Diagnostics.HasError())
 	r.Configure(context.Background(), resource.ConfigureRequest{ProviderData: 42}, &resp)
 	assert.True(t, resp.Diagnostics.HasError())
-	r.Configure(context.Background(), resource.ConfigureRequest{ProviderData: providerData{client: queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+	r.Configure(context.Background(), resource.ConfigureRequest{ProviderData: providerData{client: queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return nil, nil
 	}), warehouse: warehouseBinding{field: "workgroup_name", value: types.StringUnknown()}, database: types.StringValue("admin")}}, &resource.ConfigureResponse{})
 	_, err := r.query(context.Background(), "SELECT 1", nil)
@@ -119,7 +119,7 @@ func TestResourceClientConfiguration(t *testing.T) {
 
 // TestBindingRejectsInvalidIdentity checks invalid JSON and cross-database state adoption.
 func TestBindingRejectsInvalidIdentity(t *testing.T) {
-	r := testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+	r := testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return nil, nil
 	}))
 	require.ErrorContains(t, r.bound(types.StringValue("invalid JSON"), "admin"), "invalid resource identity")
@@ -129,7 +129,7 @@ func TestBindingRejectsInvalidIdentity(t *testing.T) {
 
 // TestWarehouseBindingIsIndependentOfSQLTransport checks generic bindings and legacy ID compatibility.
 func TestWarehouseBindingIsIndependentOfSQLTransport(t *testing.T) {
-	r := testResourceClient(queryFunc(func(_ context.Context, target dataapi.Connection, _ string, _ map[string]string) ([]dataapi.Row, error) {
+	r := testResourceClient(queryFunc(func(_ context.Context, target sqlclient.Connection, _ string, _ map[string]string) ([]sqlclient.Row, error) {
 		assert.Equal(t, "admin", target.Database)
 		return nil, nil
 	}))
@@ -147,7 +147,7 @@ func TestWarehouseBindingIsIndependentOfSQLTransport(t *testing.T) {
 // TestImportSupportsClusterAndEndpointBindings preserves transport-independent ownership and rejects mixed identities.
 func TestImportSupportsClusterAndEndpointBindings(t *testing.T) {
 	for _, field := range []string{"cluster_identifier", "endpoint"} {
-		client := testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		client := testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return nil, nil
 		}))
 		client.warehouse = warehouseBinding{field: field, value: types.StringValue("warehouse")}

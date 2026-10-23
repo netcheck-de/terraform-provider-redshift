@@ -15,7 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -132,20 +132,20 @@ func TestExternalFunctionReadReportsMetadata(t *testing.T) {
 
 // TestExternalFunctionReadRejectsUnexpectedMetadata fails on incomplete, ambiguous, or non-Lambda catalog rows.
 func TestExternalFunctionReadRejectsUnexpectedMetadata(t *testing.T) {
-	row := func(change func(dataapi.Row)) []dataapi.Row {
+	row := func(change func(sqlclient.Row)) []sqlclient.Row {
 		value := (&externalFunctionFake{exists: true, owner: "admin", volatility: "v", language: "exfunc"}).functionRow()
 		change(value)
-		return []dataapi.Row{value}
+		return []sqlclient.Row{value}
 	}
-	for name, rows := range map[string][]dataapi.Row{
-		"missing owner":    row(func(value dataapi.Row) { value["owner"] = "" }),
-		"missing type":     row(func(value dataapi.Row) { value["return_type"] = "" }),
-		"sql function":     row(func(value dataapi.Row) { value["language"] = "sql" }),
-		"volatility":       row(func(value dataapi.Row) { value["volatility"] = "x" }),
-		"ambiguous result": append(row(func(dataapi.Row) {}), row(func(dataapi.Row) {})...),
+	for name, rows := range map[string][]sqlclient.Row{
+		"missing owner":    row(func(value sqlclient.Row) { value["owner"] = "" }),
+		"missing type":     row(func(value sqlclient.Row) { value["return_type"] = "" }),
+		"sql function":     row(func(value sqlclient.Row) { value["language"] = "sql" }),
+		"volatility":       row(func(value sqlclient.Row) { value["volatility"] = "x" }),
+		"ambiguous result": append(row(func(sqlclient.Row) {}), row(func(sqlclient.Row) {})...),
 	} {
 		t.Run(name, func(t *testing.T) {
-			r := &externalFunctionResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+			r := &externalFunctionResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 				return rows, nil
 			}))}
 			data := externalFunctionTestModel()
@@ -177,7 +177,7 @@ func TestExternalFunctionCreationErrorsRetainKnownState(t *testing.T) {
 		t.Run(failing, func(t *testing.T) {
 			c := fullCatalog()
 			fakeState[*externalFunctionFake](c, "external_function").exists = false
-			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if strings.HasPrefix(sql, failing) {
 					return nil, errors.New("injected failure")
 				}
@@ -208,7 +208,7 @@ func TestExternalFunctionVerifiesConvergence(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := fullCatalog()
-			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if strings.HasPrefix(sql, "CREATE OR REPLACE") || strings.HasPrefix(sql, "ALTER FUNCTION") {
 					return nil, nil // Acknowledged without effect.
 				}
@@ -380,7 +380,7 @@ func TestExternalFunctionKnownConfig(t *testing.T) {
 // TestExternalRoutineFailures reports a refused ALTER EXTERNAL FUNCTION and rejects invalid external model configuration.
 func TestExternalRoutineFailures(t *testing.T) {
 	r := newExternalFunctionResource()
-	configureTestResource(t, r, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+	configureTestResource(t, r, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return nil, errors.New("ALTER refused")
 	}))
 	before, after := externalFunctionTestModel(), externalFunctionTestModel()

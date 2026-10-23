@@ -35,12 +35,12 @@ func TestAccDatashareScopedGrants(t *testing.T) {
 		}
 		_, err = client.Query(ctx, connection, "DROP SCHEMA IF EXISTS serving CASCADE", nil)
 		require.NoError(t, err)
-		_, err = client.Query(ctx, connection, "DROP DATASHARE "+sqlclient.Identifier(name), nil)
+		_, err = client.Query(ctx, connection, sqlclient.Stmt("DROP DATASHARE").Ident(name).String(), nil)
 		// The acceptance harness may already have removed the datashare.
 		if err != nil {
 			t.Logf("fixture datashare cleanup: %v", err)
 		}
-		_, err = client.Query(ctx, sqlclient.Connection{Database: database}, "DROP DATABASE "+sqlclient.Identifier(name), nil)
+		_, err = client.Query(ctx, sqlclient.Connection{Database: database}, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 		require.NoError(t, err)
 	})
 	base := fmt.Sprintf(`
@@ -106,7 +106,7 @@ data "redshift_grant" "tables" {
 			{ResourceName: "redshift_grant.tables", ImportState: true, ImportStateVerify: true},
 			{Config: base + grants, PlanOnly: true},
 			{Config: base + grants, PreConfig: func() {
-				execute("REVOKE SELECT FOR TABLES IN SCHEMA serving FROM DATASHARE " + sqlclient.Identifier(name))
+				execute(sqlclient.Stmt("REVOKE SELECT FOR TABLES IN SCHEMA serving FROM DATASHARE").Ident(name).String())
 			}, Check: resource.TestCheckResourceAttr("data.redshift_grant.tables", "privileges.#", "1")},
 			{Config: base + grants, PreConfig: func() {
 				execute("DROP VIEW serving.replaced")

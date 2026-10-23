@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -626,32 +626,32 @@ func TestTableCatalogParsing(t *testing.T) {
 	assert.Equal(t, "('a')||('b')", tableDefaultCanonical("('a') || ('b')"))
 	assert.Equal(t, "0", tableDefaultCanonical("((0)::numeric(12,2))"))
 
-	table := dataapi.Row{"owner": "admin", "diststyle": "9", "effective_diststyle": "12"}
-	attributes := []dataapi.Row{{"column_name": "a", "data_type": "integer", "not_null": "t"}}
-	details := []dataapi.Row{{"column_name": "a", "column_default": "", "encoding": "none", "distkey": "false", "sortkey": "0"}}
-	catalog, err := tableCatalogFrom(table, attributes, details, nil, []dataapi.Row{{"sortkey1": " AUTO(SORTKEY) "}})
+	table := sqlclient.Row{"owner": "admin", "diststyle": "9", "effective_diststyle": "12"}
+	attributes := []sqlclient.Row{{"column_name": "a", "data_type": "integer", "not_null": "t"}}
+	details := []sqlclient.Row{{"column_name": "a", "column_default": "", "encoding": "none", "distkey": "false", "sortkey": "0"}}
+	catalog, err := tableCatalogFrom(table, attributes, details, nil, []sqlclient.Row{{"sortkey1": " AUTO(SORTKEY) "}})
 	require.NoError(t, err)
 	assert.Equal(t, tableCatalog{
 		owner: "admin", distStyle: "AUTO", effectiveDistStyle: "KEY", sortKeyListed: true, sortKey1: "AUTO(SORTKEY)",
 		columns: []tableCatalogColumn{{name: "a", dataType: "INTEGER", notNull: true, encoding: "RAW"}},
 	}, catalog)
-	hidden, err := tableCatalogFrom(dataapi.Row{"owner": "admin", "diststyle": "9", "effective_diststyle": ""}, attributes, details, nil, nil)
+	hidden, err := tableCatalogFrom(sqlclient.Row{"owner": "admin", "diststyle": "9", "effective_diststyle": ""}, attributes, details, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, hidden.effectiveDistStyle, "a PG_CLASS_INFO row the identity may not see leaves the effective style unknown")
 	assert.False(t, hidden.sortKeyListed, "SVV_TABLE_INFO lists only tables with rows")
 	for name, test := range map[string]struct {
-		table               dataapi.Row
-		attributes, details []dataapi.Row
-		constraints         []dataapi.Row
+		table               sqlclient.Row
+		attributes, details []sqlclient.Row
+		constraints         []sqlclient.Row
 		message             string
 	}{
-		"no owner":             {dataapi.Row{"diststyle": "9"}, attributes, details, nil, "no owner"},
-		"unknown diststyle":    {dataapi.Row{"owner": "admin", "diststyle": "12"}, attributes, details, nil, "distribution style"},
+		"no owner":             {sqlclient.Row{"diststyle": "9"}, attributes, details, nil, "no owner"},
+		"unknown diststyle":    {sqlclient.Row{"owner": "admin", "diststyle": "12"}, attributes, details, nil, "distribution style"},
 		"no columns":           {table, nil, nil, nil, "different columns"},
-		"missing details":      {table, attributes, []dataapi.Row{{"column_name": "b", "sortkey": "0"}}, nil, "does not report"},
-		"bad sort position":    {table, attributes, []dataapi.Row{{"column_name": "a", "sortkey": "x"}}, nil, "sort key position"},
-		"bad constraint":       {table, attributes, details, []dataapi.Row{{"constraint_name": "c", "constraint_type": "p", "definition": "PRIMARY KEY"}}, "constraint"},
-		"dangling foreign key": {table, attributes, details, []dataapi.Row{{"constraint_name": "f", "constraint_type": "f", "definition": "FOREIGN KEY (a) REFERENCES t(b)"}}, "does not report"},
+		"missing details":      {table, attributes, []sqlclient.Row{{"column_name": "b", "sortkey": "0"}}, nil, "does not report"},
+		"bad sort position":    {table, attributes, []sqlclient.Row{{"column_name": "a", "sortkey": "x"}}, nil, "sort key position"},
+		"bad constraint":       {table, attributes, details, []sqlclient.Row{{"constraint_name": "c", "constraint_type": "p", "definition": "PRIMARY KEY"}}, "constraint"},
+		"dangling foreign key": {table, attributes, details, []sqlclient.Row{{"constraint_name": "f", "constraint_type": "f", "definition": "FOREIGN KEY (a) REFERENCES t(b)"}}, "does not report"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := tableCatalogFrom(test.table, test.attributes, test.details, test.constraints, nil)
@@ -666,8 +666,8 @@ func TestTableCatalogParsing(t *testing.T) {
 func tableFakeCatalog(t *testing.T, table tableFakeTable) tableCatalog {
 	t.Helper()
 	fake := &tableFake{tables: map[string]*tableFakeTable{"serving.events": &table}}
-	read := func(sql string) []dataapi.Row {
-		result, handled, err := fake.query(nil, dataapi.Connection{}, sql, map[string]string{"schema": "serving", "name": "events"})
+	read := func(sql string) []sqlclient.Row {
+		result, handled, err := fake.query(nil, sqlclient.Connection{}, sql, map[string]string{"schema": "serving", "name": "events"})
 		require.True(t, handled)
 		require.NoError(t, err)
 		return result
@@ -851,29 +851,29 @@ func TestTableConverged(t *testing.T) {
 
 // TestTableReadErrors reports catalog failures and inconsistent rows instead of dropping the table from state.
 func TestTableReadErrors(t *testing.T) {
-	for name, rows := range map[string]func(sql string) ([]dataapi.Row, error){
-		"ambiguous table": func(sql string) ([]dataapi.Row, error) {
+	for name, rows := range map[string]func(sql string) ([]sqlclient.Row, error){
+		"ambiguous table": func(sql string) ([]sqlclient.Row, error) {
 			if strings.HasPrefix(sql, "SELECT c.relname") {
-				return []dataapi.Row{{"owner": "a", "diststyle": "9"}, {"owner": "b", "diststyle": "9"}}, nil
+				return []sqlclient.Row{{"owner": "a", "diststyle": "9"}, {"owner": "b", "diststyle": "9"}}, nil
 			}
 			return nil, nil
 		},
-		"columns disappear": func(sql string) ([]dataapi.Row, error) {
+		"columns disappear": func(sql string) ([]sqlclient.Row, error) {
 			if strings.HasPrefix(sql, "SELECT c.relname") {
-				return []dataapi.Row{{"owner": "a", "diststyle": "9"}}, nil
+				return []sqlclient.Row{{"owner": "a", "diststyle": "9"}}, nil
 			}
 			return nil, nil
 		},
-		"sort key view denied": func(sql string) ([]dataapi.Row, error) {
+		"sort key view denied": func(sql string) ([]sqlclient.Row, error) {
 			if strings.HasPrefix(sql, "SELECT sortkey1") {
 				return nil, errors.New("permission denied for relation svv_table_info")
 			}
 			c := fullCatalog()
-			return c.Query(context.Background(), dataapi.Connection{Database: "admin"}, sql, map[string]string{"schema": "serving", "name": "events"})
+			return c.Query(context.Background(), sqlclient.Connection{Database: "admin"}, sql, map[string]string{"schema": "serving", "name": "events"})
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			r := &tableResource{testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+			r := &tableResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 				return rows(sql)
 			}))}
 			data := tableEventsModel()
@@ -938,7 +938,7 @@ func TestTableUpdateRefreshFailures(t *testing.T) {
 			c := fullCatalog()
 			tableFakeNote(fakeState[*tableFake](c, "table").tables["serving.events"])
 			sorted := false
-			r := &tableResource{testResourceClient(queryFunc(func(ctx context.Context, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+			r := &tableResource{testResourceClient(queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if sorted && test.failure != nil {
 					return nil, test.failure
 				}
@@ -1105,12 +1105,12 @@ func TestTableDeleteDoesNotReadDefinition(t *testing.T) {
 	require.NoError(t, err)
 	dropped := false
 	r := newTableResource()
-	configureTestResource(t, r, queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+	configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		switch sql {
 		case lookup:
 			assert.False(t, dropped, "successful synchronous DROP needs no readback")
 			// Identity is enough to delete even when the rest of the catalog metadata is unavailable.
-			return []dataapi.Row{{}}, nil
+			return []sqlclient.Row{{}}, nil
 		case dropTableStatement(spec):
 			dropped = true
 			return nil, nil
@@ -1127,7 +1127,7 @@ func TestTableDeleteDoesNotReadDefinition(t *testing.T) {
 func TestTableReadRejectsInconsistentDistribution(t *testing.T) {
 	c := fullCatalog()
 	r := &tableResource{}
-	configureTestResource(t, r, queryFunc(func(ctx context.Context, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+	configureTestResource(t, r, queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		rows, err := c.Query(ctx, connection, sql, parameters)
 		if strings.Contains(sql, "c.reldiststyle AS diststyle") {
 			for _, row := range rows {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // rlsFakeColumns is the polatts the fake reports, matching the representative policy's WITH clause.
@@ -83,7 +83,7 @@ func rlsFakeUsing(sql string) (string, error) {
 }
 
 // query answers the RLS catalog views and applies policy, attachment, and ROW LEVEL SECURITY statements.
-func (f *rlsFake) query(_ *catalog, _ dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+func (f *rlsFake) query(_ *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	var err error
 	switch {
 	case strings.HasPrefix(sql, "SELECT poldb, polname"):
@@ -94,7 +94,7 @@ func (f *rlsFake) query(_ *catalog, _ dataapi.Connection, sql string, parameters
 		if name == "" {
 			name = "region_filter"
 		}
-		return []dataapi.Row{{"poldb": parameters["database"], "polname": name, "polalias": f.alias, "polatts": f.columns, "polqual": f.predicate}}, true, nil
+		return []sqlclient.Row{{"poldb": parameters["database"], "polname": name, "polalias": f.alias, "polatts": f.columns, "polqual": f.predicate}}, true, nil
 	case strings.HasPrefix(sql, "CREATE RLS POLICY"):
 		if f.policy {
 			return nil, true, errors.New("policy already exists")
@@ -115,7 +115,7 @@ func (f *rlsFake) query(_ *catalog, _ dataapi.Connection, sql string, parameters
 		f.policy = false
 	case strings.HasPrefix(sql, "SELECT polname, relschema"):
 		if f.policy && f.attached {
-			return []dataapi.Row{{"polname": parameters["policy"], "relschema": parameters["schema"], "relname": parameters["relation"], "grantee": parameters["grantee"], "granteekind": parameters["kind"]}}, true, nil
+			return []sqlclient.Row{{"polname": parameters["policy"], "relschema": parameters["schema"], "relname": parameters["relation"], "grantee": parameters["grantee"], "granteekind": parameters["kind"]}}, true, nil
 		}
 		return nil, true, nil
 	case strings.HasPrefix(sql, "ATTACH RLS POLICY"):
@@ -127,14 +127,14 @@ func (f *rlsFake) query(_ *catalog, _ dataapi.Connection, sql string, parameters
 		f.attached = false
 	case strings.HasPrefix(sql, "SELECT c.relname FROM pg_class"):
 		if f.relation {
-			return []dataapi.Row{{"relname": parameters["relation"]}}, true, nil
+			return []sqlclient.Row{{"relname": parameters["relation"]}}, true, nil
 		}
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT is_rls_on"):
 		if !f.relation {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{"is_rls_on": fmt.Sprint(f.rlsOn), "is_rls_datashare_on": fmt.Sprint(f.datashare), "rls_conjunction_type": fmt.Sprintf("%-3s", f.conjunction)}}, true, nil
+		return []sqlclient.Row{{"is_rls_on": fmt.Sprint(f.rlsOn), "is_rls_datashare_on": fmt.Sprint(f.datashare), "rls_conjunction_type": fmt.Sprintf("%-3s", f.conjunction)}}, true, nil
 	case strings.HasPrefix(sql, "ALTER TABLE") && strings.Contains(sql, " ROW LEVEL SECURITY "):
 		if !f.relation {
 			return nil, true, errors.New("relation does not exist")

@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -75,7 +75,7 @@ type lifecycleCase struct {
 	// prepare adjusts the catalog for one operation, for example drift that update must correct.
 	prepare func(c *catalog, operation string)
 	// missingRows answers queries against an otherwise empty catalog where the type needs a row to proceed.
-	missingRows func(operation, sql string) []dataapi.Row
+	missingRows func(operation, sql string) []sqlclient.Row
 	// isDeletion recognizes the statements that remove the object; nil uses defaultDeletion.
 	isDeletion func(sql string) bool
 }
@@ -161,7 +161,7 @@ func fullCatalog() *catalog {
 }
 
 // configureTestResource binds a resource to the test warehouse and the supplied SQL client.
-func configureTestResource(t *testing.T, r resource.Resource, client dataapi.Client) {
+func configureTestResource(t *testing.T, r resource.Resource, client sqlclient.Client) {
 	t.Helper()
 	var configured resource.ConfigureResponse
 	r.(resource.ResourceWithConfigure).Configure(context.Background(), resource.ConfigureRequest{ProviderData: providerData{client: client, warehouse: warehouseBinding{field: "workgroup_name", value: types.StringValue("warehouse")}, database: types.StringValue("admin")}}, &configured)
@@ -206,7 +206,7 @@ func TestLifecycleSQLBoundaryErrors(t *testing.T) {
 					}
 					test.applyPrepare(c, operation)
 					calls := 0
-					client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+					client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 						calls++
 						if calls == failAt {
 							return nil, errors.New("injected API failure")
@@ -233,7 +233,7 @@ func TestLifecycleMissingObjects(t *testing.T) {
 	for _, test := range lifecycleCases() {
 		for _, operation := range []string{"create", "read", "update", "delete"} {
 			t.Run(test.name+"/"+operation, func(t *testing.T) {
-				client := queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+				client := queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 					if test.missingRows != nil {
 						return test.missingRows(operation, sql), nil
 					}
@@ -262,7 +262,7 @@ func TestLifecycleMissingDatabase(t *testing.T) {
 		for _, operation := range []string{"read", "delete"} {
 			t.Run(test.name+"/"+operation, func(t *testing.T) {
 				r := test.new()
-				configureTestResource(t, r, queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+				configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 					if test.missingRows != nil {
 						return test.missingRows(operation, sql), nil
 					}
@@ -271,7 +271,7 @@ func TestLifecycleMissingDatabase(t *testing.T) {
 				diagnostics := invoke(t, r, operation, local.Interface())
 				assert.False(t, diagnostics.HasError(), "%v", diagnostics)
 				r = test.new()
-				configureTestResource(t, r, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+				configureTestResource(t, r, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 					return nil, errors.New("database lookup failed")
 				}))
 				diagnostics = invoke(t, r, operation, local.Interface())
@@ -311,7 +311,7 @@ func TestPermissionDeletionVerifiesRemoval(t *testing.T) {
 		}
 		t.Run(test.name, func(t *testing.T) {
 			c := test.catalog()
-			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if test.deletion(sql) {
 					return nil, nil // Simulate an acknowledged write that did not converge.
 				}

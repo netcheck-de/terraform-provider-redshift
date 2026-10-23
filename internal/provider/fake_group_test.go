@@ -3,7 +3,7 @@ package provider
 import (
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 var _ = registerFakeFamily("group", func() fakeFamily { return &groupFamily{} })
@@ -16,7 +16,7 @@ type groupFamily struct{}
 func (f *groupFamily) populate() {}
 
 // query answers the member-listing group read.
-func (f *groupFamily) query(c *catalog, _ dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+func (f *groupFamily) query(c *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	if !strings.HasPrefix(sql, "SELECT g.groname, g.grosysid, u.usename") {
 		return nil, false, nil
 	}
@@ -27,5 +27,5 @@ func (f *groupFamily) query(c *catalog, _ dataapi.Connection, sql string, parame
 	if c.groupMember {
 		member = "grafana"
 	}
-	return []dataapi.Row{{"groname": parameters["name"], "grosysid": "101", "usename": member}}, true, nil
+	return []sqlclient.Row{{"groname": parameters["name"], "grosysid": "101", "usename": member}}, true, nil
 }

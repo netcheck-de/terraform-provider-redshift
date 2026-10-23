@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 var _ = registerFakeFamily("table", func() fakeFamily {
@@ -372,7 +372,7 @@ func (t *tableFakeTable) alter(table, clause string) (bool, error) {
 }
 
 // query answers the table resource's reads and applies its statements to known tables.
-func (f *tableFake) query(_ *catalog, _ dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+func (f *tableFake) query(_ *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	key := parameters["schema"] + "." + parameters["name"]
 	table := f.tables[key]
 	switch {
@@ -380,24 +380,24 @@ func (f *tableFake) query(_ *catalog, _ dataapi.Connection, sql string, paramete
 		if table == nil {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{"table_name": parameters["name"], "owner": table.owner, "diststyle": table.distStyle, "effective_diststyle": table.effectiveDistStyle()}}, true, nil
+		return []sqlclient.Row{{"table_name": parameters["name"], "owner": table.owner, "diststyle": table.distStyle, "effective_diststyle": table.effectiveDistStyle()}}, true, nil
 	case strings.HasPrefix(sql, "SELECT a.attnum AS position"):
-		var rows []dataapi.Row
+		var rows []sqlclient.Row
 		for i, column := range tableFakeColumns(table) {
-			rows = append(rows, dataapi.Row{"position": strconv.Itoa(i + 1), "column_name": column.name, "data_type": column.dataType, "not_null": strconv.FormatBool(column.notNull)})
+			rows = append(rows, sqlclient.Row{"position": strconv.Itoa(i + 1), "column_name": column.name, "data_type": column.dataType, "not_null": strconv.FormatBool(column.notNull)})
 		}
 		return rows, true, nil
 	case strings.HasPrefix(sql, "SELECT column_name, column_default"):
-		var rows []dataapi.Row
+		var rows []sqlclient.Row
 		for _, column := range tableFakeColumns(table) {
-			rows = append(rows, dataapi.Row{"column_name": column.name, "column_default": column.defaultText, "encoding": column.encoding, "distkey": strconv.FormatBool(column.distKey), "sortkey": strconv.Itoa(column.sortKey)})
+			rows = append(rows, sqlclient.Row{"column_name": column.name, "column_default": column.defaultText, "encoding": column.encoding, "distkey": strconv.FormatBool(column.distKey), "sortkey": strconv.Itoa(column.sortKey)})
 		}
 		return rows, true, nil
 	case strings.HasPrefix(sql, "SELECT con.conname"):
-		var rows []dataapi.Row
+		var rows []sqlclient.Row
 		if table != nil {
 			for _, constraint := range table.constraints {
-				rows = append(rows, dataapi.Row{"constraint_name": constraint.name, "constraint_type": constraint.kind, "definition": constraint.definition, "referenced_schema": constraint.refSchema, "referenced_table": constraint.refTable})
+				rows = append(rows, sqlclient.Row{"constraint_name": constraint.name, "constraint_type": constraint.kind, "definition": constraint.definition, "referenced_schema": constraint.refSchema, "referenced_table": constraint.refTable})
 			}
 		}
 		return rows, true, nil
@@ -405,7 +405,7 @@ func (f *tableFake) query(_ *catalog, _ dataapi.Connection, sql string, paramete
 		if table == nil || table.unlisted {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{"sortkey1": table.sortKey1()}}, true, nil
+		return []sqlclient.Row{{"sortkey1": table.sortKey1()}}, true, nil
 	case strings.HasPrefix(sql, "CREATE TABLE "):
 		name, _, ok := tableFakeQualified(strings.TrimPrefix(sql, "CREATE TABLE "))
 		template, known := f.templates[name]

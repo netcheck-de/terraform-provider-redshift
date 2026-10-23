@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // roleFakeIdentifier matches a quoted SQL identifier, preserving doubled quote escapes.
@@ -32,7 +32,7 @@ var _ = registerFakeFamily("role", func() fakeFamily { return &roleFakeFamily{} 
 
 // query answers the extended role read and applies CREATE ROLE and ALTER ROLE; DROP ROLE stays in the legacy switch,
 // which checks the role's dependencies.
-func (f *roleFakeFamily) query(c *catalog, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, bool, error) {
+func (f *roleFakeFamily) query(c *catalog, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, bool, error) {
 	names := roleFakeIdentifiers(sql)
 	switch {
 	case strings.HasPrefix(sql, "SELECT role_id, role_name, role_owner, external_id FROM svv_roles"):
@@ -46,7 +46,7 @@ func (f *roleFakeFamily) query(c *catalog, _ dataapi.Connection, sql string, _ m
 		if owner == "" {
 			owner = "admin"
 		}
-		return []dataapi.Row{{"role_id": "100", "role_name": name, "role_owner": owner, "external_id": f.externalID}}, true, nil
+		return []sqlclient.Row{{"role_id": "100", "role_name": name, "role_owner": owner, "external_id": f.externalID}}, true, nil
 	case strings.HasPrefix(sql, "CREATE ROLE"):
 		if c.role || !c.identity || len(names) == 0 {
 			return nil, true, errors.New("role exists or identity provider is absent")

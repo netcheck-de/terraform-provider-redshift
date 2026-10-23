@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // fakeRoutineArgument is one declared argument as the fake catalog stores it.
@@ -68,7 +68,7 @@ func (f *routineFamily) populate() {
 }
 
 // query answers this kind's catalog reads and applies its DDL.
-func (f *routineFamily) query(_ *catalog, _ dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+func (f *routineFamily) query(_ *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	switch {
 	case strings.HasPrefix(sql, "SELECT p.proname AS "+strings.ToLower(f.kind)+"_name"):
 		signature := parameters["arguments"]
@@ -76,7 +76,7 @@ func (f *routineFamily) query(_ *catalog, _ dataapi.Connection, sql string, para
 		if !ok {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{"owner": routine.owner, "language": strings.ToLower(map[string]string{"FUNCTION": "sql", "PROCEDURE": "plpgsql"}[f.kind]), "volatility": routine.volatility,
+		return []sqlclient.Row{{"owner": routine.owner, "language": strings.ToLower(map[string]string{"FUNCTION": "sql", "PROCEDURE": "plpgsql"}[f.kind]), "volatility": routine.volatility,
 			"return_type": routine.returnType, "arguments": routine.signature(), "body": routine.body, "security_definer": strconv.FormatBool(routine.definer)}}, true, nil
 	case strings.HasPrefix(sql, "SHOW PARAMETERS OF "+f.kind+" "):
 		key, _, err := fakeRoutineTarget(strings.TrimPrefix(sql, "SHOW PARAMETERS OF "+f.kind+" "))
@@ -87,9 +87,9 @@ func (f *routineFamily) query(_ *catalog, _ dataapi.Connection, sql string, para
 		if !ok {
 			return nil, true, fmt.Errorf("procedure %s does not exist", key)
 		}
-		rows := []dataapi.Row{}
+		rows := []sqlclient.Row{}
 		for i, argument := range routine.arguments {
-			rows = append(rows, dataapi.Row{"parameter_name": argument.name, "ordinal_position": strconv.Itoa(i + 1), "parameter_type": argument.mode, "data_type": argument.dataType})
+			rows = append(rows, sqlclient.Row{"parameter_name": argument.name, "ordinal_position": strconv.Itoa(i + 1), "parameter_type": argument.mode, "data_type": argument.dataType})
 		}
 		return rows, true, nil
 	case strings.HasPrefix(sql, "CREATE "+f.kind+" "), strings.HasPrefix(sql, "CREATE OR REPLACE "+f.kind+" "):

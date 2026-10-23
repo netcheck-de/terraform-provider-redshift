@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -145,12 +145,12 @@ func TestUserRejectsMissingPassword(t *testing.T) {
 
 // TestUserCatalogReadRejectsInvalidRows rejects malformed capability values and ambiguous users.
 func TestUserCatalogReadRejectsInvalidRows(t *testing.T) {
-	for _, rows := range [][]dataapi.Row{
+	for _, rows := range [][]sqlclient.Row{
 		{{"usename": "grafana", "usesuper": "invalid", "usecreatedb": "false"}},
 		{{"usename": "grafana", "usesuper": "false", "usecreatedb": "invalid"}},
 		{{"usename": "grafana", "usesuper": "false", "usecreatedb": "false"}, {"usename": "grafana"}},
 	} {
-		r := &userResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		r := &userResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return rows, nil
 		}))}
 		data := grafanaUser()
@@ -188,7 +188,7 @@ func TestUserOperationsReportCatalogErrors(t *testing.T) {
 			for failAt := 1; failAt <= 3; failAt++ {
 				c := &catalog{user: operation != "create"}
 				current := 0
-				client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+				client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 					current++
 					if current == failAt {
 						return nil, errors.New("injected API error")
@@ -222,7 +222,7 @@ func TestUserUpdateDetectsMismatchedBindingAndPrivileges(t *testing.T) {
 	data.ID = r.identity("admin", map[string]string{"name": "grafana"})
 	previous := data
 	data.Superuser = types.BoolValue(true)
-	client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+	client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		if strings.HasPrefix(sql, "ALTER USER") {
 			return nil, nil
 		}
@@ -243,7 +243,7 @@ func TestUserLifecycleErrorPaths(t *testing.T) {
 	for _, stage := range []string{"create", "create verification", "create missing", "create mismatch"} {
 		t.Run(stage, func(t *testing.T) {
 			c := &catalog{}
-			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, params map[string]string) ([]dataapi.Row, error) {
+			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
 				if stage == "create" && strings.HasPrefix(sql, "CREATE USER") {
 					return nil, errors.New("create denied")
 				}
@@ -254,7 +254,7 @@ func TestUserLifecycleErrorPaths(t *testing.T) {
 					return nil, nil
 				}
 				if stage == "create mismatch" && strings.HasPrefix(sql, "SELECT usename") {
-					return []dataapi.Row{{"usename": "grafana", "usesuper": "false", "usecreatedb": "false"}}, nil
+					return []sqlclient.Row{{"usename": "grafana", "usesuper": "false", "usecreatedb": "false"}}, nil
 				}
 				return c.Query(ctx, target, sql, params)
 			})
@@ -278,7 +278,7 @@ func TestUserUpdateFailures(t *testing.T) {
 	for _, stage := range []string{"rotation", "privilege", "catalog", "missing", "mismatch", "invalid config"} {
 		t.Run(stage, func(t *testing.T) {
 			c := &catalog{user: true}
-			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, params map[string]string) ([]dataapi.Row, error) {
+			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
 				if stage == "rotation" && strings.Contains(sql, " PASSWORD ") {
 					return nil, errors.New("rotation denied")
 				}

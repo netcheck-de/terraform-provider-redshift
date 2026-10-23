@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 var _ = registerFakeFamily("databases", func() fakeFamily { return newDatabasesFamily() })
@@ -148,7 +148,7 @@ func (f *databasesFamily) applySchemaOptions(sql string) {
 }
 
 // query answers the database, schema, and external schema statements of this block.
-func (f *databasesFamily) query(c *catalog, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+func (f *databasesFamily) query(c *catalog, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	switch {
 	case strings.HasPrefix(sql, "SHOW DATABASES"):
 		name, err := literal(sql, 0)
@@ -160,23 +160,23 @@ func (f *databasesFamily) query(c *catalog, connection dataapi.Connection, sql s
 			databaseName = "analytics"
 		}
 		if name == "warehouse" && c.localDB {
-			return []dataapi.Row{{"database_name": "warehouse", "database_owner": "100", "database_type": "local", "database_isolation_level": f.isolation}}, true, nil
+			return []sqlclient.Row{{"database_name": "warehouse", "database_owner": "100", "database_type": "local", "database_isolation_level": f.isolation}}, true, nil
 		}
 		if c.database && name == databaseName {
 			options := fmt.Sprintf(`{"datashare_name":"source","datashare_producer_account":"123456789012","datashare_producer_namespace":"11111111-2222-3333-4444-555555555555","permissions":%t}`, c.permissions)
-			return []dataapi.Row{{"database_name": databaseName, "database_owner": "100", "database_type": "shared", "parameters": options, "database_isolation_level": "UNKNOWN"}}, true, nil
+			return []sqlclient.Row{{"database_name": databaseName, "database_owner": "100", "database_type": "shared", "parameters": options, "database_isolation_level": "UNKNOWN"}}, true, nil
 		}
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT u.usename AS owner, d.datconnlimit"):
 		if c.localDB && parameters["name"] == "warehouse" {
-			return []dataapi.Row{{"owner": f.owner, "connection_limit": f.connectionLimit}}, true, nil
+			return []sqlclient.Row{{"owner": f.owner, "connection_limit": f.connectionLimit}}, true, nil
 		}
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT db_collation()"):
 		if connection.Database != "warehouse" || !c.localDB {
 			return nil, true, fmt.Errorf("database %q does not exist", connection.Database)
 		}
-		return []dataapi.Row{{"collation": f.collation}}, true, nil
+		return []sqlclient.Row{{"collation": f.collation}}, true, nil
 	case strings.HasPrefix(sql, `CREATE DATABASE "warehouse"`):
 		if c.localDB {
 			return nil, true, fmt.Errorf("database already exists")
@@ -196,16 +196,16 @@ func (f *databasesFamily) query(c *catalog, connection dataapi.Connection, sql s
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT n.nspname AS schema_name, u.usename AS owner FROM pg_namespace"):
 		if c.schema {
-			return []dataapi.Row{{"schema_name": "serving", "owner": f.schemaOwner}}, true, nil
+			return []sqlclient.Row{{"schema_name": "serving", "owner": f.schemaOwner}}, true, nil
 		}
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT quota FROM svv_redshift_schema_quota"):
 		if c.schema && f.schemaQuota != "" && (!f.sessionRegular || f.schemaOwner == f.sessionUser) {
-			return []dataapi.Row{{"quota": f.schemaQuota}}, true, nil
+			return []sqlclient.Row{{"quota": f.schemaQuota}}, true, nil
 		}
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT usename AS name, usesuper AS superuser FROM pg_user"):
-		return []dataapi.Row{{"name": f.sessionUser, "superuser": fmt.Sprint(!f.sessionRegular)}}, true, nil
+		return []sqlclient.Row{{"name": f.sessionUser, "superuser": fmt.Sprint(!f.sessionRegular)}}, true, nil
 	case strings.HasPrefix(sql, "CREATE SCHEMA"):
 		c.schema = true
 		f.schemaOwner, f.schemaQuota = "admin", ""
@@ -228,14 +228,14 @@ func (f *databasesFamily) query(c *catalog, connection dataapi.Connection, sql s
 			return nil, true, nil
 		}
 		if f.externalHidden {
-			return []dataapi.Row{{"schemaname": "example_external", "eskind": "", "databasename": "", "esoptions": "", "owner": f.externalOwner}}, true, nil
+			return []sqlclient.Row{{"schemaname": "example_external", "eskind": "", "databasename": "", "esoptions": "", "owner": f.externalOwner}}, true, nil
 		}
 		// Map keys marshal in sorted order, so transcripts stay deterministic.
 		encoded, err := json.Marshal(f.externalOptions)
 		if err != nil {
 			return nil, true, err
 		}
-		return []dataapi.Row{{"schemaname": "example_external", "eskind": f.externalKind, "databasename": f.externalDatabase, "esoptions": string(encoded), "owner": f.externalOwner}}, true, nil
+		return []sqlclient.Row{{"schemaname": "example_external", "eskind": f.externalKind, "databasename": f.externalDatabase, "esoptions": string(encoded), "owner": f.externalOwner}}, true, nil
 	case strings.HasPrefix(sql, "CREATE EXTERNAL SCHEMA"):
 		if c.external {
 			return nil, true, fmt.Errorf("external schema already exists")

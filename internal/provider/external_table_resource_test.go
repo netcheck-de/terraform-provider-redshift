@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -64,7 +64,7 @@ func externalTableFakeOf(c *catalog) *externalTableFake {
 }
 
 // externalTableTestResource binds a table resource to a SQL client.
-func externalTableTestResource(t *testing.T, client dataapi.Client) *externalTableResource {
+func externalTableTestResource(t *testing.T, client sqlclient.Client) *externalTableResource {
 	t.Helper()
 	r := &externalTableResource{}
 	configureTestResource(t, r, client)
@@ -207,7 +207,7 @@ func TestExternalTableNestedUnknownValidationAndStrictCreate(t *testing.T) {
 }
 
 // externalTableState runs one lifecycle operation and decodes the resulting state.
-func externalTableState(t *testing.T, client dataapi.Client, operation string, prior, planned externalTableModel) (externalTableModel, error) {
+func externalTableState(t *testing.T, client sqlclient.Client, operation string, prior, planned externalTableModel) (externalTableModel, error) {
 	t.Helper()
 	state, diagnostics := applyOperation(t, externalTableTestResource(t, client), operation, prior, planned, nil)
 	var observed externalTableModel
@@ -266,7 +266,7 @@ func TestExternalTableImportAdoptsCatalog(t *testing.T) {
 // TestExternalTableObserveModes covers SerDe adoption, explicit formats, and refresh drift.
 func TestExternalTableObserveModes(t *testing.T) {
 	catalog := &externalTableCatalog{
-		table:           dataapi.Row{"tablename": "events", "location": "s3://bucket/json", "input_format": "org.example.CustomInput", "output_format": "org.example.CustomOutput", "serialization_lib": "org.openx.data.jsonserde.JsonSerDe"},
+		table:           sqlclient.Row{"tablename": "events", "location": "s3://bucket/json", "input_format": "org.example.CustomInput", "output_format": "org.example.CustomOutput", "serialization_lib": "org.openx.data.jsonserde.JsonSerDe"},
 		columns:         []externalTableCatalogColumn{{"id", "integer", 1}},
 		serdeParameters: map[string]string{"serialization.format": "1", "strip.outer.array": "true"},
 		parameters:      map[string]string{"EXTERNAL": "TRUE", "numRows": "5"},
@@ -376,7 +376,7 @@ func TestExternalTableFailurePaths(t *testing.T) {
 		invalid := model
 		invalid.InputFormat = types.StringValue("org.apache.hadoop.mapred.TextInputFormat")
 		calls := 0
-		client := queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		client := queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			calls++
 			return nil, nil
 		})
@@ -384,25 +384,25 @@ func TestExternalTableFailurePaths(t *testing.T) {
 		require.ErrorContains(t, err, "stored_as conflicts with input_format")
 		assert.Zero(t, calls)
 	})
-	rows := func(table, columns []dataapi.Row) dataapi.Client {
-		return queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+	rows := func(table, columns []sqlclient.Row) sqlclient.Client {
+		return queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 			if strings.Contains(sql, "svv_external_tables") {
 				return table, nil
 			}
 			return columns, nil
 		})
 	}
-	table := dataapi.Row{"tablename": "events", "location": "s3://example-bucket/events/", "serde_parameters": "{}", "parameters": "{}"}
-	column := dataapi.Row{"columnname": "id", "external_type": "int", "columnnum": "1", "part_key": "0"}
+	table := sqlclient.Row{"tablename": "events", "location": "s3://example-bucket/events/", "serde_parameters": "{}", "parameters": "{}"}
+	column := sqlclient.Row{"columnname": "id", "external_type": "int", "columnnum": "1", "part_key": "0"}
 	for name, test := range map[string]struct {
-		client dataapi.Client
+		client sqlclient.Client
 		err    string
 	}{
-		"ambiguous":     {rows([]dataapi.Row{table, table}, nil), "ambiguous"},
-		"no columns":    {rows([]dataapi.Row{table}, nil), "no columns"},
-		"bad column":    {rows([]dataapi.Row{table}, []dataapi.Row{{"columnname": "id", "columnnum": "?", "part_key": "0"}}), "incomplete catalog metadata"},
-		"bad serde":     {rows([]dataapi.Row{{"tablename": "events", "serde_parameters": "{"}}, []dataapi.Row{column}), "SerDe parameters"},
-		"bad parameter": {rows([]dataapi.Row{{"tablename": "events", "parameters": "["}}, []dataapi.Row{column}), "decode external table parameters"},
+		"ambiguous":     {rows([]sqlclient.Row{table, table}, nil), "ambiguous"},
+		"no columns":    {rows([]sqlclient.Row{table}, nil), "no columns"},
+		"bad column":    {rows([]sqlclient.Row{table}, []sqlclient.Row{{"columnname": "id", "columnnum": "?", "part_key": "0"}}), "incomplete catalog metadata"},
+		"bad serde":     {rows([]sqlclient.Row{{"tablename": "events", "serde_parameters": "{"}}, []sqlclient.Row{column}), "SerDe parameters"},
+		"bad parameter": {rows([]sqlclient.Row{{"tablename": "events", "parameters": "["}}, []sqlclient.Row{column}), "decode external table parameters"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := externalTableState(t, test.client, "read", model, model)
@@ -412,7 +412,7 @@ func TestExternalTableFailurePaths(t *testing.T) {
 	t.Run("create does not converge", func(t *testing.T) {
 		c := fullCatalog()
 		delete(fakeState[*externalTableFamily](c, "external_table").tables, "events")
-		drifting := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+		drifting := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 			rows, err := c.Query(ctx, target, sql, parameters)
 			if strings.HasPrefix(sql, "CREATE") {
 				externalTableFakeOf(c).location = "s3://elsewhere/"
@@ -717,7 +717,7 @@ resource "redshift_external_table" "events" {
 // columns the prior blocks do not declare, and reports the catalog order otherwise.
 func TestExternalTableObservedColumnOrder(t *testing.T) {
 	catalog := &externalTableCatalog{
-		table:      dataapi.Row{"tablename": "events", "location": "s3://bucket/events/", "input_format": externalTableFileFormats["ORC"]},
+		table:      sqlclient.Row{"tablename": "events", "location": "s3://bucket/events/", "input_format": externalTableFileFormats["ORC"]},
 		columns:    []externalTableCatalogColumn{{"id", "integer", 1}, {"label", "varchar(64)", 2}, {"amount", "decimal(8,2)", 3}, {"extra", "date", 4}},
 		parameters: map[string]string{},
 	}

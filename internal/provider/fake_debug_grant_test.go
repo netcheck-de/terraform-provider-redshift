@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // debugGrantTestDatabase is the federated database name the DEBUG grant tests use; the fake answers SHOW GRANTS only
@@ -56,9 +56,9 @@ func (f *debugGrantFakeFamily) clear() {
 }
 
 // query answers SHOW GRANTS ON DATABASE for databases with DEBUG state and applies GRANT and REVOKE DEBUG.
-func (f *debugGrantFakeFamily) query(_ *catalog, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, bool, error) {
+func (f *debugGrantFakeFamily) query(_ *catalog, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, bool, error) {
 	if sql == readDebugGrantAuthStatement() {
-		return []dataapi.Row{{"auth_method": "IAM AssumeUser"}}, true, nil
+		return []sqlclient.Row{{"auth_method": "IAM AssumeUser"}}, true, nil
 	}
 	if match := debugGrantForStatement.FindStringSubmatch(sql); match != nil {
 		name, principal := fakeUnquote(match[3]), fakeUnquote(match[2])
@@ -70,10 +70,10 @@ func (f *debugGrantFakeFamily) query(_ *catalog, _ dataapi.Connection, sql strin
 		if match[1] != "" {
 			identityType, sourceType = "role", "global_group"
 		}
-		var rows []dataapi.Row
+		var rows []sqlclient.Row
 		for key := range grants {
 			if key.identityType == sourceType && strings.EqualFold(key.name, principal) {
-				rows = append(rows, dataapi.Row{"database_name": name, "object_type": "DATABASE", "privilege_scope": "DATABASE", "privilege_type": "DEBUG", "identity_name": key.name, "identity_type": identityType})
+				rows = append(rows, sqlclient.Row{"database_name": name, "object_type": "DATABASE", "privilege_scope": "DATABASE", "privilege_type": "DEBUG", "identity_name": key.name, "identity_type": identityType})
 			}
 		}
 		return rows, true, nil
@@ -88,10 +88,10 @@ func (f *debugGrantFakeFamily) query(_ *catalog, _ dataapi.Connection, sql strin
 			return nil, true, nil
 		}
 		// A database privilege of another identity shows that rows are matched by privilege and grantee.
-		rows := []dataapi.Row{{"database_name": name, "privilege_type": "TEMP", "identity_id": "0", "identity_name": "public", "identity_type": "public", "admin_option": "f", "privilege_scope": "DATABASE", "grantor_name": "admin"}}
+		rows := []sqlclient.Row{{"database_name": name, "privilege_type": "TEMP", "identity_id": "0", "identity_name": "public", "identity_type": "public", "admin_option": "f", "privilege_scope": "DATABASE", "grantor_name": "admin"}}
 		keys := slices.SortedFunc(maps.Keys(grantees), func(a, b debugGrantKey) int { return strings.Compare(a.identityType+a.name, b.identityType+b.name) })
 		for _, key := range keys {
-			rows = append(rows, dataapi.Row{"database_name": name, "privilege_type": "DEBUG", "identity_id": "145", "identity_name": key.name, "identity_type": key.identityType, "admin_option": "f", "privilege_scope": "DATABASE", "grantor_name": "admin"})
+			rows = append(rows, sqlclient.Row{"database_name": name, "privilege_type": "DEBUG", "identity_id": "145", "identity_name": key.name, "identity_type": key.identityType, "admin_option": "f", "privilege_scope": "DATABASE", "grantor_name": "admin"})
 		}
 		return rows, true, nil
 	}

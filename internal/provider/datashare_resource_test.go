@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -62,7 +62,7 @@ func TestDatashareObservesCatalogMetadata(t *testing.T) {
 // TestDatashareCreateFailureLeavesKnownState keeps state written before verification free of unknown values, so a
 // failed verification still records the created share.
 func TestDatashareCreateFailureLeavesKnownState(t *testing.T) {
-	r := &datashareResource{testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+	r := &datashareResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		if strings.HasPrefix(sql, "SELECT") {
 			return nil, errors.New("catalog unavailable")
 		}
@@ -83,18 +83,18 @@ func TestDatashareCreateFailureLeavesKnownState(t *testing.T) {
 
 // TestDatashareRejectsDifferentOwnerAndInvalidCatalog prevents adoption of unrelated shares.
 func TestDatashareRejectsDifferentOwnerAndInvalidCatalog(t *testing.T) {
-	for _, changed := range []dataapi.Row{
+	for _, changed := range []sqlclient.Row{
 		{"source_database": "another"},
 		{"managed_by": "ADX"},
 		{"is_publicaccessible": "invalid"},
 		{"share_id": "invalid"},
 	} {
-		row := dataapi.Row{"share_name": "producer", "source_database": "admin", "managed_by": "", "is_publicaccessible": "false"}
+		row := sqlclient.Row{"share_name": "producer", "source_database": "admin", "managed_by": "", "is_publicaccessible": "false"}
 		for key, value := range changed {
 			row[key] = value
 		}
-		r := &datashareResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
-			return []dataapi.Row{row}, nil
+		r := &datashareResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+			return []sqlclient.Row{row}, nil
 		}))}
 		_, err := r.read(context.Background(), &datashareModel{Database: types.StringValue("admin"), Name: types.StringValue("producer")})
 		require.Error(t, err)

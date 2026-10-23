@@ -90,7 +90,7 @@ data "redshift_masking_policies" "local" {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
 		if len(rows) != 0 {
-			_, err = client.Query(ctx, admin, "DROP DATABASE "+sqlclient.Identifier(name), nil)
+			_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)
 		}
 	})
@@ -130,7 +130,7 @@ resource "redshift_database" "local" { name = %q }
 				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachment.email", "priority", "20"),
 			)},
 			{Config: updated, PlanOnly: true, ExpectNonEmptyPlan: true, PreConfig: func() {
-				_, err := client.Query(ctx, target, `ALTER MASKING POLICY `+sqlclient.Identifier(name+"_email")+` USING ('drift'::VARCHAR(256))`, nil)
+				_, err := client.Query(ctx, target, sqlclient.Stmt("ALTER MASKING POLICY").Ident(name+"_email").Kw("USING ('drift'::VARCHAR(256))").String(), nil)
 				require.NoError(t, err)
 			}},
 			{Config: updated},

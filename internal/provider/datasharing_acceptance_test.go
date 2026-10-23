@@ -35,9 +35,9 @@ func TestAccDatasharing(t *testing.T) {
 	t.Cleanup(func() {
 		// Terraform destroys the objects; these statements only remove leftovers of a failed run.
 		for _, cleanup := range []struct{ database, sql string }{
-			{name, "DROP DATASHARE " + sqlclient.Identifier(name)},
-			{database, "DROP ROLE " + sqlclient.Identifier(name)},
-			{database, "DROP DATABASE " + sqlclient.Identifier(name)},
+			{name, sqlclient.Stmt("DROP DATASHARE").Ident(name).String()},
+			{database, sqlclient.Stmt("DROP ROLE").Ident(name).String()},
+			{database, sqlclient.Stmt("DROP DATABASE").Ident(name).String()},
 		} {
 			if err := execute(cleanup.database, cleanup.sql); err != nil {
 				t.Logf("fixture cleanup %q: %v", cleanup.sql, err)
@@ -101,7 +101,7 @@ data "redshift_datashares" "named" {
 			{ResourceName: "redshift_datashare_privilege.operators", ImportState: true, ImportStateVerify: true},
 			{Config: configuration, PlanOnly: true},
 			{Config: configuration, PreConfig: func() {
-				require.NoError(t, execute(name, "REVOKE SHARE ON DATASHARE "+sqlclient.Identifier(name)+" FROM ROLE "+sqlclient.Identifier(name)))
+				require.NoError(t, execute(name, sqlclient.Stmt("REVOKE SHARE ON DATASHARE").Ident(name).Kw("FROM ROLE").Ident(name).String()))
 			}, Check: resource.TestCheckResourceAttr("redshift_datashare_privilege.operators", "privileges.#", "2")},
 		},
 	})

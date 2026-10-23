@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // grantFakeUser is the user recipient the grant fake family answers for; other users reach the legacy switch.
@@ -24,18 +24,18 @@ type grantUserFamily struct {
 }
 
 // query answers the user check and SHOW GRANTS ON DATABASE … FOR the user, and applies GRANT and REVOKE to the user.
-func (f *grantUserFamily) query(_ *catalog, _ dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
-	quoted := dataapi.Identifier(grantFakeUser)
+func (f *grantUserFamily) query(_ *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
+	quoted := sqlclient.Identifier(grantFakeUser)
 	switch {
 	case strings.HasPrefix(sql, "SELECT usename FROM pg_user WHERE usename = :name") && parameters["name"] == grantFakeUser:
 		if f.exists {
-			return []dataapi.Row{{"usename": grantFakeUser}}, true, nil
+			return []sqlclient.Row{{"usename": grantFakeUser}}, true, nil
 		}
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SHOW GRANTS ON DATABASE ") && strings.HasSuffix(sql, " FOR "+quoted):
-		var rows []dataapi.Row
+		var rows []sqlclient.Row
 		for _, privilege := range slices.Sorted(maps.Keys(f.privileges)) {
-			rows = append(rows, dataapi.Row{"database_name": "analytics", "privilege_type": privilege, "identity_name": grantFakeUser, "identity_type": "user", "admin_option": grantFakeBool(f.options[privilege]), "privilege_scope": "TABLES"})
+			rows = append(rows, sqlclient.Row{"database_name": "analytics", "privilege_type": privilege, "identity_name": grantFakeUser, "identity_type": "user", "admin_option": grantFakeBool(f.options[privilege]), "privilege_scope": "TABLES"})
 		}
 		return rows, true, nil
 	case (strings.HasPrefix(sql, "GRANT ") && strings.Contains(sql, " TO "+quoted)) || (strings.HasPrefix(sql, "REVOKE ") && strings.HasSuffix(sql, " FROM "+quoted)):

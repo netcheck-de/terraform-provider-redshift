@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // externalTableFakeSchema is the external schema the legacy fake catalog maps; the family handles only statements
@@ -71,8 +71,8 @@ func (f *externalTableFamily) populate() {
 }
 
 // query answers the catalog views and applies the DDL on the fake external schema.
-func (f *externalTableFamily) query(c *catalog, _ dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
-	relation := dataapi.Identifier(externalTableFakeSchema) + "."
+func (f *externalTableFamily) query(c *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
+	relation := sqlclient.Identifier(externalTableFakeSchema) + "."
 	switch {
 	case strings.HasPrefix(sql, "SELECT schemaname, tablename, location, input_format"):
 		table := f.lookup(c, parameters["schema"], parameters["name"])
@@ -81,7 +81,7 @@ func (f *externalTableFamily) query(c *catalog, _ dataapi.Connection, sql string
 		}
 		serdeParameters, _ := json.Marshal(table.serdeParameters)
 		tableParameters, _ := json.Marshal(table.parameters)
-		return []dataapi.Row{{
+		return []sqlclient.Row{{
 			"schemaname": externalTableFakeSchema, "tablename": strings.ToLower(parameters["name"]), "location": table.location,
 			"input_format": table.inputFormat, "output_format": table.outputFormat, "serialization_lib": table.serde,
 			"serde_parameters": string(serdeParameters), "parameters": string(tableParameters),
@@ -91,12 +91,12 @@ func (f *externalTableFamily) query(c *catalog, _ dataapi.Connection, sql string
 		if table == nil {
 			return nil, true, nil
 		}
-		var rows []dataapi.Row
+		var rows []sqlclient.Row
 		for i, column := range table.columns {
-			rows = append(rows, dataapi.Row{"columnname": column.name, "external_type": column.hiveType, "columnnum": fmt.Sprint(i + 1), "part_key": "0"})
+			rows = append(rows, sqlclient.Row{"columnname": column.name, "external_type": column.hiveType, "columnnum": fmt.Sprint(i + 1), "part_key": "0"})
 		}
 		for i, column := range table.partitionKeys {
-			rows = append(rows, dataapi.Row{"columnname": column.name, "external_type": column.hiveType, "columnnum": fmt.Sprint(len(table.columns) + i + 1), "part_key": fmt.Sprint(i + 1)})
+			rows = append(rows, sqlclient.Row{"columnname": column.name, "external_type": column.hiveType, "columnnum": fmt.Sprint(len(table.columns) + i + 1), "part_key": fmt.Sprint(i + 1)})
 		}
 		return rows, true, nil
 	case strings.HasPrefix(sql, "SELECT values, location FROM svv_external_partitions"):
@@ -104,10 +104,10 @@ func (f *externalTableFamily) query(c *catalog, _ dataapi.Connection, sql string
 		if table == nil {
 			return nil, true, nil
 		}
-		var rows []dataapi.Row
+		var rows []sqlclient.Row
 		for _, partition := range table.partitions {
 			values, _ := json.Marshal(partition.values)
-			rows = append(rows, dataapi.Row{"values": string(values), "location": partition.location})
+			rows = append(rows, sqlclient.Row{"values": string(values), "location": partition.location})
 		}
 		return rows, true, nil
 	case strings.HasPrefix(sql, "CREATE EXTERNAL TABLE "+relation):
@@ -363,7 +363,7 @@ func (f *externalTableFamily) create(sql string) error {
 		}
 		table.outputFormat, rest = after[0].text, after[1:]
 	} else {
-		format, err := dataapi.OneOf(rest[0].text, slices.Collect(maps.Keys(externalTableFileFormats))...)
+		format, err := sqlclient.OneOf(rest[0].text, slices.Collect(maps.Keys(externalTableFileFormats))...)
 		if err != nil {
 			return err
 		}
@@ -474,7 +474,7 @@ func (f *externalTableFamily) alter(sql string) error {
 		return nil
 	}
 	if after, ok := externalTableFakeExpect(rest, "SET", "FILE", "FORMAT"); ok {
-		format, err := dataapi.OneOf(after[0].text, externalTableSetFileFormats...)
+		format, err := sqlclient.OneOf(after[0].text, externalTableSetFileFormats...)
 		if err != nil {
 			return err
 		}

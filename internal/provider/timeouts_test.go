@@ -20,7 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -135,7 +135,7 @@ func withTimeouts(t *testing.T, state tfsdk.State, values map[string]string) tfs
 // deadlineClient records the deadline each statement's context carries.
 type deadlineClient struct {
 	// client answers the statements.
-	client dataapi.Client
+	client sqlclient.Client
 	// mu guards deadlines.
 	mu sync.Mutex
 	// deadlines holds one entry per statement; the zero time means no deadline.
@@ -145,7 +145,7 @@ type deadlineClient struct {
 }
 
 // Query records the context deadline and forwards the statement.
-func (d *deadlineClient) Query(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+func (d *deadlineClient) Query(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 	deadline, _ := ctx.Deadline()
 	d.mu.Lock()
 	d.deadlines = append(d.deadlines, deadline)
@@ -238,7 +238,7 @@ func TestOperationTimeoutCancelsStatement(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		test := lifecycleRegistry.entries["table"]
 		r := test.new()
-		configureTestResource(t, r, queryFunc(func(ctx context.Context, _ dataapi.Connection, _ string, _ map[string]string) ([]dataapi.Row, error) {
+		configureTestResource(t, r, queryFunc(func(ctx context.Context, _ sqlclient.Connection, _ string, _ map[string]string) ([]sqlclient.Row, error) {
 			<-ctx.Done()
 			return nil, ctx.Err()
 		}))
@@ -260,7 +260,7 @@ func TestDatabaseShareWaitFollowsCreateTimeout(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		test := lifecycleRegistry.entries["database"]
 		r := test.new()
-		configureTestResource(t, r, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		configureTestResource(t, r, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return nil, nil
 		}))
 		state := withTimeouts(t, testState(t, r, test.model), map[string]string{"create": "2m"})
@@ -279,7 +279,7 @@ func TestDatabaseShareWaitDefault(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		test := lifecycleRegistry.entries["database"]
 		r := test.new()
-		configureTestResource(t, r, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		configureTestResource(t, r, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return nil, nil
 		}))
 		state := testState(t, r, test.model)
@@ -301,13 +301,13 @@ func TestLocalDatabaseTimeoutsBoundEveryStatement(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%t", operation, values != nil), func(t *testing.T) {
 				ctx := context.Background()
 				present, isolation := operation == "update", "Snapshot Isolation"
-				client := &deadlineClient{client: localDatabaseClient(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+				client := &deadlineClient{client: localDatabaseClient(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 					switch {
 					case strings.HasPrefix(sql, "SHOW DATABASES"):
 						if !present {
 							return nil, nil
 						}
-						return []dataapi.Row{{"database_name": "warehouse", "database_type": "local", "database_isolation_level": isolation}}, nil
+						return []sqlclient.Row{{"database_name": "warehouse", "database_type": "local", "database_isolation_level": isolation}}, nil
 					case strings.HasPrefix(sql, `CREATE DATABASE "warehouse"`), strings.HasPrefix(sql, `ALTER DATABASE "warehouse"`):
 						present = true
 						if strings.Contains(sql, "SERIALIZABLE") {

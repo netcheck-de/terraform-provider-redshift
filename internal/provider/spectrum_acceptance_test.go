@@ -47,7 +47,7 @@ func testAccSpectrumExternalTableLifecycle(t *testing.T, format string) {
 	t.Cleanup(func() {
 		// A failed run may leave the table in the shared Glue database, which restrictive DROP SCHEMA cannot remove.
 		for _, table := range []string{"events", "metrics"} {
-			_, err := client.Query(ctx, sqlclient.Connection{Database: database}, "DROP TABLE IF EXISTS "+sqlclient.Identifier(schema)+"."+table, nil)
+			_, err := client.Query(ctx, sqlclient.Connection{Database: database}, sqlclient.Stmt("DROP TABLE IF EXISTS").Qualified(schema, table).String(), nil)
 			if err != nil {
 				t.Logf("external table cleanup: %v", err)
 			}

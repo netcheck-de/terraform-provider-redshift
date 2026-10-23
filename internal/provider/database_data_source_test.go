@@ -8,7 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -114,12 +114,12 @@ func TestLocalDatabaseLookupClearsShareMetadataWithoutAWS(t *testing.T) {
 
 // TestDatabaseLookupRejectsAmbiguousAndUnboundShares verifies share identity is unambiguous.
 func TestDatabaseLookupRejectsAmbiguousAndUnboundShares(t *testing.T) {
-	for _, rows := range [][]dataapi.Row{
+	for _, rows := range [][]sqlclient.Row{
 		{{"database_name": "analytics", "database_type": "external"}},
 		{{"database_name": "analytics", "database_type": "shared"}},
 		{{"database_name": "analytics", "database_type": "local"}, {"database_name": "analytics", "database_type": "local"}},
 	} {
-		_, diagnostics := readSource(t, newDatabaseDataSource(), databaseData{Name: types.StringValue("analytics")}, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		_, diagnostics := readSource(t, newDatabaseDataSource(), databaseData{Name: types.StringValue("analytics")}, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return rows, nil
 		}))
 		assert.True(t, diagnostics.HasError())

@@ -95,7 +95,7 @@ data "redshift_role_grant" "this" {
 			{
 				Config: configuration("second", true), PlanOnly: true, ExpectNonEmptyPlan: true,
 				PreConfig: func() {
-					_, err := client.Query(ctx, admin, "REVOKE ADMIN OPTION FOR ROLE "+sqlclient.Identifier(roleName)+" FROM "+sqlclient.Identifier(first), nil)
+					_, err := client.Query(ctx, admin, sqlclient.Stmt("REVOKE ADMIN OPTION FOR ROLE").Ident(roleName).Kw("FROM").Ident(first).String(), nil)
 					require.NoError(t, err)
 				},
 			},

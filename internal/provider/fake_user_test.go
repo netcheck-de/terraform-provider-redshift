@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 var _ = registerFakeFamily("user", func() fakeFamily { return newUserFamily() })
@@ -150,13 +150,13 @@ func (f *userFamily) alter(c *catalog, clause string) error {
 }
 
 // query answers the user reads and applies CREATE, ALTER, and DROP USER.
-func (f *userFamily) query(c *catalog, _ dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+func (f *userFamily) query(c *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	switch {
 	case strings.HasPrefix(sql, "SELECT usename, usesuper, usecreatedb, valuntil"):
 		if !c.user {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{
+		return []sqlclient.Row{{
 			"usename": parameters["name"], "usesuper": strconv.FormatBool(c.superuser), "usecreatedb": strconv.FormatBool(c.createDB),
 			"valuntil": f.validUntil, "useconfig": strings.Join(f.config, userConfigSeparator),
 		}}, true, nil
@@ -164,7 +164,7 @@ func (f *userFamily) query(c *catalog, _ dataapi.Connection, sql string, paramet
 		if !c.user || f.infoHidden {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{"connection_limit": f.connectionLimit, "syslog_access": f.syslog, "session_timeout": f.sessionTimeout, "external_user_id": f.externalID}}, true, nil
+		return []sqlclient.Row{{"connection_limit": f.connectionLimit, "syslog_access": f.syslog, "session_timeout": f.sessionTimeout, "external_user_id": f.externalID}}, true, nil
 	case strings.HasPrefix(sql, "CREATE USER"):
 		if c.user {
 			return nil, true, errors.New("user already exists")

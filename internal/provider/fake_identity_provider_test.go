@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // identityProviderFakeFamily emulates svv_identity_providers for both provider types. The legacy identity, enabled,
@@ -29,7 +29,7 @@ type identityProviderFakeFamily struct {
 var _ = registerFakeFamily("identity_provider", func() fakeFamily { return &identityProviderFakeFamily{} })
 
 // query answers the provider read and applies CREATE, ALTER, and DROP IDENTITY PROVIDER.
-func (f *identityProviderFakeFamily) query(c *catalog, _ dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+func (f *identityProviderFakeFamily) query(c *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	switch {
 	case strings.HasPrefix(sql, "SELECT name, type, instanceid, namespc, params, enabled, uid FROM svv_identity_providers"):
 		if !c.identity {
@@ -39,17 +39,17 @@ func (f *identityProviderFakeFamily) query(c *catalog, _ dataapi.Connection, sql
 		if namespace == "" {
 			namespace = "example"
 		}
-		row := dataapi.Row{"name": parameters["name"], "type": "awsidc", "instanceid": "application", "namespc": namespace, "enabled": fmt.Sprint(c.enabled), "uid": "126692",
+		row := sqlclient.Row{"name": parameters["name"], "type": "awsidc", "instanceid": "application", "namespc": namespace, "enabled": fmt.Sprint(c.enabled), "uid": "126692",
 			"params": fmt.Sprintf(`{"iam_role":%q,"instance_arn":"arn:aws:sso:::instance/ssoins-1234567890abcdef","is_lakehouse_app":"false"}`, c.iamRole)}
 		if f.azure {
 			row["type"], row["instanceid"], row["params"] = "azure", "e40d4bb2-7670-44ae-bfb8-5db013221d73", f.parameters
 		}
-		return []dataapi.Row{row}, true, nil
+		return []sqlclient.Row{row}, true, nil
 	case strings.HasPrefix(sql, "SELECT usename FROM pg_user WHERE LEFT(usename"):
-		var rows []dataapi.Row
+		var rows []sqlclient.Row
 		for _, user := range f.federated {
 			if strings.HasPrefix(user, parameters["prefix"]) {
-				rows = append(rows, dataapi.Row{"usename": user})
+				rows = append(rows, sqlclient.Row{"usename": user})
 			}
 		}
 		return rows, true, nil

@@ -10,13 +10,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // readSource configures a data source and reads a typed model through a fake SQL client.
-func readSource(t *testing.T, source datasource.DataSource, model any, client dataapi.Client, lookups ...func(context.Context, shareSource) (string, error)) (tfsdk.State, diag.Diagnostics) {
+func readSource(t *testing.T, source datasource.DataSource, model any, client sqlclient.Client, lookups ...func(context.Context, shareSource) (string, error)) (tfsdk.State, diag.Diagnostics) {
 	t.Helper()
 	ctx := context.Background()
 	var schema datasource.SchemaResponse
@@ -62,11 +62,11 @@ func TestObjectLookupsReportMissingAndAPIError(t *testing.T) {
 		{"external schema", newExternalSchemaDataSource, externalSchemaData{Database: types.StringValue("admin"), Name: types.StringValue("missing")}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, diagnostics := readSource(t, test.new(), test.model, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+			_, diagnostics := readSource(t, test.new(), test.model, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 				return nil, nil
 			}))
 			assert.True(t, diagnostics.HasError(), "missing object must be reported")
-			_, diagnostics = readSource(t, test.new(), test.model, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+			_, diagnostics = readSource(t, test.new(), test.model, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 				return nil, errors.New("API unavailable")
 			}))
 			assert.True(t, diagnostics.HasError(), "catalog failure must be reported")

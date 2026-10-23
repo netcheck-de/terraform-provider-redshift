@@ -13,11 +13,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/require"
 )
 
-var _ = registerFakeFamily("discovery", func() fakeFamily { return &discoveryFamily{rows: map[string][]dataapi.Row{}} })
+var _ = registerFakeFamily("discovery", func() fakeFamily { return &discoveryFamily{rows: map[string][]sqlclient.Row{}} })
 
 // discoveryListing describes how the fake recognizes and filters one catalog listing.
 type discoveryListing struct {
@@ -49,7 +49,7 @@ var discoveryListings = []discoveryListing{
 // discoveryFamily holds the catalog rows the discovery listings read; it never handles writes.
 type discoveryFamily struct {
 	// rows maps a listing name to its rows, each carrying database_name for filtering.
-	rows map[string][]dataapi.Row
+	rows map[string][]sqlclient.Row
 }
 
 // discoveryLike translates a SQL LIKE pattern into an anchored regular expression.
@@ -69,13 +69,13 @@ func discoveryLike(pattern string) *regexp.Regexp {
 }
 
 // query answers the discovery listings with the rows matching their bound filters.
-func (f *discoveryFamily) query(_ *catalog, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+func (f *discoveryFamily) query(_ *catalog, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	// The tables listing asks whether the selected database is local; other families answer for their databases.
 	if local, _, _ := localDatabaseQuery(parameters["database"]).Build(); sql == local {
 		for _, row := range f.rows["databases"] {
 			if row["database_name"] == parameters["database"] {
 				if row["database_type"] == "local" {
-					return []dataapi.Row{{"database_name": row["database_name"]}}, true, nil
+					return []sqlclient.Row{{"database_name": row["database_name"]}}, true, nil
 				}
 				return nil, true, nil
 			}
@@ -85,7 +85,7 @@ func (f *discoveryFamily) query(_ *catalog, connection dataapi.Connection, sql s
 		if !strings.HasPrefix(sql, "SELECT "+listing.selects) || !strings.Contains(sql, " FROM "+listing.source+" ") {
 			continue
 		}
-		var matched []dataapi.Row
+		var matched []sqlclient.Row
 	rows:
 		for _, row := range f.rows[listing.name] {
 			if listing.connected && row["database_name"] != connection.Database {
@@ -111,7 +111,7 @@ func (f *discoveryFamily) query(_ *catalog, connection dataapi.Connection, sql s
 // populate adds a representative warehouse: local and shared databases, local and external schemas, a table with
 // a view and a materialized view over it, and key constraints.
 func (f *discoveryFamily) populate() {
-	f.rows = map[string][]dataapi.Row{
+	f.rows = map[string][]sqlclient.Row{
 		"databases": {
 			{"database_name": "admin", "owner": "rdsdb", "database_type": "local", "isolation_level": "Snapshot Isolation"},
 			{"database_name": "analytics", "owner": "admin", "database_type": "local", "isolation_level": "Serializable"},
@@ -147,7 +147,7 @@ func (f *discoveryFamily) populate() {
 }
 
 // discoveryRead reads a listing with string filters and returns its items and identity.
-func discoveryRead(t *testing.T, factory func() datasource.DataSource, filters map[string]string, client dataapi.Client) ([]map[string]attr.Value, map[string]string, diag.Diagnostics) {
+func discoveryRead(t *testing.T, factory func() datasource.DataSource, filters map[string]string, client sqlclient.Client) ([]map[string]attr.Value, map[string]string, diag.Diagnostics) {
 	t.Helper()
 	source := factory()
 	state, diagnostics := readSource(t, source, collectionConfig(t, source, filters), client)
@@ -188,7 +188,7 @@ func discoveryNames(items []map[string]attr.Value, attribute string) []string {
 
 // discoverySQL renders a catalog query for checkSQL. Placeholders keep values out of the golden SQL, so the
 // transcripts pin the bound values instead.
-func discoverySQL(query dataapi.Query) func() (string, error) {
+func discoverySQL(query sqlclient.Query) func() (string, error) {
 	return func() (string, error) {
 		sql, _, err := query.Build()
 		return sql, err
@@ -196,15 +196,15 @@ func discoverySQL(query dataapi.Query) func() (string, error) {
 }
 
 // discoveryFailures checks that a listing reports catalog failures and malformed rows instead of partial results.
-func discoveryFailures(t *testing.T, factory func() datasource.DataSource, filters map[string]string, malformed ...dataapi.Row) {
+func discoveryFailures(t *testing.T, factory func() datasource.DataSource, filters map[string]string, malformed ...sqlclient.Row) {
 	t.Helper()
-	_, _, diagnostics := discoveryRead(t, factory, filters, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+	_, _, diagnostics := discoveryRead(t, factory, filters, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return nil, errors.New("catalog unavailable")
 	}))
 	require.True(t, diagnostics.HasError(), "catalog failures are errors")
 	for _, row := range malformed {
-		_, _, diagnostics = discoveryRead(t, factory, filters, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
-			return []dataapi.Row{row}, nil
+		_, _, diagnostics = discoveryRead(t, factory, filters, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+			return []sqlclient.Row{row}, nil
 		}))
 		require.True(t, diagnostics.HasError(), "malformed row %v must be an error", row)
 	}

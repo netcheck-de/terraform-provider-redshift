@@ -177,7 +177,7 @@ data "redshift_grant" "schema" {
 			{
 				Config: configSQL(`["USAGE", "CREATE"]`), PlanOnly: true, ExpectNonEmptyPlan: true,
 				PreConfig: func() {
-					_, err := client.Query(ctx, sqlclient.Connection{Database: dbName}, "REVOKE CREATE ON SCHEMA "+sqlclient.Identifier(dbName)+"."+sqlclient.Identifier(schemaName)+" FROM ROLE "+sqlclient.Identifier(roleName), nil)
+					_, err := client.Query(ctx, sqlclient.Connection{Database: dbName}, sqlclient.Stmt("REVOKE CREATE ON SCHEMA").Qualified(dbName, schemaName).Kw("FROM ROLE").Ident(roleName).String(), nil)
 					require.NoError(t, err)
 				},
 			},

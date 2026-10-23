@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // The name sorts before "databases", whose family answers every SHOW DATABASES, so this family sees the
@@ -93,25 +93,25 @@ func (f *databaseIntegrationFamily) apply(sql string) {
 }
 
 // query answers the destination's catalog reads and applies its CREATE, ALTER, and DROP DATABASE statements.
-func (f *databaseIntegrationFamily) query(_ *catalog, _ dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+func (f *databaseIntegrationFamily) query(_ *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	quoted := `"` + fakeIntegrationDatabase + `"`
 	switch {
 	case strings.HasPrefix(sql, "SHOW DATABASES LIKE '"+fakeIntegrationDatabase+"'"):
 		if !f.exists {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{"database_name": fakeIntegrationDatabase, "database_owner": "100", "database_type": f.databaseType, "database_isolation_level": f.isolation}}, true, nil
+		return []sqlclient.Row{{"database_name": fakeIntegrationDatabase, "database_owner": "100", "database_type": f.databaseType, "database_isolation_level": f.isolation}}, true, nil
 	case strings.HasPrefix(sql, "SELECT u.usename AS owner, d.datconnlimit") && parameters["name"] == fakeIntegrationDatabase:
 		if !f.exists {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{"owner": f.owner, "connection_limit": f.connectionLimit}}, true, nil
+		return []sqlclient.Row{{"owner": f.owner, "connection_limit": f.connectionLimit}}, true, nil
 	case strings.HasPrefix(sql, "SELECT TRIM(integration_id) AS integration_id"):
 		if !f.exists || f.hidden || parameters["name"] != fakeIntegrationDatabase {
 			return nil, true, nil
 		}
 		// The view pads its CHAR(128) columns; the query trims them, and the decoder trims again in case it did not.
-		return []dataapi.Row{{
+		return []sqlclient.Row{{
 			"integration_id": f.integrationID + "  ", "source_database": f.sourceDatabase + "  ", "refresh_interval": f.refreshInterval,
 			"is_history_mode": f.historyMode, "auto_remediation": f.autoRemediation,
 		}}, true, nil

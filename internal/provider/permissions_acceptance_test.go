@@ -113,7 +113,7 @@ data "redshift_grants" "table" {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
 		if len(rows) != 0 {
-			_, err = client.Query(ctx, admin, "DROP DATABASE "+sqlclient.Identifier(name), nil)
+			_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)
 		}
 	})
@@ -182,7 +182,7 @@ func TestAccLanguageGrantPublicDefault(t *testing.T) {
 		rows, err := admin.Query(ctx, adminDB, "SELECT usename FROM pg_user WHERE usename = :name", map[string]string{"name": userName})
 		require.NoError(t, err)
 		if len(rows) != 0 {
-			_, err = admin.Query(ctx, adminDB, "DROP USER "+sqlclient.Identifier(userName), nil)
+			_, err = admin.Query(ctx, adminDB, sqlclient.Stmt("DROP USER").Ident(userName).String(), nil)
 			require.NoError(t, err)
 		}
 	})
@@ -190,11 +190,11 @@ func TestAccLanguageGrantPublicDefault(t *testing.T) {
 		rows, err := admin.Query(ctx, adminDB, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
 		if len(rows) != 0 {
-			_, err = admin.Query(ctx, adminDB, "DROP DATABASE "+sqlclient.Identifier(name), nil)
+			_, err = admin.Query(ctx, adminDB, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)
 		}
 	})
-	_, err = admin.Query(ctx, adminDB, "CREATE USER "+sqlclient.Identifier(userName)+" PASSWORD "+sqlclient.Literal(password)+" NOCREATEDB NOCREATEUSER", nil)
+	_, err = admin.Query(ctx, adminDB, sqlclient.Stmt("CREATE USER").Ident(userName).Kw("PASSWORD").Lit(password).Kw("NOCREATEDB NOCREATEUSER").String(), nil)
 	require.NoError(t, err)
 	probe := &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: routing.Host, Port: routing.Port, Username: userName, Password: password}, CACertFile: testAccCACertFile(), SSLMode: testAccSSLMode(), Timeout: 30 * time.Second}
 	// Every user may create in the public schema by default, so only language USAGE decides the outcome.
