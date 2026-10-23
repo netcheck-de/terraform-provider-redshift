@@ -379,7 +379,8 @@ func TestDatabaseIntegrationDeleteActive(t *testing.T) {
 	require.True(t, diagnostics.HasError())
 	assert.Equal(t, "Delete zero-ETL destination database", diagnostics.Errors()[0].Summary())
 	assert.Contains(t, diagnostics.Errors()[0].Detail(), "being accessed by integration client")
-	assert.Contains(t, diagnostics.Errors()[0].Detail(), "Delete the integration outside Terraform")
+	assert.Contains(t, diagnostics.Errors()[0].Detail(), "delete the integration outside Terraform")
+	assert.Contains(t, diagnostics.Errors()[0].Detail(), "terraform untaint")
 	assert.Contains(t, diagnostics.Errors()[0].Detail(), "aws redshift delete-integration (DynamoDB)")
 	assert.True(t, f.exists)
 }

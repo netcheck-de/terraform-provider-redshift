@@ -765,8 +765,10 @@ func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteReques
 			// the order.
 			resp.Diagnostics.AddError("Delete zero-ETL destination database", fmt.Sprintf("%s\n\n"+
 				"Redshift cannot drop a zero-ETL destination while its integration is active, and Terraform destroys the "+
-				"database before the integration it depends on. Delete the integration outside Terraform, for example with "+
-				"aws rds delete-integration (Aurora/RDS) or aws redshift delete-integration (DynamoDB), wait until it is gone, and destroy again.", err))
+				"database before the integration it depends on. If Terraform is replacing the database only because an "+
+				"earlier apply failed after creating it, keep it with terraform untaint instead. To remove it, delete the "+
+				"integration outside Terraform, for example with aws rds delete-integration (Aurora/RDS) or aws redshift "+
+				"delete-integration (DynamoDB), wait until it is gone, and destroy again.", err))
 			return
 		}
 	}
