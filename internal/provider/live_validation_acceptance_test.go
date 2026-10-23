@@ -46,7 +46,8 @@ func newLiveValidationFixture(t *testing.T, flags ...string) liveValidationFixtu
 func (f liveValidationFixture) exec(t *testing.T, statement sqlclient.Statement) []sqlclient.Row {
 	t.Helper()
 	require.NoError(t, statement.Err())
-	rows, err := f.client.Query(t.Context(), f.conn, statement.String(), nil)
+	// Cleanup runs exec after t.Context() is cancelled, so fixture SQL uses its own context.
+	rows, err := f.client.Query(context.Background(), f.conn, statement.String(), nil)
 	require.NoError(t, err, "%s", statement.String())
 	return rows
 }
@@ -56,7 +57,7 @@ func (f liveValidationFixture) query(t *testing.T, query sqlclient.Query) []sqlc
 	t.Helper()
 	text, args, err := query.Build()
 	require.NoError(t, err)
-	rows, err := f.client.Query(t.Context(), f.conn, text, args)
+	rows, err := f.client.Query(context.Background(), f.conn, text, args)
 	require.NoError(t, err, "%s", text)
 	return rows
 }

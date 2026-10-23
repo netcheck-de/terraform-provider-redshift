@@ -68,7 +68,8 @@ func TestAccAssumeroleGrantARNOverlap(t *testing.T) {
 	exec(statement(roleARN, false))
 	assert.Empty(t, snapshot("explicit ARN revoked"))
 	exec(statement("ALL", true))
-	assert.Equal(t, []sqlclient.Row{{"iam_arn": assumeroleGrantAllRoles, "command_type": "COPY"}}, snapshot("ON ALL granted"))
+	// Depending on the namespace's associated and default roles, Redshift also lists implied per-ARN rows.
+	assert.Contains(t, snapshot("ON ALL granted"), sqlclient.Row{"iam_arn": assumeroleGrantAllRoles, "command_type": "COPY"})
 	require.ErrorContains(t, r.reconcile(ctx, withPrivileges(data, []string{"COPY"})), "also holds ASSUMEROLE ON ALL")
 	exec(statementFor(roleARN, true, "UNLOAD"))
 	rows := snapshot("explicit ARN UNLOAD beside ON ALL COPY")
@@ -98,8 +99,10 @@ func TestAccAssumeroleGrantARNOverlap(t *testing.T) {
 	exec(statementFor("ALL", true, "ALL"))
 	var commands []string
 	for _, row := range snapshot("ON ALL FOR ALL granted") {
-		assert.Equal(t, assumeroleGrantAllRoles, row["iam_arn"])
-		commands = append(commands, normalizePrivilege(row["command_type"]))
+		// Rows under associated and default roles are implied by the ON ALL grant; only its marker rows count.
+		if row["iam_arn"] == assumeroleGrantAllRoles {
+			commands = append(commands, normalizePrivilege(row["command_type"]))
+		}
 	}
 	for _, command := range assumeroleGrantCommands {
 		assert.Contains(t, commands, string(command), "FOR ALL includes each documented command; extra internal commands are logged, not managed")

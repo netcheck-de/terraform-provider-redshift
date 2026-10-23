@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -107,10 +108,12 @@ data "redshift_role_grant" "this" {
 }
 
 // TestAccAzureIdentityProvider registers, re-parameterizes, renames, and imports a native Azure identity provider.
-// Redshift stores the parameters without contacting the tenant, so placeholder values suffice, but the provider is a
-// warehouse-wide object that only a superuser may manage: REDSHIFT_ACC_IDENTITY_PROVIDER opts in.
+// Redshift rejects tenant and client IDs that Microsoft Entra ID does not know, so REDSHIFT_ACC_AZURE_TENANT_ID and
+// REDSHIFT_ACC_AZURE_CLIENT_ID name a real test application. The provider is a warehouse-wide object that only a
+// superuser may manage: REDSHIFT_ACC_IDENTITY_PROVIDER opts in.
 func TestAccAzureIdentityProvider(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_IDENTITY_PROVIDER")
+	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_IDENTITY_PROVIDER", "REDSHIFT_ACC_AZURE_TENANT_ID", "REDSHIFT_ACC_AZURE_CLIENT_ID")
+	tenant, clientID := os.Getenv("REDSHIFT_ACC_AZURE_TENANT_ID"), os.Getenv("REDSHIFT_ACC_AZURE_CLIENT_ID")
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	name := "acc_idp_" + suffix
 	configuration := func(namespace, issuer string, version int, autoCreate bool) string {
@@ -126,17 +129,17 @@ resource "redshift_identity_provider" "this" {
   type                     = "AZURE"
   namespace                = %q
   issuer                   = %q
-  client_id                = "87f4aa26-78b7-410e-bf29-57b39929ef9a"
+  client_id                = %q
   audience                 = ["https://analysis.windows.net/powerbi/connector/AmazonRedshift"]
   client_secret_wo         = "acc-secret-%d"
   client_secret_wo_version = %d
   auto_create_roles        = %t
 }
 data "redshift_identity_provider" "this" { name = redshift_identity_provider.this.name }
-`, region, profile, workgroup, database, name, namespace, issuer, version, version, autoCreate)
+`, region, profile, workgroup, database, name, namespace, issuer, clientID, version, version, autoCreate)
 	}
 	ctx, client := context.Background(), testAccRolesClient(t, region, profile, workgroup)
-	issuer := "https://login.microsoftonline.com/e40d4bb2-7670-44ae-bfb8-5db013221d73/v2.0"
+	issuer, legacyIssuer := "https://login.microsoftonline.com/"+tenant+"/v2.0", "https://sts.windows.net/"+tenant+"/"
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		CheckDestroy: func(*terraform.State) error {
@@ -155,14 +158,14 @@ data "redshift_identity_provider" "this" { name = redshift_identity_provider.thi
 			)},
 			{Config: configuration("acc"+suffix, issuer, 1, true), PlanOnly: true},
 			{
-				Config: configuration("acc"+suffix, "https://sts.windows.net/e40d4bb2-7670-44ae-bfb8-5db013221d73/", 2, true),
-				Check:  resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "issuer", "https://sts.windows.net/e40d4bb2-7670-44ae-bfb8-5db013221d73/"),
+				Config: configuration("acc"+suffix, legacyIssuer, 2, true),
+				Check:  resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "issuer", legacyIssuer),
 			},
 			{
-				Config: configuration("accb"+suffix, "https://sts.windows.net/e40d4bb2-7670-44ae-bfb8-5db013221d73/", 2, false),
+				Config: configuration("accb"+suffix, legacyIssuer, 2, false),
 				Check:  resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "namespace", "accb"+suffix),
 			},
-			{Config: configuration("accb"+suffix, "https://sts.windows.net/e40d4bb2-7670-44ae-bfb8-5db013221d73/", 2, false), PlanOnly: true},
+			{Config: configuration("accb"+suffix, legacyIssuer, 2, false), PlanOnly: true},
 			{
 				ResourceName: "redshift_identity_provider.this", ImportState: true, ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{"client_secret_wo_version", "auto_create_roles"},
