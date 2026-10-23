@@ -15,13 +15,17 @@ database in a warehouse with federated permissions, as `SHOW GRANTS` reports it.
 
 ```sql
 SHOW GRANTS ON DATABASE database;
+SHOW GRANTS FOR ... FROM DATABASE database;
+SHOW DATABASES LIKE 'database';
+SELECT TRIM(auth_method) ... FROM sys_connection_log WHERE session_id = pg_backend_pid() ...;
 ```
 
 ## Example Usage
 
 ```terraform
 data "redshift_debug_grant" "producer_admins" {
-  database     = "sales_db@finance-catalog"
+  # The provider must connect to the warehouse hosting this producer-local federated database.
+  database     = "sales_db"
   grantee      = "123456789012"
   grantee_type = "ACCOUNT"
 }
@@ -37,7 +41,7 @@ output "producer_admins_see_unredacted_logs" {
 
 ### Required
 
-- `database` (String) Database with federated permissions that `DEBUG` applies to, such as `sales_db` on the warehouse that owns it or `sales_db@finance-catalog` from another warehouse.
+- `database` (String) Database with federated permissions that `DEBUG` applies to. `ACCOUNT` requires a producer-local name such as `sales_db` and a provider connected to that producer. Remote `USER`/`ROLE` aliases such as `sales_db@finance-catalog` require a SQL superuser, a verified `IAM AssumeUser` current-session authentication event in `SYS_CONNECTION_LOG`, and alias visibility in `SHOW DATABASES`. Password, unavailable, or unverified remote contexts are errors even if the alias is listed.
 - `grantee` (String) Receiving identity: a global identity `<prefix>:<name>` (such as `IAM:sales_auditor` or `IAMR:audit_role`) for `USER`, an Identity Center group `<prefix>:<group>` for `ROLE`, or a 12-digit AWS account ID for `ACCOUNT`, which must own the producer.
 - `grantee_type` (String) `USER` for a global identity (`TO "<prefix>:<name>"`), `ROLE` for an Identity Center group (`TO ROLE "<prefix>:<group>"`), or `ACCOUNT` for the superusers of an account (`TO ADMINS OF ACCOUNT '<account_id>'`). Accepted in any case; another case of the same keyword is recorded in place.
 
@@ -51,6 +55,17 @@ output "producer_admins_see_unredacted_logs" {
 `admins_of_account`) names the grantee, compared without case. A missing grant, or a database that `SHOW GRANTS`
 cannot read and `SHOW DATABASES` no longer lists, reports `false`; other catalog errors remain errors. `SHOW GRANTS`
 shows only grants visible to the provider's identity.
+
+For remote `USER` and `ROLE` aliases (`db@catalog`), the lookup requires the latest current-user/current-backend
+`SYS_CONNECTION_LOG` authentication event to report exactly `IAM AssumeUser`, then requires the alias in `SHOW DATABASES`,
+then uses scoped `SHOW GRANTS FOR ... FROM DATABASE` rows with the matching `user` or `role` type and principal,
+`DATABASE` scope/object, and `DEBUG` privilege. Remote `SHOW GRANTS ON DATABASE` is not authoritative: it can return
+no rows despite an existing grant. An invisible remote alias is an error, never `exists = false`, because visibility
+depends on the SQL authentication identity. A visible alias is not enough: password sessions can silently omit real
+remote grants. Missing, ambiguous, unavailable, password, or other unverified authentication contexts are errors,
+never `exists = false`; inspecting the authentication event requires a SQL superuser. Remote `ACCOUNT` is rejected:
+connect the provider to the producer and
+use its local database name instead.
 
 `id` (String, computed) is the grant's JSON identity, using the same warehouse, database, `grantee`, and upper-case
 `grantee_type` keys as the paired resource. It is null when `exists` is false. No grant is created, adopted, or

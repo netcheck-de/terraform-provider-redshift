@@ -5,7 +5,3 @@ SHOW DATABASES LIKE 'analytics';
 -- database: admin
 DROP DATABASE "analytics";
 -- params: {}
-
--- database: admin
-SHOW DATABASES LIKE 'analytics';
--- params: {}

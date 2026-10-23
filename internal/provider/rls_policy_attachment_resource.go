@@ -57,12 +57,12 @@ func (r *rlsPolicyAttachmentResource) Schema(_ context.Context, _ resource.Schem
 		MarkdownDescription: "Attaches one row-level security policy to one table or view for one user, role, or PUBLIC. Attaching never turns row-level security on: the policy filters rows only once `redshift_table_security` enables it for the relation.",
 		Attributes: map[string]schema.Attribute{
 			"id":           idAttribute(),
-			"policy":       rlsPolicyAttachmentString("RLS policy to attach. Changing it replaces the attachment."),
-			"database":     rlsPolicyAttachmentString("Local database containing both the policy and the relation. Changing it replaces the attachment."),
-			"schema":       rlsPolicyAttachmentString("Schema of the relation. Changing it replaces the attachment."),
-			"relation":     rlsPolicyAttachmentString("Table, view, late-binding view, or materialized view the policy filters; it must have every `WITH` column of the policy. Changing it replaces the attachment."),
-			"grantee":      rlsPolicyAttachmentString("User or role name the policy applies to; use `public` with `grantee_type = \"PUBLIC\"`. Policies attached to superusers or `sys:secadmin` holders are ignored. Changing it replaces the attachment."),
-			"grantee_type": rlsPolicyAttachmentString("`USER`, `ROLE`, or `PUBLIC`. Changing it replaces the attachment.", stringvalidator.OneOf(rlsPolicyAttachmentGranteeTypes...)),
+			"policy":       rlsPolicyAttachmentString("RLS policy to attach."),
+			"database":     rlsPolicyAttachmentString("Local database containing both the policy and the relation."),
+			"schema":       rlsPolicyAttachmentString("Schema of the relation."),
+			"relation":     rlsPolicyAttachmentString("Table, view, late-binding view, or materialized view the policy filters; it must have every `WITH` column of the policy."),
+			"grantee":      rlsPolicyAttachmentString("User or role name the policy applies to; use `public` with `grantee_type = \"PUBLIC\"`. Policies attached to superusers or `sys:secadmin` holders are ignored."),
+			"grantee_type": rlsPolicyAttachmentString("`USER`, `ROLE`, or `PUBLIC`.", stringvalidator.OneOf(rlsPolicyAttachmentGranteeTypes...)),
 		},
 	}
 }
@@ -113,14 +113,14 @@ func (r *rlsPolicyAttachmentResource) Create(ctx context.Context, req resource.C
 	}
 }
 
-// ValidateConfig reports a tuple Create would reject, during planning once the configuration is known.
+// ValidateConfig checks known attachment inputs independently of unresolved identity fields.
 func (r *rlsPolicyAttachmentResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data rlsPolicyAttachmentModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if _, err := createRlsPolicyAttachmentStatement(data); err != nil {
+	if err := rlsPolicyAttachmentKnownConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid RLS policy attachment", err.Error())
 	}
 }

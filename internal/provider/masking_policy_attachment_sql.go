@@ -14,6 +14,57 @@ import (
 // maskingAttachmentGranteeTypes are the recipients ATTACH MASKING POLICY accepts; groups cannot hold policies.
 var maskingAttachmentGranteeTypes = []sqlclient.Keyword{"USER", "ROLE", "PUBLIC"}
 
+// maskingAttachmentKnownConfig preserves independent checks while deferring unknown recipient and column names.
+func maskingAttachmentKnownConfig(data maskingPolicyAttachmentModel) error {
+	for _, field := range []struct {
+		name  string
+		value types.String
+	}{{"database", data.Database}, {"policy", data.Policy}, {"schema", data.Schema}, {"relation", data.Relation}, {"grantee", data.Grantee}} {
+		if !field.value.IsUnknown() && field.value.ValueString() == "" {
+			return fmt.Errorf("%s must not be empty", field.name)
+		}
+	}
+	if !data.GranteeType.IsUnknown() {
+		kind, err := sqlclient.OneOf(data.GranteeType.ValueString(), maskingAttachmentGranteeTypes...)
+		if err != nil {
+			return fmt.Errorf("grantee_type: %w", err)
+		}
+		if kind == "PUBLIC" && !data.Grantee.IsUnknown() && data.Grantee.ValueString() != "public" {
+			return fmt.Errorf("PUBLIC requires grantee = public")
+		}
+	}
+	if data.Columns.IsNull() {
+		return fmt.Errorf("columns needs at least one column")
+	}
+	for _, field := range []struct {
+		name string
+		list types.List
+	}{{"columns", data.Columns}, {"input_columns", data.InputColumns}} {
+		if field.list.IsNull() || field.list.IsUnknown() {
+			continue
+		}
+		if len(field.list.Elements()) == 0 {
+			return fmt.Errorf("%s needs at least one column", field.name)
+		}
+		seen := map[string]bool{}
+		for _, element := range field.list.Elements() {
+			name := element.(types.String)
+			if name.IsUnknown() {
+				continue
+			}
+			key := strings.ToLower(name.ValueString())
+			if key == "" || seen[key] {
+				return fmt.Errorf("%s must name distinct, nonempty columns", field.name)
+			}
+			seen[key] = true
+		}
+	}
+	if priority := knownInt64(data.Priority); priority != nil && *priority < 0 {
+		return fmt.Errorf("priority must not be negative")
+	}
+	return nil
+}
+
 // maskingAttachmentValidate checks the attachment tuple before any SQL runs.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_ATTACH_MASKING_POLICY.html
 func maskingAttachmentValidate(data maskingPolicyAttachmentModel) error {

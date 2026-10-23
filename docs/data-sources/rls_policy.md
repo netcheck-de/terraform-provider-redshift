@@ -37,7 +37,7 @@ data "redshift_rls_policy" "own_region" {
 
 - `alias` (String) Relation alias of the `WITH` clause (`AS alias`) that the predicate may use to qualify columns, or null.
 - `column` (Attributes List) Ordered `WITH` columns of the policy in the spelling that `svv_rls_policy` reports. Null when the policy has no `WITH` clause. (see [below for nested schema](#nestedatt--column))
-- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
+- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; equals the paired resource's `definition_fingerprint` for the same definition.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `predicate` (String) Filter expression of the `USING ( ... )` clause in the rewritten form that Redshift stores.
 

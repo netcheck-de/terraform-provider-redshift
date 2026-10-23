@@ -70,23 +70,23 @@ resource "redshift_external_schema" "clicks" {
 
 ### Required
 
-- `database` (String) Local Redshift database owning the external schema. Changing it replaces the external schema.
-- `name` (String) Local external schema name. Changing it replaces the external schema.
+- `database` (String) Local Redshift database owning the external schema.
+- `name` (String) Local external schema name.
 
 ### Optional
 
 - `authentication` (String) Streaming authentication of an `MSK` schema, which requires it: `NONE`, `IAM`, or `MTLS`, in any case; another case of the same mode is recorded in place without a statement. `MTLS` requires exactly one of `authentication_arn` and `secret_arn`. Updated in place with `ALTER EXTERNAL SCHEMA ... AUTHENTICATION`.
 - `authentication_arn` (String) AWS Certificate Manager certificate ARN for `MTLS` authentication of an `MSK` schema. Updated in place together with `authentication`.
-- `glue_database` (String) AWS Glue database referenced by a `DATA_CATALOG` schema, which requires it. Changing it replaces the external schema.
+- `glue_database` (String) AWS Glue database referenced by a `DATA_CATALOG` schema, which requires it.
 - `iam_role_arn` (String) IAM role attached to the namespace, or a comma-separated role chain, used to reach the source. Required by every form except `REDSHIFT`, which rejects it, and `MSK`, where it is optional unless `authentication` is `IAM`. Updated in place with `ALTER EXTERNAL SCHEMA ... IAM_ROLE` for `DATA_CATALOG` and `MSK`; changing it replaces other external schemas.
 - `owner` (String) SQL user owning the external schema, changed after creation and in place with `ALTER SCHEMA ... OWNER TO`. Omit it to keep and report the current owner, which defaults to the creating user. `SVV_EXTERNAL_SCHEMAS` shows a regular user only their own schemas, so managing an external schema owned by another user, including handing it to one, requires a superuser connection.
-- `port` (Number) Port of a `HIVE_METASTORE` (default 9083), `POSTGRES` (default 5432), or `MYSQL` (default 3306) source. Changing it replaces the external schema.
-- `refresh_revision` (String) Bump to recreate the external schema after a source catalog change; deletion is restrictive. Changing it replaces the external schema.
-- `region` (String) AWS Region of the Glue catalog (`DATA_CATALOG`) or stream (`KINESIS`, `MSK`); defaults to the warehouse region and is read from the catalog options. Changing it replaces the external schema.
+- `port` (Number) Port of a `HIVE_METASTORE` (default 9083), `POSTGRES` (default 5432), or `MYSQL` (default 3306) source.
+- `refresh_revision` (String) Bump to recreate the external schema after a source catalog change; deletion is restrictive.
+- `region` (String) AWS Region of the Glue catalog (`DATA_CATALOG`) or stream (`KINESIS`, `MSK`); defaults to the warehouse region and is read from the catalog options.
 - `secret_arn` (String) AWS Secrets Manager secret ARN: the database credentials that `POSTGRES` and `MYSQL` require, or the mTLS certificate of an `MSK` schema as an alternative to `authentication_arn`. Updated in place for `MSK`; changing it replaces other external schemas.
-- `source_database` (String) External database: the Hive metastore database, the PostgreSQL or MySQL database, or the Redshift database (for example a datashare consumer database). Required by `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, and `REDSHIFT`. Changing it replaces the external schema.
-- `source_schema` (String) Schema in the `POSTGRES` or `REDSHIFT` source; Redshift uses `public` when it is omitted. Changing it replaces the external schema.
-- `source_type` (String) Source form after `FROM`: `DATA_CATALOG` (default; AWS Glue Data Catalog), `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, `REDSHIFT`, `KINESIS`, or `MSK`. It decides which options are required or accepted; see the table on this page. Changing it replaces the external schema.
+- `source_database` (String) External database: the Hive metastore database, the PostgreSQL or MySQL database, or the Redshift database (for example a datashare consumer database). Required by `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, and `REDSHIFT`.
+- `source_schema` (String) Schema in the `POSTGRES` or `REDSHIFT` source; Redshift uses `public` when it is omitted.
+- `source_type` (String) Source form after `FROM`: `DATA_CATALOG` (default; AWS Glue Data Catalog), `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, `REDSHIFT`, `KINESIS`, or `MSK`. It decides which options are required or accepted; see the table on this page.
 - `uri` (String) Hive metastore URI or federated database hostname, without a protocol, or the Kafka bootstrap broker URI of an `MSK` schema. Required by `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, and `MSK`. Updated in place with `ALTER EXTERNAL SCHEMA ... URI` for `MSK`; changing it replaces other external schemas.
 
 ### Read-Only

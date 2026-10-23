@@ -46,7 +46,7 @@ func (r *groupResource) Metadata(_ context.Context, req resource.MetadataRequest
 func (r *groupResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{MarkdownDescription: "Manages a SQL user group. Memberships and grants are separate resources.", Attributes: map[string]schema.Attribute{
 		"id":   idAttribute(),
-		"name": schema.StringAttribute{Required: true, MarkdownDescription: "SQL group name. Changing it replaces the group.", PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
+		"name": schema.StringAttribute{Required: true, MarkdownDescription: "SQL group name.", PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
 		"group_id": schema.Int64Attribute{
 			Computed: true, MarkdownDescription: "Group ID from `pg_group.grosysid`.",
 			PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
@@ -158,12 +158,6 @@ func (r *groupResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, r.database.ValueString(), dropGroupStatement(data))
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete Redshift group", "The group remains after deletion.")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete Redshift group", err.Error())

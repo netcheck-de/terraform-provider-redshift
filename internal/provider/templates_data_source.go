@@ -2,14 +2,11 @@ package provider
 
 import (
 	"context"
-	"slices"
-	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 var _ = registerDataSource(newTemplatesDataSource)
@@ -18,10 +15,10 @@ var _ = registerDataSource(newTemplatesDataSource)
 func newTemplatesDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:        "templates",
-		description: "Lists COPY templates with `SHOW TEMPLATES FROM SCHEMA`, for one schema or for every local schema of the database. Listing a schema requires `USAGE` on it.",
+		description: "Lists COPY templates visible in `SYS_REDSHIFT_TEMPLATE`. Superusers see all templates; regular users see only their own. No schema scan or schema USAGE privilege is required.",
 		filters: map[string]schema.Attribute{
 			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Local database to list; the provider database when omitted."},
-			"schema":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only templates of this schema; every local schema of the database when omitted, which runs one `SHOW TEMPLATES` per schema."},
+			"schema":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only visible templates of this schema; all visible templates of the database when omitted."},
 		},
 		element: describedOutputs(collectionElement(newTemplateResource, "database", "schema", "name", "owner"), map[string]string{
 			"name":  templateOutputDescriptions["name"],
@@ -32,31 +29,17 @@ func newTemplatesDataSource() datasource.DataSource {
 			if database == "" {
 				database = client.database.ValueString()
 			}
-			schemas := []string{objectString(filters, "schema")}
-			if schemas[0] == "" {
-				rows, err := client.selectRows(ctx, database, templateSchemasQuery(database))
-				if err != nil {
-					return nil, err
-				}
-				schemas = schemas[:0]
-				for _, row := range rows {
-					schemas = append(schemas, row["schema_name"])
-				}
+			rows, err := client.selectRows(ctx, database, listTemplatesQuery(database, objectString(filters, "schema")))
+			if err != nil {
+				return nil, err
 			}
 			items := []map[string]attr.Value{}
-			for _, schemaName := range schemas {
-				rows, err := client.queryDatabase(ctx, database, showTemplatesStatement("", schemaName, ""), nil)
-				if err != nil {
-					return nil, err
-				}
-				// SHOW TEMPLATES documents no order, so the listing sorts by name to keep plans stable.
-				slices.SortFunc(rows, func(a, b sqlclient.Row) int { return strings.Compare(a["template_name"], b["template_name"]) })
-				for _, row := range rows {
-					items = append(items, map[string]attr.Value{
-						"database": types.StringValue(database), "schema": types.StringValue(schemaName),
-						"name": types.StringValue(row["template_name"]), "owner": types.StringValue(row["template_owner"]),
-					})
-				}
+			for _, row := range rows {
+				// Quoted identifiers may contain meaningful leading or trailing whitespace.
+				items = append(items, map[string]attr.Value{
+					"database": types.StringValue(database), "schema": types.StringValue(row["schema_name"]),
+					"name": types.StringValue(row["template_name"]), "owner": types.StringValue(row["template_owner"]),
+				})
 			}
 			return items, nil
 		},

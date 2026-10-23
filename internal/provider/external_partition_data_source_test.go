@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,4 +27,13 @@ func TestExternalPartitionLookup(t *testing.T) {
 	assert.True(t, diagnostics.HasError())
 	_, diagnostics = readSource(t, newExternalPartitionDataSource(), config, &catalog{})
 	assert.True(t, diagnostics.HasError(), "a missing table is an error")
+}
+
+// TestExternalPartitionLookupReportsMalformedKeys reports undecodable partition key metadata under the lookup's summary.
+func TestExternalPartitionLookupReportsMalformedKeys(t *testing.T) {
+	_, diagnostics := readSource(t, newExternalPartitionDataSource(), externalPartitionTestModel(), queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+		return []sqlclient.Row{{"columnname": "day", "external_type": "date", "columnnum": "invalid", "part_key": "1"}}, nil
+	}))
+	require.True(t, diagnostics.HasError())
+	assert.Equal(t, "Read external partition", diagnostics.Errors()[0].Summary())
 }

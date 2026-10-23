@@ -3,5 +3,5 @@ COPY "serving"."events" ("id", "label") FROM 's3://example-bucket/events/' IAM_R
 -- params: {}
 
 -- database: admin
-SELECT job_name, iam_role, is_auto FROM sys_copy_job WHERE job_name = :name;
+SELECT * FROM sys_copy_job WHERE job_name = :name;
 -- params: {"name":"events_load"}

@@ -34,7 +34,7 @@ resource "redshift_system_grant" "operators" {
 ### Required
 
 - `privileges` (Set of String) Exact set of system permissions held by the role, such as `CREATE USER`, `ACCESS SYSTEM TABLE`, or `IGNORE RLS`; every permission in the GRANT reference's role syntax is accepted. An empty set revokes owned permissions.
-- `role` (String) Receiving SQL role; Redshift grants system permissions to roles only. Changing it replaces the grant.
+- `role` (String) Receiving SQL role; Redshift grants system permissions to roles only.
 
 ### Read-Only
 

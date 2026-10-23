@@ -6,12 +6,48 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestDatabasePartialKnownValidation checks each conflict without letting unrelated unknown inputs hide it.
+func TestDatabasePartialKnownValidation(t *testing.T) {
+	for name, test := range map[string]struct {
+		model              databaseModel
+		unknownIntegration bool
+		wantError          string
+	}{
+		"unknown name":                            {model: databaseModel{Name: types.StringUnknown(), DatashareARN: types.StringValue(shareARN), Owner: types.StringValue("etl")}, wantError: "shared databases do not accept owner"},
+		"unknown local sibling":                   {model: databaseModel{DatashareARN: types.StringValue(shareARN), Owner: types.StringUnknown(), ConnectionLimit: types.Int64Value(5)}, wantError: "shared databases do not accept connection_limit"},
+		"unknown integration block":               {model: databaseModel{DatashareARN: types.StringValue(shareARN), Collation: types.StringValue("CASE_SENSITIVE")}, unknownIntegration: true, wantError: "shared databases do not accept collation"},
+		"unknown datashare":                       {model: databaseModel{DatashareARN: types.StringUnknown(), Owner: types.StringValue("etl")}},
+		"unknown local option":                    {model: databaseModel{DatashareARN: types.StringValue(shareARN), Owner: types.StringUnknown()}},
+		"unknown datashare with integration":      {model: databaseModel{DatashareARN: types.StringUnknown(), Integration: &databaseIntegrationModel{IntegrationID: types.StringValue(fakeIntegrationID)}}},
+		"missing identifier with unknown name":    {model: databaseModel{Name: types.StringUnknown(), Integration: &databaseIntegrationModel{IntegrationID: types.StringNull()}}, wantError: "requires integration_id"},
+		"known collation with unknown identifier": {model: databaseModel{Collation: types.StringValue("CASE_SENSITIVE"), Integration: &databaseIntegrationModel{IntegrationID: types.StringUnknown()}}, wantError: "conflicts with collation"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := &databaseResource{}
+			state := testState(t, r, test.model)
+			if test.unknownIntegration {
+				require.False(t, state.SetAttribute(context.Background(), path.Root("integration"), types.ObjectUnknown(databaseIntegrationAttributeTypes)).HasError())
+			}
+			var response resource.ValidateConfigResponse
+			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(state)}, &response)
+			if test.wantError == "" {
+				assert.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
+			} else {
+				require.True(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
+				assert.Contains(t, response.Diagnostics.Errors()[0].Detail(), test.wantError)
+			}
+		})
+	}
+}
 
 var _ = registerValidateConfigCase("database", validateConfigCase{
 	new:     newDatabaseResource,
@@ -33,13 +69,157 @@ func TestDatabaseAlterCoverage(t *testing.T) {
 	assertAlterCoverage(t, newDatabaseResource(), databaseAlterSteps)
 }
 
+// TestDatabaseCollationUpdates require target-database sessions and genuine readback, never destructive fallback.
+func TestDatabaseCollationUpdates(t *testing.T) {
+	for _, mode := range []string{"success", "restricted", "unacknowledged", "refused before", "refused after"} {
+		t.Run(mode, func(t *testing.T) {
+			c := fullCatalog()
+			c.localDB = true
+			reads := 0
+			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+				if strings.HasPrefix(sql, "SELECT db_collation()") {
+					reads++
+					assert.Equal(t, "warehouse", target.Database)
+					if mode == "refused before" || mode == "refused after" && reads == 2 {
+						return nil, errors.New("too many connections for database")
+					}
+				}
+				if strings.Contains(sql, " COLLATE ") {
+					assert.Equal(t, "warehouse", target.Database)
+					switch mode {
+					case "restricted":
+						return nil, errors.New("database must be empty")
+					case "unacknowledged":
+						return nil, nil
+					}
+				}
+				return c.Query(ctx, target, sql, parameters)
+			})
+			r := &databaseResource{testResourceClient(client)}
+			prior := databaseLocalOptionsModel("admin", -1, "CASE_SENSITIVE", "SNAPSHOT")
+			planned := prior
+			planned.Collation = types.StringValue("CASE_INSENSITIVE")
+			state, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
+			if mode == "success" {
+				require.False(t, diagnostics.HasError(), "%v", diagnostics)
+				var observed databaseResourceModel
+				require.False(t, state.Get(context.Background(), &observed).HasError())
+				assert.Equal(t, "CASE_INSENSITIVE", observed.Collation.ValueString())
+				assert.Equal(t, 2, reads, "fresh-session read before and after ALTER")
+			} else {
+				require.True(t, diagnostics.HasError(), "%v", diagnostics)
+				if mode == "restricted" {
+					assert.Contains(t, diagnostics.Errors()[0].Detail(), "No replacement was attempted")
+				}
+				if mode == "unacknowledged" {
+					assert.Contains(t, diagnostics.Errors()[0].Detail(), "collation is")
+				}
+				if mode == "refused after" {
+					var unverified databaseResourceModel
+					require.False(t, state.Get(context.Background(), &unverified).HasError())
+					assert.True(t, unverified.Collation.IsNull(), "do not retain stale known state after an unverifiable ALTER")
+					recovered, readDiagnostics := applyOperation(t, r, "read", unverified, nil, nil)
+					require.False(t, readDiagnostics.HasError(), "%v", readDiagnostics)
+					require.False(t, recovered.Get(context.Background(), &unverified).HasError())
+					assert.Equal(t, "CASE_INSENSITIVE", unverified.Collation.ValueString())
+				}
+			}
+			for _, sql := range c.writes {
+				assert.NotContains(t, sql, "DROP DATABASE")
+				assert.NotContains(t, sql, "CREATE DATABASE")
+			}
+		})
+	}
+}
+
+// TestDatabaseCollationPartialProgress keeps a verified COLLATE visible even when subsequent work fails or closes
+// the target database to the provider. Reverting configuration must still request a change, never a clean plan.
+func TestDatabaseCollationPartialProgress(t *testing.T) {
+	for _, mode := range []string{"later statement", "later verification with limit zero", "successful limit zero", "already converged then verification with limit zero"} {
+		t.Run(mode, func(t *testing.T) {
+			c := fullCatalog()
+			c.localDB = true
+			f := fakeState[*databasesFamily](c, "databases")
+			alreadyConverged := mode == "already converged then verification with limit zero"
+			if alreadyConverged {
+				f.collation = "case_insensitive"
+			}
+			verificationFailed := false
+			collationReads := 0
+			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+				if strings.HasPrefix(sql, "SELECT db_collation()") {
+					collationReads++
+					if f.connectionLimit == "0" {
+						return nil, errors.New("too many connections for database")
+					}
+				}
+				if mode == "later statement" && strings.Contains(sql, " OWNER TO ") {
+					return nil, errors.New("owner change refused")
+				}
+				if (mode == "later verification with limit zero" || alreadyConverged) && f.connectionLimit == "0" && strings.HasPrefix(sql, "SHOW DATABASES") && !verificationFailed {
+					verificationFailed = true
+					return nil, errors.New("catalog temporarily unavailable")
+				}
+				if strings.Contains(sql, " CONNECTION LIMIT ") {
+					if alreadyConverged {
+						assert.Equal(t, 1, collationReads)
+					} else {
+						assert.Equal(t, 2, collationReads, "COLLATE must be verified before a limit can close the target database")
+					}
+				}
+				return c.Query(ctx, target, sql, parameters)
+			})
+			r := &databaseResource{testResourceClient(client)}
+			prior := databaseLocalOptionsModel("admin", -1, "CASE_SENSITIVE", "SNAPSHOT")
+			planned := prior
+			planned.Collation = types.StringValue("CASE_INSENSITIVE")
+			if mode == "later statement" {
+				planned.Owner = types.StringValue("etl")
+			} else {
+				planned.ConnectionLimit = types.Int64Value(0)
+			}
+			state, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
+			assert.Equal(t, mode != "successful limit zero", diagnostics.HasError(), "%v", diagnostics)
+			var progress databaseResourceModel
+			require.False(t, state.Get(context.Background(), &progress).HasError())
+			assert.Equal(t, "CASE_INSENSITIVE", progress.Collation.ValueString(), "verified partial progress must survive errors")
+			refreshed, diagnostics := applyOperation(t, r, "read", progress, nil, nil)
+			require.False(t, diagnostics.HasError(), "%v", diagnostics)
+			require.False(t, refreshed.Get(context.Background(), &progress).HasError())
+			assert.Equal(t, "CASE_INSENSITIVE", progress.Collation.ValueString())
+			if mode != "later statement" {
+				require.Len(t, diagnostics.Warnings(), 1)
+				assert.Equal(t, int64(0), progress.ConnectionLimit.ValueInt64())
+			}
+			reverted := progress.databaseModel
+			reverted.Collation = types.StringValue("CASE_SENSITIVE")
+			statements, err := alterDatabaseStatements(progress.databaseModel, reverted)
+			require.NoError(t, err)
+			assert.Equal(t, []string{`ALTER DATABASE "warehouse" COLLATE CASE_SENSITIVE`}, statements, "reverted configuration must not look converged")
+		})
+	}
+}
+
+func TestDatabaseReadRecoversKnownCollation(t *testing.T) {
+	c := fullCatalog()
+	c.localDB = true
+	fakeState[*databasesFamily](c, "databases").collation = "case_insensitive"
+	r := &databaseResource{testResourceClient(c)}
+	prior := databaseLocalOptionsModel("admin", -1, "CASE_SENSITIVE", "SNAPSHOT")
+	state, diagnostics := applyOperation(t, r, "read", prior, nil, nil)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	var observed databaseResourceModel
+	require.False(t, state.Get(context.Background(), &observed).HasError())
+	assert.Equal(t, "CASE_INSENSITIVE", observed.Collation.ValueString())
+}
+
 // TestDatabaseOptionTranscripts records local database creation with options, refresh, in-place changes, and import.
 func TestDatabaseOptionTranscripts(t *testing.T) {
 	defaults := databaseLocalOptionsModel("admin", -1, "CASE_SENSITIVE", "SNAPSHOT")
 	configured := databaseLocalOptionsModel(`Etl"Owner`, 25, "CASE_INSENSITIVE", "SERIALIZABLE")
 	changed := configured
 	changed.Owner, changed.ConnectionLimit, changed.IsolationLevel = types.StringValue("admin"), types.Int64Value(-1), types.StringValue("SNAPSHOT")
-	// Collation replaces the database, so an in-place update keeps it.
+	// This multi-option transcript keeps collation at the catalog default; update_collation covers its own sessions.
 	altered := configured
 	altered.Collation = types.StringValue("CASE_SENSITIVE")
 	unconfigured := databaseLocalOptionsModel("", 0, "", "")
@@ -56,6 +236,7 @@ func TestDatabaseOptionTranscripts(t *testing.T) {
 		{name: "create_defaults", operation: "create", catalog: catalogWith(), planned: unconfigured},
 		{name: "read_options", operation: "read", catalog: created, prior: configured},
 		{name: "update_options", operation: "update", catalog: existing, prior: defaults, planned: altered},
+		{name: "update_collation", operation: "update", catalog: existing, prior: defaults, planned: databaseLocalOptionsModel("admin", -1, "CASE_INSENSITIVE", "SNAPSHOT")},
 		{name: "update_back", operation: "update", catalog: created, prior: configured, planned: changed},
 		{name: "update_unchanged", operation: "update", catalog: created, prior: configured, planned: configured},
 		{name: "import_options", operation: "import", catalog: catalogWith(), planned: configured},
@@ -185,7 +366,7 @@ func TestDatabaseUpdateVanished(t *testing.T) {
 	assert.Contains(t, diagnostics.Errors()[0].Detail(), "disappeared")
 	var response resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &response)
-	assert.Contains(t, response.Schema.Attributes["collation"].GetMarkdownDescription(), "Changing it replaces the database.")
+	assert.Contains(t, response.Schema.Attributes["collation"].GetMarkdownDescription(), "Changed in place")
 }
 
 // TestDatabaseCollationReadFailures turns a refused or unrecognized DB_COLLATION() read into a warning that keeps
@@ -234,13 +415,15 @@ func TestDatabaseCollationReadFailures(t *testing.T) {
 	}
 }
 
-// TestDatabaseKnownCollationNeedsNoSession refreshes, updates, and deletes a database whose collation is in state
-// without opening a session inside it, where a connection limit could refuse the provider and where ALTER
-// DATABASE ... ISOLATION LEVEL fails while other sessions are connected.
-func TestDatabaseKnownCollationNeedsNoSession(t *testing.T) {
+// A refused refresh session preserves verified collation with a warning; unrelated updates and deletion need no
+// target session, where a connection limit could refuse the provider or block ALTER DATABASE ... ISOLATION LEVEL.
+func TestDatabaseKnownCollationReadRefused(t *testing.T) {
 	c := fullCatalog()
 	c.localDB, c.share = true, false
 	client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		if strings.HasPrefix(sql, "SELECT db_collation()") {
+			return nil, errors.New("too many connections for database")
+		}
 		assert.NotEqual(t, "warehouse", target.Database, "%s", sql)
 		return c.Query(ctx, target, sql, parameters)
 	})
@@ -252,7 +435,11 @@ func TestDatabaseKnownCollationNeedsNoSession(t *testing.T) {
 	for _, operation := range []string{"read", "update", "delete"} {
 		state, diagnostics := applyOperation(t, r, operation, prior, planned, nil)
 		require.False(t, diagnostics.HasError(), "%s: %v", operation, diagnostics)
-		assert.Empty(t, diagnostics.Warnings(), operation)
+		if operation == "read" {
+			assert.Len(t, diagnostics.Warnings(), 1)
+		} else {
+			assert.Empty(t, diagnostics.Warnings(), operation)
+		}
 		if operation == "update" {
 			var observed databaseResourceModel
 			require.False(t, state.Get(context.Background(), &observed).HasError())

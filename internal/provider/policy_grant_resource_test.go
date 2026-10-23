@@ -79,7 +79,6 @@ func TestPolicyGrantLifecycle(t *testing.T) {
 	data := policyGrantObject(nil, "SELECT")
 	for _, operation := range []string{"create", "read", "update", "delete"} {
 		t.Run(operation, func(t *testing.T) {
-			require.True(t, invoke(t, newPolicyGrantResource(), operation, data, true).HasError())
 			queries := 0
 			for failAt := 0; failAt <= queries; failAt++ {
 				c := &policyGrantTestCatalog{}
@@ -92,7 +91,7 @@ func TestPolicyGrantLifecycle(t *testing.T) {
 					}
 					return c.Query(ctx, connection, sql, parameters)
 				}))
-				diagnostics := invoke(t, r, operation, data, false)
+				diagnostics := invoke(t, r, operation, data)
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
 					queries = calls
@@ -102,7 +101,7 @@ func TestPolicyGrantLifecycle(t *testing.T) {
 			}
 			r := newPolicyGrantResource()
 			configureTestResource(t, r, &policyGrantTestCatalog{missing: true})
-			diagnostics := invoke(t, r, operation, data, false)
+			diagnostics := invoke(t, r, operation, data)
 			assert.Equal(t, operation == "create" || operation == "update", diagnostics.HasError(), "%v", diagnostics)
 		})
 	}
@@ -195,4 +194,23 @@ func TestPolicyGrantTranscripts(t *testing.T) {
 		{name: "delete", operation: "delete", catalog: catalog, prior: policyGrantObject(nil, "SELECT")},
 		{name: "import", operation: "import", catalog: catalog, planned: policyGrantObject(nil, "SELECT")},
 	})
+}
+
+// TestPolicyGrantValidationBeforeOwnership rejects invalid tuples and identities before any grant is recorded or revised.
+func TestPolicyGrantValidationBeforeOwnership(t *testing.T) {
+	r := newPolicyGrantResource().(*policyGrantResource)
+	configureTestResource(t, r, &policyGrantTestCatalog{})
+	_, diagnostics := applyOperation(t, r, "create", nil, policyGrantObject(nil, "INSERT"), nil)
+	require.True(t, diagnostics.HasError())
+	invalidID := policyGrantObject(nil, "SELECT")
+	lookupValue(&invalidID, "id", types.StringValue("invalid JSON"))
+	_, found, err := r.parents(context.Background(), invalidID)
+	require.ErrorContains(t, err, "invalid resource identity")
+	assert.False(t, found)
+	_, found, err = r.parents(context.Background(), policyGrantObject(map[string]string{"policy_type": "INVALID"}, "SELECT"))
+	require.Error(t, err)
+	assert.False(t, found)
+	target, err := r.target(policyGrantObject(nil, "SELECT"))
+	require.NoError(t, err)
+	require.Error(t, r.revise(context.Background(), target, nil, []string{"INSERT"}))
 }

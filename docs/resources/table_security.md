@@ -43,10 +43,10 @@ resource "redshift_table_security" "orders" {
 
 ### Required
 
-- `database` (String) Local database containing the relation. Changing it replaces the table security.
-- `relation` (String) Table, view, late-binding view, or materialized view; the resource never creates or drops it. Changing it replaces the table security.
+- `database` (String) Local database containing the relation.
+- `relation` (String) Table, view, late-binding view, or materialized view; the resource never creates or drops it.
 - `row_level_security` (Boolean) Whether row-level security is on. While it is on, users see only the rows an attached policy permits, and no rows when no policy applies to them; superusers and `sys:secadmin` holders are exempt.
-- `schema` (String) Schema of the relation. Changing it replaces the table security.
+- `schema` (String) Schema of the relation.
 
 ### Optional
 

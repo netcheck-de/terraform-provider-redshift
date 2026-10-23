@@ -1,0 +1,1 @@
+ALTER DATASHARE "Odd""Share" ADD ALL TABLES IN SCHEMA "Odd""Schema";

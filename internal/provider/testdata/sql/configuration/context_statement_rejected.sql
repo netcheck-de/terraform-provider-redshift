@@ -1,0 +1,1 @@
+-- error: parameter name "app_context.user_id; SELECT 1" must be a lowercase identifier or dotted session context name, such as search_path or app_context.user_id

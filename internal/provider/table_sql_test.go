@@ -2,8 +2,10 @@ package provider
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
@@ -96,13 +98,10 @@ func TestTableSQL(t *testing.T) {
 	}
 	autoSort := func(m *tableModel) { m.SortKey = types.ObjectNull(tableSortKeyAttributeTypes) }
 	autoDistribution := func(m *tableModel) { m.Distribution = types.ObjectNull(tableDistributionAttributeTypes) }
-	wide := func(count int) tableModel {
-		columns := []tableColumnModel{id, label}
-		for i := range count {
-			columns = append(columns, tableTestColumn(fmt.Sprintf("c%d", i), "int", tableEncoded("AZ64"), tableNullable(true)))
-		}
-		return tableWith(events, func(m *tableModel) { m.Column = tableTestColumns(columns...) })
-	}
+	wide := tableTestWideModel(events, tableEncoded("AZ64"), tableNullable(true))
+	wideColumns := wide.Column.Elements()
+	limitPlan := tableTestWithColumnValues(events, slices.Concat(wideColumns[:2], wideColumns[3:tableMaxColumns-1],
+		tableTestColumns(tableTestColumn("extra", "int", tableNullable(true))).Elements()))
 	checkSQL(t, "table", []sqlCase{
 		{"create_events", create(events)},
 		{"create_minimal", create(tableMinimalModel())},
@@ -151,10 +150,7 @@ func TestTableSQL(t *testing.T) {
 			m.SortKey = tableTestSortKey("INTERLEAVED", "id")
 		}), pkey)},
 		{"alter_drop_column_keeps_auto_keys", alter(tableWith(withNote, tableAuto("id", "id")), tableWith(events, tableAuto("id", "id")), pkey)},
-		{"alter_column_limit", alter(wide(tableMaxColumns-2), tableWith(wide(tableMaxColumns-3), func(m *tableModel) {
-			columns := tableTestColumnsOf(t, m.Column)
-			m.Column = tableTestColumns(append(columns[:2], append(columns[3:], tableTestColumn("extra", "int", tableNullable(true)))...)...)
-		}), pkey)},
+		{"alter_column_limit", alter(wide, limitPlan, pkey)},
 		{"alter_encoding", alter(withNote, tableWith(events, func(m *tableModel) { m.Column = eventColumns(note("varchar(32)", "ZSTD")) }), pkey)},
 		{"alter_widen", alter(withNote, tableWith(events, func(m *tableModel) { m.Column = eventColumns(note("varchar(max)", "ZSTD")) }), pkey)},
 		{"alter_narrow", alter(withNote, tableWith(events, func(m *tableModel) { m.Column = eventColumns(note("varchar(16)", "LZO")) }), pkey)},
@@ -213,4 +209,59 @@ func TestTableReadQueriesBindNames(t *testing.T) {
 	assert.Equal(t, map[string]string{"database": "analytics", "schema": `odd"schema`, "name": `odd"table`}, parameters)
 	_, _, err = readTableQuery(tableSpec{schema: "serving"}).Build()
 	require.ErrorContains(t, err, ":name is empty")
+}
+
+// TestTableSQLRequiresKnownDefinitions refuses to render a definition, constraint, or alteration from unknown values.
+func TestTableSQLRequiresKnownDefinitions(t *testing.T) {
+	m := tableMinimalModel()
+	m.Schema = types.StringUnknown()
+	_, err := tableSpecOf(m)
+	require.ErrorContains(t, err, "schema")
+	m = tableMinimalModel()
+	m.Column = types.ListValueMust(types.ObjectType{AttrTypes: tableColumnAttributeTypes}, []attr.Value{types.ObjectUnknown(tableColumnAttributeTypes)})
+	_, err = tableSpecOf(m)
+	require.ErrorContains(t, err, "column must be known")
+	c := tableTestColumn("id", "integer")
+	c.Name = types.StringUnknown()
+	_, err = tableColumnSpecOf(c)
+	require.ErrorContains(t, err, "name")
+	_, err = tableUniqueOf(types.SetValueMust(types.ObjectType{AttrTypes: tableKeyAttributeTypes}, []attr.Value{types.ObjectUnknown(tableKeyAttributeTypes)}))
+	require.ErrorContains(t, err, "unique must be known")
+	_, err = tableForeignKeysOf(tableTestForeignKeys(types.ObjectUnknown(tableForeignKeyAttributeTypes)))
+	require.ErrorContains(t, err, "foreign_key must be known")
+	for _, refs := range []types.Object{
+		tableTestReferences(types.StringUnknown(), types.StringValue("t"), tableTestList("id")),
+		tableTestReferences(types.StringValue("s"), types.StringValue("t"), types.ListUnknown(types.StringType)),
+	} {
+		_, err = tableForeignKeysOf(tableTestForeignKeys(types.ObjectValueMust(tableForeignKeyAttributeTypes, map[string]attr.Value{"columns": tableTestList("payload"), "references": refs})))
+		require.Error(t, err)
+	}
+	keys, err := tableForeignKeysOf(tableTestForeignKeys(tableTestForeignKey([]string{"a"}, "s", "t", "a"), tableTestForeignKey([]string{"b"}, "s", "t", "b")))
+	require.NoError(t, err)
+	assert.Len(t, keys, 2)
+	names := make([]string, tableMaxCompoundSortKeys+1)
+	for i := range names {
+		names[i] = fmt.Sprintf("c%d", i)
+	}
+	var spec tableSpec
+	require.ErrorContains(t, spec.resolveSortKey(tableTestSortKey("COMPOUND", names...)), "at most")
+	valid := tableMinimalModel()
+	_, _, err = tableAlterStates(m, nil, valid)
+	require.ErrorContains(t, err, "current table definition")
+	_, _, err = tableAlterStates(valid, nil, m)
+	require.Error(t, err)
+}
+
+// TestTableCatalogRejectsMalformedValues rejects identity, column-list, and security values the catalog cannot have produced.
+func TestTableCatalogRejectsMalformedValues(t *testing.T) {
+	assert.Nil(t, tableParseIdentity("identity(123, 1, '99999999999999999999999999999,1'::text)"))
+	_, _, err := tableIdentifierList("id", 0)
+	require.ErrorContains(t, err, "expected a column list")
+	_, _, err = tableIdentifierList("", 0)
+	require.Error(t, err)
+	m := tableMinimalModel()
+	m.SortKey = types.ObjectUnknown(tableSortKeyAttributeTypes)
+	assert.Empty(t, tablePriorSortStyle(m))
+	_, err = tableSecurityDatashareStatement(tableSecurityModel{})
+	require.ErrorContains(t, err, "nonempty schema")
 }

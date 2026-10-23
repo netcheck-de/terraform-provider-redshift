@@ -41,12 +41,12 @@ resource "redshift_column_grant" "events" {
 
 ### Required
 
-- `database_name` (String) Local database containing the table or view. Changing it replaces the grant.
-- `grantee` (String) Receiving identity name; use `public` for `PUBLIC`. Changing it replaces the grant.
-- `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.
-- `object_name` (String) Table, view, or materialized view whose columns are granted; late-binding views do not support column privileges. Changing it replaces the grant.
+- `database_name` (String) Local database containing the table or view.
+- `grantee` (String) Receiving identity name; use `public` for `PUBLIC`.
+- `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`.
+- `object_name` (String) Table, view, or materialized view whose columns are granted; late-binding views do not support column privileges.
 - `privileges` (Map of Set of String) Exact explicit column privileges: a map from `SELECT` or `UPDATE` to the set of column names that hold it. Views accept only `SELECT`. Column names are quoted; write them as the catalog stores them, which is lower case unless `enable_case_sensitive_identifier` is on. An empty map revokes every column privilege of this tuple; updated in place.
-- `schema_name` (String) Schema containing the table or view. Changing it replaces the grant.
+- `schema_name` (String) Schema containing the table or view.
 
 ### Read-Only
 

@@ -93,7 +93,7 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Database user name. Changing it replaces the user.",
+				Required: true, MarkdownDescription: "Database user name.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"password_wo": schema.StringAttribute{
@@ -420,11 +420,16 @@ func userSecret(ctx context.Context, config tfsdk.Config) (string, diag.Diagnost
 func (r *userResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data userModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := userTupleError(data, !data.Password.IsNull(), true); err != nil {
+	if err := userTupleError(data, !data.Password.IsNull() && !data.Password.IsUnknown(), true); err != nil {
 		resp.Diagnostics.AddError("Invalid Redshift user", err.Error())
+	}
+	for name := range data.SessionDefaults.Elements() {
+		if _, err := userSessionParameter(name); err != nil {
+			resp.Diagnostics.AddError("Invalid Redshift user", err.Error())
+		}
 	}
 }
 
@@ -538,7 +543,7 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the user after checking its binding and verifies removal.
+// Delete drops the user after checking its binding.
 func (r *userResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data userModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -548,12 +553,6 @@ func (r *userResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, r.database.ValueString(), dropUserStatement(data))
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete Redshift user", "The user remains after deletion.")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete Redshift user", err.Error())

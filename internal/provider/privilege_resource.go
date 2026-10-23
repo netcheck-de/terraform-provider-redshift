@@ -45,6 +45,10 @@ type privilegeResource struct {
 	// optionRecipient reports whether the tuple names a user, the only recipient Redshift grants options to, for
 	// contracts that identify users by another attribute than grantee_type; nil checks grantee_type = USER.
 	optionRecipient func(types.Object) bool
+	// destroyPrivileges optionally restores a documented built-in default instead of revoking the tuple.
+	destroyPrivileges func(types.Object) ([]string, error)
+	// partialAllowed validates known selectors and supplies their allowlist without requiring generated names.
+	partialAllowed func(types.Object) ([]sqlclient.Keyword, error)
 }
 
 // catalogCheck is a parameterized statement used for parent existence or permission reads.
@@ -72,9 +76,17 @@ type privilegeTarget struct {
 	allowed []sqlclient.Keyword
 	// filter optionally excludes rows belonging to other grantees or scopes.
 	filter func(sqlclient.Row) bool
-	// implicit lists privileges the grantee may hold by default without a catalog row, such as PUBLIC's USAGE on
-	// sql and plpgsql; reconcile revokes each one that is not desired, because the read cannot see it.
+	// implicit lists owned privileges a read may not expose, such as PUBLIC's language defaults or privileges held
+	// by only some snapshot members; reconciliation revokes each undesired one even when observation cannot see it.
 	implicit []string
+	// mutationGuard detects catalog overlaps that reads can observe but individual grants cannot safely reconcile.
+	mutationGuard *catalogCheck
+	// mutationConflict explains how to resolve a nonempty mutationGuard result without cascading other ownership.
+	mutationConflict string
+	// snapshot intersects per-object catalog reads when no database-local privilege view reaches the target.
+	snapshot *privilegeSnapshot
+	// completeCatalog requires proof that metadata enumeration and absence checks cannot be privilege-filtered.
+	completeCatalog bool
 }
 
 // privilegeString defines an immutable nonempty permission identity field.
@@ -208,6 +220,15 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 	if err != nil {
 		return target, false, err
 	}
+	if target.completeCatalog {
+		rows, err := r.selectRows(ctx, r.database.ValueString(), grantCatalogVisibilityQuery())
+		if err != nil {
+			return target, false, err
+		}
+		if len(rows) != 1 || (rows[0]["usesuper"] != "true" && rows[0]["usesuper"] != "t") {
+			return target, false, fmt.Errorf("shared routine grants and snapshots require a SQL superuser to verify complete catalog visibility; refusing to infer object absence or independent name ownership from filtered metadata")
+		}
+	}
 	for _, check := range target.checks {
 		if check.sql == "" {
 			continue
@@ -221,9 +242,12 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 			return target, false, err
 		}
 	}
-	rows, err := r.queryDatabase(ctx, r.targetDatabase(target), target.query.sql, target.query.parameters)
+	rows, found, err := r.privilegeRows(ctx, target)
 	if err != nil {
 		return target, false, err
+	}
+	if !found {
+		return target, false, nil
 	}
 	privileges, options := map[string]bool{}, map[string]bool{}
 	for _, row := range rows {
@@ -276,6 +300,11 @@ func normalizePrivilege(name string) string {
 
 // validate checks the tuple and desired privileges without issuing SQL.
 func (r *privilegeResource) validate(data types.Object) error {
+	if r.destroyPrivileges != nil {
+		if _, err := r.destroyPrivileges(data); err != nil {
+			return err
+		}
+	}
 	target, err := r.target(data)
 	if err != nil {
 		return err
@@ -311,26 +340,59 @@ func (r *privilegeResource) reconcile(ctx context.Context, data types.Object) er
 	if !found {
 		return fmt.Errorf("target object or identity does not exist")
 	}
+	return r.reconcilePrivileges(ctx, data, actual, target)
+}
+
+// reconcilePrivileges reuses an observed tuple, so Delete does not repeat parent and privilege discovery.
+func (r *privilegeResource) reconcilePrivileges(ctx context.Context, data, actual types.Object, target privilegeTarget) error {
 	desired := data.Attributes()["privileges"].(types.Set)
+	desiredPrivileges := knownStrings(desired)
 	current := actual.Attributes()["privileges"].(types.Set)
 	desiredOptions := grantOptionPrivileges(data)
+	currentOptions := grantOptionPrivileges(actual)
+	if target.snapshot != nil {
+		for _, option := range target.snapshot.optionUnion {
+			if !slices.Contains(desiredOptions, option) && !slices.Contains(currentOptions, option) {
+				currentOptions = append(currentOptions, option)
+			}
+		}
+		sort.Strings(currentOptions)
+	}
 	held := knownStrings(current)
 	for _, privilege := range target.implicit {
 		// REVOKE of a privilege the grantee does not hold changes nothing, so revoking an unseen default is safe.
-		if !slices.Contains(held, privilege) && !slices.Contains(knownStrings(desired), privilege) {
+		if !slices.Contains(held, privilege) && !slices.Contains(desiredPrivileges, privilege) {
 			held = append(held, privilege)
 		}
 	}
-	statements, err := privilegeOptionStatements(target.grant, target.allowed,
-		privilegeSets{privileges: held, options: grantOptionPrivileges(actual)},
-		privilegeSets{privileges: knownStrings(desired), options: desiredOptions})
-	if err != nil {
-		return err
+	grants := []grantSpec{target.grant}
+	if target.snapshot != nil && target.snapshot.grant != nil {
+		grants = target.snapshot.mutations
+	}
+	var statements []string
+	for _, grant := range grants {
+		changes, err := privilegeOptionStatements(grant, target.allowed,
+			privilegeSets{privileges: held, options: currentOptions},
+			privilegeSets{privileges: desiredPrivileges, options: desiredOptions})
+		if err != nil {
+			return err
+		}
+		statements = append(statements, changes...)
+	}
+	if target.mutationGuard != nil && (len(desiredPrivileges) != 0 || len(statements) != 0) {
+		guard := target.mutationGuard
+		rows, err := r.queryDatabase(ctx, r.targetDatabase(target), guard.sql, guard.parameters)
+		if err != nil {
+			return err
+		}
+		if len(rows) != 0 {
+			return fmt.Errorf("unsafe privilege overlap: %s", target.mutationConflict)
+		}
 	}
 	if err := r.exec(ctx, r.targetDatabase(target), statements...); err != nil {
 		return err
 	}
-	_, found, err = r.read(ctx, &actual)
+	_, found, err := r.read(ctx, &actual)
 	if err == nil && (!found || !actual.Attributes()["privileges"].Equal(desired) || !slices.Equal(grantOptionPrivileges(actual), desiredOptions)) {
 		return fmt.Errorf("privileges did not converge")
 	}
@@ -367,14 +429,14 @@ func (r *privilegeResource) Create(ctx context.Context, req resource.CreateReque
 	}
 }
 
-// ValidateConfig reports invalid tuples and privileges during planning once the configuration is known.
+// ValidateConfig checks each tuple constraint once its dependencies are known.
 func (r *privilegeResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data types.Object
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := r.validate(data); err != nil {
+	if err := r.validateConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid "+r.name, err.Error())
 	}
 }
@@ -412,14 +474,14 @@ func (r *privilegeResource) Update(ctx context.Context, req resource.UpdateReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 
-// Delete reconciles the owned privilege set to empty, leaving other tuples intact.
+// Delete revokes the tuple or restores its opted-in built-in default, leaving other tuples intact.
 func (r *privilegeResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data types.Object
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	_, found, err := r.read(ctx, &data)
+	target, found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read "+r.name, err.Error())
 		return
@@ -427,7 +489,20 @@ func (r *privilegeResource) Delete(ctx context.Context, req resource.DeleteReque
 	if !found {
 		return
 	}
-	if err := r.reconcile(ctx, withGrantOptions(withPrivileges(data, nil), nil)); err != nil {
+	var desired []string
+	if r.destroyPrivileges != nil {
+		desired, err = r.destroyPrivileges(data)
+		if err != nil {
+			resp.Diagnostics.AddError("Delete "+r.name, err.Error())
+			return
+		}
+	}
+	planned := withGrantOptions(withPrivileges(data, desired), nil)
+	if err := r.validate(planned); err != nil {
+		resp.Diagnostics.AddError("Delete "+r.name, err.Error())
+		return
+	}
+	if err := r.reconcilePrivileges(ctx, planned, data, target); err != nil {
 		resp.Diagnostics.AddError("Delete "+r.name, err.Error())
 	}
 }

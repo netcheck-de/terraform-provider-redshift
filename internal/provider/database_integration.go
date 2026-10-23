@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -22,7 +23,7 @@ import (
 
 // databaseIntegrationModel is the zero-ETL integration a destination database receives. SVV_INTEGRATION reports
 // the binding, the refresh interval, history mode, and automatic remediation; the other three settings have no
-// catalog column and keep their configured values.
+// documented catalog column and keep their configured values.
 type databaseIntegrationModel struct {
 	// IntegrationID is the zero-ETL integration identifier from SVV_INTEGRATION.
 	IntegrationID types.String `tfsdk:"integration_id"`
@@ -81,17 +82,17 @@ func databaseIntegrationBlock() schema.SingleNestedBlock {
 			"`CREATE DATABASE ... FROM INTEGRATION`, which needs a superuser or a user with `CREATEDB` and `CREATEUSER`; " +
 			"replication runs with that user's permissions. The warehouse must set `enable_case_sensitive_identifier`. " +
 			"Conflicts with `datashare_arn` and `collation`. " + databaseIntegrationReplaceNote + " Refresh reads " +
-			"`SVV_INTEGRATION`, which only superusers can see.",
+			"`SVV_INTEGRATION`, which only superusers can see. Create and Update wait up to one minute for readable settings to propagate to the catalog, bounded by any shorter operation timeout.",
 		PlanModifiers: []planmodifier.Object{objectplanmodifier.RequiresReplaceIf(databaseIntegrationReplacement, databaseIntegrationReplaceNote, databaseIntegrationReplaceNote)},
 		Attributes: map[string]schema.Attribute{
 			"integration_id": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Zero-ETL integration identifier, the `integration_id` of `SVV_INTEGRATION`; required in the block. Changing it replaces the database.",
+				MarkdownDescription: "Zero-ETL integration identifier, the `integration_id` of `SVV_INTEGRATION`; required in the block.",
 				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"source_database": schema.StringAttribute{
 				Optional: true, Computed: true,
-				MarkdownDescription: "Source database to replicate (`DATABASE`), required for Aurora PostgreSQL, RDS for PostgreSQL, and RDS for Oracle sources. Omit it to report the source database `SVV_INTEGRATION` names. Changing it replaces the database.",
+				MarkdownDescription: "Source database to replicate (`DATABASE`), required for Aurora PostgreSQL, RDS for PostgreSQL, and RDS for Oracle sources. Omit it to report the source database `SVV_INTEGRATION` names.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
@@ -113,15 +114,15 @@ func databaseIntegrationBlock() schema.SingleNestedBlock {
 			},
 			"query_all_states": schema.BoolAttribute{
 				Optional:            true,
-				MarkdownDescription: "Allow queries on tables in every replication state, not only `Synced` (`QUERY_ALL_STATES`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No catalog view reports it, so changes made outside Terraform are not detected; omitted, it is not managed.",
+				MarkdownDescription: "Allow queries on tables in every replication state, not only `Synced` (`QUERY_ALL_STATES`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No supported catalog readback is used, so changes made outside Terraform are not detected; omitted, it is not managed.",
 			},
 			"accept_invalid_chars": schema.BoolAttribute{
 				Optional:            true,
-				MarkdownDescription: "Replace invalid VARCHAR characters with `?` instead of stopping ingestion (`ACCEPTINVCHARS`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No catalog view reports it, so changes made outside Terraform are not detected; omitted, it is not managed.",
+				MarkdownDescription: "Replace invalid VARCHAR characters with `?` instead of stopping ingestion (`ACCEPTINVCHARS`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No supported catalog readback is used, so changes made outside Terraform are not detected; omitted, it is not managed.",
 			},
 			"truncate_columns": schema.BoolAttribute{
 				Optional:            true,
-				MarkdownDescription: "Truncate VARCHAR and SUPER values that exceed the column instead of stopping ingestion (`TRUNCATECOLUMNS`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No catalog view reports it, so changes made outside Terraform are not detected; omitted, it is not managed.",
+				MarkdownDescription: "Truncate VARCHAR and SUPER values that exceed the column instead of stopping ingestion (`TRUNCATECOLUMNS`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No supported catalog readback is used, so changes made outside Terraform are not detected; omitted, it is not managed.",
 			},
 		},
 	}
@@ -129,11 +130,11 @@ func databaseIntegrationBlock() schema.SingleNestedBlock {
 
 // databaseIntegrationLookupAttribute observes the integration in the lookup, which never declares blocks.
 func databaseIntegrationLookupAttribute() datasourceschema.SingleNestedAttribute {
-	unread := "Not reported by any catalog view, so always null in the lookup."
+	unread := "No supported catalog readback is used, so always null in the lookup."
 	return datasourceschema.SingleNestedAttribute{
 		Computed: true,
 		MarkdownDescription: "Zero-ETL integration of a destination database, from `SVV_INTEGRATION`, which only superusers can see; " +
-			"null for shared databases and when the view shows no integration for the database.",
+			"null for shared databases, when the view shows no integration for the database, or with a warning when access to the view is denied.",
 		Attributes: map[string]datasourceschema.Attribute{
 			"integration_id":       datasourceschema.StringAttribute{Computed: true, MarkdownDescription: "Zero-ETL integration identifier."},
 			"source_database":      datasourceschema.StringAttribute{Computed: true, MarkdownDescription: "Replicated source database; null when the view reports none."},
@@ -216,8 +217,8 @@ func databaseIntegrationRow(name string, row map[string]string) (databaseIntegra
 	return integration, nil
 }
 
-// databaseIntegration reads the integration a destination database receives; found is false when SVV_INTEGRATION
-// has no row for it, which is also what a provider identity that is not a superuser sees.
+// databaseIntegration reads the integration a destination database receives. A missing row and a permission-denied
+// error are distinct: resources must not lose their binding just because the provider identity lost catalog access.
 func (r *resourceClient) databaseIntegration(ctx context.Context, name string) (databaseIntegrationModel, bool, error) {
 	rows, err := r.selectRows(ctx, r.database.ValueString(), readDatabaseIntegrationQuery(name))
 	if err != nil || len(rows) == 0 {
@@ -232,8 +233,8 @@ func (r *resourceClient) databaseIntegration(ctx context.Context, name string) (
 
 // databaseReadIntegration refreshes the integration of a destination database in observed. The binding must match
 // the identity in state; the settings no view reports keep their state values. A database SVV_INTEGRATION shows no
-// row for keeps existing without the integration, because the integration was deleted or the provider identity
-// lost the superuser view: refresh must not fail on it, and a destroy must still drop the database.
+// row for keeps existing without the integration, because the integration may have been deleted: refresh must not
+// fail on it, and a destroy must still drop the database. Losing superuser access instead returns a permission error.
 func (r *resourceClient) databaseReadIntegration(ctx context.Context, state *databaseIntegrationModel, observed *databaseModel) error {
 	name := observed.Name.ValueString()
 	if observed.DatabaseType.ValueString() == databaseTypeShared {
@@ -309,6 +310,51 @@ func databaseIntegrationConverged(expected, observed *databaseIntegrationModel) 
 	return nil
 }
 
+// databaseIntegrationReadbackWait bounds catalog propagation when no shorter operation timeout is configured.
+// Redshift can acknowledge INTEGRATION SET roughly 30 seconds before SVV_INTEGRATION reflects the setting.
+const databaseIntegrationReadbackWait = time.Minute
+
+func (r *databaseResource) waitDatabaseIntegration(ctx context.Context, expected databaseModel, observed *databaseModel) error {
+	if expected.Integration == nil {
+		return nil
+	}
+	// An absent row during apply is not evidence that the just-created/updated binding was removed. Preserve it
+	// even when visibility never converges, so a later ordinary refresh can discover the integration again.
+	defer func() {
+		if observed.Integration == nil {
+			binding := *expected.Integration
+			databaseIntegrationClearUnknown(&binding)
+			observed.Integration = &binding
+		}
+	}()
+	waitCtx, cancel := context.WithTimeout(ctx, databaseIntegrationReadbackWait)
+	defer cancel()
+	for {
+		convergence := databaseIntegrationConverged(expected.Integration, observed.Integration)
+		if convergence == nil {
+			return nil
+		}
+		select {
+		case <-waitCtx.Done():
+			return fmt.Errorf("waiting for SVV_INTEGRATION catalog propagation: %w", convergence)
+		case <-time.After(time.Second):
+		}
+		candidate := *observed
+		if candidate.Integration == nil {
+			binding := *expected.Integration
+			candidate.Integration = &binding
+		}
+		found, err := r.read(waitCtx, &candidate)
+		if err != nil {
+			return err
+		}
+		if !found {
+			return errDatabaseVanished
+		}
+		*observed = candidate
+	}
+}
+
 // validateDatabaseIntegration rejects an integration block without an identifier or combined with a datashare or a
 // collation; unknown values are checked again at apply.
 func validateDatabaseIntegration(data databaseModel) error {
@@ -316,7 +362,7 @@ func validateDatabaseIntegration(data databaseModel) error {
 		return nil
 	}
 	switch {
-	case !data.DatashareARN.IsNull():
+	case !data.DatashareARN.IsNull() && !data.DatashareARN.IsUnknown():
 		return fmt.Errorf("the integration block conflicts with datashare_arn; remove one of them")
 	case !data.Collation.IsNull() && !data.Collation.IsUnknown():
 		return fmt.Errorf("the integration block conflicts with collation; remove one of them")

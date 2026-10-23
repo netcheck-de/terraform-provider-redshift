@@ -8,6 +8,14 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
+// optionalString maps the empty text both transports return for SQL NULL to a null attribute.
+func optionalString(value string) types.String {
+	if value == "" {
+		return types.StringNull()
+	}
+	return types.StringValue(value)
+}
+
 // knownString returns the value, or "" when it is null or unknown, so the Opt* builders skip the clause.
 func knownString(value types.String) string {
 	if value.IsNull() || value.IsUnknown() {

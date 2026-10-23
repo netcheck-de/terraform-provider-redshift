@@ -48,3 +48,20 @@ func TestTemplatesListing(t *testing.T) {
 	}))
 	assert.True(t, diagnostics.HasError())
 }
+
+func TestTemplatesListingPreservesQuotedWhitespace(t *testing.T) {
+	source := newTemplatesDataSource()
+	client := queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+		return []sqlclient.Row{{"schema_name": " leading schema ", "template_name": " leading template ", "template_owner": " leading owner "}}, nil
+	})
+	state, diagnostics := readSource(t, source, collectionConfig(t, source, nil), client)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	var data types.Object
+	require.False(t, state.Get(context.Background(), &data).HasError())
+	items := collectionResult(source, data).Elements()
+	require.Len(t, items, 1)
+	item := items[0].(types.Object)
+	assert.Equal(t, " leading schema ", objectString(item, "schema"))
+	assert.Equal(t, " leading template ", objectString(item, "name"))
+	assert.Equal(t, " leading owner ", objectString(item, "owner"))
+}

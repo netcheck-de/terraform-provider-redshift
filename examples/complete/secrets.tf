@@ -2,7 +2,7 @@
 # trivy:ignore:AWS-0098
 module "reader_secret" {
   source  = "terraform-aws-modules/secrets-manager/aws"
-  version = "2.1.0"
+  version = "2.2.0"
   providers = {
     aws    = aws.consumer
     random = random.secrets

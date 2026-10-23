@@ -26,6 +26,7 @@ COPY JOB DROP name;
 {{ tffile "examples/resources/redshift_copy_job/resource.tf" }}
 
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -50,26 +51,29 @@ job or be a superuser for refresh to find it.
 
 ## Reconciliation
 
-Refresh reads `auto` and `iam_role` from `SYS_COPY_JOB`; an update runs `COPY JOB ALTER ... AUTO` and re-reads the
-catalog to verify the result; every other change replaces the job, because `COPY JOB ALTER` changes only `AUTO`.
+Refresh reads the COPY definition, `auto`, and `iam_role` from `SYS_COPY_JOB`; an update runs
+`COPY JOB ALTER ... AUTO` and re-reads the catalog to verify the result; every other change replaces the job, because
+`COPY JOB ALTER` changes only `AUTO`.
 
-| Change                                                                                            | Result                                                                               |
-|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------|
-| `database` or `name`                                                                              | replaces the job: `COPY JOB DROP`, then `COPY ... JOB CREATE`                        |
-| `iam_role`                                                                                        | replaces the job                                                                     |
-| `source`, `format`, `format_argument`, or `parameters`                                            | replaces the job; another case of `format` is no SQL                                 |
-| `table.schema`, `table.name`, or `table.columns`                                                  | replaces the job                                                                     |
-| `source`, `format`, `format_argument`, `parameters`, or `table` in the first plan after an import | no SQL; the apply records the configured definition, which the catalog cannot report |
-| `auto`                                                                                            | `COPY JOB ALTER ... AUTO ON` or `AUTO OFF`; removing the argument means `true`       |
+| Change                                                 | Result                                                                         |
+|--------------------------------------------------------|--------------------------------------------------------------------------------|
+| `database` or `name`                                   | replaces the job: `COPY JOB DROP`, then `COPY ... JOB CREATE`                  |
+| `iam_role`                                             | replaces the job                                                               |
+| `source`, `format`, `format_argument`, or `parameters` | replaces the job; another case of `format` is no SQL                           |
+| `table.schema`, `table.name`, or `table.columns`       | replaces the job                                                               |
+| `auto`                                                 | `COPY JOB ALTER ... AUTO ON` or `AUTO OFF`; removing the argument means `true` |
 
 A replacement drops the job before it creates the new one, so files created in between are not loaded by either job.
 
-**Drift.** Refresh compares `auto` and `iam_role` with `SYS_COPY_JOB`. `AUTO` changed outside Terraform is set back
-with `COPY JOB ALTER`; another IAM role is stored as the catalog reports it, and the next plan replaces the job. A role
-ARN longer than the 128 characters of `SYS_COPY_JOB.iam_role` is compared by its first 128 characters. The COPY
-definition (`table`, `source`, `format`, `format_argument`, and `parameters`) is never read back:
-`SYS_COPY_JOB.job_text` is cut at 256 characters in an undocumented form, so a job redefined outside Terraform under the
-same name is not detected. A dropped job, or one in a dropped database, is removed from state, and the next plan
+**Drift.** Refresh compares the definition, `auto`, and `iam_role` with `SYS_COPY_JOB`. `AUTO` changed outside Terraform
+is set back with `COPY JOB ALTER`; another IAM role is stored as the catalog reports it, and the next plan replaces
+the job. A role ARN longer than the 128 characters of `SYS_COPY_JOB.iam_role` is compared by its first 128 characters.
+The COPY
+definition (`table`, `source`, `format`, `format_argument`, and `parameters`) is parsed from the live engine's
+`SYS_COPY_JOB.copy_query` column, so redefining a job under the same name plans replacement. This column is not
+documented by AWS: engines without it, empty definitions, and unsupported syntax return an explicit refresh error
+rather than retaining stale state or dropping SQL options. The documented, truncated `job_text` is not a fallback.
+A dropped job, or one in a dropped database, is removed from state, and the next plan
 creates it again.
 
 ## Import
@@ -86,6 +90,5 @@ Alternatively, use `terraform import`:
 
 {{ codefile "shell" "examples/resources/redshift_copy_job/import.sh" }}
 
-Import reads `auto` and `iam_role`. The definition stays empty in state, and the first plan afterwards updates it in
-place without SQL, recording the configured `table`, `source`, `format`, `format_argument`, and `parameters` as they
-are; make them match the imported job, because they are not compared with it.
+Import reads `auto`, `iam_role`, and the actual COPY definition. Configuration must match the imported job;
+definition differences plan replacement, including on the first plan after import.

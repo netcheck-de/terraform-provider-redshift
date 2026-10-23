@@ -1,4 +1,4 @@
-SHOW GRANTS ON DATABASE "Odd""Db@catalog";
+SHOW GRANTS FOR ROLE "myidc:Audit ""Team""" FROM DATABASE "Odd""Db@catalog";
 
 GRANT DEBUG ON DATABASE "Odd""Db@catalog" TO ROLE "myidc:Audit ""Team""";
 

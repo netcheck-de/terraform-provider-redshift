@@ -98,3 +98,30 @@ run "databases_apply" {
     error_message = "Database outputs must expose the lookup values."
   }
 }
+
+run "database_collation_migration" {
+  command = apply
+
+  variables {
+    database_collation_insensitive = true
+  }
+
+  override_data {
+    target = data.redshift_database.collation_probe
+    values = {
+      id        = "collation-probe-stable-identity"
+      name      = "example_collation_probe"
+      collation = "CASE_INSENSITIVE"
+    }
+  }
+
+  assert {
+    condition = (
+      redshift_database.collation_probe.collation == "CASE_INSENSITIVE" &&
+      output.database_collation_migration.id == "collation-probe-stable-identity" &&
+      output.database_collation_migration.name == redshift_database.collation_probe.name &&
+      output.database_collation_migration.collation == "CASE_INSENSITIVE"
+    )
+    error_message = "The empty collation probe must expose the selected collation through its lookup and output."
+  }
+}

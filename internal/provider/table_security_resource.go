@@ -58,9 +58,9 @@ func (r *tableSecurityResource) Schema(_ context.Context, _ resource.SchemaReque
 		MarkdownDescription: "Turns row-level security (RLS) on or off for one existing table or view with `ALTER TABLE ... ROW LEVEL SECURITY`. **Destroying this resource turns row-level security OFF for the relation**, so every attached policy stops filtering and all rows become visible to anyone with `SELECT`.",
 		Attributes: map[string]schema.Attribute{
 			"id":       idAttribute(),
-			"database": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local database containing the relation. Changing it replaces the table security."},
-			"schema":   schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Schema of the relation. Changing it replaces the table security."},
-			"relation": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Table, view, late-binding view, or materialized view; the resource never creates or drops it. Changing it replaces the table security."},
+			"database": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local database containing the relation."},
+			"schema":   schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Schema of the relation."},
+			"relation": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Table, view, late-binding view, or materialized view; the resource never creates or drops it."},
 			"row_level_security": schema.BoolAttribute{
 				Required: true, MarkdownDescription: "Whether row-level security is on. While it is on, users see only the rows an attached policy permits, and no rows when no policy applies to them; superusers and `sys:secadmin` holders are exempt.",
 			},
@@ -171,15 +171,18 @@ func (r *tableSecurityResource) Create(ctx context.Context, req resource.CreateR
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// ValidateConfig reports settings Create would reject, during planning once the configuration is known.
+// ValidateConfig checks known settings independently of unresolved relation names.
 func (r *tableSecurityResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data tableSecurityModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if _, err := createTableSecurityStatements(data); err != nil {
+	if _, err := optOneOf(data.ConjunctionType, tableSecurityConjunctions...); err != nil {
 		resp.Diagnostics.AddError("Invalid table security", err.Error())
+	}
+	if (!data.Schema.IsUnknown() && data.Schema.ValueString() == "") || (!data.Relation.IsUnknown() && data.Relation.ValueString() == "") {
+		resp.Diagnostics.AddError("Invalid table security", "table security requires a nonempty schema and relation")
 	}
 }
 

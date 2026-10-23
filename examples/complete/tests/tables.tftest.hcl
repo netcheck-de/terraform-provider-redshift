@@ -52,6 +52,11 @@ run "tables_apply" {
   command = apply
 
   assert {
+    condition     = redshift_table.events.column[0].name == "event_id" && redshift_table.events.column[0].renamed_from == null
+    error_message = "The first apply must create the source column without a migration hint."
+  }
+
+  assert {
     condition = (
       redshift_table.accounts.database == redshift_schema.local.database && redshift_table.accounts.schema == redshift_schema.local.name &&
       redshift_table.accounts.primary_key.columns == tolist(["account_id"]) && redshift_table.accounts.distribution.style == "ALL" &&
@@ -102,5 +107,22 @@ run "tables_apply" {
       output.orders_table.sort_key.columns == tolist(["created_at", "order_id"]) && !output.orders_table.effective_distribution.auto
     )
     error_message = "The table lookup must expose the observed owner, keys, and distribution of the orders table."
+  }
+}
+
+run "tables_rename_column" {
+  command = apply
+
+  variables {
+    table_rename_event_id = true
+  }
+
+  assert {
+    condition = (
+      redshift_table.events.column[0].name == "event_key" &&
+      redshift_table.events.column[0].renamed_from == "event_id" &&
+      redshift_table.events.column[1].name == "payload"
+    )
+    error_message = "The opt-in migration must change only the identifier and retain its retry-safe source hint."
   }
 }

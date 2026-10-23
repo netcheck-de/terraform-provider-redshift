@@ -38,12 +38,12 @@ resource "redshift_policy_grant" "exempt_lookup" {
 
 ### Required
 
-- `database_name` (String) Local database that holds the lookup table and the policy. Changing it replaces the grant.
-- `object_name` (String) Lookup table that the policy's expression reads. Changing it replaces the grant.
-- `policy_name` (String) Policy that receives the permission. Changing it replaces the grant.
-- `policy_type` (String) `RLS` for a row-level security policy or `MASKING` for a dynamic data masking policy. Changing it replaces the grant.
+- `database_name` (String) Local database that holds the lookup table and the policy.
+- `object_name` (String) Lookup table that the policy's expression reads.
+- `policy_name` (String) Policy that receives the permission.
+- `policy_type` (String) `RLS` for a row-level security policy or `MASKING` for a dynamic data masking policy.
 - `privileges` (Set of String) Privileges Terraform grants: `["SELECT"]`, the only permission a policy can hold, or empty to revoke it. Redshift does not report grants to policies, so this records what Terraform applied and does not detect changes made outside Terraform.
-- `schema_name` (String) Schema of the lookup table. Changing it replaces the grant.
+- `schema_name` (String) Schema of the lookup table.
 
 ### Read-Only
 

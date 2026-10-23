@@ -9,6 +9,15 @@ output "database_options" {
   }
 }
 
+output "database_collation_migration" {
+  description = "Identity and fresh lookup collation of the deliberately empty migration-probe database."
+  value = {
+    id        = data.redshift_database.collation_probe.id
+    name      = data.redshift_database.collation_probe.name
+    collation = data.redshift_database.collation_probe.collation
+  }
+}
+
 output "shared_external_schema" {
   description = "Cross-database external schema exposing the consumer's datashare database in the local database."
   value = {

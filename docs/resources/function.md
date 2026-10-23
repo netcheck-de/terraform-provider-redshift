@@ -42,15 +42,15 @@ resource "redshift_function" "greater" {
 ### Required
 
 - `body` (String) SQL `SELECT` clause without `FROM`, `INTO`, `WHERE`, `GROUP BY`, `ORDER BY`, or `LIMIT`, sent dollar-quoted and verbatim. Changed in place with `CREATE OR REPLACE FUNCTION`. A body changed outside Terraform appears here as the catalog text.
-- `database` (String) Local database containing the function. Changing it replaces the function.
-- `name` (String) Function name; AWS recommends the reserved `f_` prefix. Overloads share a name and differ in `arguments`. Changing it replaces the function.
-- `return_type` (String) Data type of the returned value; another spelling of the same type is no change, and a modifier added to a bare type in state, as after an import, is restated in place. Changing it replaces the function.
-- `schema` (String) Schema containing the function. Changing it replaces the function.
+- `database` (String) Local database containing the function.
+- `name` (String) Function name; AWS recommends the reserved `f_` prefix. Overloads share a name and differ in `arguments`.
+- `return_type` (String) Data type of the returned value; another spelling of the same type is no change, and a modifier added to a bare type in state, as after an import, is restated in place.
+- `schema` (String) Schema containing the function.
 
 ### Optional
 
-- `arguments` (List of String) Ordered input argument data types, at most 32, referenced in `body` as `$1`, `$2`, and so on. SQL UDF arguments have no names. Omit for a function without arguments. The types identify the overload; another spelling of the same types, such as `INT` for `INTEGER`, is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the function.
-- `language` (String) Function language; only `SQL`, in any case, is accepted, and another spelling of it is recorded in place. `PLPYTHONU` is rejected because AWS ends Python UDF support after June 30, 2026. Changing it replaces the function.
+- `arguments` (List of String) Ordered input argument data types, at most 32, referenced in `body` as `$1`, `$2`, and so on. SQL UDF arguments have no names. Omit for a function without arguments. The types identify the overload; another spelling of the same types, such as `INT` for `INTEGER`, is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place.
+- `language` (String) Function language; only `SQL`, in any case, is accepted, and another spelling of it is recorded in place. `PLPYTHONU` is rejected because AWS ends Python UDF support after June 30, 2026.
 - `owner` (String) SQL user owning the function. When set, applied with `ALTER FUNCTION ... OWNER TO`, which requires a superuser; when omitted, the catalog owner is reported.
 - `volatility` (String) Optimizer volatility: `VOLATILE` (default), `STABLE`, or `IMMUTABLE`. Changed in place with `CREATE OR REPLACE FUNCTION`.
 

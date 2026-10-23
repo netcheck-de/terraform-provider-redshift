@@ -1,5 +1,1 @@
-ALTER IDENTITY PROVIDER "identity" IAM_ROLE 'role-one';
-
 ALTER IDENTITY PROVIDER "identity" NAMESPACE 'it''s \\ns';
-
-ALTER IDENTITY PROVIDER "identity" ENABLE;

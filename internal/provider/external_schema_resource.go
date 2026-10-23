@@ -103,21 +103,21 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 		MarkdownDescription: "Manages one external schema in a local Redshift database: an AWS Glue Data Catalog, Hive metastore, PostgreSQL or MySQL federated, Redshift cross-database, Kinesis, or MSK source.",
 		Attributes: map[string]schema.Attribute{
 			"id":       idAttribute(),
-			"database": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local Redshift database owning the external schema. Changing it replaces the external schema."},
-			"name":     schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local external schema name. Changing it replaces the external schema."},
+			"database": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local Redshift database owning the external schema."},
+			"name":     schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local external schema name."},
 			"source_type": schema.StringAttribute{
 				Optional: true, Computed: true, Default: stringdefault.StaticString(externalSchemaDefaultSource), PlanModifiers: replace,
 				Validators:          []validator.String{stringvalidator.OneOf("DATA_CATALOG", "HIVE_METASTORE", "POSTGRES", "MYSQL", "REDSHIFT", "KINESIS", "MSK")},
-				MarkdownDescription: "Source form after `FROM`: `DATA_CATALOG` (default; AWS Glue Data Catalog), `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, `REDSHIFT`, `KINESIS`, or `MSK`. It decides which options are required or accepted; see the table on this page. Changing it replaces the external schema.",
+				MarkdownDescription: "Source form after `FROM`: `DATA_CATALOG` (default; AWS Glue Data Catalog), `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, `REDSHIFT`, `KINESIS`, or `MSK`. It decides which options are required or accepted; see the table on this page.",
 			},
-			"glue_database": schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "AWS Glue database referenced by a `DATA_CATALOG` schema, which requires it. Changing it replaces the external schema."},
+			"glue_database": schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "AWS Glue database referenced by a `DATA_CATALOG` schema, which requires it."},
 			"source_database": schema.StringAttribute{
 				Optional: true, PlanModifiers: replace,
-				MarkdownDescription: "External database: the Hive metastore database, the PostgreSQL or MySQL database, or the Redshift database (for example a datashare consumer database). Required by `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, and `REDSHIFT`. Changing it replaces the external schema.",
+				MarkdownDescription: "External database: the Hive metastore database, the PostgreSQL or MySQL database, or the Redshift database (for example a datashare consumer database). Required by `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, and `REDSHIFT`.",
 			},
 			"source_schema": schema.StringAttribute{
 				Optional: true, Computed: true, PlanModifiers: computedReplace,
-				MarkdownDescription: "Schema in the `POSTGRES` or `REDSHIFT` source; Redshift uses `public` when it is omitted. Changing it replaces the external schema.",
+				MarkdownDescription: "Schema in the `POSTGRES` or `REDSHIFT` source; Redshift uses `public` when it is omitted.",
 			},
 			"iam_role_arn": schema.StringAttribute{
 				Optional: true,
@@ -129,7 +129,7 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 				// UseStateForUnknown keeps the computed region known during an in-place ALTER, where the framework
 				// would otherwise mark it unknown and RequiresReplace would turn the update into a replacement.
 				Optional: true, Computed: true, PlanModifiers: computedReplace,
-				MarkdownDescription: "AWS Region of the Glue catalog (`DATA_CATALOG`) or stream (`KINESIS`, `MSK`); defaults to the warehouse region and is read from the catalog options. Changing it replaces the external schema.",
+				MarkdownDescription: "AWS Region of the Glue catalog (`DATA_CATALOG`) or stream (`KINESIS`, `MSK`); defaults to the warehouse region and is read from the catalog options.",
 			},
 			"uri": schema.StringAttribute{
 				Optional: true,
@@ -141,7 +141,7 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Optional: true, Computed: true,
 				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown(), int64planmodifier.RequiresReplace()},
 				Validators:          []validator.Int64{int64validator.Between(1, 65535)},
-				MarkdownDescription: "Port of a `HIVE_METASTORE` (default 9083), `POSTGRES` (default 5432), or `MYSQL` (default 3306) source. Changing it replaces the external schema.",
+				MarkdownDescription: "Port of a `HIVE_METASTORE` (default 9083), `POSTGRES` (default 5432), or `MYSQL` (default 3306) source.",
 			},
 			"secret_arn": schema.StringAttribute{
 				Optional: true,
@@ -163,7 +163,7 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
 				MarkdownDescription: "SQL user owning the external schema, changed after creation and in place with `ALTER SCHEMA ... OWNER TO`. Omit it to keep and report the current owner, which defaults to the creating user. `SVV_EXTERNAL_SCHEMAS` shows a regular user only their own schemas, so managing an external schema owned by another user, including handing it to one, requires a superuser connection.",
 			},
-			"refresh_revision": schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "Bump to recreate the external schema after a source catalog change; deletion is restrictive. Changing it replaces the external schema."},
+			"refresh_revision": schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "Bump to recreate the external schema after a source catalog change; deletion is restrictive."},
 		},
 	}
 }
@@ -434,12 +434,6 @@ func (r *externalSchemaResource) Delete(ctx context.Context, req resource.Delete
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropExternalSchemaStatement(data))
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete external schema", "The external schema remains after deletion.")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete external schema", err.Error())

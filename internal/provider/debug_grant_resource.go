@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -29,14 +31,13 @@ func (r *debugGrantResource) Schema(_ context.Context, _ resource.SchemaRequest,
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Grants `DEBUG` on one database in a warehouse with federated permissions, so the grantee sees secure logging records unredacted, to a global identity, an Identity Center group, or the administrators of an account.",
 		Attributes: map[string]schema.Attribute{
-			"id": idAttribute(),
-			"database": privilegeString("Database with federated permissions that `DEBUG` applies to, such as `sales_db` on the warehouse that owns it or "+
-				"`sales_db@finance-catalog` from another warehouse. Changing it replaces the grant.", false),
+			"id":       idAttribute(),
+			"database": privilegeString("Database with federated permissions that `DEBUG` applies to. `ACCOUNT` requires a producer-local name such as `sales_db` and a provider connected to that producer. Remote `USER`/`ROLE` aliases such as `sales_db@finance-catalog` require a SQL superuser, a verified `IAM AssumeUser` current-session authentication event in `SYS_CONNECTION_LOG`, and alias visibility in `SHOW DATABASES`. Password, unavailable, or unverified remote contexts are errors even if the alias is listed.", false),
 			"grantee": privilegeString("Receiving identity: a global identity `<prefix>:<name>` (such as `IAM:sales_auditor` or `IAMR:audit_role`) for `USER`, "+
-				"an Identity Center group `<prefix>:<group>` for `ROLE`, or a 12-digit AWS account ID for `ACCOUNT`, which must own the producer. Changing it replaces the grant.", false),
+				"an Identity Center group `<prefix>:<group>` for `ROLE`, or a 12-digit AWS account ID for `ACCOUNT`, which must own the producer.", false),
 			"grantee_type": privilegeKeyword("`USER` for a global identity (`TO \"<prefix>:<name>\"`), `ROLE` for an Identity Center group (`TO ROLE \"<prefix>:<group>\"`), "+
-				"or `ACCOUNT` for the superusers of an account (`TO ADMINS OF ACCOUNT '<account_id>'`). Accepted in any case; another case of the same keyword is recorded in place. "+
-				"Changing it replaces the grant.", "USER", "ROLE", "ACCOUNT"),
+				"or `ACCOUNT` for the superusers of an account (`TO ADMINS OF ACCOUNT '<account_id>'`). Accepted in any case; another case of the same keyword is recorded in place.",
+				"USER", "ROLE", "ACCOUNT"),
 		},
 	}
 }
@@ -55,9 +56,31 @@ func (r *debugGrantResource) listed(ctx context.Context, database string) (bool,
 	return false, nil
 }
 
-// read checks the DEBUG row of the tuple. SHOW GRANTS fails for a dropped database, so a failure counts as a
-// missing parent only when SHOW DATABASES no longer lists the database; any other failure stays an error. Checking
-// the listing only on failure keeps cross-warehouse names, which the listing may not report, readable.
+// remoteVisible proves both session authentication and alias visibility before any absence inference. Password
+// sessions can list the alias but silently omit existing remote grants, so listing alone is not evidence of access.
+func (r *debugGrantResource) remoteVisible(ctx context.Context, database string) error {
+	rows, err := r.query(ctx, readDebugGrantAuthStatement(), nil)
+	if err != nil {
+		return fmt.Errorf("cannot verify remote DEBUG authentication context through SYS_CONNECTION_LOG (requires a SQL superuser); use verified IAM authentication or a producer-local provider: %w", err)
+	}
+	method := "unknown"
+	if len(rows) == 1 && rows[0]["auth_method"] != "" {
+		method = rows[0]["auth_method"]
+	}
+	if method != "IAM AssumeUser" {
+		return fmt.Errorf("remote DEBUG requires a verified IAM AssumeUser authentication context, got %q; password, unavailable, or unverified sessions cannot safely read remote grants. Use supported IAM authentication or a producer-local provider", method)
+	}
+	listed, err := r.listed(ctx, database)
+	if err != nil {
+		return fmt.Errorf("cannot verify remote DEBUG database visibility: %w", err)
+	}
+	if !listed {
+		return fmt.Errorf("remote DEBUG database %q is not visible to the provider's SQL identity in SHOW DATABASES; use an identity with catalog visibility or a producer-local provider. Refusing to infer grant absence", database)
+	}
+	return nil
+}
+
+// read uses local global-identity rows or remote scoped FOR rows, never empty remote ON output as absence evidence.
 func (r *debugGrantResource) read(ctx context.Context, data debugGrantModel) (bool, error) {
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, err
@@ -67,6 +90,25 @@ func (r *debugGrantResource) read(ctx context.Context, data debugGrantModel) (bo
 		return false, err
 	}
 	database := data.Database.ValueString()
+	if strings.Contains(database, "@") {
+		if err := r.remoteVisible(ctx, database); err != nil {
+			return false, err
+		}
+		statement, err := readDebugGrantRemoteStatement(data)
+		if err != nil {
+			return false, err
+		}
+		rows, err := r.query(ctx, statement, nil)
+		if err != nil {
+			return false, err
+		}
+		for _, row := range rows {
+			if debugGrantRemoteMatches(row, data) {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
 	rows, err := r.query(ctx, readDebugGrantStatement(database), nil)
 	if err != nil {
 		if listed, listErr := r.listed(ctx, database); listErr == nil && !listed {
@@ -89,14 +131,23 @@ func (data debugGrantModel) fields() map[string]string {
 	return fields
 }
 
-// ValidateConfig reports invalid grantees during planning, once the configuration is known.
+// ValidateConfig checks known grantees independently of generated database names.
 func (r *debugGrantResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data debugGrantModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if _, _, err := data.spec(); err != nil {
+	if !data.Database.IsUnknown() && data.Database.ValueString() == "" {
+		resp.Diagnostics.AddError("Invalid debug grant", "database must not be empty")
+	}
+	if err := data.validateRemote(); err != nil {
+		resp.Diagnostics.AddError("Invalid debug grant", err.Error())
+	}
+	if data.Grantee.IsUnknown() || data.GranteeType.IsUnknown() {
+		return
+	}
+	if _, _, err := debugRecipient(data.Grantee.ValueString(), data.GranteeType.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Invalid debug grant", err.Error())
 	}
 }
@@ -112,6 +163,15 @@ func (r *debugGrantResource) Create(ctx context.Context, req resource.CreateRequ
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid debug grant", err.Error())
 		return
+	}
+	if strings.Contains(data.Database.ValueString(), "@") {
+		// Prove both alias visibility and the scoped read's permission before granting access we must verify.
+		preflight := data
+		preflight.ID = types.StringNull()
+		if _, err := r.read(ctx, preflight); err != nil {
+			resp.Diagnostics.AddError("Invalid debug grant", err.Error())
+			return
+		}
 	}
 	// The statement names the database, so it runs in the administration database, which also reaches
 	// database@catalog names that cannot be connected to.

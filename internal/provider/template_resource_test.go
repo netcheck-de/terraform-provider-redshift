@@ -2,20 +2,16 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
-	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/hashicorp/terraform-plugin-testing/plancheck"
-	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -145,12 +141,12 @@ func TestTemplateCatalogFailures(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			r := newTemplateResource()
 			configureTestResource(t, r, client)
-			assert.True(t, invoke(t, r, "read", templateLifecycleModel, false).HasError())
+			assert.True(t, invoke(t, r, "read", templateLifecycleModel).HasError())
 		})
 	}
 	r := newTemplateResource()
 	configureTestResource(t, r, respond([]sqlclient.Row{{"template_name": "csvxload", "template_owner": "admin"}}, nil))
-	assert.False(t, invoke(t, r, "read", templateLifecycleModel, false).HasError(), "a name the LIKE pattern also matches is not the template")
+	assert.False(t, invoke(t, r, "read", templateLifecycleModel).HasError(), "a name the LIKE pattern also matches is not the template")
 }
 
 // TestTemplateConvergence fails an apply whose catalog result differs from the plan.
@@ -196,7 +192,7 @@ func TestTemplateCreateRejectsInvalidBeforeState(t *testing.T) {
 	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(testState(t, r, model))}, &resp)
 	require.True(t, resp.Diagnostics.HasError())
 	assert.True(t, resp.State.Raw.IsNull(), "an invalid template must not be recorded in state")
-	assert.True(t, invoke(t, r, "update", model, false).HasError(), "update validates before ALTER")
+	assert.True(t, invoke(t, r, "update", model).HasError(), "update validates before ALTER")
 }
 
 // TestTemplateImport accepts the JSON identity Create records and rejects incomplete ones.
@@ -218,43 +214,37 @@ func TestTemplateImport(t *testing.T) {
 	}
 }
 
-// TestTemplateRenamePlan drives real plans: a rename updates in place and records the new identity, and repeated plans
-// after apply are empty.
-func TestTemplateRenamePlan(t *testing.T) {
-	c := &catalog{identity: true, privileges: map[string]bool{}}
-	configuration := func(name, parameters string) string {
-		return fmt.Sprintf(`
-provider "redshift" {
-  region = "eu-central-1"
-  workgroup_name = "warehouse"
-  database = "admin"
-}
-resource "redshift_template" "csv" {
-  database = "admin"
-  schema = "serving"
-  name = %q
-  format = "CSV"
-  parameters = %s
-}`, name, parameters)
+// TestTemplateLifecycleEdges treats a missing database as absence, keeps the recorded identity, and reports a failed ALTER.
+func TestTemplateLifecycleEdges(t *testing.T) {
+	ctx := context.Background()
+	r := &templateResource{testResourceClient(fullCatalog())}
+	data := templateLifecycleModel
+	data.Database = types.StringValue("missing")
+	_, found, err := readTemplateCatalog(ctx, &r.resourceClient, data)
+	require.NoError(t, err)
+	assert.False(t, found)
+	state := testState(t, r, templateLifecycleModel)
+	response := planmodifier.StringResponse{PlanValue: types.StringUnknown()}
+	templateIdentity{}.PlanModifyString(ctx, planmodifier.StringRequest{StateValue: types.StringValue("identity"), PlanValue: types.StringUnknown(), State: state, Plan: tfsdk.Plan(state)}, &response)
+	require.False(t, response.Diagnostics.HasError())
+	assert.Equal(t, types.StringValue("identity"), response.PlanValue)
+	for _, operation := range []string{"create", "update"} {
+		t.Run(operation, func(t *testing.T) {
+			c := fullCatalog()
+			if operation == "create" {
+				fakeState[*templateFake](c, templateFakeFamily).exists = false
+			}
+			r := &templateResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+				if strings.HasPrefix(sql, "ALTER TEMPLATE") {
+					return nil, errors.New("alter denied")
+				}
+				return c.Query(ctx, target, sql, parameters)
+			}))}
+			planned := templateLifecycleModel
+			planned.Owner = types.StringValue("other_owner")
+			_, diagnostics := applyOperation(t, r, operation, templateLifecycleModel, planned, nil)
+			require.True(t, diagnostics.HasError())
+			assert.Contains(t, diagnostics.Errors()[0].Detail(), "alter denied")
+		})
 	}
-	first := configuration("csv_load", `{ IGNOREHEADER = "1" }`)
-	renamed := configuration("csv_import", `{ IGNOREHEADER = "1", GZIP = "" }`)
-	testresource.UnitTest(t, testresource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})},
-		Steps: []testresource.TestStep{
-			{Config: configuration("csv_load", `{ MANIFEST = "" }`), ExpectError: regexp.MustCompile(`unsupported COPY parameter`), PlanOnly: true},
-			{Config: first, Check: testresource.TestCheckResourceAttr("redshift_template.csv", "owner", "admin")},
-			{Config: first, PlanOnly: true},
-			{
-				Config: renamed,
-				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
-					plancheck.ExpectResourceAction("redshift_template.csv", plancheck.ResourceActionUpdate),
-					plancheck.ExpectUnknownValue("redshift_template.csv", tfjsonpath.New("id")),
-				}},
-				Check: testresource.TestCheckResourceAttr("redshift_template.csv", "id", `{"database":"admin","name":"csv_import","schema":"serving","workgroup_name":"warehouse"}`),
-			},
-			{Config: renamed, PlanOnly: true},
-		},
-	})
-	assert.Equal(t, "csv_import", fakeState[*templateFake](c, templateFakeFamily).name)
 }

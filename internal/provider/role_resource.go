@@ -52,7 +52,7 @@ func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Role name, including any identity namespace prefix. Changing it replaces the role.",
+				Required: true, MarkdownDescription: "Role name, including any identity namespace prefix.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"owner": schema.StringAttribute{
@@ -89,8 +89,8 @@ func (r *roleResource) read(ctx context.Context, data *roleModel) (bool, error) 
 	}
 	row := rows[0]
 	data.Name = types.StringValue(row["role_name"])
-	data.Owner = roleOptional(row["role_owner"])
-	data.ExternalID = roleOptional(row["external_id"])
+	data.Owner = optionalString(row["role_owner"])
+	data.ExternalID = optionalString(row["external_id"])
 	data.RoleID = types.Int64Null()
 	if row["role_id"] != "" {
 		id, err := strconv.ParseInt(row["role_id"], 10, 64)
@@ -100,14 +100,6 @@ func (r *roleResource) read(ctx context.Context, data *roleModel) (bool, error) 
 		data.RoleID = types.Int64Value(id)
 	}
 	return true, nil
-}
-
-// roleOptional maps an empty catalog value, which is how both transports return NULL, to a null attribute.
-func roleOptional(value string) types.String {
-	if value == "" {
-		return types.StringNull()
-	}
-	return types.StringValue(value)
 }
 
 // roleKnown replaces an unknown planned value with null, which a saved state can hold.
@@ -214,7 +206,7 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the role without cascading and verifies its removal.
+// Delete drops the role without cascading to grants or memberships.
 func (r *roleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data roleModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -224,12 +216,6 @@ func (r *roleResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, r.database.ValueString(), dropRoleStatement(data))
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete Redshift role", "The role remains after deletion.")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete Redshift role", err.Error())

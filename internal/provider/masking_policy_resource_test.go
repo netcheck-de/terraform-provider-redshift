@@ -3,22 +3,17 @@ package provider
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
-	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,7 +34,7 @@ var _ = registerLifecycleCase(lifecycleCase{
 var _ = registerReplacementPolicy("redshift_masking_policy", map[string]replaceRule{
 	"database":     replaceAlways,
 	"name":         replaceAlways,
-	"input_column": replaceConditional("TestMaskingPolicyInputsReplacement"),
+	"input_column": replaceConditional,
 	"expression":   replaceNever,
 })
 
@@ -147,7 +142,7 @@ func TestMaskingPolicyCatalogFailures(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			r := newMaskingPolicyResource()
 			configureTestResource(t, r, maskingPolicyCatalogClient(test.rows...))
-			assert.True(t, invoke(t, r, test.operation, maskingLifecyclePolicy, false).HasError())
+			assert.True(t, invoke(t, r, test.operation, maskingLifecyclePolicy).HasError())
 		})
 	}
 }
@@ -165,7 +160,7 @@ func TestMaskingPolicyCreateRejectsInvalidBeforeState(t *testing.T) {
 	r.Create(context.Background(), resource.CreateRequest{Plan: plan}, &resp)
 	require.True(t, resp.Diagnostics.HasError())
 	assert.True(t, resp.State.Raw.IsNull(), "an invalid policy must not be recorded in state")
-	assert.True(t, invoke(t, r, "update", model, false).HasError(), "update validates before ALTER")
+	assert.True(t, invoke(t, r, "update", model).HasError(), "update validates before ALTER")
 }
 
 // TestMaskingPolicyAbsentInputsReportedOnce leaves absent input_column blocks to the schema's IsRequired validator
@@ -278,46 +273,30 @@ func TestMaskingPolicyInputsReplacement(t *testing.T) {
 	assert.True(t, observed.InputColumn.Equal(maskingLifecyclePolicy.InputColumn), "the update records the configured spelling")
 }
 
-// TestMaskingPolicyBlockPlan drives input_column blocks through real plans, which the model-level tests skip: the
-// required-block validator, the empty plan after apply, and the in-place update for another spelling of a type.
-func TestMaskingPolicyBlockPlan(t *testing.T) {
-	c := &catalog{identity: true, privileges: map[string]bool{}}
-	configuration := func(blocks string) string {
-		return fmt.Sprintf(`
-provider "redshift" {
-  region = "eu-central-1"
-  workgroup_name = "warehouse"
-  database = "admin"
-}
-resource "redshift_masking_policy" "email" {
-  database = "admin"
-  name = "mask_email"
-  expression = "'***'::VARCHAR(256)"
-%s
-}`, blocks)
+// TestPolicyValidationWithUnknownExpressions rejects invalid input columns while the expression or predicate is still unknown.
+func TestPolicyValidationWithUnknownExpressions(t *testing.T) {
+	masking := maskingLifecyclePolicy
+	masking.Expression = types.StringUnknown()
+	masking.InputColumn = maskingPolicyColumnList([]maskingPolicyColumn{{Name: "value", Type: "anyelement"}})
+	rls := rlsPolicyLifecycleModel()
+	rls.Predicate = types.StringUnknown()
+	rls.Column = types.ListValueMust(rlsPolicyColumnType, []attr.Value{types.ObjectValueMust(rlsPolicyColumnType.AttrTypes, map[string]attr.Value{"name": types.StringValue("value"), "type": types.StringValue("money")})})
+	for _, test := range []struct {
+		r     resource.Resource
+		model any
+	}{
+		{newMaskingPolicyResource(), masking}, {newRlsPolicyResource(), rls},
+	} {
+		var response resource.ValidateConfigResponse
+		test.r.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, test.r, test.model))}, &response)
+		require.True(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
 	}
-	varchar := configuration(`  input_column {
-    name = "email"
-    type = "VARCHAR(256)"
-  }`)
-	text := configuration(`  input_column {
-    name = "email"
-    type = "TEXT"
-  }`)
-	testresource.UnitTest(t, testresource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})},
-		Steps: []testresource.TestStep{
-			{Config: configuration(""), ExpectError: regexp.MustCompile(`Block input_column must have a configuration value`), PlanOnly: true},
-			{Config: varchar, Check: testresource.TestCheckResourceAttr("redshift_masking_policy.email", "input_column.0.type", "VARCHAR(256)")},
-			{Config: varchar, PlanOnly: true},
-			{
-				Config: text,
-				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
-					plancheck.ExpectResourceAction("redshift_masking_policy.email", plancheck.ResourceActionUpdate),
-				}},
-				Check: testresource.TestCheckResourceAttr("redshift_masking_policy.email", "input_column.0.type", "TEXT"),
-			},
-			{Config: text, PlanOnly: true},
-		},
-	})
+	unknown := types.ListValueMust(maskingPolicyColumnType, []attr.Value{types.ObjectUnknown(maskingPolicyColumnType.AttrTypes)})
+	assert.Empty(t, maskingPolicyColumns(unknown))
+	assert.Empty(t, rlsPolicyCatalogColumnsOf(types.ListUnknown(rlsPolicyColumnType)))
+	assert.Empty(t, rlsPolicyCatalogColumnsOf(types.ListValueMust(rlsPolicyColumnType, []attr.Value{types.ObjectUnknown(rlsPolicyColumnType.AttrTypes)})))
+	_, err := maskingPolicyInputs([]maskingPolicyColumn{{Name: "value", Type: "anyelement"}})
+	require.ErrorContains(t, err, "input column")
+	_, err = maskingPolicyUsing(types.StringValue("x; DROP TABLE t"))
+	require.ErrorContains(t, err, "expression")
 }

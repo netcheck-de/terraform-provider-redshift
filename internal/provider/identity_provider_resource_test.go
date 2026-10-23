@@ -132,7 +132,7 @@ func TestIdentityProviderKeepsFederatedUsers(t *testing.T) {
 		}
 	}))}
 	data := identityProviderModel{Name: types.StringValue("identity"), Namespace: types.StringValue("example"), ApplicationARN: types.StringValue("application"), IAMRoleARN: types.StringValue("role"), Enabled: types.BoolValue(true)}
-	diagnostics := invoke(t, r, "delete", data, false)
+	diagnostics := invoke(t, r, "delete", data)
 	assert.True(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.Zero(t, writes, "federated provider must not be dropped")
 }
@@ -184,7 +184,7 @@ func TestIdentityProviderRefusesChangedIdentityOnDelete(t *testing.T) {
 			} else {
 				data.ApplicationARN = types.StringValue("previous")
 			}
-			diagnostics := invoke(t, r, "delete", data, false)
+			diagnostics := invoke(t, r, "delete", data)
 			assert.True(t, diagnostics.HasError())
 			assert.Empty(t, c.writes)
 		})
@@ -206,7 +206,7 @@ func TestIdentityProviderCreatesDisabled(t *testing.T) {
 			})
 			r := &identityProviderResource{testResourceClient(client)}
 			data := identityProviderModel{Name: types.StringValue("identity"), Namespace: types.StringValue("example"), ApplicationARN: types.StringValue("application"), IAMRoleARN: types.StringValue("role-one"), Enabled: types.BoolValue(false)}
-			diagnostics := invoke(t, r, "create", data, false)
+			diagnostics := invoke(t, r, "create", data)
 			assert.Equal(t, failAt != 0, diagnostics.HasError(), "%v", diagnostics)
 			if failAt == 0 {
 				assert.False(t, c.enabled)
@@ -229,9 +229,11 @@ func TestIdentityProviderUpdateNamesFailedStatement(t *testing.T) {
 			})
 			r := newIdentityProviderResource()
 			configureTestResource(t, r, client)
-			prior := identityProviderAWSIDCFixture("identity", "example", "role-two", false)
+			prior := identityProviderAWSIDCFixture("identity", "example", "role-one", false)
 			prior.ID = r.(*identityProviderResource).identity("admin", map[string]string{"name": "identity"})
 			planned := prior
+			planned.IAMRoleARN = types.StringValue("role-two")
+			prior.Enabled = types.BoolValue(true)
 			planned.Namespace = types.StringValue("renamed")
 			_, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
 			require.True(t, diagnostics.HasError())
@@ -274,7 +276,7 @@ func TestIdentityProviderAzureLifecycle(t *testing.T) {
 	_, diagnostics = applyOperation(t, r, "update", rotated, reissued, identityProviderWithSecret(reissued, "second"))
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 
-	diagnostics = invoke(t, r, "delete", reissued, false)
+	diagnostics = invoke(t, r, "delete", reissued)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.False(t, c.identity)
 }
@@ -313,7 +315,7 @@ func TestIdentityProviderRejectsInvalidPlan(t *testing.T) {
 }
 
 // TestIdentityProviderAlterCoverage checks the in-place attributes: namespace and role creation have diff steps, while
-// the IAM role and status are reapplied on every update and the Azure parameters are rendered together.
+// the IAM role and status compare catalog values and the Azure parameters are rendered together.
 func TestIdentityProviderAlterCoverage(t *testing.T) {
 	assertAlterCoverage(t, newIdentityProviderResource(), identityProviderAlterSteps,
 		"iam_role_arn", "enabled", "issuer", "client_id", "audience", "client_secret_wo", "client_secret_wo_version",

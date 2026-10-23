@@ -1,3 +1,1 @@
-ALTER IDENTITY PROVIDER "Odd""IdP" IAM_ROLE 'role-''two\\';
-
-ALTER IDENTITY PROVIDER "Odd""IdP" DISABLE;
+-- no statements

@@ -57,15 +57,15 @@ func (r *rlsPolicyResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local database that holds the policy and the relations it is attached to. Changing it replaces the policy.",
+				Required: true, MarkdownDescription: "Local database that holds the policy and the relations it is attached to.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Policy name, unique within the database. Changing it replaces the policy.",
+				Required: true, MarkdownDescription: "Policy name, unique within the database.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"alias": schema.StringAttribute{
-				Optional: true, Computed: true, MarkdownDescription: "Relation alias of the `WITH` clause (`AS alias`), which the predicate may use to qualify columns; requires a `column` block. All policies attached to one relation must use the same alias. It compares without case, as Redshift folds identifiers. Removing it from configuration keeps the current alias. Like `column`, a change needs `replace_triggered_by` on the attachments. Changing it replaces the policy.",
+				Optional: true, Computed: true, MarkdownDescription: "Relation alias of the `WITH` clause (`AS alias`), which the predicate may use to qualify columns; requires a `column` block. All policies attached to one relation must use the same alias. It compares without case, as Redshift folds identifiers. Removing it from configuration keeps the current alias. Like `column`, a change needs `replace_triggered_by` on the attachments.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown(), rlsPolicyAliasEquivalent{}, stringplanmodifier.RequiresReplace()},
 			},
 			"predicate": schema.StringAttribute{
@@ -75,7 +75,7 @@ func (r *rlsPolicyResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		},
 		Blocks: map[string]schema.Block{
 			"column": schema.ListNestedBlock{
-				MarkdownDescription: "Ordered `WITH` columns the predicate reads from each attached relation, which must have all of them. Omit the blocks only when the predicate references no relation column. Names compare without case and types in canonical form, so respelling `VARCHAR(64)` as the catalog's `CHARACTER VARYING(64)`, or importing the policy, plans no change. `ALTER RLS POLICY` cannot change the `WITH` clause, and `DROP RLS POLICY` refuses a policy that is still attached, so give each attachment `replace_triggered_by` on `column` and `alias`. Changing it replaces the policy.",
+				MarkdownDescription: "Ordered `WITH` columns the predicate reads from each attached relation, which must have all of them. Omit the blocks only when the predicate references no relation column. Names compare without case and types in canonical form, so respelling `VARCHAR(64)` as the catalog's `CHARACTER VARYING(64)`, or importing the policy, plans no change. `ALTER RLS POLICY` cannot change the `WITH` clause, and `DROP RLS POLICY` refuses a policy that is still attached, so give each attachment `replace_triggered_by` on `column` and `alias`.",
 				PlanModifiers:       []planmodifier.List{rlsPolicyColumnsEquivalent{}, listplanmodifier.RequiresReplace()},
 				NestedObject: schema.NestedBlockObject{Attributes: map[string]schema.Attribute{
 					"name": schema.StringAttribute{Required: true, MarkdownDescription: "Column name in the attached relations."},
@@ -246,7 +246,21 @@ func (r *rlsPolicyResource) Create(ctx context.Context, req resource.CreateReque
 func (r *rlsPolicyResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data rlsPolicyModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !req.Config.Raw.IsFullyKnown() {
+		if !data.Predicate.IsUnknown() && !data.Predicate.IsNull() {
+			if _, err := rlsPolicyPredicate(data); err != nil {
+				resp.Diagnostics.AddError("Invalid RLS policy", err.Error())
+			}
+		}
+		columns, err := data.Column.ToTerraformValue(ctx)
+		if err == nil && columns.IsFullyKnown() {
+			if _, err := rlsPolicyColumns(data.Column); err != nil {
+				resp.Diagnostics.AddError("Invalid RLS policy", err.Error())
+			}
+		}
 		return
 	}
 	if _, err := createRlsPolicyStatement(data); err != nil {
@@ -301,7 +315,7 @@ func (r *rlsPolicyResource) Update(ctx context.Context, req resource.UpdateReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-// Delete drops the policy restrictively and verifies catalog removal.
+// Delete drops the policy without cascading to attachments.
 func (r *rlsPolicyResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data rlsPolicyModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -311,12 +325,6 @@ func (r *rlsPolicyResource) Delete(ctx context.Context, req resource.DeleteReque
 	found, _, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropRlsPolicyStatement(data))
-		if err == nil {
-			found, _, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete RLS policy", "The RLS policy remains after deletion.")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete RLS policy", err.Error())

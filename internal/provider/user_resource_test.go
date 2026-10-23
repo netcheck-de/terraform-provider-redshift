@@ -234,18 +234,13 @@ func TestUserUpdateDetectsMismatchedBindingAndPrivileges(t *testing.T) {
 
 // TestUserLifecycleErrorPaths injects SQL failures and missing user states across lifecycle operations.
 func TestUserLifecycleErrorPaths(t *testing.T) {
-	for _, operation := range []string{"create", "read", "update", "delete"} {
-		r := &userResource{testResourceClient(&catalog{user: true})}
-		data := grafanaUser()
-		require.True(t, invoke(t, r, operation, data, true).HasError())
-	}
 	for _, operation := range []string{"read", "delete"} {
 		r := &userResource{testResourceClient(&catalog{})}
 		data := grafanaUser()
 		data.ID = r.identity("admin", map[string]string{"name": "grafana"})
 		assert.False(t, runUser(t, r, operation, data, data, "").HasError())
 	}
-	for _, stage := range []string{"create", "create verification", "create missing", "create mismatch", "delete remains"} {
+	for _, stage := range []string{"create", "create verification", "create missing", "create mismatch"} {
 		t.Run(stage, func(t *testing.T) {
 			c := &catalog{}
 			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, params map[string]string) ([]dataapi.Row, error) {
@@ -261,9 +256,6 @@ func TestUserLifecycleErrorPaths(t *testing.T) {
 				if stage == "create mismatch" && strings.HasPrefix(sql, "SELECT usename") {
 					return []dataapi.Row{{"usename": "grafana", "usesuper": "false", "usecreatedb": "false"}}, nil
 				}
-				if stage == "delete remains" && strings.HasPrefix(sql, "DROP USER") {
-					return nil, nil
-				}
 				return c.Query(ctx, target, sql, params)
 			})
 			r := &userResource{testResourceClient(client)}
@@ -271,13 +263,7 @@ func TestUserLifecycleErrorPaths(t *testing.T) {
 			if stage == "create mismatch" {
 				data.Superuser = types.BoolValue(true)
 			}
-			if stage == "delete remains" {
-				c.user = true
-				data.ID = r.identity("admin", map[string]string{"name": "grafana"})
-				assert.True(t, runUser(t, r, "delete", data, data, "").HasError())
-			} else {
-				assert.True(t, runUser(t, r, "create", data, data, "InitialPass123").HasError())
-			}
+			assert.True(t, runUser(t, r, "create", data, data, "InitialPass123").HasError())
 		})
 	}
 }
@@ -341,4 +327,28 @@ func TestUserUpdateFailures(t *testing.T) {
 			assert.Equal(t, summaries[stage], diagnostics.Errors()[0].Summary())
 		})
 	}
+}
+
+// TestUserAlterSkipsUnknownAndResetsRemovedSettings leaves unknown settings for apply and resets removed ones to their defaults.
+func TestUserAlterSkipsUnknownAndResetsRemovedSettings(t *testing.T) {
+	before := grafanaUser()
+	after := before
+	after.SearchPath = types.ListUnknown(types.StringType)
+	assert.Empty(t, userSearchPathStatements(before, after))
+	after.SessionDefaults = types.MapUnknown(types.StringType)
+	statements, err := userSessionDefaultStatements(before, after)
+	require.NoError(t, err)
+	assert.Empty(t, statements)
+	before.SyslogAccess, before.ValidUntil = types.StringValue("UNRESTRICTED"), types.StringValue("2030-01-01")
+	before.ConnectionLimit, before.SessionTimeout = types.Int64Value(10), types.Int64Value(60)
+	after = before
+	after.SyslogAccess, after.ValidUntil = types.StringNull(), types.StringNull()
+	after.ConnectionLimit, after.SessionTimeout = types.Int64Null(), types.Int64Null()
+	statements, err = alterUserStatements(before, after)
+	require.NoError(t, err)
+	require.Len(t, statements, 1)
+	assert.Contains(t, statements[0], "VALID UNTIL 'infinity'")
+	after.SyslogAccess = types.StringValue("INVALID")
+	_, err = alterUserBatches(before, after)
+	require.ErrorContains(t, err, "syslog_access")
 }

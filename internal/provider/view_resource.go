@@ -77,9 +77,9 @@ func (r *viewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 		MarkdownDescription: "Manages an ordinary or late-binding view in a local Redshift schema.",
 		Attributes: map[string]schema.Attribute{
 			"id":       idAttribute(),
-			"database": viewNameAttribute("Local database containing the view. Changing it replaces the view."),
-			"schema":   viewNameAttribute("Existing schema containing the view. Changing it replaces the view."),
-			"name":     viewNameAttribute("View name. Changing it replaces the view."),
+			"database": viewNameAttribute("Local database containing the view."),
+			"schema":   viewNameAttribute("Existing schema containing the view."),
+			"name":     viewNameAttribute("View name."),
 			"query": schema.StringAttribute{
 				Required: true,
 				MarkdownDescription: "SELECT statement defining the view, without a trailing `;`. A change runs `CREATE OR REPLACE VIEW`, " +
@@ -198,14 +198,14 @@ func (r *viewResource) Create(ctx context.Context, req resource.CreateRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// ValidateConfig reports a definition Create would reject, during planning once the configuration is known.
+// ValidateConfig checks known query and identity inputs independently.
 func (r *viewResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data viewModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if _, err := createViewStatements(data); err != nil {
+	if err := validateViewConfig(data.Schema, data.Name, data.Query); err != nil {
 		resp.Diagnostics.AddError("Invalid view", err.Error())
 	}
 }
@@ -265,7 +265,7 @@ func (r *viewResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the view restrictively and verifies catalog removal.
+// Delete drops the view without cascading to dependent objects.
 func (r *viewResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data viewModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -277,11 +277,6 @@ func (r *viewResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		var statement string
 		if statement, err = dropViewStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
-		}
-		if err == nil {
-			if _, found, err = r.read(ctx, data); err == nil && found {
-				resp.Diagnostics.AddError("Delete view", "The view remains after deletion.")
-			}
 		}
 	}
 	if err != nil {

@@ -46,13 +46,13 @@ resource "redshift_role_grant" "team_lead" {
 
 ### Required
 
-- `role` (String) Role being granted, including built-in `sys:` roles. Changing it replaces the grant.
+- `role` (String) Role being granted, including built-in `sys:` roles.
 
 ### Optional
 
 - `admin_option` (Boolean) Whether the receiving user holds the role `WITH ADMIN OPTION` and can grant it to other users and roles (`svv_user_grants.admin_option`). Only users hold the admin option, so `true` requires `to_user`. Defaults to `false`; changes are applied in place and keep the membership.
-- `to_role` (String) Receiving role; exactly one of `to_role` and `to_user` is required. Changing it replaces the grant.
-- `to_user` (String) Receiving database user; exactly one of `to_role` and `to_user` is required. Changing it replaces the grant.
+- `to_role` (String) Receiving role; exactly one of `to_role` and `to_user` is required.
+- `to_user` (String) Receiving database user; exactly one of `to_role` and `to_user` is required.
 
 ### Read-Only
 

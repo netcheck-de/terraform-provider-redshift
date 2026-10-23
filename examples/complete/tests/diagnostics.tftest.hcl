@@ -36,6 +36,10 @@ override_data {
   values = { value = "$user, public" }
 }
 override_data {
+  target = data.redshift_configuration.session_context
+  values = { value = "example-reader" }
+}
+override_data {
   target = data.redshift_debug_grant.account_admins
   values = { exists = true }
 }
@@ -65,12 +69,12 @@ run "diagnostics_debug_grant" {
   command = apply
 
   variables {
-    federated_debug_database = "sales_db@finance-catalog"
+    federated_debug_database = "sales_db"
   }
 
   assert {
     condition = (
-      redshift_debug_grant.account_admins[0].database == "sales_db@finance-catalog" &&
+      redshift_debug_grant.account_admins[0].database == "sales_db" &&
       redshift_debug_grant.account_admins[0].grantee == "111111111111" &&
       redshift_debug_grant.account_admins[0].grantee_type == "ACCOUNT"
     )
@@ -83,6 +87,22 @@ run "diagnostics_debug_grant" {
       output.diagnostics.account_admins_debug == true
     )
     error_message = "The DEBUG lookup must check the managed grant and expose the result."
+  }
+}
+
+run "diagnostics_session_context" {
+  command = apply
+
+  variables {
+    session_context_variable = "app_context.user_id"
+  }
+
+  assert {
+    condition = (
+      data.redshift_configuration.session_context[0].name == "app_context.user_id" &&
+      output.diagnostics.session_context == "example-reader"
+    )
+    error_message = "Dotted session context names must reach the lookup and expose the observed value."
   }
 }
 

@@ -1,1 +1,1 @@
--- error: table.columns must not contain empty names
+-- error: table.columns must not contain null or empty names

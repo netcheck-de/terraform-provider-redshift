@@ -2,7 +2,7 @@
 version: '3'
 
 vars:
-  # The newest release tag is the only version source; the fallback must satisfy the examples' "~> 0.2" constraint.
+  # Releases use the newest tag; prerelease examples require an explicit VERSION override.
   VERSION:
     sh: git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//' | grep . || echo 0.2.0
   PACKAGE_DIR: '{{.ROOT_DIR}}/.cache/mirror/registry.terraform.io/netcheck-de/redshift/{{.VERSION}}/{{OS}}_{{ARCH}}'
@@ -57,9 +57,9 @@ tasks:
         | sh -s -- -b "$(dirname "{{.GOLANGCI_LINT}}")" {{.GOLANGCI_LINT_VERSION}}
 
   test:
-    desc: Run offline race tests and print statement coverage
+    desc: Run offline race tests, including Terraform contracts, and print statement coverage
     cmds:
-      - go test -race -cover ./...
+      - go test -race -cover {{.CLI_ARGS}} ./...
 
   golden:
     desc: Rewrite golden SQL files under internal/provider/testdata/sql; review the diff before committing

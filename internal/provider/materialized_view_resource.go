@@ -110,13 +110,13 @@ func (r *materializedViewResource) Schema(ctx context.Context, _ resource.Schema
 		MarkdownDescription: "Manages a materialized view stored in Redshift. Refreshing its data is an action and is not managed.",
 		Attributes: map[string]schema.Attribute{
 			"id":       idAttribute(),
-			"database": viewNameAttribute("Local database containing the materialized view. Changing it replaces the view."),
-			"schema":   viewNameAttribute("Existing schema containing the materialized view. Changing it replaces the view."),
-			"name":     viewNameAttribute("Materialized view name. Changing it replaces the view."),
+			"database": viewNameAttribute("Local database containing the materialized view."),
+			"schema":   viewNameAttribute("Existing schema containing the materialized view."),
+			"name":     viewNameAttribute("Materialized view name."),
 			"query": schema.StringAttribute{
 				Required: true,
 				MarkdownDescription: "SELECT statement defining the materialized view, without a trailing `;`. Redshift cannot alter the definition. " +
-					"Changing it replaces the view. State keeps this text while the catalog definition is unchanged; a change made " +
+					"State keeps this text while the catalog definition is unchanged; a change made " +
 					"outside Terraform surfaces the catalog definition and plans a replacement. " + materializedViewAdoptionNote,
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 				PlanModifiers: []planmodifier.String{materializedViewReplaceString()},
@@ -124,7 +124,7 @@ func (r *materializedViewResource) Schema(ctx context.Context, _ resource.Schema
 			"backup": schema.BoolAttribute{
 				Optional: true,
 				MarkdownDescription: "Include the materialized view in snapshots (`BACKUP YES`) or not (`BACKUP NO`); unset uses the server " +
-					"default, `YES`. Not reported by a documented catalog view, so it is not read back. Changing it replaces the view. " + materializedViewAdoptionNote,
+					"default, `YES`. Not reported by a documented catalog view, so it is not read back. " + materializedViewAdoptionNote,
 				PlanModifiers: []planmodifier.Bool{boolplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.BoolRequest, resp *boolplanmodifier.RequiresReplaceIfFuncResponse) {
 					resp.RequiresReplace = materializedViewReplaces(ctx, req.StateValue, req.Private)
 				}, materializedViewReplaceDescription, materializedViewReplaceDescription)},
@@ -314,10 +314,7 @@ func (r *materializedViewResource) ValidateConfig(ctx context.Context, req resou
 		resp.Diagnostics.AddError("Invalid materialized view", err.Error())
 		return
 	}
-	if !req.Config.Raw.IsFullyKnown() {
-		return
-	}
-	if _, err := createMaterializedViewStatements(data); err != nil {
+	if err := validateViewConfig(data.Schema, data.Name, data.Query); err != nil {
 		resp.Diagnostics.AddError("Invalid materialized view", err.Error())
 	}
 }
@@ -399,7 +396,7 @@ func (r *materializedViewResource) Update(ctx context.Context, req resource.Upda
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the materialized view restrictively and verifies catalog removal.
+// Delete drops the materialized view without cascading to dependent objects.
 func (r *materializedViewResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state materializedViewResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -415,11 +412,6 @@ func (r *materializedViewResource) Delete(ctx context.Context, req resource.Dele
 		var statement string
 		if statement, err = dropMaterializedViewStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
-		}
-		if err == nil {
-			if _, found, err = r.read(ctx, data); err == nil && found {
-				resp.Diagnostics.AddError("Delete materialized view", "The materialized view remains after deletion.")
-			}
 		}
 	}
 	if err != nil {

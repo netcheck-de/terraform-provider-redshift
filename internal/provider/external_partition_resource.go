@@ -56,12 +56,12 @@ func (r *externalPartitionResource) Schema(_ context.Context, _ resource.SchemaR
 		MarkdownDescription: "Manages one partition of a partitioned Redshift Spectrum external table with `ALTER TABLE ... ADD PARTITION`.",
 		Attributes: map[string]schema.Attribute{
 			"id":       idAttribute(),
-			"database": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local Redshift database holding the external schema. Changing it replaces the partition."},
-			"schema":   schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "External schema of the table. Changing it replaces the partition."},
-			"table":    schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Partitioned external table, for example a `redshift_external_table`. Changing it replaces the partition."},
+			"database": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local Redshift database holding the external schema."},
+			"schema":   schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "External schema of the table."},
+			"table":    schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Partitioned external table, for example a `redshift_external_table`."},
 			"values": schema.MapAttribute{
 				ElementType: types.StringType, Required: true, PlanModifiers: []planmodifier.Map{mapplanmodifier.RequiresReplace()},
-				MarkdownDescription: "Partition value for every partition key of the table, keyed by partition key name, such as `{ saledate = \"2008-01\" }`. Statements list the keys in the table's partition-key order. Changing it replaces the partition.",
+				MarkdownDescription: "Partition value for every partition key of the table, keyed by partition key name, such as `{ saledate = \"2008-01\" }`. Statements list the keys in the table's partition-key order.",
 			},
 			"location": schema.StringAttribute{Required: true, MarkdownDescription: "`s3://` folder or manifest file holding the partition's data. Changes run `ALTER TABLE ... PARTITION (...) SET LOCATION`."},
 		},
@@ -72,10 +72,10 @@ func (r *externalPartitionResource) Schema(_ context.Context, _ resource.SchemaR
 func (r *externalPartitionResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data externalPartitionModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := validateExternalPartitionConfig(data); err != nil {
+	if err := validateExternalPartitionKnownConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid external partition", err.Error())
 	}
 }
@@ -250,7 +250,7 @@ func (r *externalPartitionResource) Update(ctx context.Context, req resource.Upd
 	}
 }
 
-// Delete drops the partition and verifies its removal; the S3 data is not touched.
+// Delete drops the partition; the S3 data is not touched.
 func (r *externalPartitionResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data externalPartitionModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -260,12 +260,6 @@ func (r *externalPartitionResource) Delete(ctx context.Context, req resource.Del
 	spec, found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropExternalPartitionStatement(spec))
-		if err == nil {
-			_, found, err = r.read(ctx, &data)
-			if err == nil && found {
-				err = fmt.Errorf("the partition remains after deletion")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete external partition", err.Error())

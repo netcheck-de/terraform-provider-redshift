@@ -57,11 +57,11 @@ func (r *schemaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local database owning the schema. Changing it replaces the schema.",
+				Required: true, MarkdownDescription: "Local database owning the schema.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Schema name. Changing it replaces the schema; the provider never renames.",
+				Required: true, MarkdownDescription: "Schema name. The provider never renames a schema.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"owner": schema.StringAttribute{
@@ -80,26 +80,39 @@ func (r *schemaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 	}
 }
 
-// read refreshes the schema, its owner, and its quota under the configured database binding.
-func (r *schemaResource) read(ctx context.Context, data *schemaModel) (bool, error) {
+// catalogRow finds the schema's catalog row, returning a nil row when it or its database is gone. Delete needs only
+// this, not the quota lookup read adds.
+func (r *schemaResource) catalogRow(ctx context.Context, data schemaModel) (sqlclient.Row, error) {
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
-		return false, err
+		return nil, err
 	}
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
-		return false, err
+		return nil, err
 	}
-	rows, err := r.selectRows(ctx, data.Database.ValueString(), readSchemaQuery(*data))
+	rows, err := r.selectRows(ctx, data.Database.ValueString(), readSchemaQuery(data))
 	if err != nil || len(rows) == 0 {
+		return nil, err
+	}
+	if len(rows) != 1 {
+		return nil, fmt.Errorf("schema %q has ambiguous catalog metadata", data.Name.ValueString())
+	}
+	return rows[0], nil
+}
+
+// read refreshes the schema, its owner, and its quota under the configured database binding.
+func (r *schemaResource) read(ctx context.Context, data *schemaModel) (bool, error) {
+	row, err := r.catalogRow(ctx, *data)
+	if err != nil || row == nil {
 		return false, err
 	}
-	if len(rows) != 1 || rows[0]["owner"] == "" {
-		return false, fmt.Errorf("schema %q has incomplete or ambiguous catalog metadata", data.Name.ValueString())
+	if row["owner"] == "" {
+		return false, fmt.Errorf("schema %q has incomplete catalog metadata", data.Name.ValueString())
 	}
-	quota, visible, err := r.schemaQuota(ctx, *data, rows[0]["owner"])
+	quota, visible, err := r.schemaQuota(ctx, *data, row["owner"])
 	if err != nil {
 		return false, fmt.Errorf("schema %q: %w", data.Name.ValueString(), err)
 	}
-	data.Name, data.Owner = types.StringValue(rows[0]["schema_name"]), types.StringValue(rows[0]["owner"])
+	data.Name, data.Owner = types.StringValue(row["schema_name"]), types.StringValue(row["owner"])
 	switch {
 	case visible:
 		data.Quota = types.Int64Value(quota)
@@ -263,22 +276,16 @@ func (r *schemaResource) Update(ctx context.Context, req resource.UpdateRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the schema restrictively and verifies catalog removal.
+// Delete drops the schema without CASCADE; quota visibility does not affect deletion.
 func (r *schemaResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data schemaModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	found, err := r.read(ctx, &data)
-	if err == nil && found {
+	row, err := r.catalogRow(ctx, data)
+	if err == nil && row != nil {
 		err = r.exec(ctx, data.Database.ValueString(), dropSchemaStatement(data))
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete schema", "The schema remains after deletion.")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete schema", err.Error())

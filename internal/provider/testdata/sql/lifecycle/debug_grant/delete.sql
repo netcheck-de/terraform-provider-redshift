@@ -1,11 +1,11 @@
 -- database: admin
-SHOW GRANTS ON DATABASE "sales_db@finance-catalog";
+SHOW GRANTS ON DATABASE "warehouse";
 -- params: {}
 
 -- database: admin
-REVOKE DEBUG ON DATABASE "sales_db@finance-catalog" FROM "IAM:sales_auditor";
+REVOKE DEBUG ON DATABASE "warehouse" FROM "IAM:sales_auditor";
 -- params: {}
 
 -- database: admin
-SHOW GRANTS ON DATABASE "sales_db@finance-catalog";
+SHOW GRANTS ON DATABASE "warehouse";
 -- params: {}

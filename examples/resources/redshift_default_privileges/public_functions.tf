@@ -1,11 +1,13 @@
 # Stop granting EXECUTE on new functions of the loader to everyone, then grant it to one group.
 resource "redshift_default_privileges" "no_public_functions" {
-  database_name = "analytics"
-  owner         = redshift_user.loader.name
-  object_type   = "FUNCTIONS"
-  grantee       = "public"
-  grantee_type  = "PUBLIC"
-  privileges    = []
+  # Deliberately restore the built-in default for future functions when this tuple is destroyed.
+  restore_default_on_destroy = true
+  database_name              = "analytics"
+  owner                      = redshift_user.loader.name
+  object_type                = "FUNCTIONS"
+  grantee                    = "public"
+  grantee_type               = "PUBLIC"
+  privileges                 = []
 }
 
 resource "redshift_default_privileges" "developer_functions" {

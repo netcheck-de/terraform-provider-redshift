@@ -1,0 +1,1 @@
+ALTER DATASHARE "producer" ADD ALL TABLES IN SCHEMA "serving";

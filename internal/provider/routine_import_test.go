@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -110,4 +111,15 @@ func TestProcedureImportKeepsModifiedTypes(t *testing.T) {
 	var state procedureModel
 	require.False(t, updated.Get(context.Background(), &state).HasError())
 	assert.Equal(t, "varchar(64)", procedureArguments(state.Arguments)[1].Type.ValueString())
+}
+
+// TestRoutineTypesAndImportEdges covers unknown declared types, unrecognized catalog types, malformed import identities, and unknown owners.
+func TestRoutineTypesAndImportEdges(t *testing.T) {
+	assert.True(t, routineDeclaredTypes(true, "integer").IsUnknown())
+	assert.True(t, routineCatalogTypeMatches("FutureType", "futuretype"))
+	assert.False(t, routineCatalogTypeMatches("FutureType", "other"))
+	_, _, err := routineImportArguments("not JSON")
+	require.ErrorContains(t, err, "expected a JSON object")
+	step := routineOwnerStep(func(m functionModel) types.String { return m.Owner }, func(functionModel) sqlclient.Statement { return sqlclient.Stmt("ALTER FUNCTION").Ident("f") })
+	assert.Empty(t, step.render(functionModel{}, functionModel{Owner: types.StringUnknown()}))
 }

@@ -1,0 +1,1 @@
+-- error: cross-catalog ACCOUNT DEBUG grants have no reliable readback; configure a provider connected to the producer warehouse and use its local database name without @catalog

@@ -57,6 +57,8 @@ type tableIdentitySpec struct {
 type tableColumnSpec struct {
 	// name is the column name.
 	name string
+	// renamedFrom is an explicit migration hint, never a CREATE clause.
+	renamedFrom string
 	// dataType is the canonical type, as sqlclient.CatalogType reports the catalog's.
 	dataType sqlclient.Keyword
 	// encoding is the compression encoding, or "" when Redshift chooses it.
@@ -192,6 +194,17 @@ func tableKeyword(value types.String, what string, allowed ...sqlclient.Keyword)
 // tableSpecOf validates a model into the definition the renderers use. Computed values that are unknown, such as a
 // planned owner or encoding, are left unset; unknown configured values are an error, because SQL needs them.
 func tableSpecOf(data tableModel) (tableSpec, error) {
+	return tableDefinitionSpec(data, true)
+}
+
+// tableObservedSpecOf parses catalog state without interpreting retained migration hints as configuration.
+// Drift may recreate a rename source beside its destination; that must reach endpoint conflict checks, not fail
+// configuration validation and accidentally turn a later column change into a table replacement.
+func tableObservedSpecOf(data tableModel) (tableSpec, error) {
+	return tableDefinitionSpec(data, false)
+}
+
+func tableDefinitionSpec(data tableModel, migrationHints bool) (tableSpec, error) {
 	ctx := context.Background()
 	var spec tableSpec
 	var err error
@@ -222,15 +235,30 @@ func tableSpecOf(data tableModel) (tableSpec, error) {
 	if len(columns) == 0 || len(columns) > tableMaxColumns {
 		return spec, fmt.Errorf("a table needs between 1 and %d columns", tableMaxColumns)
 	}
+	seenNames := make(map[string]struct{}, len(columns))
 	for index, model := range columns {
+		if !migrationHints {
+			model.RenamedFrom = types.StringNull()
+		}
 		column, err := tableColumnSpecOf(model)
 		if err != nil {
 			return spec, fmt.Errorf("column[%d]: %w", index, err)
 		}
-		if _, duplicate := spec.column(column.name); duplicate {
+		if _, duplicate := seenNames[column.name]; duplicate {
 			return spec, fmt.Errorf("column %q is declared twice", column.name)
 		}
+		seenNames[column.name] = struct{}{}
 		spec.columns = append(spec.columns, column)
+	}
+	sources := map[string]bool{}
+	for _, column := range spec.columns {
+		if column.renamedFrom == "" {
+			continue
+		}
+		_, declared := spec.column(column.renamedFrom)
+		if err := tableRenameSource(column.renamedFrom, sources, declared); err != nil {
+			return spec, err
+		}
 	}
 	if spec.primaryKey, err = tablePrimaryKeyOf(data.PrimaryKey); err != nil {
 		return spec, err
@@ -300,11 +328,16 @@ func tableColumnSpecOf(model tableColumnModel) (tableColumnSpec, error) {
 	if column.name, err = tableKnownString(model.Name, "name"); err != nil {
 		return column, err
 	}
-	if column.name == "" {
-		return column, fmt.Errorf("name must be nonempty")
-	}
-	if err := tableFolded("column name", column.name); err != nil {
+	if err := tableNonemptyName("column name", column.name); err != nil {
 		return column, err
+	}
+	if column.renamedFrom, err = tableKnownString(model.RenamedFrom, "renamed_from"); err != nil {
+		return column, err
+	}
+	if !model.RenamedFrom.IsNull() {
+		if err := tableNonemptyName("renamed_from", column.renamedFrom); err != nil {
+			return column, err
+		}
 	}
 	text, err := tableKnownString(model.Type, "type")
 	if err != nil {
@@ -335,20 +368,10 @@ func tableColumnSpecOf(model tableColumnModel) (tableColumnSpec, error) {
 	if diagnostics := model.Identity.As(context.Background(), &identity, basetypes.ObjectAsOptions{}); diagnostics.HasError() || identity.Seed.IsUnknown() || identity.Step.IsUnknown() || identity.GeneratedByDefault.IsUnknown() {
 		return column, fmt.Errorf("column %q: identity must be known", column.name)
 	}
-	if identity.Seed.IsNull() || identity.Step.IsNull() {
-		return column, fmt.Errorf("column %q: identity needs a seed and a step", column.name)
+	if err := tableValidateIdentity(column.name, column.dataType, identity, column.defaultSQL != "", model.Nullable.ValueBool()); err != nil {
+		return column, err
 	}
 	column.identity = &tableIdentitySpec{seed: identity.Seed.ValueInt64(), step: identity.Step.ValueInt64(), generatedByDefault: identity.GeneratedByDefault.ValueBool()}
-	switch {
-	case column.dataType != "INTEGER" && column.dataType != "BIGINT":
-		return column, fmt.Errorf("identity column %q must be INTEGER or BIGINT", column.name)
-	case column.identity.step == 0:
-		return column, fmt.Errorf("identity column %q needs a nonzero step", column.name)
-	case column.defaultSQL != "":
-		return column, fmt.Errorf("identity column %q cannot also have a default", column.name)
-	case column.nullable != nil && *column.nullable:
-		return column, fmt.Errorf("identity column %q is always NOT NULL", column.name)
-	}
 	return column, nil
 }
 
@@ -505,11 +528,8 @@ func (s *tableSpec) resolveDistribution(value types.Object) error {
 			s.distStyle = "KEY"
 		}
 	}
-	switch {
-	case s.distStyle == "KEY" && s.distKey == "":
-		return fmt.Errorf("distribution style KEY needs a key")
-	case s.distStyle != "KEY" && s.distKey != "":
-		return fmt.Errorf("distribution key requires style KEY")
+	if err := tableDistributionKey(s.distStyle, s.distKey); err != nil {
+		return err
 	}
 	if s.distKey != "" {
 		return s.checkKeyColumns("distribution.key", []string{s.distKey})
@@ -542,15 +562,8 @@ func (s *tableSpec) resolveSortKey(value types.Object) error {
 			s.sortStyle = "COMPOUND"
 		}
 	}
-	switch {
-	case (s.sortStyle == "AUTO" || s.sortStyle == "NONE") && len(s.sortKey) > 0:
-		return fmt.Errorf("sort key style %s takes no columns; remove sort_key.columns", s.sortStyle)
-	case s.sortStyle != "AUTO" && s.sortStyle != "NONE" && len(s.sortKey) == 0:
-		return fmt.Errorf("sort key style %s needs sort_key.columns", s.sortStyle)
-	case s.sortStyle == "COMPOUND" && len(s.sortKey) > tableMaxCompoundSortKeys:
-		return fmt.Errorf("a compound sort key has at most %d columns", tableMaxCompoundSortKeys)
-	case s.sortStyle == "INTERLEAVED" && len(s.sortKey) > tableMaxInterleavedSortKey:
-		return fmt.Errorf("an interleaved sort key has at most %d columns", tableMaxInterleavedSortKey)
+	if err := tableSortKeyCount(s.sortStyle, len(s.sortKey)); err != nil {
+		return err
 	}
 	return s.checkKeyColumns("sort_key.columns", s.sortKey)
 }
@@ -564,10 +577,18 @@ func (s tableSpec) checkKeyColumns(what string, names []string) error {
 	}
 	for _, name := range names {
 		column, _ := s.column(name)
-		base, _, _ := strings.Cut(string(column.dataType), "(")
-		if !slices.Contains(tableKeyTypes, base) {
-			return fmt.Errorf("%s column %q has type %s, which Redshift does not allow in a key", what, name, column.dataType)
+		if err := tableKeyType(what, name, column.dataType); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// tableKeyType rejects key columns of types Redshift cannot sort or distribute on; an empty type is not yet known.
+func tableKeyType(what, name string, dataType sqlclient.Keyword) error {
+	base, _, _ := strings.Cut(string(dataType), "(")
+	if dataType != "" && !slices.Contains(tableKeyTypes, base) {
+		return fmt.Errorf("%s column %q has type %s, which Redshift does not allow in a key", what, name, dataType)
 	}
 	return nil
 }
@@ -850,9 +871,73 @@ func tableColumnChange(prev, plan tableSpec, before, after tableColumnSpec) stri
 	return ""
 }
 
+// tableRenameSpec models Redshift's automatic reference updates before comparing the rest of an update.
+// Independent renames only are accepted, so no temporary names or destructive conflict resolution is needed.
+func tableRenameSpec(prev, plan tableSpec) (tableSpec, []string, error) {
+	renames := map[string]string{}
+	var statements []string
+	for _, column := range plan.columns {
+		if column.renamedFrom == "" {
+			continue
+		}
+		_, source := prev.column(column.renamedFrom)
+		_, destination := prev.column(column.name)
+		switch {
+		case source && destination:
+			return prev, nil, fmt.Errorf("cannot rename column %q to %q: both source and destination exist", column.renamedFrom, column.name)
+		case !source && !destination:
+			return prev, nil, fmt.Errorf("cannot rename column %q to %q: neither source nor destination exists", column.renamedFrom, column.name)
+		case source:
+			renames[column.renamedFrom] = column.name
+			statements = append(statements, tableAlter(plan).Kw("RENAME COLUMN").Ident(column.renamedFrom).KwIdent("TO", column.name).String())
+		}
+	}
+	name := func(value string) string {
+		if renamed, ok := renames[value]; ok {
+			return renamed
+		}
+		return value
+	}
+	names := func(values []string) []string {
+		result := slices.Clone(values)
+		for i := range result {
+			result[i] = name(result[i])
+		}
+		return result
+	}
+	prev.columns = slices.Clone(prev.columns)
+	for i := range prev.columns {
+		prev.columns[i].name = name(prev.columns[i].name)
+	}
+	prev.primaryKey = names(prev.primaryKey)
+	prev.unique = slices.Clone(prev.unique)
+	for i := range prev.unique {
+		prev.unique[i] = names(prev.unique[i])
+	}
+	prev.foreignKeys = slices.Clone(prev.foreignKeys)
+	for i := range prev.foreignKeys {
+		key := &prev.foreignKeys[i]
+		key.columns = names(key.columns)
+		if key.refSchema == prev.schema && key.refTable == prev.name {
+			key.refColumns = names(key.refColumns)
+		}
+	}
+	prev.distKey = name(prev.distKey)
+	prev.effectiveDistKey = name(prev.effectiveDistKey)
+	prev.sortKey = names(prev.sortKey)
+	prev.effectiveSortKey = names(prev.effectiveSortKey)
+	return prev, statements, nil
+}
+
 // tableReplacements explains, per attribute, the changes from prev to plan that ALTER TABLE cannot make.
 func tableReplacements(prev, plan tableSpec) map[string]string {
 	reasons := map[string]string{}
+	// Invalid rename endpoints are a planning error, not permission to destroy the table.
+	normalized, _, err := tableRenameSpec(prev, plan)
+	if err != nil {
+		return reasons
+	}
+	prev = normalized
 	if reason := tableColumnChanges(prev, plan).replace; reason != "" {
 		reasons["column"] = reason
 	}
@@ -893,6 +978,8 @@ type tableAlterState struct {
 	spec tableSpec
 	// constraints maps constraint keys to catalog names; only the prior side needs them.
 	constraints map[string]string
+	// renames run before the normalized definition is used by the remaining phases.
+	renames []string
 }
 
 // tableAlterPhase orders the statements of an update: constraints are dropped before the columns they use,
@@ -901,8 +988,10 @@ type tableAlterState struct {
 type tableAlterPhase int
 
 const (
+	// tablePhaseRenameColumns preserves column identity before keys and constraints are compared.
+	tablePhaseRenameColumns tableAlterPhase = iota
 	// tablePhaseDropConstraints drops removed or changed constraints.
-	tablePhaseDropConstraints tableAlterPhase = iota
+	tablePhaseDropConstraints
 	// tablePhaseAddColumns adds trailing columns.
 	tablePhaseAddColumns
 	// tablePhaseKeys changes the sort key, then the distribution, so a table leaving an interleaved sort key
@@ -922,7 +1011,7 @@ const (
 )
 
 // tableAlterPhases lists the phases in execution order.
-var tableAlterPhases = []tableAlterPhase{tablePhaseDropConstraints, tablePhaseAddColumns, tablePhaseKeys, tablePhaseAlterColumns, tablePhaseDropColumns, tablePhaseRestoreKeys, tablePhaseAddConstraints, tablePhaseOwner}
+var tableAlterPhases = []tableAlterPhase{tablePhaseRenameColumns, tablePhaseDropConstraints, tablePhaseAddColumns, tablePhaseKeys, tablePhaseAlterColumns, tablePhaseDropColumns, tablePhaseRestoreKeys, tablePhaseAddConstraints, tablePhaseOwner}
 
 // tableSortKeyChanged reports a sort key change, after which Redshift may re-encode columns of the old and new key.
 func tableSortKeyChanged(prev, plan tableSpec) bool {
@@ -1159,7 +1248,7 @@ func tableAlterSteps(phase tableAlterPhase) []alterStep[tableAlterState] {
 // from what Redshift holds; constraints maps prev's constraint keys to their catalog names. A change ALTER TABLE
 // cannot make is an error, because the plan should have replaced the table.
 func tableAlterStates(prev tableModel, constraints map[string]string, plan tableModel) (tableAlterState, tableAlterState, error) {
-	prevSpec, err := tableSpecOf(prev)
+	prevSpec, err := tableObservedSpecOf(prev)
 	if err != nil {
 		return tableAlterState{}, tableAlterState{}, fmt.Errorf("current table definition: %w", err)
 	}
@@ -1167,6 +1256,21 @@ func tableAlterStates(prev tableModel, constraints map[string]string, plan table
 	if err != nil {
 		return tableAlterState{}, tableAlterState{}, err
 	}
+	original := prevSpec
+	prevSpec, renames, err := tableRenameSpec(prevSpec, planSpec)
+	if err != nil {
+		return tableAlterState{}, tableAlterState{}, err
+	}
+	// Catalog names remain stable when Redshift rewrites constraint column references.
+	names := map[string]string{}
+	names[tablePrimaryKeyKey] = constraints[tablePrimaryKeyKey]
+	for i, key := range original.unique {
+		names[tableUniqueKey(prevSpec.unique[i])] = constraints[tableUniqueKey(key)]
+	}
+	for i, key := range original.foreignKeys {
+		names[tableForeignKeyKey(prevSpec.foreignKeys[i])] = constraints[tableForeignKeyKey(key)]
+	}
+	constraints = names
 	if reasons := tableReplacements(prevSpec, planSpec); len(reasons) > 0 {
 		var messages []string
 		for _, attribute := range slices.Sorted(maps.Keys(reasons)) {
@@ -1182,13 +1286,17 @@ func tableAlterStates(prev tableModel, constraints map[string]string, plan table
 			}
 		}
 	}
-	return tableAlterState{model: prev, spec: prevSpec, constraints: constraints}, tableAlterState{model: plan, spec: planSpec}, nil
+	return tableAlterState{model: prev, spec: prevSpec, constraints: constraints, renames: renames}, tableAlterState{model: plan, spec: planSpec}, nil
 }
 
 // tableAlterPhaseStatements renders the statements of the given phases in order.
 func tableAlterPhaseStatements(before, after tableAlterState, phases ...tableAlterPhase) []string {
 	var statements []string
 	for _, phase := range phases {
+		if phase == tablePhaseRenameColumns {
+			statements = append(statements, before.renames...)
+			continue
+		}
 		statements = append(statements, alterStatements(before, after, tableAlterSteps(phase))...)
 	}
 	return statements

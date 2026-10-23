@@ -142,7 +142,8 @@ func catalogWith(changes ...func(*catalog)) func() sqlclient.Client {
 	}
 }
 
-// standardTranscripts derives create, read, update, delete, and import flows from a lifecycle case.
+// standardTranscripts records mutation flows; renderer tests pin catalog queries, and lifecycle/contract tests
+// cover refresh and import without pinning their incidental query ordering.
 func standardTranscripts(test lifecycleCase) []transcriptCase {
 	setup := test.applySetup
 	absent := func(c *catalog) {
@@ -155,10 +156,8 @@ func standardTranscripts(test lifecycleCase) []transcriptCase {
 	}
 	cases := []transcriptCase{
 		{name: "create", operation: "create", catalog: catalogWith(setup, absent, prepared("create")), planned: test.model},
-		{name: "read", operation: "read", catalog: catalogWith(setup, prepared("read")), prior: test.model},
 		{name: "update", operation: "update", catalog: catalogWith(setup, prepared("update")), prior: test.model, planned: test.model},
 		{name: "delete", operation: "delete", catalog: catalogWith(setup, test.removable, prepared("delete")), prior: test.model},
-		{name: "import", operation: "import", catalog: catalogWith(setup, absent, prepared("create")), planned: test.model},
 	}
 	if field := reflect.ValueOf(test.model).FieldByName("Database"); field.IsValid() {
 		// The admin database skips the local-database check, so another database shows that check and routing.
@@ -168,7 +167,6 @@ func standardTranscripts(test lifecycleCase) []transcriptCase {
 		local := func(c *catalog) { c.localDB = true }
 		cases = append(cases,
 			transcriptCase{name: "create_local_database", operation: "create", catalog: catalogWith(setup, absent, local, prepared("create")), planned: copied.Interface()},
-			transcriptCase{name: "read_local_database", operation: "read", catalog: catalogWith(setup, local, prepared("read")), prior: copied.Interface()},
 		)
 	}
 	return cases

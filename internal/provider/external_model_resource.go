@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -62,11 +63,35 @@ func (r *externalModelResource) Metadata(_ context.Context, req resource.Metadat
 }
 
 // externalModelRoleChanged replaces the model unless DEFAULT is only respelled in another case; Redshift has no
-// statement that changes a model's role.
-func externalModelRoleChanged(_ context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+// statement that changes a model's role. An unread role after import is adopted without replacement.
+func externalModelRoleChanged(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+	if externalModelUnread(ctx, req.Private, "iam_role") {
+		return
+	}
 	before, after := req.StateValue.ValueString(), req.PlanValue.ValueString()
 	respelled := strings.EqualFold(before, "DEFAULT") && strings.EqualFold(after, "DEFAULT")
 	resp.RequiresReplace = req.PlanValue.IsUnknown() || (before != after && !respelled)
+}
+
+// Import cannot recover settings that SHOW MODEL omits. Keep their adoption distinct from later changes.
+const externalModelUnreadPrefix = "external_model_unread_"
+
+type externalModelPrivate interface {
+	GetKey(context.Context, string) ([]byte, diag.Diagnostics)
+}
+
+func externalModelUnread(ctx context.Context, private externalModelPrivate, name string) bool {
+	if private == nil {
+		return false
+	}
+	value, _ := private.GetKey(ctx, externalModelUnreadPrefix+name)
+	return len(value) != 0
+}
+
+func externalModelResponseChanged(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+	if !externalModelUnread(ctx, req.Private, "response_type") {
+		keywordChanged(ctx, req, resp)
+	}
 }
 
 // externalModelString is a string argument that replaces the model, because Redshift has no ALTER MODEL.
@@ -80,10 +105,14 @@ func externalModelString(required bool, description string) schema.StringAttribu
 
 // externalModelFormat is a keyword-like format with a Redshift default; another case is recorded in place.
 func externalModelFormat(description, defaultValue string, choices ...string) schema.StringAttribute {
+	modifier := keywordChanged
+	if defaultValue == "VARCHAR" {
+		modifier = externalModelResponseChanged
+	}
 	return schema.StringAttribute{
 		Optional: true, Computed: true, Default: stringdefault.StaticString(defaultValue), MarkdownDescription: description,
 		Validators:    []validator.String{stringvalidator.OneOfCaseInsensitive(choices...)},
-		PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(keywordChanged, "Changing it replaces the model.", "Changing it replaces the model.")},
+		PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(modifier, "Changing it replaces the model.", "Changing it replaces the model.")},
 	}
 }
 
@@ -93,21 +122,21 @@ func (r *externalModelResource) Schema(_ context.Context, _ resource.SchemaReque
 		MarkdownDescription: "Manages an Amazon Bedrock model created with `CREATE EXTERNAL MODEL` and the inference function it creates. Redshift has no `ALTER MODEL`, so every argument replaces the model.",
 		Attributes: map[string]schema.Attribute{
 			"id":       idAttribute(),
-			"database": externalModelString(true, "Local database containing the model. Changing it replaces the model."),
-			"schema":   externalModelString(true, "Existing schema containing the model and its inference function. Changing it replaces the model."),
-			"name":     externalModelString(true, "Model name, unique among the models of the schema. Changing it replaces the model."),
-			"function": externalModelString(true, "Name of the inference function the model creates in `schema`. The model owns the function: `DROP MODEL` drops it, `EXECUTE` is granted on the model, and `redshift_function` must not manage it. Changing it replaces the model."),
+			"database": externalModelString(true, "Local database containing the model."),
+			"schema":   externalModelString(true, "Existing schema containing the model and its inference function."),
+			"name":     externalModelString(true, "Model name, unique among the models of the schema."),
+			"function": externalModelString(true, "Name of the inference function the model creates in `schema`. The model owns the function: `DROP MODEL` drops it, `EXECUTE` is granted on the model, and `redshift_function` must not manage it."),
 			"iam_role": schema.StringAttribute{
-				Required: true, MarkdownDescription: "`DEFAULT`, in any case, for the warehouse's default IAM role, or the ARN of an associated IAM role allowed to invoke the Amazon Bedrock model. Changing it replaces the model; another case of `DEFAULT` is recorded in place.",
+				Required: true, MarkdownDescription: "`DEFAULT`, in any case, for the warehouse's default IAM role, or the ARN of an associated IAM role allowed to invoke the Amazon Bedrock model. Another case of `DEFAULT` is recorded in place.",
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(externalModelRoleChanged, "Changing it replaces the model.", "Changing it replaces the model.")},
 			},
-			"model_id": externalModelString(true, "Amazon Bedrock model ID, such as `anthropic.claude-v2`. Changing it replaces the model."),
-			"prompt":   externalModelString(false, "Static prompt prefix added to the beginning of every request; only with `request_type = \"UNIFIED\"`. Changing it replaces the model."),
-			"suffix":   externalModelString(false, "Static prompt suffix added to the end of every request; only with `request_type = \"UNIFIED\"`. Changing it replaces the model."),
-			"request_type": externalModelFormat("Request format: `UNIFIED` (the default) uses the Amazon Bedrock Converse API and an inference function taking the input text with optional settings; `RAW` passes one `SUPER` request in the model's own format. Changing it replaces the model; another case is recorded in place.",
+			"model_id": externalModelString(true, "Amazon Bedrock model ID, such as `anthropic.claude-v2`."),
+			"prompt":   externalModelString(false, "Static prompt prefix added to the beginning of every request; only with `request_type = \"UNIFIED\"`."),
+			"suffix":   externalModelString(false, "Static prompt suffix added to the end of every request; only with `request_type = \"UNIFIED\"`."),
+			"request_type": externalModelFormat("Request format: `UNIFIED` (the default) uses the Amazon Bedrock Converse API and an inference function taking the input text with optional settings; `RAW` passes one `SUPER` request in the model's own format. Accepted in any case; another case of the same keyword is recorded in place.",
 				"UNIFIED", "UNIFIED", "RAW"),
-			"response_type": externalModelFormat("Response format: `VARCHAR` (the default) returns the generated text, `SUPER` the whole response. `RAW` requests require `SUPER`. Changing it replaces the model; another case is recorded in place.",
+			"response_type": externalModelFormat("Response format: `VARCHAR` (the default) returns the generated text, `SUPER` the whole response. `RAW` requests require `SUPER`. Accepted in any case; another case of the same keyword is recorded in place.",
 				"VARCHAR", "VARCHAR", "SUPER"),
 			"owner": schema.StringAttribute{
 				Computed: true, MarkdownDescription: "SQL user owning the model, as `SHOW MODEL` reports it; null when it is not reported.",
@@ -121,6 +150,22 @@ func (r *externalModelResource) Schema(_ context.Context, _ resource.SchemaReque
 func (r *externalModelResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data externalModelModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !data.IAMRole.IsUnknown() && !data.IAMRole.IsNull() {
+		if _, err := externalModelIAMRole(data.IAMRole.ValueString()); err != nil {
+			resp.Diagnostics.AddError("Invalid external model", err.Error())
+		}
+	}
+	if strings.EqualFold(knownString(data.RequestType), "RAW") {
+		if !data.ResponseType.IsUnknown() && !strings.EqualFold(knownString(data.ResponseType), "SUPER") {
+			resp.Diagnostics.AddError("Invalid external model", "request_type RAW requires response_type SUPER")
+		}
+		if knownString(data.Prompt) != "" || knownString(data.Suffix) != "" {
+			resp.Diagnostics.AddError("Invalid external model", "prompt and suffix are only supported with request_type UNIFIED")
+		}
+	}
 	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
 		return
 	}
@@ -199,9 +244,8 @@ func observeExternalModel(data *externalModelModel, settings map[string]string) 
 	}
 }
 
-// defaultExternalModelResponse fills a response type that neither SHOW MODEL nor state holds, which only happens on
-// the refresh after an import, with the Redshift default for the request type. A UNIFIED model created with SUPER is
-// replaced by the first plan after its import; lookups leave the value null instead of guessing.
+// defaultExternalModelResponse preserves the defaulting behavior of imports without private adoption markers.
+// New imports and lookups leave an unread response type null instead of guessing.
 func defaultExternalModelResponse(data *externalModelModel) {
 	if !data.ResponseType.IsNull() && !data.ResponseType.IsUnknown() {
 		return
@@ -285,7 +329,11 @@ func (r *externalModelResource) Read(ctx context.Context, req resource.ReadReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	found, err := r.read(ctx, &data)
+	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
+		resp.Diagnostics.AddError("Read external model", err.Error())
+		return
+	}
+	settings, found, err := readExternalModelCatalog(ctx, &r.resourceClient, data.Database.ValueString(), data.Schema.ValueString(), data.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Read external model", err.Error())
 		return
@@ -294,7 +342,21 @@ func (r *externalModelResource) Read(ctx context.Context, req resource.ReadReque
 		resp.State.RemoveResource(ctx)
 		return
 	}
-	defaultExternalModelResponse(&data)
+	observeExternalModel(&data, settings)
+	// An unread import must plan an adoption update even when configuration uses the default response type.
+	// Guessing VARCHAR here could make that apply a no-op and leave the adoption exemption active indefinitely.
+	if externalModelUnread(ctx, req.Private, "response_type") && settings["response_type"] == "" {
+		data.ResponseType = types.StringNull()
+	} else {
+		defaultExternalModelResponse(&data)
+	}
+	if resp.Private != nil {
+		for _, name := range []string{"iam_role", "response_type"} {
+			if settings[name] != "" {
+				resp.Diagnostics.Append(resp.Private.SetKey(ctx, externalModelUnreadPrefix+name, nil)...)
+			}
+		}
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -310,10 +372,15 @@ func (r *externalModelResource) Update(ctx context.Context, req resource.UpdateR
 		resp.Diagnostics.AddError("Update external model", err.Error())
 		return
 	}
+	if resp.Private != nil {
+		for _, name := range []string{"iam_role", "response_type"} {
+			resp.Diagnostics.Append(resp.Private.SetKey(ctx, externalModelUnreadPrefix+name, nil)...)
+		}
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the model, which drops its inference function too, and verifies catalog removal.
+// Delete drops the model, which drops its inference function too.
 func (r *externalModelResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data externalModelModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -326,11 +393,6 @@ func (r *externalModelResource) Delete(ctx context.Context, req resource.DeleteR
 		if statement, err = dropExternalModelStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
 		}
-		if err == nil {
-			if found, err = r.read(ctx, &data); err == nil && found {
-				resp.Diagnostics.AddError("Delete external model", "The model remains after deletion.")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete external model", err.Error())
@@ -340,4 +402,9 @@ func (r *externalModelResource) Delete(ctx context.Context, req resource.DeleteR
 // ImportState restores the database/schema/name binding from JSON; Read then fills the settings SHOW MODEL reports.
 func (r *externalModelResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importIdentity(ctx, req, resp, "database", "schema", "name")
+	if !resp.Diagnostics.HasError() && resp.Private != nil {
+		for _, name := range []string{"iam_role", "response_type"} {
+			resp.Diagnostics.Append(resp.Private.SetKey(ctx, externalModelUnreadPrefix+name, []byte("true"))...)
+		}
+	}
 }

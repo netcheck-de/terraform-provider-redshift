@@ -45,8 +45,31 @@ override_data {
   values = { id = "copy-jobs-listing-identity" }
 }
 
+override_data {
+  target = data.redshift_template.shapefile
+  values = { format = "SHAPEFILE", format_argument = "SIMPLIFY AUTO 0.000001" }
+}
+
+override_data {
+  target = data.redshift_templates.database
+  values = { id = "database-templates-listing-identity" }
+}
+
 run "copy_templates" {
   command = apply
+
+  assert {
+    condition = (
+      redshift_template.shapefile.format == "SHAPEFILE" &&
+      redshift_template.shapefile.format_argument == "SIMPLIFY AUTO 0.000001" &&
+      output.copy_checks.shapefile_format == "SHAPEFILE" &&
+      output.copy_checks.shapefile_simplify == "SIMPLIFY AUTO 0.000001" &&
+      data.redshift_templates.database.schema == null &&
+      data.redshift_templates.database.id == "database-templates-listing-identity" &&
+      output.copy_checks.database_templates == [for template in data.redshift_templates.database.templates : "${template.schema}.${template.name}"]
+    )
+    error_message = "Spatial COPY options and the unfiltered visible template listing must reach copy_checks."
+  }
 
   assert {
     condition = (
@@ -112,7 +135,14 @@ run "copy_job_enabled" {
 
   override_data {
     target = data.redshift_copy_job.fixture
-    values = { auto = false, iam_role = "arn:aws:iam::222222222222:role/observed" }
+    values = {
+      auto       = false
+      iam_role   = "arn:aws:iam::222222222222:role/observed"
+      source     = "s3://observed-bucket/data/"
+      format     = "CSV"
+      parameters = { IGNOREHEADER = "2" }
+      table      = { schema = "observed_schema", name = "observed_target", columns = ["id", "label"] }
+    }
   }
 
   assert {
@@ -150,7 +180,11 @@ run "copy_job_enabled" {
   assert {
     condition = (
       output.copy_checks.copy_job_auto == false &&
-      output.copy_checks.copy_job_role == "arn:aws:iam::222222222222:role/observed"
+      output.copy_checks.copy_job_role == "arn:aws:iam::222222222222:role/observed" &&
+      output.copy_checks.copy_job_source == "s3://observed-bucket/data/" &&
+      output.copy_checks.copy_job_table.name == "observed_target" &&
+      output.copy_checks.copy_job_format == "CSV" &&
+      output.copy_checks.copy_job_parameters["IGNOREHEADER"] == "2"
     )
     error_message = "The copy job lookup must be exposed through copy_checks."
   }

@@ -11,10 +11,10 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
-// assumeroleGrantCommands are the commands FOR ALL stands for; one statement is issued per command, so a set of all
-// four is the FOR ALL grant.
+// assumeroleGrantCommands are the independently grantable commands, never a rewrite to FOR ALL. RESULT_OFFLOAD is
+// exposed by SVV_IAM_PRIVILEGES and its standalone GRANT/REVOKE spelling is verified by live acceptance tests.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-for
-var assumeroleGrantCommands = []sqlclient.Keyword{"COPY", "UNLOAD", "EXTERNAL FUNCTION", "CREATE MODEL"}
+var assumeroleGrantCommands = []sqlclient.Keyword{"COPY", "UNLOAD", "EXTERNAL FUNCTION", "CREATE MODEL", "RESULT_OFFLOAD"}
 
 // assumeroleGrantDefaultRole is the catalog name SVV_IAM_PRIVILEGES reports for grants on the default role.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_IAM_PRIVILEGES.html
@@ -29,6 +29,16 @@ const assumeroleGrantAllRoles = "default"
 func readAssumeroleGrantQuery(catalogRole, grantee, granteeType string) sqlclient.Query {
 	return sqlclient.Select("command_type AS privilege_type").From("svv_iam_privileges").
 		Where("iam_arn = :arn", sqlclient.Bind("arn", catalogRole)).
+		Where("identity_name = :grantee", sqlclient.Bind("grantee", grantee)).
+		Where("identity_type = LOWER(:kind)", sqlclient.Bind("kind", granteeType))
+}
+
+// assumeroleGrantOverlapQuery uses only the ON ALL marker: implied ARN rows cannot establish independent ownership.
+// Live, adding an ARN COPY grant while ON ALL COPY is held creates no independent COPY grant, and revoking the ARN
+// cannot remove the marker. A separate ARN command can also expose implied rows without independent ownership.
+func assumeroleGrantOverlapQuery(grantee, granteeType string) sqlclient.Query {
+	return sqlclient.Select("iam_arn").From("svv_iam_privileges").
+		Where("iam_arn = :all_arn", sqlclient.Bind("all_arn", assumeroleGrantAllRoles)).
 		Where("identity_name = :grantee", sqlclient.Bind("grantee", grantee)).
 		Where("identity_type = LOWER(:kind)", sqlclient.Bind("kind", granteeType))
 }
@@ -93,7 +103,7 @@ func assumeroleGrantTarget(data types.Object) (privilegeTarget, error) {
 	if err != nil {
 		return privilegeTarget{}, err
 	}
-	return privilegeTarget{
+	target := privilegeTarget{
 		checks:  []catalogCheck{check},
 		query:   query,
 		allowed: assumeroleGrantCommands,
@@ -103,5 +113,14 @@ func assumeroleGrantTarget(data types.Object) (privilegeTarget, error) {
 			}
 			return sqlclient.Stmt("REVOKE ASSUMEROLE ON").Append(sqlRole).Kw("FROM").Append(grantee).Kw("FOR", command).String()
 		}},
-	}, nil
+	}
+	if assumeroleGrantKeyword(role) != "ALL" {
+		guard, err := newCatalogCheck(assumeroleGrantOverlapQuery(objectString(data, "grantee"), objectString(data, "grantee_type")))
+		if err != nil {
+			return privilegeTarget{}, err
+		}
+		target.mutationGuard = &guard
+		target.mutationConflict = "the grantee also holds ASSUMEROLE ON ALL; manage this grantee through ON ALL, or revoke its ON ALL grant before managing individual ARN or DEFAULT tuples. A specific-role REVOKE cannot remove access supplied by ON ALL"
+	}
+	return target, nil
 }

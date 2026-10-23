@@ -192,6 +192,44 @@ var tableFakeColumnClause = regexp.MustCompile(`^(.+?)(?: DEFAULT (.+?))?(?: ENC
 // alter applies one ALTER TABLE clause; ok is false for clauses the fake does not know.
 func (t *tableFakeTable) alter(table, clause string) (bool, error) {
 	switch {
+	case strings.HasPrefix(clause, "RENAME COLUMN "):
+		from, rest, ok := tableFakeIdent(strings.TrimPrefix(clause, "RENAME COLUMN "))
+		to, _, targetOK := tableFakeIdent(strings.TrimPrefix(rest, "TO "))
+		if !ok || !targetOK || !strings.HasPrefix(rest, "TO ") {
+			return false, nil
+		}
+		if t.column(from) < 0 || t.column(to) >= 0 {
+			return true, fmt.Errorf("invalid rename endpoints %q and %q", from, to)
+		}
+		t.columns[t.column(from)].name = to
+		for i := range t.constraints {
+			constraint := &t.constraints[i]
+			columns, references, err := tableParseConstraintDefinition(constraint.definition, constraint.kind == "f")
+			if err != nil {
+				return true, err
+			}
+			for j := range columns {
+				if columns[j] == from {
+					columns[j] = to
+				}
+			}
+			switch constraint.kind {
+			case "p":
+				constraint.definition = "PRIMARY KEY " + tableFakeDefinitionList(columns)
+			case "u":
+				constraint.definition = "UNIQUE " + tableFakeDefinitionList(columns)
+			case "f":
+				if constraint.refTable == table {
+					for j := range references {
+						if references[j] == from {
+							references[j] = to
+						}
+					}
+				}
+				constraint.definition = "FOREIGN KEY " + tableFakeDefinitionList(columns) + " REFERENCES " + constraint.refTable + tableFakeDefinitionList(references)
+			}
+		}
+		return true, nil
 	case strings.HasPrefix(clause, "OWNER TO "):
 		owner, _, ok := tableFakeIdent(strings.TrimPrefix(clause, "OWNER TO "))
 		t.owner = owner

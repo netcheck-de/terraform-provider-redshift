@@ -39,8 +39,76 @@ override_data {
   values = { privileges = [] }
 }
 
+override_data {
+  target = data.redshift_language_grant.public_sql
+  values = { privileges = [] }
+}
+override_data {
+  target = data.redshift_object_grant.shared_reader["DATABASE"]
+  values = { privileges = ["USAGE"] }
+}
+override_data {
+  target = data.redshift_object_grant.shared_reader["SCHEMA"]
+  values = { privileges = ["USAGE"] }
+}
+override_data {
+  target = data.redshift_object_grant.shared_reader["TABLE"]
+  values = { privileges = ["SELECT"] }
+}
+
+override_data {
+  target = data.redshift_assumerole_grant.operators_any_role[0]
+  values = { privileges = ["UNLOAD", "RESULT_OFFLOAD"] }
+}
+
+override_data {
+  target = data.redshift_object_grant.shared_function
+  values = { privileges = ["EXECUTE"], grant_option_privileges = ["EXECUTE"] }
+}
+override_data {
+  target = data.redshift_object_grant.shared_snapshots["ALL TABLES"]
+  values = { privileges = ["SELECT"], grant_option_privileges = ["SELECT"] }
+}
+override_data {
+  target = data.redshift_object_grant.shared_snapshots["ALL FUNCTIONS"]
+  values = { privileges = ["EXECUTE"], grant_option_privileges = ["EXECUTE"] }
+}
+
+override_data {
+  target = data.redshift_object_grant.shared_procedure
+  values = { privileges = ["EXECUTE"] }
+}
+override_data {
+  target = data.redshift_object_grant.shared_procedure_snapshot
+  values = { privileges = ["EXECUTE"] }
+}
+
 run "grants_apply" {
   command = apply
+
+  assert {
+    condition = (
+      redshift_default_privileges.loader_functions_public.restore_default_on_destroy &&
+      contains(redshift_assumerole_grant.operators_any_role[0].privileges, "RESULT_OFFLOAD") &&
+      output.grant_checks.offload_commands == toset(["UNLOAD", "RESULT_OFFLOAD"]) &&
+      redshift_object_grant.shared_function.arguments == null &&
+      output.grant_checks.shared_function == toset(["EXECUTE"]) &&
+      output.grant_checks.shared_function_options == toset(["EXECUTE"]) &&
+      output.grant_checks.shared_snapshots["ALL TABLES"].privileges == toset(["SELECT"]) &&
+      output.grant_checks.shared_snapshots["ALL FUNCTIONS"].options == toset(["EXECUTE"]) &&
+      redshift_object_grant.shared_procedure.object_type == "PROCEDURE" &&
+      redshift_object_grant.shared_procedure_snapshot.object_type == "ALL PROCEDURES" &&
+      output.grant_checks.shared_procedure == toset(["EXECUTE"]) &&
+      output.grant_checks.shared_procedure_snapshot == toset(["EXECUTE"]) &&
+      redshift_language_grant.public_sql.restore_default_on_destroy &&
+      length(output.grant_checks.public_language_usage) == 0 &&
+      alltrue([for grant in redshift_object_grant.shared_reader : grant.database_type == "shared" && grant.grantee == redshift_user.reader.name]) &&
+      output.grant_checks.shared_reader["DATABASE"] == toset(["USAGE"]) &&
+      output.grant_checks.shared_reader["SCHEMA"] == toset(["USAGE"]) &&
+      output.grant_checks.shared_reader["TABLE"] == toset(["SELECT"])
+    )
+    error_message = "PUBLIC cleanup restoration and distinct shared object grants must be configured and observed."
+  }
 
   assert {
     condition = (

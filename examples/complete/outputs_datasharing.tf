@@ -4,6 +4,8 @@ output "datasharing" {
     producer_owner            = data.redshift_datashare.producer.owner
     producer_share_id         = data.redshift_datashare.producer.share_id
     producer_namespace        = data.redshift_datashare.producer.producer_namespace
+    producer_objects          = data.redshift_datashare_objects.producer.datashare_objects
+    bulk_membership           = { for kind, membership in data.redshift_datashare_membership.bulk : kind => membership.all }
     outbound_shares           = [for share in data.redshift_datashares.outbound.datashares : share.name]
     inbound_shares            = [for share in data.redshift_datashares.inbound.datashares : { name = share.name, consumer_database = share.consumer_database }]
     share_operator_privileges = data.redshift_datashare_privilege.share_operators.privileges

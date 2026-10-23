@@ -178,7 +178,7 @@ func TestSchemaGrantsUseSchemaObjectAndScope(t *testing.T) {
 			data := grantTestModel(grantModel{DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Role: types.StringValue("example:readers"), Scope: types.StringValue(scope), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue(privilege)})})
 			require.NoError(t, r.reconcile(context.Background(), data))
 			granted = false
-			require.False(t, invoke(t, r, "create", data, false).HasError())
+			require.False(t, invoke(t, r, "create", data).HasError())
 			require.Len(t, mutations, 2)
 			if scope == "SCHEMA" {
 				assert.Contains(t, mutations[0], `ON SCHEMA "analytics"."serving"`)
@@ -265,9 +265,9 @@ func TestDatashareScopedGrantLifecycle(t *testing.T) {
 				}
 			}))}
 			data := grantTestModel(grantModel{DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Datashare: types.StringValue("share"), Scope: types.StringValue(scope), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue(privilege)})})
-			require.False(t, invoke(t, r, "create", data, false).HasError())
+			require.False(t, invoke(t, r, "create", data).HasError())
 			assert.True(t, granted)
-			require.False(t, invoke(t, r, "delete", data, false).HasError())
+			require.False(t, invoke(t, r, "delete", data).HasError())
 			assert.False(t, granted)
 			resp := resource.ImportStateResponse{State: testState(t, r, data)}
 			r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","datashare":"share","scope":"` + scope + `","schema_name":"serving"}`}, &resp)

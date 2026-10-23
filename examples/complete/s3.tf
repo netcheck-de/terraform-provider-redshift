@@ -4,7 +4,7 @@
 # trivy:ignore:AWS-0132
 module "fixture_bucket" {
   source    = "terraform-aws-modules/s3-bucket/aws"
-  version   = "5.14.0"
+  version   = "5.17.0"
   providers = { aws = aws.producer }
 
   bucket                   = local.fixture_bucket_name

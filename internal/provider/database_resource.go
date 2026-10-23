@@ -25,6 +25,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
@@ -57,7 +58,7 @@ type databaseModel struct {
 	Owner types.String `tfsdk:"owner"`
 	// ConnectionLimit caps concurrent connections to a local database; -1 means UNLIMITED.
 	ConnectionLimit types.Int64 `tfsdk:"connection_limit"`
-	// Collation is the create-only case sensitivity of a local database.
+	// Collation is the case sensitivity of a local database.
 	Collation types.String `tfsdk:"collation"`
 	// IsolationLevel is the SERIALIZABLE or SNAPSHOT isolation of a local database.
 	IsolationLevel types.String `tfsdk:"isolation_level"`
@@ -133,11 +134,11 @@ func (r *databaseResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 			"producer_account":   schema.StringAttribute{Computed: true, MarkdownDescription: "Producer account ID; null for local databases."},
 			"producer_namespace": schema.StringAttribute{Computed: true, MarkdownDescription: "Producer namespace ID; null for local databases."},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Database name. Changing it replaces the database.",
+				Required: true, MarkdownDescription: "Database name.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"datashare_arn": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database. Changing it replaces the database.",
+				Optional: true, MarkdownDescription: "Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"with_permissions": schema.BoolAttribute{
@@ -161,8 +162,8 @@ func (r *databaseResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 			},
 			"collation": schema.StringAttribute{
 				Optional: true, Computed: true,
-				MarkdownDescription: "`CASE_SENSITIVE` (the Redshift default) or `CASE_INSENSITIVE` string comparison for a local database, set with `COLLATE` at creation. It is read with `DB_COLLATION()`, which needs a session inside the database, only at creation and import, so a `connection_limit` does not block later refreshes; when that session is refused, the value is kept with a warning. Omit it to keep and report the current collation. Not supported for shared databases, where it is null. Changing it replaces the database.",
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown(), stringplanmodifier.RequiresReplace()},
+				MarkdownDescription: "`CASE_SENSITIVE` (the Redshift default) or `CASE_INSENSITIVE` string comparison for a local database. Changed in place with `ALTER DATABASE ... COLLATE`; Redshift may reject the change when database objects exist, without replacing the database. A change strictly reads `DB_COLLATION()` in fresh sessions before and immediately after COLLATE, before changing other options. Verified partial progress is saved if later work fails. Refresh also reads collation; a refused session warns and keeps the last known value. Omit it to keep the current collation. Not supported for shared or integration databases.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				Validators:          []validator.String{stringvalidator.OneOf("CASE_SENSITIVE", "CASE_INSENSITIVE")},
 			},
 			"isolation_level": schema.StringAttribute{
@@ -213,25 +214,23 @@ func validateDatabase(data databaseModel) error {
 // ValidateConfig surfaces local-only options on shared databases and integration conflicts at plan time; unknown
 // values are checked at apply.
 func (r *databaseResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	// A dynamic block can leave the whole integration object unknown, which the model's pointer cannot hold.
+	// Read independent options even when a dynamic integration block is unknown: the pointer model cannot hold
+	// that object, but it must not hide a known conflict between a datashare and a local option.
 	var integration types.Object
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("integration"), &integration)...)
-	if resp.Diagnostics.HasError() || integration.IsUnknown() {
-		return
+	var data databaseModel
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("datashare_arn"), &data.DatashareARN)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("owner"), &data.Owner)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("connection_limit"), &data.ConnectionLimit)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("collation"), &data.Collation)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("isolation_level"), &data.IsolationLevel)...)
+	if !integration.IsNull() && !integration.IsUnknown() {
+		resp.Diagnostics.Append(integration.As(ctx, &data.Integration, basetypes.ObjectAsOptions{})...)
 	}
-	var data databaseResourceModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := validateDatabaseIntegration(data.databaseModel); err != nil {
-		resp.Diagnostics.AddError("Invalid database options", err.Error())
-		return
-	}
-	if !req.Config.Raw.IsFullyKnown() {
-		return
-	}
-	if err := validateDatabase(data.databaseModel); err != nil {
+	if err := validateDatabase(data); err != nil {
 		resp.Diagnostics.AddError("Invalid database options", err.Error())
 	}
 }
@@ -437,8 +436,8 @@ func (r *databaseResource) read(ctx context.Context, data *databaseModel) (bool,
 		} else if observed.DatabaseType.ValueString() != databaseTypeLocal {
 			return false, fmt.Errorf("database %q is not a local database; migrate it explicitly", data.Name.ValueString())
 		}
-		// Collation is create-only and needs a session inside the database, so it is read only at creation,
-		// import, or while it is still null, and otherwise kept.
+		// This administration-only read preserves collation. Resource Read refreshes it separately, while Update
+		// verifies COLLATE before another option can prevent a session inside the database.
 		observed.Collation = data.Collation
 		if observed.Collation.IsUnknown() {
 			observed.Collation = types.StringNull()
@@ -483,9 +482,12 @@ func (r *databaseResource) verifyCreatedDatabase(ctx context.Context, data datab
 	expected := data.databaseModel
 	found, err := r.read(ctx, &data.databaseModel)
 	if err == nil && found {
+		err = r.waitDatabaseIntegration(ctx, expected, &data.databaseModel)
 		r.databaseReadCollation(ctx, &data.databaseModel, &resp.Diagnostics)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-		err = databaseConverged(expected, data.databaseModel)
+		if err == nil {
+			err = databaseConverged(expected, data.databaseModel)
+		}
 	} else if err == nil {
 		err = errors.New("the local database is absent after creation")
 	}
@@ -614,11 +616,9 @@ func (r *databaseResource) Read(ctx context.Context, req resource.ReadRequest, r
 	if destination && data.Integration == nil {
 		resp.Diagnostics.AddWarning("Zero-ETL integration not found",
 			fmt.Sprintf("SVV_INTEGRATION shows no integration for database %q, so a configured integration block plans a replacement. "+
-				"The integration may have been deleted, or the provider SQL identity is no longer a superuser and cannot see the view.", data.Name.ValueString()))
+				"The integration may have been deleted. A catalog permission error instead fails refresh without removing the binding.", data.Name.ValueString()))
 	}
-	if data.Collation.IsNull() {
-		r.databaseReadCollation(ctx, &data.databaseModel, &resp.Diagnostics)
-	}
+	r.databaseReadCollation(ctx, &data.databaseModel, &resp.Diagnostics)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -642,22 +642,80 @@ func (r *databaseResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 	expected := data.databaseModel
+	priorBinding := prior.Integration
 	found, err := r.read(ctx, &prior.databaseModel)
 	if err == nil && !found {
 		err = errDatabaseVanished
 	}
-	if err == nil && data.Integration != nil && prior.Integration == nil {
-		err = errors.New("SVV_INTEGRATION no longer shows the database's zero-ETL integration; refresh the plan")
+	if err == nil && priorBinding != nil && prior.Integration == nil {
+		binding := *priorBinding
+		binding.SourceDatabase, binding.RefreshInterval = types.StringNull(), types.Int64Null()
+		binding.HistoryMode, binding.AutoRemediation = types.BoolNull(), types.BoolNull()
+		bindingOnly := prior.databaseModel
+		bindingOnly.Integration = &binding
+		err = r.waitDatabaseIntegration(ctx, bindingOnly, &prior.databaseModel)
+	}
+	changeCollation := !data.Collation.IsNull() && !data.Collation.IsUnknown() && !data.Collation.Equal(prior.Collation)
+	collationProgress := false
+	if err == nil && changeCollation {
+		var collation string
+		collation, err = r.databaseCollation(ctx, data.Name.ValueString())
+		if err == nil {
+			prior.Collation = types.StringValue(collation)
+			// The desired value may already be present after an earlier partial apply. That verified value must
+			// survive a later failure too, even though no further COLLATE statement is needed this time.
+			collationProgress = prior.Collation.Equal(data.Collation)
+		} else {
+			err = fmt.Errorf("cannot verify the current collation before updating: %w; allow a session inside the database (raise connection_limit or use a superuser) and retry", err)
+		}
 	}
 	var statements []string
 	if err == nil {
 		statements, err = alterDatabaseStatements(prior.databaseModel, data.databaseModel)
 	}
 	if err == nil {
-		err = r.exec(ctx, r.database.ValueString(), statements...)
+		for i, statement := range statements {
+			target := r.database.ValueString()
+			collationStatement := i == 0 && changeCollation && !prior.Collation.Equal(data.Collation)
+			if collationStatement {
+				// Redshift refuses COLLATE unless the session is connected to the altered database.
+				target = data.Name.ValueString()
+			}
+			err = r.exec(ctx, target, statement)
+			if err != nil {
+				if collationStatement {
+					err = fmt.Errorf("redshift rejected ALTER DATABASE ... COLLATE: %w. No replacement was attempted. Keep the current collation or resolve the database's ALTER restrictions and retry; use terraform apply -replace only if deliberately recreating the database and losing its contents is acceptable", err)
+				}
+				break
+			}
+			if collationStatement {
+				collationProgress = true
+				// Invalidate the planned value until a fresh session verifies it. If that read fails, null state
+				// is safer than either claiming success or keeping the now potentially stale prior collation.
+				data.Collation = types.StringNull()
+				collation, readErr := r.databaseCollation(ctx, data.Name.ValueString())
+				if readErr != nil {
+					err = fmt.Errorf("cannot verify collation after ALTER: %w; allow a fresh session inside the database (raise connection_limit or use a superuser) and refresh before retrying", readErr)
+				} else {
+					data.Collation = types.StringValue(collation)
+					if !data.Collation.Equal(expected.Collation) {
+						err = fmt.Errorf("collation is %s in the catalog, not the planned %s", data.Collation, expected.Collation)
+					}
+				}
+				progress := prior
+				progress.Collation = data.Collation
+				resp.Diagnostics.Append(resp.State.Set(ctx, &progress)...)
+				if resp.Diagnostics.HasError() {
+					return
+				}
+				if err != nil {
+					break
+				}
+			}
+		}
 	}
 	if err == nil {
-		// Collation never changes in place; keeping the prior value avoids a session inside the database.
+		// Unmanaged collation does not need another database session.
 		if data.Collation.IsUnknown() {
 			data.Collation = prior.Collation
 		}
@@ -666,16 +724,27 @@ func (r *databaseResource) Update(ctx context.Context, req resource.UpdateReques
 		}
 	}
 	if err == nil {
+		err = r.waitDatabaseIntegration(ctx, expected, &data.databaseModel)
+	}
+	if err == nil {
 		err = databaseConverged(expected, data.databaseModel)
 	}
 	if err != nil {
+		if collationProgress {
+			progress := prior
+			progress.Collation = data.Collation
+			// Later statements may also have succeeded. Keep the verified collation even if the administration
+			// read fails, and otherwise record all catalog-visible partial progress rather than the old state.
+			_, _ = r.read(ctx, &progress.databaseModel)
+			resp.Diagnostics.Append(resp.State.Set(ctx, &progress)...)
+		}
 		resp.Diagnostics.AddError("Update database", err.Error())
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the selected database and verifies catalog removal.
+// Delete drops the selected database after checking its ownership and kind.
 func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state databaseResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -695,14 +764,8 @@ func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteReques
 			resp.Diagnostics.AddError("Delete zero-ETL destination database", fmt.Sprintf("%s\n\n"+
 				"Redshift cannot drop a zero-ETL destination while its integration is active, and Terraform destroys the "+
 				"database before the integration it depends on. Delete the integration outside Terraform, for example with "+
-				"aws rds delete-integration, wait until it is gone, and destroy again.", err))
+				"aws rds delete-integration (Aurora/RDS) or aws redshift delete-integration (DynamoDB), wait until it is gone, and destroy again.", err))
 			return
-		}
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete shared database", "The database remains after deletion.")
-			}
 		}
 	}
 	if err != nil {

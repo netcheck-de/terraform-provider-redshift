@@ -1,1 +1,1 @@
-ALTER IDENTITY PROVIDER "oauth_standard" ENABLE;
+-- no statements

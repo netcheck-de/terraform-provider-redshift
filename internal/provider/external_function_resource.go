@@ -107,17 +107,17 @@ func (r *externalFunctionResource) Schema(_ context.Context, _ resource.SchemaRe
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local database containing the function. Changing it replaces the function.",
+				Required: true, MarkdownDescription: "Local database containing the function.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"schema": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Schema containing the function. Changing it replaces the function.",
+				Required: true, MarkdownDescription: "Schema containing the function.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Function name; AWS recommends the reserved `f_` prefix to avoid conflicts with built-in functions. Changing it replaces the function.",
+				Required: true, MarkdownDescription: "Function name; AWS recommends the reserved `f_` prefix to avoid conflicts with built-in functions.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
@@ -170,20 +170,65 @@ func (r *externalFunctionResource) Schema(_ context.Context, _ resource.SchemaRe
 	}
 }
 
-// externalFunctionCheck validates the configuration exactly as Create renders it.
-func externalFunctionCheck(data externalFunctionModel) error {
-	_, err := createExternalFunctionStatements(data)
+// externalFunctionKnownConfig validates independent known options without rendering an unresolved definition.
+func externalFunctionKnownConfig(data externalFunctionModel) error {
+	if !data.Arguments.IsUnknown() {
+		if len(data.Arguments.Elements()) > externalFunctionMaxArguments {
+			return fmt.Errorf("a function accepts at most %d arguments", externalFunctionMaxArguments)
+		}
+		for _, element := range data.Arguments.Elements() {
+			value := element.(types.String)
+			if !value.IsUnknown() {
+				if _, err := externalFunctionType(value.ValueString()); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if !data.ReturnType.IsUnknown() {
+		if _, err := externalFunctionType(data.ReturnType.ValueString()); err != nil {
+			return err
+		}
+	}
+	if _, err := optOneOf(data.Volatility, externalFunctionVolatilities...); err != nil {
+		return err
+	}
+	if !data.LambdaFunction.IsUnknown() && data.LambdaFunction.ValueString() == "" {
+		return fmt.Errorf("lambda_function must not be empty")
+	}
+	if !data.IAMRole.IsUnknown() {
+		if _, err := externalFunctionIAMRole(data.IAMRole.ValueString()); err != nil {
+			return err
+		}
+	}
+	if timeout := knownInt64(data.RetryTimeout); timeout != nil && *timeout < 0 {
+		return fmt.Errorf("retry_timeout must be at least 0 milliseconds")
+	}
+	if rows := knownInt64(data.MaxBatchRows); rows != nil && (*rows < 1 || *rows > externalFunctionMaxBatchRows) {
+		return fmt.Errorf("max_batch_rows must be between 1 and %d", externalFunctionMaxBatchRows)
+	}
+	if _, err := optOneOf(data.MaxBatchSizeUnit, externalFunctionBatchUnits...); err != nil {
+		return err
+	}
+	if data.MaxBatchSize.IsUnknown() {
+		return nil
+	}
+	if data.MaxBatchSizeUnit.IsUnknown() {
+		// KB has the widest numeric range; a size outside it cannot become valid with either unit.
+		data.MaxBatchSizeUnit = types.StringNull()
+	}
+	_, err := externalFunctionBatchSize(data)
 	return err
 }
 
-// ValidateConfig reports definitions Create would reject, during planning once the configuration is known.
+// ValidateConfig checks known definition options independently of unresolved fields.
 func (r *externalFunctionResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data externalFunctionModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := externalFunctionCheck(data); err != nil {
+	if err := externalFunctionKnownConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid external function", err.Error())
 	}
 }
@@ -347,7 +392,7 @@ func (r *externalFunctionResource) Update(ctx context.Context, req resource.Upda
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-// Delete drops the function restrictively and verifies catalog removal.
+// Delete drops the function restrictively, after confirming it is an external function.
 func (r *externalFunctionResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data externalFunctionModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -359,12 +404,6 @@ func (r *externalFunctionResource) Delete(ctx context.Context, req resource.Dele
 		var statement string
 		if statement, err = dropExternalFunctionStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
-		}
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete external function", "The external function remains after deletion.")
-			}
 		}
 	}
 	if err != nil {

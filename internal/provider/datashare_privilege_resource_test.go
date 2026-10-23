@@ -113,7 +113,7 @@ func TestDatasharePrivilegeCatalog(t *testing.T) {
 	assert.Equal(t, "warehouse", routes[`GRANT SHARE ON DATASHARE "producer" TO PUBLIC`], "mutations run in the producer database")
 	assert.Equal(t, "warehouse", routes["SELECT privilege_type, admin_option FROM svv_datashare_privileges WHERE datashare_name = :share AND identity_type = 'public'"])
 	assert.Equal(t, "admin", routes["SELECT share_name FROM svv_datashares WHERE share_type = 'OUTBOUND' AND share_name = :share AND BTRIM(source_database) = :database"])
-	require.False(t, invoke(t, r, "delete", data, false).HasError())
+	require.False(t, invoke(t, r, "delete", data).HasError())
 	assert.Empty(t, family.privileges["public"])
 	assert.Equal(t, map[string]bool{"ALTER": true}, family.privileges["role:example:readers"])
 

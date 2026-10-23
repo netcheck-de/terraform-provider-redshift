@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // maskingPolicyResource manages one dynamic data masking policy.
@@ -56,12 +57,12 @@ func (r *maskingPolicyResource) Schema(_ context.Context, _ resource.SchemaReque
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
 				Required: true, Validators: nonEmpty,
-				MarkdownDescription: "Local database that holds the policy; the policy can only be attached to relations in this database. Changing it replaces the policy.",
+				MarkdownDescription: "Local database that holds the policy; the policy can only be attached to relations in this database.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
 				Required: true, Validators: nonEmpty,
-				MarkdownDescription: "Policy name, unique among the masking policies of the database. Changing it replaces the policy.",
+				MarkdownDescription: "Policy name, unique among the masking policies of the database.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"expression": schema.StringAttribute{
@@ -142,7 +143,23 @@ func (r *maskingPolicyResource) ValidateConfig(ctx context.Context, req resource
 	var data maskingPolicyModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	// The schema's IsRequired validator already reports absent input_column blocks; repeating it doubles the error.
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() || data.InputColumn.IsNull() {
+	if resp.Diagnostics.HasError() || data.InputColumn.IsNull() {
+		return
+	}
+	if !req.Config.Raw.IsFullyKnown() {
+		if !data.Expression.IsUnknown() && !data.Expression.IsNull() {
+			if _, err := sqlclient.CheckUserSQL(data.Expression.ValueString()); err != nil {
+				resp.Diagnostics.AddError("Invalid masking policy", err.Error())
+			}
+		}
+		columns, err := data.InputColumn.ToTerraformValue(ctx)
+		if err == nil && columns.IsFullyKnown() {
+			// Validate the known inputs independently of the name and expression, which may be references.
+			data.Name, data.Expression = types.StringValue("policy"), types.StringValue("NULL")
+			if err := maskingPolicyValidate(data); err != nil {
+				resp.Diagnostics.AddError("Invalid masking policy", err.Error())
+			}
+		}
 		return
 	}
 	if err := maskingPolicyValidate(data); err != nil {
@@ -226,7 +243,7 @@ func (r *maskingPolicyResource) Update(ctx context.Context, req resource.UpdateR
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-// Delete drops the policy and verifies its removal; Redshift refuses while it is still attached.
+// Delete drops the policy; Redshift refuses while it is still attached.
 func (r *maskingPolicyResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data maskingPolicyModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -236,12 +253,6 @@ func (r *maskingPolicyResource) Delete(ctx context.Context, req resource.DeleteR
 	_, found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropMaskingPolicyStatement(data))
-		if err == nil {
-			_, found, err = r.read(ctx, &data)
-			if err == nil && found {
-				err = fmt.Errorf("the masking policy remains after deletion")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete masking policy", err.Error())

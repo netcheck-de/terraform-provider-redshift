@@ -6,7 +6,8 @@ description: Manages explicit privileges on one local database object, or on all
 
 # redshift_object_grant (Resource)
 
-Owns the exact explicit privilege set for one local database object and one grantee. Tables and views use `TABLE`;
+Owns the exact explicit privilege set for one local or shared database object and one grantee. Tables and views use
+`TABLE`;
 functions and procedures name their overload with `arguments`; machine learning models use `MODEL`, and COPY templates
 `TEMPLATE`. The `ALL TABLES`, `ALL FUNCTIONS`, and `ALL PROCEDURES` types grant on every object that currently exists
 in a schema. See AWS
@@ -28,6 +29,7 @@ Deleting the resource revokes the privileges it owns; see [Reconciliation](#reco
 {{ tffile "examples/resources/redshift_object_grant/resource.tf" }}
 
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -55,6 +57,48 @@ use [default privileges](https://registry.terraform.io/providers/netcheck-de/red
 to stop granting it to future functions.
 
 {{ tffile "examples/resources/redshift_object_grant/routine.tf" }}
+
+## Shared Consumer Databases
+
+Set `database_type = "shared"` for objects of a consumer database created from a datashare. This selector is part of
+the JSON identity; omitting it preserves the existing local contract and IDs. Shared grants run from the provider's
+administration database, never by connecting to the shared database or consulting database-local privilege views.
+Shared routine grants and all shared snapshots require a SQL superuser for every read and mutation: their member
+enumeration and function/procedure collision checks must not use permission-filtered catalog data. If this cannot
+be proved, refresh reports an error and preserves state instead of inferring that an object is gone.
+`DATABASE` and `SCHEMA` support `USAGE` without grant options; `TABLE` supports the table privileges listed above.
+`FUNCTION` and `PROCEDURE` support `EXECUTE`, including grant options for users. Shared routine permissions cover
+every overload
+of a name: a grant using an INTEGER signature is also visible for a VARCHAR overload, and revoking either removes the
+name-wide grant. Omit `arguments`; configuring it is rejected so separate overload identities cannot accidentally
+manage the same permission. `SVV_REDSHIFT_FUNCTIONS.function_type` distinguishes the producer's function and procedure
+names, so `FUNCTION` cannot select a procedure and `PROCEDURE` cannot select a function. Before mutating a single
+routine or an `ALL PROCEDURES` snapshot, the provider rejects a name that exists as both kinds: the consumer has one
+name-wide ACL, so separate tuples could not own it independently. Use distinct producer names or one `ALL FUNCTIONS`
+tuple for the shared namespace instead.
+
+Redshift rejects native consumer `PROCEDURE`/`ALL PROCEDURES` grants and `SHOW GRANTS ON PROCEDURE`. The provider
+therefore uses the verified `GRANT/REVOKE EXECUTE ON FUNCTION` and `SHOW GRANTS ON FUNCTION` spelling for a shared
+procedure. `ALL PROCEDURES` enumerates current procedure names from the administration database and issues those
+name-wide statements once per name; it never issues unsupported native bulk procedure SQL. Shared producer procedures
+must already have been included through `GRANT EXECUTE ON PROCEDURE ... TO DATASHARE`.
+
+Object-level permissions require the shared database to have been created `WITH PERMISSIONS`; consumers also need
+`USAGE` on its database and schema. Table write privileges additionally require the producer to share write access.
+The resource checks the shared database in `SVV_REDSHIFT_DATABASES`, its schema/table in `SVV_ALL_SCHEMAS` and
+`SVV_ALL_TABLES`, and routine names in `SVV_REDSHIFT_FUNCTIONS`, then reads exact object grants with three-part
+`SHOW GRANTS`. `ALL TABLES` and `ALL FUNCTIONS` use database-qualified schema snapshots from the administration
+database. Each refresh lists distinct member names and runs `SHOW GRANTS ON TABLE` or `SHOW GRANTS ON FUNCTION`
+per member; this preserves user grant options, which `SHOW GRANTS FOR` omits. Privileges and options are reported
+only when every current member holds them. Shared `ALL FUNCTIONS` covers all shared routine names, including producer
+procedures, rather than filtering by the producer's routine kind; `ALL PROCEDURES` selects procedure names only.
+Empty snapshots are treated as missing. Reconciliation
+also revokes undesired supported privileges or options held by only some members, so an executed cleanup cannot leave
+partial grants hidden by the intersection. Scoped permissions such as `TABLES`
+are not adopted as a `TABLE` grant. Do not overlap the database or schema tuple with `redshift_grant` of the same
+recipient, even though its identity uses different fields.
+
+{{ tffile "examples/resources/redshift_object_grant/shared.tf" }}
 
 ## Models
 
@@ -91,10 +135,10 @@ The resource checks object and grantee existence. Databases, schemas, tables, an
 snapshots with `SVV_RELATION_PRIVILEGES` or `SVV_FUNCTION_PRIVILEGES`, all in the object's local database. Scoped,
 inherited, and other grantee grants are independent. Avoid overlapping this resource with `redshift_grant` for the same
 explicit schema/database tuple, and a snapshot with single-object grants of the same grantee. Language privileges,
-column grants, shared database objects, and Lake Formation IAM grants are out of scope.
+column grants, and Lake Formation IAM grants are out of scope. Shared grants use the separate contract above.
 
-No catalog view lists every COPY template, so a template's existence is checked with `SHOW TEMPLATES FROM SCHEMA ...
-LIKE 'name'`, whose `_` and `%` wildcards can also match other templates. When a dropped template's name matches
+Template existence is checked with `SHOW TEMPLATES FROM SCHEMA ... LIKE 'name'`, whose `_` and `%` wildcards can also
+match other templates. When a dropped template's name matches
 another one that way, refresh fails at `SHOW GRANTS ON TEMPLATE` instead of removing the grant from state; remove it
 with `terraform state rm`.
 
@@ -107,6 +151,7 @@ the catalog to verify the exact sets; every change to the tuple itself replaces 
 | Change                                                                    | Result                                                                                                                                                                                                                                                     |
 |---------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `database_name`, `schema_name`, `object_name`, or `object_type`           | replaces the grant: they name another object, so the old object's privileges are revoked and the new one's granted                                                                                                                                         |
+| `database_type` set or removed                                            | replaces the grant: shared and local catalog and connection contracts have distinct identities                                                                                                                                                             |
 | `arguments`                                                               | replaces the grant: it selects another overload; a new spelling of the same types, such as `INT4` for `INTEGER`, replaces it too, because the configured spelling is part of the identity                                                                  |
 | `grantee` or `grantee_type`                                               | replaces the grant: the grantee is part of the tuple                                                                                                                                                                                                       |
 | privilege added to `privileges`                                           | `GRANT ... ON DATABASE`, `ON SCHEMA`, `ON TABLE`, `ON FUNCTION`, `ON PROCEDURE`, `ON MODEL`, or `ON TEMPLATE`; for a snapshot `GRANT ... ON ALL TABLES IN SCHEMA` (or `ALL FUNCTIONS`, `ALL PROCEDURES`), which covers the objects that exist when it runs |
@@ -168,6 +213,8 @@ resource "redshift_object_grant" "orders" {
 {{ codefile "sql" "internal/provider/testdata/sql/privilege_sql/option_statements/full_order.sql" }}
 
 ## Import
+
+For shared consumer objects, include `"database_type":"shared"` in the JSON identity; local identities omit it.
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 

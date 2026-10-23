@@ -96,7 +96,13 @@ func alterDatabaseIntegrationStatements(prev, plan databaseModel) []string {
 		if after.IsNull() || after.IsUnknown() || after.Equal(setting.value(prior)) {
 			continue
 		}
-		statements = append(statements, setting.render(databaseAlter(plan).Kw("INTEGRATION SET"), *plan.Integration).String())
+		statement := setting.render(databaseAlter(plan).Kw("INTEGRATION SET"), *plan.Integration)
+		// Without FOR ALL TABLES, Redshift changes only the default for newly replicated tables, leaving existing
+		// tables in their old history mode even when SVV_INTEGRATION already reports the new database default.
+		if setting.attribute == "history_mode" {
+			statement = statement.Kw("FOR ALL TABLES")
+		}
+		statements = append(statements, statement.String())
 	}
 	return statements
 }

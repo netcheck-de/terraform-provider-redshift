@@ -4,11 +4,36 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework/types"
+
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // rlsPolicyAttachmentGranteeTypes are the recipient forms of ATTACH RLS POLICY ... TO.
 var rlsPolicyAttachmentGranteeTypes = []string{"USER", "ROLE", "PUBLIC"}
+
+// rlsPolicyAttachmentKnownConfig defers only checks whose recipient inputs are unknown.
+func rlsPolicyAttachmentKnownConfig(data rlsPolicyAttachmentModel) error {
+	for _, value := range []types.String{data.Policy, data.Schema, data.Relation, data.Grantee} {
+		if !value.IsUnknown() && value.ValueString() == "" {
+			return fmt.Errorf("RLS policy attachment requires a nonempty policy, schema, relation, and grantee")
+		}
+	}
+	if data.GranteeType.IsUnknown() {
+		return nil
+	}
+	switch kind := data.GranteeType.ValueString(); kind {
+	case "USER", "ROLE":
+		return nil
+	case "PUBLIC":
+		if !data.Grantee.IsUnknown() && data.Grantee.ValueString() != "public" {
+			return fmt.Errorf("grantee_type PUBLIC requires grantee = public")
+		}
+		return nil
+	default:
+		return fmt.Errorf("grantee_type %q is not one of %s", kind, strings.Join(rlsPolicyAttachmentGranteeTypes, ", "))
+	}
+}
 
 // rlsPolicyAttachmentParts renders the qualified relation and the recipient. Empty names are rejected because
 // Qualified omits an empty schema, which would resolve the relation through the search path instead.

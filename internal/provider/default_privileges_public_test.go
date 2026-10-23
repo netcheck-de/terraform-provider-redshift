@@ -54,10 +54,10 @@ func TestDefaultPrivilegesImplicitPublicExecute(t *testing.T) {
 	assert.Equal(t, []string{"EXECUTE"}, knownStrings(data.Attributes()["privileges"].(types.Set)), "the implicit default is reported")
 	require.NoError(t, r.reconcile(context.Background(), privilegeObject(t, r, fields)))
 	assert.Equal(t, []string{`ALTER DEFAULT PRIVILEGES FOR USER "loader" REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`}, c.writes)
-	require.False(t, invoke(t, r, "delete", privilegeObject(t, r, fields), false).HasError())
+	require.False(t, invoke(t, r, "delete", privilegeObject(t, r, fields)).HasError())
 	assert.Len(t, c.writes, 1, "deleting the lockdown leaves it in place")
 	c.entry, c.execute = false, false
-	require.False(t, invoke(t, r, "delete", privilegeObject(t, r, fields, "EXECUTE"), false).HasError())
+	require.False(t, invoke(t, r, "delete", privilegeObject(t, r, fields, "EXECUTE")).HasError())
 	assert.Equal(t, `ALTER DEFAULT PRIVILEGES FOR USER "loader" REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`, c.writes[len(c.writes)-1])
 }
 

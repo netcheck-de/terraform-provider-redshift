@@ -177,6 +177,9 @@ func objectGrantSignature(arguments string) (sqlclient.Keyword, error) {
 
 // objectGrantTarget validates an object tuple and renders its checks, catalog read, and grants.
 func objectGrantTarget(data types.Object) (privilegeTarget, error) {
+	if objectString(data, "database_type") != "" {
+		return sharedObjectGrantTarget(data)
+	}
 	grantee, check, err := principal(data)
 	if err != nil {
 		return privilegeTarget{}, err

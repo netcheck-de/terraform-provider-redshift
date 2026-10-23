@@ -30,6 +30,7 @@ func newMaskingPolicyDataSource() datasource.DataSource {
 // maskingPolicyOutputDescriptions describes the catalog spelling of the inputs, which both the lookup and the listing
 // report, instead of the resource's apply-time rules for configured spellings.
 var maskingPolicyOutputDescriptions = map[string]string{
-	"input_column":      "Ordered input columns of the `WITH` clause that the expression reads.",
-	"input_column.type": "Data type in the canonical form the catalog reports, in uppercase, such as `CHARACTER VARYING(256)` for a configured `VARCHAR(256)`.",
+	"definition_fingerprint": viewLookupFingerprintDescription,
+	"input_column":           "Ordered input columns of the `WITH` clause that the expression reads.",
+	"input_column.type":      "Data type in the canonical form the catalog reports, in uppercase, such as `CHARACTER VARYING(256)` for a configured `VARCHAR(256)`.",
 }

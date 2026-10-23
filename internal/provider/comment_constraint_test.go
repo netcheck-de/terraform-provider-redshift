@@ -58,7 +58,7 @@ func TestCommentConstraintLifecycle(t *testing.T) {
 		}
 		return []sqlclient.Row{{"text": "note"}}, nil
 	}))}
-	require.False(t, invoke(t, r, "read", commentConstraintModel(), false).HasError())
+	require.False(t, invoke(t, r, "read", commentConstraintModel()).HasError())
 	require.NotEmpty(t, reads)
 	assert.Contains(t, reads[0], "FROM pg_constraint k")
 
@@ -68,8 +68,8 @@ func TestCommentConstraintLifecycle(t *testing.T) {
 	r.Read(context.Background(), resource.ReadRequest{State: state}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 	assert.True(t, resp.State.Raw.IsNull(), "a dropped constraint removes the comment from state")
-	assert.True(t, invoke(t, r, "create", commentConstraintModel(), false).HasError(), "a missing constraint cannot be annotated")
-	assert.False(t, invoke(t, r, "delete", commentConstraintModel(), false).HasError(), "clearing a vanished constraint's comment is a no-op")
+	assert.True(t, invoke(t, r, "create", commentConstraintModel()).HasError(), "a missing constraint cannot be annotated")
+	assert.False(t, invoke(t, r, "delete", commentConstraintModel()).HasError(), "clearing a vanished constraint's comment is a no-op")
 
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","object_type":"CONSTRAINT","object_name":"orders","schema_name":"serving","constraint_name":"orders_pkey"}`}, &imported)

@@ -22,10 +22,17 @@ import (
 )
 
 // TestAccSpectrumExternalTableLifecycle creates a partitioned external table and a partition, changes both in place,
-// imports them, and checks that a refresh plans nothing. An ORC table beside them, which maps columns by name, inserts
+// imports them, and checks that a refresh plans nothing. A Parquet or ORC table beside them maps columns by name, inserts
 // a column mid-list in place while the catalog appends it. It needs an existing Glue database, an IAM role attached to
 // the namespace that may write it, and an S3 prefix in the warehouse's region; the S3 data is never written.
 func TestAccSpectrumExternalTableLifecycle(t *testing.T) {
+	for _, format := range []string{"ORC", "PARQUET"} {
+		t.Run(format, func(t *testing.T) { testAccSpectrumExternalTableLifecycle(t, format) })
+	}
+}
+
+func testAccSpectrumExternalTableLifecycle(t *testing.T, format string) {
+	t.Helper()
 	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SPECTRUM_ROLE_ARN", "REDSHIFT_ACC_SPECTRUM_GLUE_DATABASE", "REDSHIFT_ACC_SPECTRUM_LOCATION")
 	role, glue := os.Getenv("REDSHIFT_ACC_SPECTRUM_ROLE_ARN"), os.Getenv("REDSHIFT_ACC_SPECTRUM_GLUE_DATABASE")
 	location := strings.TrimSuffix(os.Getenv("REDSHIFT_ACC_SPECTRUM_LOCATION"), "/") + "/"
@@ -44,7 +51,7 @@ func TestAccSpectrumExternalTableLifecycle(t *testing.T) {
 			}
 		}
 	})
-	configuration := func(tableLocation, partitionLocation, extraColumn, numRows, orcColumns string) string {
+	configuration := func(tableLocation, partitionLocation, extraColumn, numRows, mappedColumns string) string {
 		return fmt.Sprintf(`
 provider "redshift" {
   region = %q
@@ -65,7 +72,7 @@ resource "redshift_external_table" "events" {
   dynamic "column" {
     for_each = concat([
       { name = "id", type = "int4" },
-      { name = "label", type = "varchar(64)" },
+      { name = "label", type = "VARCHAR(64)" },
     ], %[8]s)
     content {
       name = column.value.name
@@ -74,7 +81,7 @@ resource "redshift_external_table" "events" {
   }
   partition_key {
     name = "event_date"
-    type = "date"
+    type = "DATE"
   }
   field_delimiter = "\t"
   stored_as = "TEXTFILE"
@@ -92,7 +99,7 @@ resource "redshift_external_table" "metrics" {
       type = column.value.type
     }
   }
-  stored_as = "ORC"
+  stored_as = %[14]q
   location = %[13]q
 }
 data "redshift_external_table" "metrics" {
@@ -117,11 +124,11 @@ data "redshift_external_partition" "first" {
   schema = redshift_external_partition.first.schema
   table = redshift_external_partition.first.table
   values = redshift_external_partition.first.values
-}`, region, profile, workgroup, database, schema, glue, role, extraColumn, tableLocation, numRows, partitionLocation, orcColumns, metrics)
+}`, region, profile, workgroup, database, schema, glue, role, extraColumn, tableLocation, numRows, partitionLocation, mappedColumns, metrics, format)
 	}
 	moved := location + "v2/"
 	initial := configuration(location, location+"event_date=2024-01-01/", "[]", "10", `[{ name = "id", type = "bigint" }, { name = "label", type = "varchar(64)" }]`)
-	changed := configuration(moved, moved+"event_date=2024-01-01/", `[{ name = "amount", type = "decimal(8,2)" }]`, "20",
+	changed := configuration(moved, moved+"event_date=2024-01-01/", `[{ name = "amount", type = "DECIMAL(8,2)" }]`, "20",
 		`[{ name = "id", type = "bigint" }, { name = "amount", type = "decimal(8,2)" }, { name = "label", type = "varchar(64)" }]`)
 	stateID := func(name string) resource.ImportStateIdFunc {
 		return func(state *terraform.State) (string, error) {

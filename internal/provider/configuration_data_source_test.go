@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -25,7 +26,12 @@ func TestConfigurationSQL(t *testing.T) {
 		{"uppercase_rejected", render("Search_Path")},
 		{"statement_rejected", render("search_path; DROP TABLE t")},
 		{"quoted_rejected", render(`"search_path"`)},
-		{"context_variable_rejected", render("app_context.user_id")},
+		{"context_variable", render("app_context.user_id")},
+		{"empty_context_segment_rejected", render("app_context..user_id")},
+		{"leading_dot_rejected", render(".user_id")},
+		{"trailing_dot_rejected", render("app_context.")},
+		{"context_statement_rejected", render("app_context.user_id; SELECT 1")},
+		{"long_context_segment_rejected", render("app_context." + strings.Repeat("a", 128))},
 		{"all_rejected", render("all")},
 		{"empty_rejected", render("")},
 	})
@@ -55,6 +61,7 @@ func TestConfigurationRead(t *testing.T) {
 		{"search_path", sqlclient.Row{"search_path": "$user, public"}, "$user, public"},
 		{"timezone", sqlclient.Row{"TimeZone": "UTC"}, "UTC"},
 		{"query_group", sqlclient.Row{"other": "unset"}, "unset"},
+		{"app_context.user_id", sqlclient.Row{"app_context.user_id": "reader"}, "reader"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var statements []string
@@ -82,7 +89,7 @@ func TestConfigurationReadFailures(t *testing.T) {
 		{"search_path", nil, errors.New(`unrecognized configuration parameter "search_path"`), `unrecognized configuration parameter "search_path"`},
 		{"search_path", nil, nil, "SHOW search_path returned 0 rows, expected 1"},
 		{"search_path", []sqlclient.Row{{"a": "1", "b": "2"}}, nil, "SHOW search_path returned no column named after the parameter"},
-		{"Search_Path", nil, nil, `parameter name "Search_Path" must be a bare lowercase identifier, such as search_path`},
+		{"Search_Path", nil, nil, `parameter name "Search_Path" must be a lowercase identifier or dotted session context name, such as search_path or app_context.user_id`},
 		{"all", nil, nil, "parameter name must name one parameter, not all"},
 	} {
 		queried := false

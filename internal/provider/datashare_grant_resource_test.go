@@ -26,7 +26,7 @@ var _ = registerReplacementPolicy("redshift_datashare_grant", map[string]replace
 	"datashare":        replaceAlways,
 	"account_id":       replaceAlways,
 	"namespace_id":     replaceAlways,
-	"via_data_catalog": replaceConditional("TestDatashareGrantViaDataCatalogReplacement"),
+	"via_data_catalog": replaceConditional,
 })
 
 // datashareCatalogGrant is an account grant to a Lake Formation account.
@@ -120,7 +120,7 @@ func TestDatashareGrantViaDataCatalogLifecycle(t *testing.T) {
 	var created datashareGrantModel
 	require.False(t, state.Get(context.Background(), &created).HasError())
 	assert.Equal(t, r.identity("admin", map[string]string{"datashare": "producer", "account_id": "123456789012", "via_data_catalog": "true"}), created.ID)
-	require.False(t, invoke(t, r, "delete", created, false).HasError())
+	require.False(t, invoke(t, r, "delete", created).HasError())
 	assert.Equal(t, []string{
 		`GRANT USAGE ON DATASHARE "producer" TO ACCOUNT '123456789012' VIA DATA CATALOG`,
 		`REVOKE USAGE ON DATASHARE "producer" FROM ACCOUNT '123456789012' VIA DATA CATALOG`,
@@ -284,16 +284,16 @@ func TestDatashareGrantLifecycle(t *testing.T) {
 				}
 				return c.Query(ctx, target, sql, parameters)
 			}))}
-			require.False(t, invoke(t, r, "create", data, false).HasError())
+			require.False(t, invoke(t, r, "create", data).HasError())
 			data.ID = r.identity("admin", map[string]string{"datashare": "producer", field: value})
-			require.False(t, invoke(t, r, "read", data, false).HasError())
-			require.False(t, invoke(t, r, "update", data, false).HasError())
-			require.False(t, invoke(t, r, "delete", data, false).HasError())
+			require.False(t, invoke(t, r, "read", data).HasError())
+			require.False(t, invoke(t, r, "update", data).HasError())
+			require.False(t, invoke(t, r, "delete", data).HasError())
 			assert.Equal(t, namespace, c.shareGrant)
 			assert.Equal(t, !namespace, c.shareNamespaceGrant)
-			require.False(t, invoke(t, r, "read", data, false).HasError())
-			assert.True(t, invoke(t, r, "update", data, false).HasError())
-			require.False(t, invoke(t, r, "delete", data, false).HasError())
+			require.False(t, invoke(t, r, "read", data).HasError())
+			assert.True(t, invoke(t, r, "update", data).HasError())
+			require.False(t, invoke(t, r, "delete", data).HasError())
 		})
 	}
 }
@@ -335,7 +335,7 @@ func TestDatashareGrantFailures(t *testing.T) {
 		r := &datashareGrantResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return nil, errors.New("API unavailable")
 		}))}
-		assert.True(t, invoke(t, r, operation, data, false).HasError(), operation)
+		assert.True(t, invoke(t, r, operation, data).HasError(), operation)
 	}
 	for _, failure := range []string{"absent", "verify", "revoke", "remains"} {
 		reads := 0
@@ -359,7 +359,7 @@ func TestDatashareGrantFailures(t *testing.T) {
 		if failure == "absent" || failure == "verify" {
 			operation = "create"
 		}
-		assert.True(t, invoke(t, r, operation, data, false).HasError(), failure)
+		assert.True(t, invoke(t, r, operation, data).HasError(), failure)
 	}
 }
 
@@ -373,7 +373,7 @@ func TestDatashareGrantRejectsInvalidConsumers(t *testing.T) {
 			t.Fatal("invalid consumer reached SQL")
 			return nil, nil
 		}))}
-		assert.True(t, invoke(t, r, "create", data, false).HasError())
+		assert.True(t, invoke(t, r, "create", data).HasError())
 		_, err := r.read(context.Background(), data)
 		require.Error(t, err)
 	}

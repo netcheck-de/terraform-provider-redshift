@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strconv"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -82,38 +83,42 @@ func TestQueryIAMAuthentication(t *testing.T) {
 
 // TestQueryPollingAndPagination checks polling, pagination, and scalar result normalization.
 func TestQueryPollingAndPagination(t *testing.T) {
-	// One statement result keeps the same columns on every page.
-	columns := []types.ColumnMetadata{{Name: aws.String("text")}, {Name: aws.String("enabled")}, {Name: aws.String("number")}}
-	polls := 0
-	s := &apiStub{
-		describe: func(context.Context) (*redshiftdata.DescribeStatementOutput, error) {
-			polls++
-			if polls == 1 {
-				return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringStarted}, nil
-			}
-			return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringFinished, HasResultSet: aws.Bool(true)}, nil
-		},
-		result: func(input *redshiftdata.GetStatementResultInput) (*redshiftdata.GetStatementResultOutput, error) {
-			if input.NextToken == nil {
+	synctest.Test(t, func(t *testing.T) {
+		// One statement result keeps the same columns on every page.
+		columns := []types.ColumnMetadata{{Name: aws.String("text")}, {Name: aws.String("enabled")}, {Name: aws.String("number")}}
+		polls := 0
+		s := &apiStub{
+			describe: func(context.Context) (*redshiftdata.DescribeStatementOutput, error) {
+				polls++
+				if polls == 1 {
+					return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringStarted}, nil
+				}
+				return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringFinished, HasResultSet: aws.Bool(true)}, nil
+			},
+			result: func(input *redshiftdata.GetStatementResultInput) (*redshiftdata.GetStatementResultOutput, error) {
+				if input.NextToken == nil {
+					return &redshiftdata.GetStatementResultOutput{
+						ColumnMetadata: columns,
+						Records:        [][]types.Field{{&types.FieldMemberStringValue{Value: "value"}, &types.FieldMemberBooleanValue{Value: true}, &types.FieldMemberLongValue{Value: 2}}},
+						NextToken:      aws.String("next"),
+					}, nil
+				}
+				assert.Equal(t, "next", *input.NextToken)
 				return &redshiftdata.GetStatementResultOutput{
 					ColumnMetadata: columns,
-					Records:        [][]types.Field{{&types.FieldMemberStringValue{Value: "value"}, &types.FieldMemberBooleanValue{Value: true}, &types.FieldMemberLongValue{Value: 2}}},
-					NextToken:      aws.String("next"),
+					Records:        [][]types.Field{{&types.FieldMemberIsNull{Value: true}, &types.FieldMemberBooleanValue{Value: false}, &types.FieldMemberDoubleValue{Value: 1.5}}},
 				}, nil
-			}
-			assert.Equal(t, "next", *input.NextToken)
-			return &redshiftdata.GetStatementResultOutput{
-				ColumnMetadata: columns,
-				Records:        [][]types.Field{{&types.FieldMemberIsNull{Value: true}, &types.FieldMemberBooleanValue{Value: false}, &types.FieldMemberDoubleValue{Value: 1.5}}},
-			}, nil
-		},
-	}
-	client := Client{API: s, Timeout: time.Second, Poll: time.Millisecond}
-	rows, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT values", nil)
-	want := []sqlclient.Row{{"text": "value", "enabled": "true", "number": "2"}, {"text": "", "enabled": "false", "number": "1.5"}}
-	require.NoError(t, err)
-	assert.Equal(t, want, rows)
-	assert.Equal(t, 2, polls)
+			},
+		}
+		client := Client{API: s}
+		started := time.Now()
+		rows, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT values", nil)
+		want := []sqlclient.Row{{"text": "value", "enabled": "true", "number": "2"}, {"text": "", "enabled": "false", "number": "1.5"}}
+		require.NoError(t, err)
+		assert.Equal(t, want, rows)
+		assert.Equal(t, 2, polls)
+		assert.Equal(t, DefaultPoll, time.Since(started))
+	})
 }
 
 // TestQueryFailures checks statement errors, missing IDs, and malformed result metadata.
@@ -170,17 +175,21 @@ func TestQueryFailures(t *testing.T) {
 func TestQueryCancellation(t *testing.T) {
 	for _, duringDescribe := range []bool{false, true} {
 		t.Run(strconv.FormatBool(duringDescribe), func(t *testing.T) {
-			s := &apiStub{describe: func(ctx context.Context) (*redshiftdata.DescribeStatementOutput, error) {
-				if duringDescribe {
-					<-ctx.Done()
-					return nil, ctx.Err()
-				}
-				return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringStarted}, nil
-			}}
-			client := Client{API: s, Timeout: 10 * time.Millisecond, Poll: time.Second}
-			_, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
-			require.ErrorIs(t, err, context.DeadlineExceeded)
-			assert.Equal(t, 1, s.cancels)
+			synctest.Test(t, func(t *testing.T) {
+				s := &apiStub{describe: func(ctx context.Context) (*redshiftdata.DescribeStatementOutput, error) {
+					if duringDescribe {
+						<-ctx.Done()
+						return nil, ctx.Err()
+					}
+					return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringStarted}, nil
+				}}
+				client := Client{API: s, Timeout: time.Minute, Poll: time.Hour}
+				started := time.Now()
+				_, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+				assert.Equal(t, 1, s.cancels)
+				assert.Equal(t, time.Minute, time.Since(started))
+			})
 		})
 	}
 }
@@ -219,16 +228,18 @@ func TestQueryWarehouseAuthentication(t *testing.T) {
 
 // TestWaitSecondsLeavesResponseMargin keeps long polls within the Data API limit and the query deadline.
 func TestWaitSecondsLeavesResponseMargin(t *testing.T) {
-	assert.Equal(t, int32(30), aws.ToInt32(waitSeconds(context.Background())))
-	ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
-	defer cancel()
-	assert.Equal(t, int32(30), aws.ToInt32(waitSeconds(ctx)))
-	ctx, cancel = context.WithTimeout(context.Background(), 10500*time.Millisecond)
-	defer cancel()
-	assert.Equal(t, int32(9), aws.ToInt32(waitSeconds(ctx)))
-	ctx, cancel = context.WithTimeout(context.Background(), 1500*time.Millisecond)
-	defer cancel()
-	assert.Nil(t, waitSeconds(ctx))
+	synctest.Test(t, func(t *testing.T) {
+		assert.Equal(t, int32(30), aws.ToInt32(waitSeconds(context.Background())))
+		ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+		defer cancel()
+		assert.Equal(t, int32(30), aws.ToInt32(waitSeconds(ctx)))
+		ctx, cancel = context.WithTimeout(context.Background(), 10500*time.Millisecond)
+		defer cancel()
+		assert.Equal(t, int32(9), aws.ToInt32(waitSeconds(ctx)))
+		ctx, cancel = context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		defer cancel()
+		assert.Nil(t, waitSeconds(ctx))
+	})
 }
 
 // TestQuerySubmitsWithoutLongPoll returns the statement ID from ExecuteStatement at once, so an interrupted
@@ -295,24 +306,26 @@ func TestQueryInterruptedDuringSubmission(t *testing.T) {
 // TestQueryRetriesRefusedLongPolls treats too many concurrent long polls as a still-running statement, and keeps
 // status requests that return early at least one poll interval apart.
 func TestQueryRetriesRefusedLongPolls(t *testing.T) {
-	polls := 0
-	s := &apiStub{describe: func(context.Context) (*redshiftdata.DescribeStatementOutput, error) {
-		polls++
-		switch polls {
-		case 1:
-			return nil, &types.ActiveWaitingRequestsExceededException{Message: aws.String("too many waiters")}
-		case 2:
-			return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringStarted}, nil
-		}
-		return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringFinished}, nil
-	}}
-	client := Client{API: s, Timeout: time.Minute, Poll: 20 * time.Millisecond}
-	started := time.Now()
-	_, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
-	require.NoError(t, err)
-	assert.Equal(t, 3, polls)
-	assert.Zero(t, s.cancels)
-	assert.GreaterOrEqual(t, time.Since(started), 40*time.Millisecond)
+	synctest.Test(t, func(t *testing.T) {
+		polls := 0
+		s := &apiStub{describe: func(context.Context) (*redshiftdata.DescribeStatementOutput, error) {
+			polls++
+			switch polls {
+			case 1:
+				return nil, &types.ActiveWaitingRequestsExceededException{Message: aws.String("too many waiters")}
+			case 2:
+				return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringStarted}, nil
+			}
+			return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringFinished}, nil
+		}}
+		client := Client{API: s, Timeout: time.Minute}
+		started := time.Now()
+		_, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
+		require.NoError(t, err)
+		assert.Equal(t, 3, polls)
+		assert.Zero(t, s.cancels)
+		assert.Equal(t, 2*DefaultPoll, time.Since(started))
+	})
 }
 
 // TestQueryCancelsAfterStatusErrors cancels a statement whose status can no longer be observed and reports a failed
@@ -338,18 +351,23 @@ func TestQueryCancelsAfterStatusErrors(t *testing.T) {
 
 // TestQueryHonorsEarlierCallerDeadline lets a shorter deadline of the calling operation override Timeout.
 func TestQueryHonorsEarlierCallerDeadline(t *testing.T) {
-	s := &apiStub{describe: func(context.Context) (*redshiftdata.DescribeStatementOutput, error) {
-		return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringStarted}, nil
-	}}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-	client := Client{API: s, Timeout: time.Hour, Poll: time.Millisecond}
-	_, err := client.Query(ctx, sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	assert.Equal(t, 1, s.cancels)
-	for _, wait := range s.waits {
-		assert.Nil(t, wait)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		s := &apiStub{describe: func(context.Context) (*redshiftdata.DescribeStatementOutput, error) {
+			return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringStarted}, nil
+		}}
+		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+		defer cancel()
+		client := Client{API: s, Timeout: time.Hour}
+		started := time.Now()
+		_, err := client.Query(ctx, sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Equal(t, 1, s.cancels)
+		assert.Equal(t, 1500*time.Millisecond, time.Since(started))
+		assert.Len(t, s.waits, 2)
+		for _, wait := range s.waits {
+			assert.Nil(t, wait)
+		}
+	})
 }
 
 // TestQueryCancelsOnCallerCancellation cancels the statement when Terraform interrupts the operation.

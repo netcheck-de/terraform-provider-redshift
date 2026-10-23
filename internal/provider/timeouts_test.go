@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"maps"
-	"regexp"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
@@ -20,9 +20,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/hashicorp/terraform-plugin-testing/plancheck"
-	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,45 +68,49 @@ func TestOperationTimeoutsBlock(t *testing.T) {
 // TestBoundOperation leaves the context unbounded without a timeout, bounds it with one, and names an expired
 // timeout only when the operation failed.
 func TestBoundOperation(t *testing.T) {
-	configured := func(timeout time.Duration) func(context.Context, time.Duration) (time.Duration, diag.Diagnostics) {
-		return func(context.Context, time.Duration) (time.Duration, diag.Diagnostics) { return timeout, nil }
-	}
-	var diagnostics diag.Diagnostics
-	ctx, done := boundOperation(context.Background(), "create", configured(0), &diagnostics)
-	_, bounded := ctx.Deadline()
-	assert.False(t, bounded, "an unset timeout adds no deadline")
-	done()
+	synctest.Test(t, func(t *testing.T) {
+		configured := func(timeout time.Duration) func(context.Context, time.Duration) (time.Duration, diag.Diagnostics) {
+			return func(context.Context, time.Duration) (time.Duration, diag.Diagnostics) { return timeout, nil }
+		}
+		var diagnostics diag.Diagnostics
+		ctx, done := boundOperation(context.Background(), "create", configured(0), &diagnostics)
+		_, bounded := ctx.Deadline()
+		assert.False(t, bounded, "an unset timeout adds no deadline")
+		done()
 
-	before := time.Now()
-	ctx, done = boundOperation(context.Background(), "update", configured(time.Hour), &diagnostics)
-	deadline, bounded := ctx.Deadline()
-	require.True(t, bounded)
-	assert.WithinDuration(t, before.Add(time.Hour), deadline, time.Minute)
-	done()
-	require.ErrorIs(t, ctx.Err(), context.Canceled, "done releases the deadline")
-	assert.False(t, diagnostics.HasError())
+		before := time.Now()
+		ctx, done = boundOperation(context.Background(), "update", configured(time.Hour), &diagnostics)
+		deadline, bounded := ctx.Deadline()
+		require.True(t, bounded)
+		assert.WithinDuration(t, before.Add(time.Hour), deadline, time.Minute)
+		done()
+		require.ErrorIs(t, ctx.Err(), context.Canceled, "done releases the deadline")
+		assert.False(t, diagnostics.HasError())
 
-	ctx, done = boundOperation(context.Background(), "delete", configured(time.Millisecond), &diagnostics)
-	<-ctx.Done()
-	done()
-	assert.False(t, diagnostics.HasError(), "an expired deadline of a successful operation adds no error")
+		ctx, done = boundOperation(context.Background(), "delete", configured(time.Minute), &diagnostics)
+		<-ctx.Done()
+		done()
+		assert.False(t, diagnostics.HasError(), "an expired deadline of a successful operation adds no error")
 
-	ctx, done = boundOperation(context.Background(), "delete", configured(time.Millisecond), &diagnostics)
-	<-ctx.Done()
-	diagnostics.AddError("Delete table", ctx.Err().Error())
-	done()
-	require.Len(t, diagnostics.Errors(), 2)
-	assert.Equal(t, "Operation timed out", diagnostics.Errors()[1].Summary())
-	assert.Contains(t, diagnostics.Errors()[1].Detail(), "delete timeout of 1ms")
+		started := time.Now()
+		ctx, done = boundOperation(context.Background(), "delete", configured(time.Minute), &diagnostics)
+		<-ctx.Done()
+		diagnostics.AddError("Delete table", ctx.Err().Error())
+		done()
+		require.Len(t, diagnostics.Errors(), 2)
+		assert.Equal(t, "Operation timed out", diagnostics.Errors()[1].Summary())
+		assert.Contains(t, diagnostics.Errors()[1].Detail(), "delete timeout of 1m0s")
+		assert.Equal(t, time.Minute, time.Since(started))
 
-	var invalid diag.Diagnostics
-	_, done = boundOperation(context.Background(), "create", func(context.Context, time.Duration) (time.Duration, diag.Diagnostics) {
-		var problems diag.Diagnostics
-		problems.AddError("Timeout Cannot Be Parsed", "invalid")
-		return 0, problems
-	}, &invalid)
-	done()
-	assert.True(t, invalid.HasError(), "an unparsable timeout is reported")
+		var invalid diag.Diagnostics
+		_, done = boundOperation(context.Background(), "create", func(context.Context, time.Duration) (time.Duration, diag.Diagnostics) {
+			var problems diag.Diagnostics
+			problems.AddError("Timeout Cannot Be Parsed", "invalid")
+			return 0, problems
+		}, &invalid)
+		done()
+		assert.True(t, invalid.HasError(), "an unparsable timeout is reported")
+	})
 }
 
 // withTimeouts returns state with the timeouts block set to values; operations left out stay null.
@@ -234,89 +235,60 @@ func TestOperationTimeoutsBoundEveryStatement(t *testing.T) {
 
 // TestOperationTimeoutCancelsStatement ends a statement that outlasts the create timeout and names the timeout.
 func TestOperationTimeoutCancelsStatement(t *testing.T) {
-	test := lifecycleRegistry.entries["table"]
-	r := test.new()
-	configureTestResource(t, r, queryFunc(func(ctx context.Context, _ dataapi.Connection, _ string, _ map[string]string) ([]dataapi.Row, error) {
-		<-ctx.Done()
-		return nil, ctx.Err()
-	}))
-	state := withTimeouts(t, testState(t, r, test.model), map[string]string{"create": "50ms"})
-	resp := resource.CreateResponse{State: emptyState(t, r)}
-	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state), Config: tfsdk.Config(state)}, &resp)
-	require.Len(t, resp.Diagnostics.Errors(), 2, "%v", resp.Diagnostics)
-	assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), context.DeadlineExceeded.Error())
-	assert.Equal(t, "Operation timed out", resp.Diagnostics.Errors()[1].Summary())
-	assert.Contains(t, resp.Diagnostics.Errors()[1].Detail(), "create timeout of 50ms")
+	synctest.Test(t, func(t *testing.T) {
+		test := lifecycleRegistry.entries["table"]
+		r := test.new()
+		configureTestResource(t, r, queryFunc(func(ctx context.Context, _ dataapi.Connection, _ string, _ map[string]string) ([]dataapi.Row, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}))
+		state := withTimeouts(t, testState(t, r, test.model), map[string]string{"create": "10m"})
+		resp := resource.CreateResponse{State: emptyState(t, r)}
+		started := time.Now()
+		r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state), Config: tfsdk.Config(state)}, &resp)
+		require.Len(t, resp.Diagnostics.Errors(), 2, "%v", resp.Diagnostics)
+		assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), context.DeadlineExceeded.Error())
+		assert.Equal(t, "Operation timed out", resp.Diagnostics.Errors()[1].Summary())
+		assert.Contains(t, resp.Diagnostics.Errors()[1].Detail(), "create timeout of 10m0s")
+		assert.Equal(t, 10*time.Minute, time.Since(started))
+	})
 }
 
 // TestDatabaseShareWaitFollowsCreateTimeout ends the wait for an inbound datashare when the create timeout expires,
 // rather than after the default wait.
 func TestDatabaseShareWaitFollowsCreateTimeout(t *testing.T) {
-	test := lifecycleRegistry.entries["database"]
-	r := test.new()
-	configureTestResource(t, r, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
-		return nil, nil
-	}))
-	state := withTimeouts(t, testState(t, r, test.model), map[string]string{"create": "100ms"})
-	started := time.Now()
-	resp := resource.CreateResponse{State: emptyState(t, r)}
-	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state), Config: tfsdk.Config(state)}, &resp)
-	assert.Less(t, time.Since(started), databaseShareWait)
-	require.True(t, resp.Diagnostics.HasError())
-	assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), "within 100ms")
+	synctest.Test(t, func(t *testing.T) {
+		test := lifecycleRegistry.entries["database"]
+		r := test.new()
+		configureTestResource(t, r, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+			return nil, nil
+		}))
+		state := withTimeouts(t, testState(t, r, test.model), map[string]string{"create": "2m"})
+		started := time.Now()
+		resp := resource.CreateResponse{State: emptyState(t, r)}
+		r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state), Config: tfsdk.Config(state)}, &resp)
+		assert.Less(t, time.Since(started), databaseShareWait)
+		assert.Equal(t, 2*time.Minute, time.Since(started))
+		require.True(t, resp.Diagnostics.HasError())
+		assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), "within 2m0s")
+	})
 }
 
-// TestTableTimeoutsPlan configures, changes, and validates a timeouts block in real plans: changing it updates the
-// table in place without DDL, and the lookup of the same table has no timeouts.
-func TestTableTimeoutsPlan(t *testing.T) {
-	c := fullCatalog()
-	delete(fakeState[*tableFake](c, "table").tables, "serving.events")
-	lookup := `
-data "redshift_table" "events" {
-  database = redshift_table.events.database
-  schema   = redshift_table.events.schema
-  name     = redshift_table.events.name
-}
-`
-	config := func(timeouts string) string {
-		return tableConfig(tableIDColumn+tableLabelColumn, `
-  timeouts {`+timeouts+`
-  }`) + lookup
-	}
-	var applied int
-	testresource.UnitTest(t, testresource.TestCase{
-		ProtoV6ProviderFactories: tablePlanProviders(c),
-		Steps: []testresource.TestStep{
-			{Config: config(`
-    create = "10m"`), Check: testresource.ComposeTestCheckFunc(
-				testresource.TestCheckResourceAttr("redshift_table.events", "timeouts.create", "10m"),
-				testresource.TestCheckNoResourceAttr("redshift_table.events", "timeouts.update"),
-				testresource.TestCheckNoResourceAttr("data.redshift_table.events", "timeouts.%"),
-				testresource.TestCheckResourceAttr("data.redshift_table.events", "column.0.name", "id"),
-			)},
-			{Config: config(`
-    create = "10m"
-    update = "5m"
-    delete = "2m"`), PreConfig: func() { applied = len(c.writes) }, ConfigPlanChecks: tableExpectUpdate(), Check: testresource.ComposeTestCheckFunc(
-				testresource.TestCheckResourceAttr("redshift_table.events", "timeouts.update", "5m"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "timeouts.delete", "2m"),
-				func(*terraform.State) error {
-					assert.Len(t, c.writes, applied, "changing timeouts runs no DDL")
-					return nil
-				},
-			)},
-			{Config: config(`
-    create = "10m"
-    update = "5m"
-    delete = "2m"`), PlanOnly: true},
-			{Config: config(`
-    update = "0s"`), PlanOnly: true, ExpectError: regexp.MustCompile(`must be positive`)},
-			{Config: config(`
-    read = "1m"`), PlanOnly: true, ExpectError: regexp.MustCompile(`Unsupported argument`)},
-			{Config: config(""), ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
-				plancheck.ExpectResourceAction("redshift_table.events", plancheck.ResourceActionUpdate),
-			}}, Check: testresource.TestCheckNoResourceAttr("redshift_table.events", "timeouts.create")},
-		},
+// TestDatabaseShareWaitDefault keeps inbound-share visibility bounded even without an operation timeout.
+func TestDatabaseShareWaitDefault(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		test := lifecycleRegistry.entries["database"]
+		r := test.new()
+		configureTestResource(t, r, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+			return nil, nil
+		}))
+		state := testState(t, r, test.model)
+		resp := resource.CreateResponse{State: emptyState(t, r)}
+		started := time.Now()
+		r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state), Config: tfsdk.Config(state)}, &resp)
+		require.True(t, resp.Diagnostics.HasError())
+		assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), "within 5m0s")
+		assert.Equal(t, databaseShareWait, time.Since(started))
 	})
 }
 

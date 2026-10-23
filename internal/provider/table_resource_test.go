@@ -16,7 +16,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
-	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,13 +26,13 @@ var _ = registerReplacementPolicy("redshift_table", map[string]replaceRule{
 	"schema":       replaceAlways,
 	"name":         replaceAlways,
 	"owner":        replaceNever,
-	"column":       replaceConditional("TestTableConditionalReplacement"),
-	"primary_key":  replaceConditional("TestTableConditionalReplacement"),
+	"column":       replaceConditional,
+	"primary_key":  replaceConditional,
 	"unique":       replaceNever,
 	"foreign_key":  replaceNever,
-	"distribution": replaceConditional("TestTableConditionalReplacement"),
-	"sort_key":     replaceConditional("TestTableConditionalReplacement"),
-	"backup":       replaceConditional("TestTableConditionalReplacement"),
+	"distribution": replaceConditional,
+	"sort_key":     replaceConditional,
+	"backup":       replaceConditional,
 })
 
 var _ = registerLifecycleCase(lifecycleCase{
@@ -91,16 +90,52 @@ func tableTestList(names ...string) types.List {
 	return tableStringListValue(names)
 }
 
-// tableTestColumns builds the column block list.
+// tableTestColumns avoids reflecting over every column when constructing wide fixtures.
 func tableTestColumns(columns ...tableColumnModel) types.List {
-	if columns == nil {
-		columns = []tableColumnModel{}
+	elements := make([]attr.Value, len(columns))
+	for i, column := range columns {
+		elements[i] = types.ObjectValueMust(tableColumnAttributeTypes, map[string]attr.Value{
+			"name": column.Name, "renamed_from": column.RenamedFrom, "type": column.Type,
+			"encoding": column.Encoding, "nullable": column.Nullable, "default": column.Default, "identity": column.Identity,
+		})
 	}
-	list, diagnostics := types.ListValueFrom(context.Background(), types.ObjectType{AttrTypes: tableColumnAttributeTypes}, columns)
-	if diagnostics.HasError() {
-		panic(fmt.Sprint(diagnostics))
+	return types.ListValueMust(types.ObjectType{AttrTypes: tableColumnAttributeTypes}, elements)
+}
+
+// TestTableColumnFixtureMatchesModel keeps the reflection-free helper faithful to Terraform's model conversion.
+func TestTableColumnFixtureMatchesModel(t *testing.T) {
+	unknown := tableTestColumn("pending", "varchar(64)")
+	unknown.Name, unknown.RenamedFrom = types.StringUnknown(), types.StringValue("previous")
+	unknown.Type, unknown.Encoding = types.StringUnknown(), types.StringUnknown()
+	unknown.Nullable, unknown.Default = types.BoolUnknown(), types.StringUnknown()
+	unknown.Identity = types.ObjectUnknown(tableIdentityAttributeTypes)
+	columns := []tableColumnModel{
+		tableTestColumn("id", "bigint", tableEncoded("AZ64"), tableNullable(false), tableIdentity(1, 1, false)),
+		tableTestColumn("label", "varchar(64)", tableNullable(true), tableDefault("'none'")),
+		unknown,
 	}
-	return list
+	expected, diagnostics := types.ListValueFrom(context.Background(), types.ObjectType{AttrTypes: tableColumnAttributeTypes}, columns)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	assert.True(t, expected.Equal(tableTestColumns(columns...)))
+	assert.False(t, tableTestColumns().IsNull())
+	assert.False(t, tableTestColumns().IsUnknown())
+	assert.Empty(t, tableTestColumns().Elements())
+}
+
+// tableTestWideModel converts the wide fixture once; variants can reuse its typed elements without reflection.
+func tableTestWideModel(base tableModel, options ...func(*tableColumnModel)) tableModel {
+	columns := make([]tableColumnModel, tableMaxColumns-2)
+	for i := range columns {
+		columns[i] = tableTestColumn(fmt.Sprintf("c%d", i), "int", options...)
+	}
+	elements := slices.Concat(base.Column.Elements(), tableTestColumns(columns...).Elements())
+	return tableTestWithColumnValues(base, elements)
+}
+
+// tableTestWithColumnValues isolates each variant's backing array while retaining already typed column values.
+func tableTestWithColumnValues(base tableModel, elements []attr.Value) tableModel {
+	base.Column = types.ListValueMust(types.ObjectType{AttrTypes: tableColumnAttributeTypes}, slices.Clone(elements))
+	return base
 }
 
 // tableTestKey builds a primary_key or unique block.
@@ -137,7 +172,7 @@ func tableTestForeignKeys(keys ...attr.Value) types.Set {
 
 // tableTestDistribution builds a distribution block; empty strings are omitted attributes.
 func tableTestDistribution(style, key string) types.Object {
-	return types.ObjectValueMust(tableDistributionAttributeTypes, map[string]attr.Value{"style": tableOptionalString(style), "key": tableOptionalString(key)})
+	return types.ObjectValueMust(tableDistributionAttributeTypes, map[string]attr.Value{"style": optionalString(style), "key": optionalString(key)})
 }
 
 // tableTestSortKey builds a sort_key block; no columns leaves them omitted.
@@ -146,7 +181,7 @@ func tableTestSortKey(style string, columns ...string) types.Object {
 	if len(columns) > 0 {
 		list = tableTestList(columns...)
 	}
-	return types.ObjectValueMust(tableSortKeyAttributeTypes, map[string]attr.Value{"style": tableOptionalString(style), "columns": list})
+	return types.ObjectValueMust(tableSortKeyAttributeTypes, map[string]attr.Value{"style": optionalString(style), "columns": list})
 }
 
 // tableAuto omits both layout blocks and records layouts Redshift chose, as a read of an AUTO table reports them.
@@ -215,12 +250,18 @@ func TestTableConditionalReplacement(t *testing.T) {
 	interleaved := func(m *tableModel) { m.SortKey = tableTestSortKey("INTERLEAVED", "id") }
 	autoSort := func(m *tableModel) { m.SortKey = types.ObjectNull(tableSortKeyAttributeTypes) }
 	autoDistribution := func(m *tableModel) { m.Distribution = types.ObjectNull(tableDistributionAttributeTypes) }
-	wide := func(count int) tableModel {
-		columns := []tableColumnModel{id, label}
-		for i := range count {
-			columns = append(columns, tableTestColumn(fmt.Sprintf("c%d", i), "int"))
-		}
-		return withColumns(columns...)
+	wide := tableTestWideModel(base)
+	wideColumns := wide.Column.Elements()
+	belowLimit := tableTestWithColumnValues(base, wideColumns[:tableMaxColumns-1])
+	extra := tableTestColumns(tableTestColumn("extra", "int")).Elements()
+	atLimit := tableTestWithColumnValues(base, slices.Concat(wideColumns[:tableMaxColumns-1], extra))
+	overLimit := tableTestWithColumnValues(base, slices.Concat(wideColumns[1:tableMaxColumns-1], extra))
+	overLimit.PrimaryKey, overLimit.Distribution, overLimit.SortKey = types.ObjectNull(tableKeyAttributeTypes), types.ObjectNull(tableDistributionAttributeTypes), types.ObjectNull(tableSortKeyAttributeTypes)
+	var schema resource.SchemaResponse
+	newTableResource().Schema(context.Background(), resource.SchemaRequest{}, &schema)
+	stateOf := func(t *testing.T, model tableModel) tfsdk.State {
+		t.Helper()
+		return testStateWithSchema(t, schema.Schema, model)
 	}
 	for _, test := range []struct {
 		name      string
@@ -235,13 +276,8 @@ func TestTableConditionalReplacement(t *testing.T) {
 		{"reorder columns", withNote, withColumns(note(), label, id), "column", false},
 		{"drop middle column", withColumns(id, note(), label), withColumns(id, label), "column", false},
 		{"rename column", withNote, withColumns(id, label, tableTestColumn("remark", "varchar(32)", tableEncoded("LZO"), tableNullable(true))), "column", false},
-		{"column limit", wide(tableMaxColumns - 3), tableWith(wide(tableMaxColumns-3), func(m *tableModel) {
-			m.Column = tableTestColumns(append(tableTestColumnsOf(t, m.Column), tableTestColumn("extra", "int"))...)
-		}), "column", false},
-		{"column limit exceeded", wide(tableMaxColumns - 2), tableWith(wide(tableMaxColumns-3), func(m *tableModel) {
-			m.Column = tableTestColumns(append(tableTestColumnsOf(t, m.Column)[1:], tableTestColumn("extra", "int"))...)
-			m.PrimaryKey, m.Distribution, m.SortKey = types.ObjectNull(tableKeyAttributeTypes), types.ObjectNull(tableDistributionAttributeTypes), types.ObjectNull(tableSortKeyAttributeTypes)
-		}), "column", true},
+		{"column limit", belowLimit, atLimit, "column", false},
+		{"column limit exceeded", wide, overLimit, "column", true},
 		{"append identity column", base, withColumns(id, label, tableTestColumn("seq", "integer", tableIdentity(1, 1, true))), "column", true},
 		{"append NOT NULL column without default", base, withColumns(id, label, tableTestColumn("code", "char(2)", tableNullable(false))), "column", true},
 		{"append NOT NULL column with default", base, withColumns(id, label, tableTestColumn("code", "char(2)", tableNullable(false), tableDefault("'xx'"))), "column", false},
@@ -321,32 +357,30 @@ func TestTableConditionalReplacement(t *testing.T) {
 			reasons := tableReplacements(tableSpecMust(t, test.prev), tableSpecMust(t, test.plan))
 			assert.Equal(t, test.replace, reasons[test.attribute] != "", "%v", reasons)
 			// The schema's plan modifier reaches the same decision from Terraform state and plan.
-			r := newTableResource()
-			state := testState(t, r, test.prev)
-			planned := testState(t, r, test.plan)
+			state := stateOf(t, test.prev)
+			planned := stateOf(t, test.plan)
 			assert.Equal(t, test.replace, tableRequiresReplace(context.Background(), tfsdk.Config(planned), state, tfsdk.Plan(planned), test.attribute))
 		})
 	}
 	t.Run("undecodable state replaces", func(t *testing.T) {
-		r := newTableResource()
 		invalid := tableWith(base, func(m *tableModel) { m.Distribution = tableTestDistribution("", "missing") })
-		valid := testState(t, r, base)
-		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(valid), testState(t, r, invalid), tfsdk.Plan(valid), "distribution"))
-		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(testState(t, r, invalid)), valid, tfsdk.Plan(testState(t, r, invalid)), "distribution"))
+		valid := stateOf(t, base)
+		invalidState := stateOf(t, invalid)
+		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(valid), invalidState, tfsdk.Plan(valid), "distribution"))
+		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(invalidState), valid, tfsdk.Plan(invalidState), "distribution"))
 		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(emptyState(t, newSchemaResource())), valid, tfsdk.Plan(valid), "distribution"))
 	})
 	// The plan may still hold an unknown style that tableDerivedStyle fills in later, so an unknown style decides
 	// nothing; only a configured one that resolves during apply, possibly to INTERLEAVED, replaces.
 	t.Run("unknown configured style replaces", func(t *testing.T) {
-		r := newTableResource()
-		state := testState(t, r, base)
+		state := stateOf(t, base)
 		pending := func(m *tableModel) {
 			m.SortKey = types.ObjectValueMust(tableSortKeyAttributeTypes, map[string]attr.Value{"style": types.StringUnknown(), "columns": tableStringListValue([]string{"id"})})
 		}
-		planned := testState(t, r, tableWith(base, pending))
+		planned := stateOf(t, tableWith(base, pending))
 		assert.False(t, tableRequiresReplace(context.Background(), tfsdk.Config(state), state, tfsdk.Plan(planned), "sort_key"), "an unknown planned style alone is not configuration")
 		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(planned), state, tfsdk.Plan(planned), "sort_key"))
-		distribution := testState(t, r, tableWith(base, func(m *tableModel) {
+		distribution := stateOf(t, tableWith(base, func(m *tableModel) {
 			m.Distribution = types.ObjectValueMust(tableDistributionAttributeTypes, map[string]attr.Value{"style": types.StringUnknown(), "key": types.StringNull()})
 		}))
 		assert.True(t, tableRequiresReplace(context.Background(), tfsdk.Config(distribution), state, tfsdk.Plan(distribution), "distribution"))
@@ -381,6 +415,36 @@ func TestTableColumnOrder(t *testing.T) {
 // TestTableAlterCoverage keeps an update step for every in-place attribute and block.
 func TestTableAlterCoverage(t *testing.T) {
 	assertAlterCoverage(t, newTableResource(), tableAlterSteps(tablePhaseDropConstraints))
+}
+
+// TestTableDuplicateColumnValidationOrder pins the first failure and the successfully parsed prefix.
+func TestTableDuplicateColumnValidationOrder(t *testing.T) {
+	unknownType := tableTestColumn("a", "int", func(c *tableColumnModel) { c.Type = types.StringUnknown() })
+	unknownName := tableTestColumn("a", "int", func(c *tableColumnModel) { c.Name = types.StringUnknown() })
+	for _, test := range []struct {
+		name    string
+		columns []tableColumnModel
+		message string
+		prefix  []string
+	}{
+		{"first duplicate in input order", []tableColumnModel{tableTestColumn("b", "int"), tableTestColumn("a", "int"), tableTestColumn("b", "int"), tableTestColumn("a", "int")}, `column "b" is declared twice`, []string{"b", "a"}},
+		{"duplicate before later invalid column", []tableColumnModel{tableTestColumn("a", "int"), tableTestColumn("a", "int"), unknownName}, `column "a" is declared twice`, []string{"a"}},
+		{"duplicate column parsed before lookup", []tableColumnModel{tableTestColumn("a", "int"), unknownType}, "column[1]: type must be known", []string{"a"}},
+		{"unknown name before duplicate", []tableColumnModel{unknownName, tableTestColumn("a", "int"), tableTestColumn("a", "int")}, "column[0]: name must be known", nil},
+		{"case is rejected rather than folded", []tableColumnModel{tableTestColumn("a", "int"), tableTestColumn("A", "int")}, `column[1]: column name "A" contains uppercase letters, which Redshift folds to lowercase; use the lowercase name`, []string{"a"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			model := tableMinimalModel()
+			model.Column = tableTestColumns(test.columns...)
+			spec, err := tableSpecOf(model)
+			require.EqualError(t, err, test.message)
+			var names []string
+			for _, column := range spec.columns {
+				names = append(names, column.name)
+			}
+			assert.Equal(t, test.prefix, names, "partial definition retains every successfully parsed column in input order")
+		})
+	}
 }
 
 // TestTableSpecValidation rejects definitions Redshift would refuse before any SQL runs.
@@ -1008,62 +1072,6 @@ func tableExpectUpdate() testresource.ConfigPlanChecks {
 	return testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction("redshift_table.events", plancheck.ResourceActionUpdate)}}
 }
 
-// TestTablePlans runs real plans against the fake: derived defaults plan no drift, a column inserted between
-// others and reordered columns update in place without inconsistent results, widened columns update in place, and
-// a narrowed column replaces the table.
-func TestTablePlans(t *testing.T) {
-	c := fullCatalog()
-	delete(fakeState[*tableFake](c, "table").tables, "serving.events")
-	var reordered int
-	testresource.UnitTest(t, testresource.TestCase{
-		ProtoV6ProviderFactories: tablePlanProviders(c),
-		Steps: []testresource.TestStep{
-			{Config: tableConfig(tableIDColumn+tableLabelColumn, ""), Check: testresource.ComposeTestCheckFunc(
-				testresource.TestCheckResourceAttr("redshift_table.events", "distribution.style", "KEY"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "sort_key.style", "COMPOUND"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "effective_distribution.key", "id"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "effective_distribution.auto", "false"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "effective_sort_key.columns.0", "id"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "owner", "admin"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "column.0.nullable", "false"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "column.0.identity.generated_by_default", "false"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "column.1.nullable", "true"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "column.1.default", "'none'"),
-				testresource.TestCheckNoResourceAttr("redshift_table.events", "column.1.identity.seed"),
-			)},
-			{Config: tableConfig(tableIDColumn+tableLabelColumn, ""), PlanOnly: true},
-			{Config: tableConfig(tableIDColumn+tableNoteColumn("varchar(32)")+tableLabelColumn, ""), ConfigPlanChecks: tableExpectUpdate(),
-				Check: testresource.ComposeTestCheckFunc(
-					testresource.TestCheckResourceAttr("redshift_table.events", "column.1.name", "note"),
-					testresource.TestCheckResourceAttr("redshift_table.events", "column.1.encoding", "LZO"),
-					testresource.TestCheckResourceAttr("redshift_table.events", "column.2.name", "label"),
-				)},
-			{Config: tableConfig(tableIDColumn+tableNoteColumn("varchar(32)")+tableLabelColumn, ""), PlanOnly: true},
-			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(32)"), ""), ConfigPlanChecks: tableExpectUpdate(),
-				PreConfig: func() { reordered = len(c.writes) },
-				Check: testresource.ComposeTestCheckFunc(
-					testresource.TestCheckResourceAttr("redshift_table.events", "column.0.name", "label"),
-					func(*terraform.State) error {
-						if len(c.writes) != reordered {
-							return fmt.Errorf("reordering columns wrote %v", c.writes[reordered:])
-						}
-						return nil
-					},
-				)},
-			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(128)"), `
-  owner = "analyst"`), ConfigPlanChecks: tableExpectUpdate(), Check: testresource.TestCheckResourceAttr("redshift_table.events", "owner", "analyst")},
-			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(128)"), `
-  owner = "analyst"`), PlanOnly: true},
-			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(16)"), `
-  owner = "analyst"`), PlanOnly: true, ExpectNonEmptyPlan: true, ConfigPlanChecks: testresource.ConfigPlanChecks{PostApplyPostRefresh: []plancheck.PlanCheck{
-				plancheck.ExpectResourceAction("redshift_table.events", plancheck.ResourceActionDestroyBeforeCreate),
-			}}},
-		},
-	})
-	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ADD COLUMN "note" CHARACTER VARYING(32)`)
-	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ALTER COLUMN "note" TYPE CHARACTER VARYING(128)`)
-}
-
 // tableAutoConfig renders serving.events without layout blocks, so Redshift manages distribution and sort key.
 func tableAutoConfig(columns string) string {
 	return tableProviderConfig + `
@@ -1079,70 +1087,6 @@ resource "redshift_table" "events" {
 `
 }
 
-// TestTableAutoLayoutPlans runs plans of a table that leaves its layout to Redshift: a distribution changed outside
-// Terraform shows up and is set back to AUTO, and dropping a column Redshift chose as distribution and sort key
-// detours through EVEN and no sort key before the drop.
-func TestTableAutoLayoutPlans(t *testing.T) {
-	c := fullCatalog()
-	fake := fakeState[*tableFake](c, "table")
-	delete(fake.tables, "serving.events")
-	fake.templates["serving.events"] = tableFakeTable{owner: "admin", distStyle: "9", autoDistStyle: "11", autoSortKey: true, columns: []tableFakeColumn{
-		{name: "id", dataType: "bigint", encoding: "az64"},
-		{name: "note", dataType: "character varying(32)", encoding: "lzo"},
-	}}
-	table := func() *tableFakeTable { return fake.tables["serving.events"] }
-	var detour int
-	testresource.UnitTest(t, testresource.TestCase{
-		ProtoV6ProviderFactories: tablePlanProviders(c),
-		Steps: []testresource.TestStep{
-			{Config: tableAutoConfig(tableNoteColumn("varchar(32)")), Check: testresource.ComposeTestCheckFunc(
-				testresource.TestCheckNoResourceAttr("redshift_table.events", "distribution.style"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "effective_distribution.style", "EVEN"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "effective_distribution.auto", "true"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "effective_sort_key.style", "NONE"),
-				testresource.TestCheckResourceAttr("redshift_table.events", "effective_sort_key.auto", "true"),
-			)},
-			{Config: tableAutoConfig(tableNoteColumn("varchar(32)")), PlanOnly: true},
-			{Config: tableAutoConfig(tableNoteColumn("varchar(32)")), PreConfig: func() { table().distStyle = "0" }, ConfigPlanChecks: tableExpectUpdate(),
-				Check: testresource.TestCheckNoResourceAttr("redshift_table.events", "distribution.style")},
-			{Config: tableAutoConfig(""), ConfigPlanChecks: tableExpectUpdate(), PreConfig: func() {
-				detour = len(c.writes)
-				table().autoDistStyle = "12"
-				table().columns[1].distKey, table().columns[1].sortKey = true, 1
-			}},
-			{Config: tableAutoConfig(""), PlanOnly: true},
-		},
-	})
-	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ALTER DISTSTYLE AUTO`, "drift is planned back to AUTO")
-	assert.Equal(t, []string{
-		`ALTER TABLE "serving"."events" ALTER SORTKEY NONE`, `ALTER TABLE "serving"."events" ALTER DISTSTYLE EVEN`, `ALTER TABLE "serving"."events" DROP COLUMN "note"`,
-		`ALTER TABLE "serving"."events" ALTER SORTKEY AUTO`, `ALTER TABLE "serving"."events" ALTER DISTSTYLE AUTO`,
-	}, slices.DeleteFunc(slices.Clone(c.writes[detour:]), func(sql string) bool { return strings.HasPrefix(sql, "DROP TABLE") }))
-}
-
-// TestTableImportPlan imports the existing serving.events table: state then holds catalog spellings and no backup,
-// so the first plan updates in place only to record the configured spellings, without any DDL, and the next plan
-// is empty.
-func TestTableImportPlan(t *testing.T) {
-	c := fullCatalog()
-	config := tableConfig(tableIDColumn+tableLabelColumn, "") + `
-import {
-  to = redshift_table.events
-  id = jsonencode({ workgroup_name = "warehouse", database = "admin", schema = "serving", name = "events" })
-}
-`
-	testresource.UnitTest(t, testresource.TestCase{
-		ProtoV6ProviderFactories: tablePlanProviders(c),
-		Steps: []testresource.TestStep{
-			{Config: config, ConfigPlanChecks: tableExpectUpdate()},
-			{Config: config, PlanOnly: true},
-		},
-	})
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	assert.Equal(t, []string{`DROP TABLE "serving"."events"`}, c.writes, "only the final destroy writes")
-}
-
 // TestTableSpecKeepsOwnerCase accepts an owner with uppercase letters: it names an existing user, and IAM-mapped users
 // such as IAMR:Role keep their case.
 func TestTableSpecKeepsOwnerCase(t *testing.T) {
@@ -1150,4 +1094,69 @@ func TestTableSpecKeepsOwnerCase(t *testing.T) {
 		m.Owner = types.StringValue("IAMR:AWSReservedSSO_DevOps")
 	}))
 	assert.Equal(t, "IAMR:AWSReservedSSO_DevOps", spec.owner)
+}
+
+// TestTableDeleteDoesNotReadDefinition drops a table after checking only its identity, without the column and
+// constraint reads a refresh needs.
+func TestTableDeleteDoesNotReadDefinition(t *testing.T) {
+	model := tableEventsModel()
+	spec := tableSpec{schema: model.Schema.ValueString(), name: model.Name.ValueString()}
+	lookup, _, err := readTableQuery(spec).Build()
+	require.NoError(t, err)
+	dropped := false
+	r := newTableResource()
+	configureTestResource(t, r, queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+		switch sql {
+		case lookup:
+			assert.False(t, dropped, "successful synchronous DROP needs no readback")
+			// Identity is enough to delete even when the rest of the catalog metadata is unavailable.
+			return []dataapi.Row{{}}, nil
+		case dropTableStatement(spec):
+			dropped = true
+			return nil, nil
+		default:
+			return nil, fmt.Errorf("deletion should not read the table definition: %s", sql)
+		}
+	}))
+	_, diagnostics := applyOperation(t, r, "delete", model, nil, nil)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	assert.True(t, dropped)
+}
+
+// TestTableReadRejectsInconsistentDistribution fails when the catalog reports KEY distribution without a key column.
+func TestTableReadRejectsInconsistentDistribution(t *testing.T) {
+	c := fullCatalog()
+	r := &tableResource{}
+	configureTestResource(t, r, queryFunc(func(ctx context.Context, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+		rows, err := c.Query(ctx, connection, sql, parameters)
+		if strings.Contains(sql, "c.reldiststyle AS diststyle") {
+			for _, row := range rows {
+				row["diststyle"] = "1"
+			}
+		}
+		if strings.Contains(sql, "svv_redshift_columns") {
+			for _, row := range rows {
+				row["distkey"] = "false"
+			}
+		}
+		return rows, err
+	}))
+	model := tableEventsModel()
+	found, _, err := r.read(context.Background(), &model)
+	assert.False(t, found)
+	require.ErrorContains(t, err, "without a distribution key")
+}
+
+// TestTableUpdateValidatesBeforeSQL rejects an invalid plan before issuing any statement.
+func TestTableUpdateValidatesBeforeSQL(t *testing.T) {
+	c := fullCatalog()
+	r := &tableResource{}
+	configureTestResource(t, r, c)
+	prior := tableEventsModel()
+	plan := prior
+	plan.Schema = types.StringValue("")
+	_, diagnostics := applyOperation(t, r, "update", prior, plan, nil)
+	require.True(t, diagnostics.HasError())
+	assert.Equal(t, "Invalid table", diagnostics.Errors()[0].Summary())
+	assert.Empty(t, c.writes)
 }

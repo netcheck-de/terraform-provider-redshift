@@ -31,7 +31,7 @@ resource "redshift_group" "readers" {
 
 ### Required
 
-- `name` (String) SQL group name. Changing it replaces the group.
+- `name` (String) SQL group name.
 
 ### Read-Only
 

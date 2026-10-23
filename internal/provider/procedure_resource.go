@@ -81,17 +81,17 @@ func (r *procedureResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local database containing the procedure. Changing it replaces the procedure.",
+				Required: true, MarkdownDescription: "Local database containing the procedure.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"schema": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Schema containing the procedure. Changing it replaces the procedure.",
+				Required: true, MarkdownDescription: "Schema containing the procedure.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Procedure name; AWS recommends the reserved `sp_` prefix. Overloads share a name and differ in their input argument types. Changing it replaces the procedure.",
+				Required: true, MarkdownDescription: "Procedure name; AWS recommends the reserved `sp_` prefix. Overloads share a name and differ in their input argument types.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
@@ -125,7 +125,7 @@ func (r *procedureResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Blocks: map[string]schema.Block{
 			"argument": schema.ListNestedBlock{
 				MarkdownDescription: "One block per argument, in order: at most 32 input (`IN`, `INOUT`) and 32 output (`OUT`, `INOUT`) arguments. Omit for a procedure without arguments. The input types identify the procedure; another spelling of the same types, " +
-					"a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the procedure.",
+					"a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place.",
 				PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplaceIf(procedureArgumentsChanged, "Changing the arguments replaces the procedure.", "Changing the arguments replaces the procedure.")},
 				Validators:    []validator.List{listvalidator.SizeAtMost(2 * routineMaxArguments)},
 				NestedObject: schema.NestedBlockObject{Attributes: map[string]schema.Attribute{
@@ -145,7 +145,32 @@ func (r *procedureResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 func (r *procedureResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data procedureModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if !req.Config.Raw.IsFullyKnown() {
+		for i, value := range data.Arguments.Elements() {
+			argument := value.(types.Object)
+			if argument.IsUnknown() || argument.IsNull() {
+				continue
+			}
+			dataType := argument.Attributes()["type"].(types.String)
+			if !dataType.IsUnknown() && !dataType.IsNull() {
+				name, err := routineType(dataType.ValueString())
+				if err == nil {
+					err = routineRejectedType(routineBaseType(name), "procedure")
+				}
+				if err != nil {
+					resp.Diagnostics.AddAttributeError(path.Root("argument").AtListIndex(i).AtName("type"), "Invalid procedure argument", err.Error())
+				}
+			}
+		}
+		if data.Nonatomic.ValueBool() && strings.EqualFold(knownString(data.Security), "DEFINER") {
+			resp.Diagnostics.AddError("Invalid procedure definition", "SECURITY DEFINER is not supported for a NONATOMIC procedure")
+		}
+		if data.Nonatomic.ValueBool() && len(data.Configuration.Elements()) > 0 {
+			resp.Diagnostics.AddError("Invalid procedure definition", "SET configuration parameters are not supported for a NONATOMIC procedure")
+		}
 		return
 	}
 	if _, err := newProcedureSpec(data); err != nil {
@@ -197,27 +222,41 @@ func procedureParameters(rows []sqlclient.Row) ([]procedureArgumentModel, error)
 	return arguments, nil
 }
 
-// observe reads the procedure overload and its arguments, reporting false when it or its database is gone.
-func (r *procedureResource) observe(ctx context.Context, data procedureModel) (procedureRow, bool, error) {
+// catalogRow finds the overload's catalog row and its signature, returning a nil row when it or its database is
+// gone. Delete needs only this, not the parameter listing observe adds.
+func (r *procedureResource) catalogRow(ctx context.Context, data procedureModel) (sqlclient.Row, sqlclient.Keyword, error) {
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
-		return procedureRow{}, false, err
+		return nil, "", err
 	}
 	signature, err := procedureSignature(procedureArguments(data.Arguments))
 	if err != nil {
-		return procedureRow{}, false, err
+		return nil, "", err
 	}
 	database, schema, name := data.Database.ValueString(), data.Schema.ValueString(), data.Name.ValueString()
 	if exists, err := r.localDatabaseExists(ctx, database); err != nil || !exists {
-		return procedureRow{}, false, err
+		return nil, "", err
 	}
 	rows, err := r.selectRows(ctx, database, readProcedureQuery(schema, name, signature))
 	if err != nil || len(rows) == 0 {
+		return nil, "", err
+	}
+	if len(rows) != 1 {
+		return nil, "", fmt.Errorf("procedure %q has ambiguous catalog metadata", name)
+	}
+	return rows[0], signature, nil
+}
+
+// observe reads the procedure overload and its arguments, reporting false when it or its database is gone.
+func (r *procedureResource) observe(ctx context.Context, data procedureModel) (procedureRow, bool, error) {
+	row, signature, err := r.catalogRow(ctx, data)
+	if err != nil || row == nil {
 		return procedureRow{}, false, err
 	}
-	if len(rows) != 1 || rows[0]["owner"] == "" {
-		return procedureRow{}, false, fmt.Errorf("procedure %q has incomplete or ambiguous catalog metadata", name)
+	database, schema, name := data.Database.ValueString(), data.Schema.ValueString(), data.Name.ValueString()
+	if row["owner"] == "" {
+		return procedureRow{}, false, fmt.Errorf("procedure %q has incomplete catalog metadata", name)
 	}
-	definer, err := strconv.ParseBool(rows[0]["security_definer"])
+	definer, err := strconv.ParseBool(row["security_definer"])
 	if err != nil {
 		return procedureRow{}, false, fmt.Errorf("procedure %q has an invalid security mode: %w", name, err)
 	}
@@ -229,7 +268,7 @@ func (r *procedureResource) observe(ctx context.Context, data procedureModel) (p
 	if err != nil {
 		return procedureRow{}, false, err
 	}
-	return procedureRow{signature: routineCatalogSignature(rows[0]["arguments"]), owner: rows[0]["owner"], body: rows[0]["body"], definer: definer, arguments: arguments}, true, nil
+	return procedureRow{signature: routineCatalogSignature(row["arguments"]), owner: row["owner"], body: row["body"], definer: definer, arguments: arguments}, true, nil
 }
 
 // procedureCatalogArguments keeps the configured arguments the catalog confirms and otherwise reports the
@@ -391,23 +430,18 @@ func (r *procedureResource) Update(ctx context.Context, req resource.UpdateReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the procedure and verifies its removal.
+// Delete drops the selected overload without needing its argument modes or body.
 func (r *procedureResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data procedureModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	_, found, err := r.observe(ctx, data)
-	if err == nil && found {
+	row, _, err := r.catalogRow(ctx, data)
+	if err == nil && row != nil {
 		var statement string
 		if statement, err = dropProcedureStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
-		}
-		if err == nil {
-			if _, found, err = r.observe(ctx, data); err == nil && found {
-				resp.Diagnostics.AddError("Delete procedure", "The procedure remains after deletion.")
-			}
 		}
 	}
 	if err != nil {

@@ -40,10 +40,10 @@ resource "redshift_datashare_privilege" "share_admins" {
 
 ### Required
 
-- `database_name` (String) Local producer database that owns the datashare; grants run in it. Changing it replaces the grant.
-- `datashare_name` (String) Outbound datashare receiving the permissions. Changing it replaces the grant.
-- `grantee` (String) Receiving user, role, or group name; use `public` with `PUBLIC`. Changing it replaces the grant.
-- `grantee_type` (String) `USER`, `ROLE`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.
+- `database_name` (String) Local producer database that owns the datashare; grants run in it.
+- `datashare_name` (String) Outbound datashare receiving the permissions.
+- `grantee` (String) Receiving user, role, or group name; use `public` with `PUBLIC`.
+- `grantee_type` (String) `USER`, `ROLE`, `GROUP`, or `PUBLIC`.
 - `privileges` (Set of String) Exact explicit datashare permissions: `ALTER` adds or removes objects and sets `PUBLICACCESSIBLE`; `SHARE` grants consumers usage. Updated in place; an empty set revokes the owned permissions.
 
 ### Read-Only

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -22,56 +23,65 @@ func (f queryFunc) Query(ctx context.Context, target Connection, sql string, par
 
 // TestSerializedMutationsDoNotOverlap exercises concurrent grants routed to different databases.
 func TestSerializedMutationsDoNotOverlap(t *testing.T) {
-	var active, completed atomic.Int32
-	client := SerializeMutations(queryFunc(func(context.Context, Connection, string, map[string]string) ([]Row, error) {
-		assert.Equal(t, int32(1), active.Add(1))
-		time.Sleep(time.Millisecond)
-		active.Add(-1)
-		completed.Add(1)
-		return nil, nil
-	}))
-	var workers sync.WaitGroup
-	for range 20 {
-		workers.Go(func() {
-			_, err := client.Query(context.Background(), Connection{Database: "analytics"}, "GRANT USAGE ON DATABASE analytics TO ROLE readers", nil)
-			assert.NoError(t, err)
-		})
-	}
-	workers.Wait()
-	assert.Equal(t, int32(20), completed.Load())
+	synctest.Test(t, func(t *testing.T) {
+		var active, completed atomic.Int32
+		client := SerializeMutations(queryFunc(func(context.Context, Connection, string, map[string]string) ([]Row, error) {
+			assert.Equal(t, int32(1), active.Add(1))
+			time.Sleep(time.Second)
+			active.Add(-1)
+			completed.Add(1)
+			return nil, nil
+		}))
+		var workers sync.WaitGroup
+		started := time.Now()
+		for range 20 {
+			workers.Go(func() {
+				_, err := client.Query(context.Background(), Connection{Database: "analytics"}, "GRANT USAGE ON DATABASE analytics TO ROLE readers", nil)
+				assert.NoError(t, err)
+			})
+		}
+		workers.Wait()
+		assert.Equal(t, int32(20), completed.Load())
+		assert.Equal(t, 20*time.Second, time.Since(started))
+	})
 }
 
 // TestSerializedMutationsAllowReadsAndCancelledWaiters checks parallel reads and cancellation without issuing SQL.
 func TestSerializedMutationsAllowReadsAndCancelledWaiters(t *testing.T) {
-	started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	client := SerializeMutations(queryFunc(func(_ context.Context, target Connection, sql string, parameters map[string]string) ([]Row, error) {
-		if sql == "GRANT" {
-			close(started)
-			<-release
-			return nil, nil
+	synctest.Test(t, func(t *testing.T) {
+		started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})
+		client := SerializeMutations(queryFunc(func(_ context.Context, target Connection, sql string, parameters map[string]string) ([]Row, error) {
+			if sql == "GRANT" {
+				close(started)
+				<-release
+				return nil, nil
+			}
+			assert.Equal(t, "admin", target.Database)
+			assert.Equal(t, "reader", parameters["name"])
+			return []Row{{"name": "reader"}}, nil
+		}))
+		go func() {
+			defer close(done)
+			_, err := client.Query(context.Background(), Connection{}, "GRANT", nil)
+			assert.NoError(t, err)
+		}()
+		<-started
+		defer func() { close(release); <-done }()
+		for _, sql := range []string{" SELECT name", "show grants", "DESC DATASHARE sales", "desc identity provider oidc"} {
+			rows, err := client.Query(context.Background(), Connection{Database: "admin"}, sql, map[string]string{"name": "reader"})
+			require.NoError(t, err)
+			assert.Equal(t, []Row{{"name": "reader"}}, rows)
 		}
-		assert.Equal(t, "admin", target.Database)
-		assert.Equal(t, "reader", parameters["name"])
-		return []Row{{"name": "reader"}}, nil
-	}))
-	go func() {
-		defer close(done)
-		_, err := client.Query(context.Background(), Connection{}, "GRANT", nil)
-		assert.NoError(t, err)
-	}()
-	<-started
-	t.Cleanup(func() { close(release); <-done })
-	for _, sql := range []string{" SELECT name", "show grants", "DESC DATASHARE sales", "desc identity provider oidc"} {
-		rows, err := client.Query(context.Background(), Connection{Database: "admin"}, sql, map[string]string{"name": "reader"})
-		require.NoError(t, err)
-		assert.Equal(t, []Row{{"name": "reader"}}, rows)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
-	_, err := client.Query(ctx, Connection{}, "REVOKE", nil)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
-	_, err = client.Query(ctx, Connection{}, "REVOKE", nil)
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		waitStarted := time.Now()
+		_, err := client.Query(ctx, Connection{}, "REVOKE", nil)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Equal(t, time.Minute, time.Since(waitStarted))
+		_, err = client.Query(ctx, Connection{}, "REVOKE", nil)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.Equal(t, time.Minute, time.Since(waitStarted))
+	})
 }
 
 // TestSerializedMutationsReleaseAfterErrors ensures transport failures neither retain the gate nor trigger a retry.

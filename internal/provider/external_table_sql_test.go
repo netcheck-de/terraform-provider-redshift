@@ -129,6 +129,18 @@ func TestExternalTableSQL(t *testing.T) {
 	appended := &externalTableLayout{Columns: []string{"id", "label", "amount"}}
 	byNameInsertedToPosition := byNameInserted
 	byNameInsertedToPosition.TableProperties = byPosition.TableProperties
+	parquetByName := byName
+	parquetByName.StoredAs = types.StringValue("PARQUET")
+	parquetInserted := parquetByName
+	parquetInserted.Columns = inserted.Columns
+	parquetReordered := parquetByName
+	parquetReordered.Columns = reordered.Columns
+	parquetReplaced := parquetByName
+	parquetReplaced.Columns = byNameReplaced.Columns
+	parquetToText := parquetInserted
+	parquetToText.StoredAs = types.StringValue("TEXTFILE")
+	parquetToTextInOrder := parquetToText
+	parquetToTextInOrder.Columns = externalTableTestColumns("id", "integer", "label", "varchar(64)", "amount", "decimal(8,2)")
 	avro := plain
 	avro.StoredAs = types.StringValue("AVRO")
 	avroWidened := widened
@@ -174,6 +186,12 @@ func TestExternalTableSQL(t *testing.T) {
 		{"alter_orc_insert_column", alter(byName, byNameInserted)},
 		{"alter_orc_reorder_columns", alter(byName, byNameReordered)},
 		{"alter_orc_drop_first_and_add_columns", alter(byName, byNameReplaced)},
+		{"alter_parquet_insert_column", alter(parquetByName, parquetInserted)},
+		{"alter_parquet_reorder_columns", alter(parquetByName, parquetReordered)},
+		{"alter_parquet_drop_first_and_add_columns", alter(parquetByName, parquetReplaced)},
+		{"alter_error_parquet_to_text_out_of_catalog_order", alterIn(appended, parquetInserted, parquetToText)},
+		{"alter_parquet_to_text_in_catalog_order", alterIn(appended, parquetInserted, parquetToTextInOrder)},
+		{"alter_error_parquet_to_text_without_layout", alter(parquetInserted, parquetToText)},
 		{"alter_error_orc_retype_column", alter(byName, byNameRetyped)},
 		{"alter_error_orc_position_insert_column", alter(byPosition, byPositionInserted)},
 		{"alter_orc_position_in_catalog_order", alterIn(&externalTableLayout{Columns: []string{"id", "label"}}, byName, byPosition)},
@@ -284,7 +302,7 @@ func TestExternalTableColumnChanges(t *testing.T) {
 	assert.False(t, externalTableColumnsEquivalent(prev, columns("a", "integer")))
 }
 
-// TestExternalTableMapsByName follows the documented ORC default and orc.schema.resolution.
+// TestExternalTableMapsByName follows the live Parquet probe and the ORC default and orc.schema.resolution.
 func TestExternalTableMapsByName(t *testing.T) {
 	for name, test := range map[string]struct {
 		storedAs, inputFormat string
@@ -292,20 +310,27 @@ func TestExternalTableMapsByName(t *testing.T) {
 		catalog               map[string]string
 		byName                bool
 	}{
-		"orc":                         {storedAs: "orc", properties: types.MapNull(types.StringType), byName: true},
-		"orc by name":                 {storedAs: "ORC", properties: externalTableTestMap("orc.schema.resolution", "name"), byName: true},
-		"orc by another spelling":     {storedAs: "ORC", properties: externalTableTestMap("orc.schema.resolution", "NAME")},
-		"orc by unknown resolution":   {storedAs: "ORC", properties: types.MapValueMust(types.StringType, map[string]attr.Value{"orc.schema.resolution": types.StringUnknown()})},
-		"orc by unknown properties":   {storedAs: "ORC", properties: types.MapUnknown(types.StringType)},
-		"orc by position":             {storedAs: "ORC", properties: externalTableTestMap("orc.schema.resolution", "position")},
-		"orc input format":            {inputFormat: externalTableFileFormats["ORC"], properties: types.MapNull(types.StringType), byName: true},
-		"imported orc by position":    {storedAs: "ORC", properties: types.MapNull(types.StringType), catalog: map[string]string{"orc.schema.resolution": "position"}},
-		"configuration over catalog":  {storedAs: "ORC", properties: externalTableTestMap("orc.schema.resolution", "name"), catalog: map[string]string{"orc.schema.resolution": "position"}, byName: true},
-		"managed orc by catalog":      {storedAs: "ORC", properties: externalTableTestMap("numRows", "7"), catalog: map[string]string{"orc.schema.resolution": "position"}},
-		"parquet":                     {storedAs: "PARQUET", properties: types.MapNull(types.StringType)},
-		"textfile":                    {storedAs: "TEXTFILE", properties: types.MapNull(types.StringType)},
-		"unknown format":              {storedAs: "JSON", properties: types.MapNull(types.StringType)},
-		"parquet with orc input name": {storedAs: "PARQUET", inputFormat: externalTableFileFormats["ORC"], properties: types.MapNull(types.StringType)},
+		"orc":                                    {storedAs: "orc", properties: types.MapNull(types.StringType), byName: true},
+		"orc by name":                            {storedAs: "ORC", properties: externalTableTestMap("orc.schema.resolution", "name"), byName: true},
+		"orc by another spelling":                {storedAs: "ORC", properties: externalTableTestMap("orc.schema.resolution", "NAME")},
+		"orc by unknown resolution":              {storedAs: "ORC", properties: types.MapValueMust(types.StringType, map[string]attr.Value{"orc.schema.resolution": types.StringUnknown()})},
+		"orc by unknown properties":              {storedAs: "ORC", properties: types.MapUnknown(types.StringType)},
+		"orc by position":                        {storedAs: "ORC", properties: externalTableTestMap("orc.schema.resolution", "position")},
+		"orc input format":                       {inputFormat: externalTableFileFormats["ORC"], properties: types.MapNull(types.StringType), byName: true},
+		"imported orc by position":               {storedAs: "ORC", properties: types.MapNull(types.StringType), catalog: map[string]string{"orc.schema.resolution": "position"}},
+		"configuration over catalog":             {storedAs: "ORC", properties: externalTableTestMap("orc.schema.resolution", "name"), catalog: map[string]string{"orc.schema.resolution": "position"}, byName: true},
+		"managed orc by catalog":                 {storedAs: "ORC", properties: externalTableTestMap("numRows", "7"), catalog: map[string]string{"orc.schema.resolution": "position"}},
+		"parquet":                                {storedAs: "parquet", properties: types.MapNull(types.StringType), byName: true},
+		"parquet input format":                   {inputFormat: externalTableFileFormats["PARQUET"], properties: types.MapNull(types.StringType), byName: true},
+		"parquet ignores orc position":           {storedAs: "PARQUET", properties: externalTableTestMap("orc.schema.resolution", "position"), byName: true},
+		"parquet ignores athena index access":    {storedAs: "PARQUET", properties: externalTableTestMap("parquet.column.index.access", "true"), byName: true},
+		"parquet ignores parquet resolution":     {storedAs: "PARQUET", properties: types.MapNull(types.StringType), catalog: map[string]string{"parquet.schema.resolution": "position"}, byName: true},
+		"parquet ignores unknown orc properties": {storedAs: "PARQUET", properties: types.MapUnknown(types.StringType), byName: true},
+		"text with stale parquet input":          {storedAs: "TEXTFILE", inputFormat: externalTableFileFormats["PARQUET"], properties: types.MapNull(types.StringType)},
+		"unrecognized parquet-like input":        {inputFormat: "org.example.ParquetInputFormat", properties: types.MapNull(types.StringType)},
+		"textfile":                               {storedAs: "TEXTFILE", properties: types.MapNull(types.StringType)},
+		"unknown format":                         {storedAs: "JSON", properties: types.MapNull(types.StringType)},
+		"parquet with orc input name":            {storedAs: "PARQUET", inputFormat: externalTableFileFormats["ORC"], properties: types.MapNull(types.StringType), byName: true},
 	} {
 		model := externalTableTestModel()
 		model.StoredAs, model.InputFormat, model.TableProperties = types.StringValue(test.storedAs), types.StringValue(test.inputFormat), test.properties

@@ -106,7 +106,7 @@ func TestRoleGrantAdminOptionRequiresUser(t *testing.T) {
 	r := newRoleGrantResource()
 	configureTestResource(t, r, c)
 	invalid := roleGrantFixture("sys:dba", "example:readers", "", true)
-	diagnostics := invoke(t, r, "create", invalid, false)
+	diagnostics := invoke(t, r, "create", invalid)
 	require.True(t, diagnostics.HasError())
 	assert.Equal(t, "Invalid role grant", diagnostics.Errors()[0].Summary())
 	prior := roleGrantFixture("sys:dba", "example:readers", "", false)

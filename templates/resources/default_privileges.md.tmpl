@@ -17,14 +17,15 @@ ALTER DEFAULT PRIVILEGES ... REVOKE ... FROM ...;
 ALTER DEFAULT PRIVILEGES ... REVOKE GRANT OPTION FOR ... FROM ...;
 ```
 
-Deleting the resource revokes the privileges it owns and never grants any, including the implicit `PUBLIC` default
-described below; see [Reconciliation](#reconciliation) for changes.
+Deleting the resource revokes the privileges it owns unless `restore_default_on_destroy` opts into restoring the
+implicit `PUBLIC` default described below; see [Reconciliation](#reconciliation) for changes.
 
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_default_privileges/resource.tf" }}
 
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -50,9 +51,12 @@ Redshift grants `EXECUTE` on every new function to `PUBLIC` without being asked;
 superusers by default. The database-wide tuple `grantee_type = "PUBLIC"`, `object_type = "FUNCTIONS"` without
 `schema_name` reports that implicit grant as `EXECUTE`, reading `PG_DEFAULT_ACL` because the catalog has no row for it
 until the defaults change. Set `privileges = []` to revoke it, as AWS recommends before granting `EXECUTE` to specific
-users or groups. Deleting or replacing that tuple leaves the revocation in place rather than widening access; to return
-to the Redshift default, set `privileges = ["EXECUTE"]` and apply, then remove the resource with a `removed` block that
-sets `destroy = false`. The kept revocation is a `PG_DEFAULT_ACL` entry that depends on `owner`, so `DROP USER` of the
+users or groups. Deleting or replacing that tuple leaves the revocation in place rather than widening access by default.
+Set `restore_default_on_destroy = true` to grant `EXECUTE` back on destroy and verify convergence; this is valid only
+for this database-wide `PUBLIC` `FUNCTIONS` tuple. It affects future functions, not existing objects, and restores the
+documented default rather than historical grants. Alternatively, set `privileges = ["EXECUTE"]` and apply, then remove
+the resource with a `removed` block that sets `destroy = false`. The kept revocation is a `PG_DEFAULT_ACL` entry
+that depends on `owner`, so `DROP USER` of the
 owner fails until the database is dropped; in one configuration, let the database depend on the owner's
 `redshift_user` so Terraform drops it first. Schema-specific defaults add to the database-wide ones and cannot remove
 this grant.
@@ -83,6 +87,7 @@ change to the tuple itself replaces the grant. No statement touches objects that
 | `privileges` set to `[]`                                                  | `ALTER DEFAULT PRIVILEGES ... REVOKE` for every privilege the tuple holds; for the database-wide `PUBLIC` `FUNCTIONS` tuple this includes the implicit `EXECUTE`, also while the catalog has no row for it |
 | privilege added to `grant_option_privileges`                              | `ALTER DEFAULT PRIVILEGES ... GRANT ... WITH GRANT OPTION`; a privilege added to both sets at once is granted with the option in one statement                                                             |
 | privilege removed from `grant_option_privileges`, or the argument removed | `ALTER DEFAULT PRIVILEGES ... REVOKE GRANT OPTION FOR ...`; the privilege stays                                                                                                                            |
+| `restore_default_on_destroy` changed                                      | updates cleanup policy in place; true restores database-wide PUBLIC FUNCTIONS `EXECUTE` on destroy, false or omitted leaves it revoked                                                                     |
 
 An update revokes before it grants: removed privileges first, then removed grant options, then added privileges, then
 added grant options. The statements share no transaction: when one fails, the earlier ones stay applied and the next

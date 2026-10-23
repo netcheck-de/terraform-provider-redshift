@@ -67,7 +67,45 @@ func (data debugGrantModel) spec() (grantSpec, string, error) {
 	if err != nil {
 		return grantSpec{}, "", err
 	}
+	if err := data.validateRemote(); err != nil {
+		return grantSpec{}, "", err
+	}
 	return grantSpec{object: sqlclient.Kw("ON DATABASE").Ident(data.Database.ValueString()), grantee: grantee}, identityType, nil
+}
+
+// Remote ACCOUNT has no authoritative FOR selector, while SHOW ON silently omits its existing grants.
+func (data debugGrantModel) validateRemote() error {
+	if strings.Contains(data.Database.ValueString(), "@") && strings.EqualFold(data.GranteeType.ValueString(), "ACCOUNT") {
+		return fmt.Errorf("cross-catalog ACCOUNT DEBUG grants have no reliable readback; configure a provider connected to the producer warehouse and use its local database name without @catalog")
+	}
+	return nil
+}
+
+// readDebugGrantRemoteStatement uses the live-verified cross-catalog shape; SHOW ON can silently return no DEBUG rows.
+func readDebugGrantRemoteStatement(data debugGrantModel) (string, error) {
+	spec, _, err := data.spec()
+	if err != nil {
+		return "", err
+	}
+	return sqlclient.Stmt("SHOW GRANTS FOR").Append(spec.grantee).KwIdent("FROM DATABASE", data.Database.ValueString()).String(), nil
+}
+
+// Current-user/latest filtering excludes incidental rdsdb authentication records for the same backend PID.
+// The exact IAM AssumeUser result is live-verified; username shapes and SHOW GLOBAL IDENTITY are insufficient.
+func readDebugGrantAuthStatement() string {
+	return sqlclient.Stmt("SELECT").Kw("TRIM(auth_method) AS auth_method").Kw("FROM sys_connection_log").
+		Kw("WHERE session_id = pg_backend_pid()").Kw("AND user_name = current_user").
+		Kw("AND event =").Lit("authenticated").Kw("ORDER BY record_time DESC LIMIT").Int(1).String()
+}
+
+// debugGrantRemoteMatches normalizes only the scoped row types emitted by SHOW FOR, not arbitrary local identities.
+func debugGrantRemoteMatches(row sqlclient.Row, data debugGrantModel) bool {
+	kind := strings.ToUpper(data.GranteeType.ValueString())
+	if kind != "USER" && kind != "ROLE" {
+		return false
+	}
+	return row["database_name"] == data.Database.ValueString() && row["object_type"] == "DATABASE" && row["privilege_scope"] == "DATABASE" &&
+		strings.EqualFold(row["identity_type"], data.GranteeType.ValueString()) && debugGrantMatches(row, data.Grantee.ValueString(), row["identity_type"])
 }
 
 // createDebugGrantStatement grants DEBUG on the database. DEBUG takes no grant option and is not part of ALL, so the

@@ -7,6 +7,8 @@ resource "redshift_table" "events" {
   column {
     name = "event_id"
     type = "BIGINT"
+    # Migrating an existing id column? Add renamed_from = "id" to preserve its data, and update all key references.
+    # Keep the hint for retries; removing it after success runs no SQL.
     identity {
       seed = 1
       step = 1

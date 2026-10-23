@@ -29,8 +29,8 @@ var _ = registerReplacementPolicy("redshift_external_function", map[string]repla
 	"database":            replaceAlways,
 	"schema":              replaceAlways,
 	"name":                replaceAlways,
-	"arguments":           replaceConditional("TestExternalFunctionArgumentsReplacement"),
-	"return_type":         replaceConditional("TestExternalFunctionReturnTypeReplacement"),
+	"arguments":           replaceConditional,
+	"return_type":         replaceConditional,
 	"volatility":          replaceNever,
 	"lambda_function":     replaceNever,
 	"iam_role":            replaceNever,
@@ -48,7 +48,7 @@ var _ = registerValidateConfigCase("external_function", validateConfigCase{
 	valid:   externalFunctionTestModel(),
 	invalid: externalFunctionWith(func(data *externalFunctionModel) { data.ReturnType = types.StringValue("super") }),
 	unknown: externalFunctionWith(func(data *externalFunctionModel) {
-		data.ReturnType, data.IAMRole = types.StringValue("super"), types.StringUnknown()
+		data.ReturnType, data.IAMRole = types.StringUnknown(), types.StringUnknown()
 	}),
 })
 
@@ -330,4 +330,78 @@ func externalFunctionReplaces(t *testing.T, attribute schema.Attribute, before, 
 		t.Fatalf("unsupported attribute %T", attribute)
 	}
 	return replace
+}
+
+// TestExternalFunctionKnownConfig rejects invalid known options and renders nothing for unsupported argument types or unknown owners.
+func TestExternalFunctionKnownConfig(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		change  func(*externalFunctionModel)
+		message string
+	}{
+		{"argument limit", func(m *externalFunctionModel) {
+			values := make([]string, externalFunctionMaxArguments+1)
+			for i := range values {
+				values[i] = "int"
+			}
+			m.Arguments = externalFunctionTypeValues(values)
+		}, "at most"},
+		{"volatility", func(m *externalFunctionModel) { m.Volatility = types.StringValue("RANDOM") }, "RANDOM"},
+		{"lambda", func(m *externalFunctionModel) { m.LambdaFunction = types.StringValue("") }, "lambda_function"},
+		{"role", func(m *externalFunctionModel) { m.IAMRole = types.StringValue("not-a-role") }, "IAM"},
+		{"timeout", func(m *externalFunctionModel) { m.RetryTimeout = types.Int64Value(-1) }, "retry_timeout"},
+		{"rows", func(m *externalFunctionModel) { m.MaxBatchRows = types.Int64Value(0) }, "max_batch_rows"},
+		{"unit", func(m *externalFunctionModel) { m.MaxBatchSizeUnit = types.StringValue("GB") }, "GB"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			data := externalFunctionWith(test.change)
+			require.ErrorContains(t, externalFunctionKnownConfig(data), test.message)
+		})
+	}
+	data := externalFunctionTestModel()
+	data.Arguments = externalFunctionTypeValues([]string{"money"})
+	r := &externalFunctionResource{}
+	_, err := r.identityOf(data)
+	require.Error(t, err)
+	_, err = externalFunctionOwnerStatement(data)
+	require.Error(t, err)
+	_, err = dropExternalFunctionStatement(data)
+	require.Error(t, err)
+	data.Arguments = types.ListUnknown(types.StringType)
+	assert.Nil(t, externalFunctionTypeList(data.Arguments))
+	data = externalFunctionTestModel()
+	before := data
+	data.Owner = types.StringNull()
+	statements, err := alterExternalFunctionStatements(before, data)
+	require.NoError(t, err)
+	assert.Empty(t, statements)
+}
+
+// TestExternalRoutineFailures reports a refused ALTER EXTERNAL FUNCTION and rejects invalid external model configuration.
+func TestExternalRoutineFailures(t *testing.T) {
+	r := newExternalFunctionResource()
+	configureTestResource(t, r, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		return nil, errors.New("ALTER refused")
+	}))
+	before, after := externalFunctionTestModel(), externalFunctionTestModel()
+	after.LambdaFunction = types.StringValue("replacement_lambda")
+	_, diagnostics := applyOperation(t, r, "update", before, after, nil)
+	require.True(t, diagnostics.HasError())
+	assert.Contains(t, fmt.Sprint(diagnostics), "ALTER refused")
+	client := testResourceClient(nil)
+	_, found, err := readExternalModelCatalog(context.Background(), &client, "admin", "serving", "")
+	require.Error(t, err)
+	assert.False(t, found)
+	assert.False(t, externalModelUnread(context.Background(), nil, "iam_role"))
+	for _, change := range []func(*externalModelModel){
+		func(m *externalModelModel) { m.IAMRole = types.StringValue("invalid-role") },
+		func(m *externalModelModel) { m.Name = types.StringValue("") },
+	} {
+		model := testExternalModelModel()
+		change(&model)
+		modelResource := newExternalModelResource()
+		var response resource.ValidateConfigResponse
+		modelResource.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, modelResource, model))}, &response)
+		require.True(t, response.Diagnostics.HasError())
+	}
 }

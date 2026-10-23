@@ -9,7 +9,3 @@ SELECT u.usename AS owner, d.datconnlimit AS connection_limit FROM pg_database_i
 -- database: admin
 DROP DATABASE "warehouse";
 -- params: {}
-
--- database: admin
-SHOW DATABASES LIKE 'warehouse';
--- params: {}

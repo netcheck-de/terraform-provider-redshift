@@ -25,6 +25,9 @@ type Token struct {
 	Kind TokenKind
 	// Text is the word or symbol as written, or the decoded value of a literal or quoted identifier.
 	Text string
+	// Raw retains the quoted spelling of string literals for command-specific escape decoding.
+	// Other token kinds leave it empty; Text keeps its existing transport-neutral decoding.
+	Raw string
 }
 
 // Tokens splits SQL text into words, decoded string literals and quoted identifiers, and punctuation, using the
@@ -39,7 +42,7 @@ func Tokens(sql string) ([]Token, error) {
 		}
 		switch item.kind {
 		case lexString:
-			tokens = append(tokens, Token{Kind: TokenString, Text: decodeLiteral(item.text)})
+			tokens = append(tokens, Token{Kind: TokenString, Text: decodeLiteral(item.text), Raw: item.text})
 		case lexQuotedIdentifier:
 			name := item.text[1 : len(item.text)-1]
 			tokens = append(tokens, Token{Kind: TokenIdentifier, Text: strings.ReplaceAll(name, `""`, `"`)})

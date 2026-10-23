@@ -1,0 +1,33 @@
+---
+subcategory: Data Sharing
+page_title: redshift_datashare_membership Data Source - terraform-provider-redshift
+description: Checks complete datashare schema-and-kind coverage without taking ownership.
+---
+
+# redshift_datashare_membership (Data Source)
+
+Observes whether all currently visible tables/views or SQL function overloads in a producer schema have visible share
+memberships. Does not adopt members or enforce exclusive ownership, and does not require a SQL superuser. `exists`
+indicates that the schema membership is visible; `all` indicates coverage of the visible source set only. An empty
+visible source set is covered; a schema membership that is absent or invisible has `exists = false, all = false`.
+Restricted visibility can therefore yield `all = true` without proving that every actual source object is shared.
+
+## Catalog Query
+
+```sql
+SELECT ... FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND share_name = '...';
+SELECT ... FROM svv_all_tables WHERE database_name = '...' AND schema_name = '...';
+SELECT ... FROM pg_proc_info JOIN pg_namespace ... JOIN pg_language ... WHERE nspname = '...';
+```
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_datashare_membership/data-source.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+The same period-containing identifier restrictions as the resource apply. The lookup can observe
+a schema with `include_new = true` without changing it, but reports current coverage, not a guarantee about future objects.

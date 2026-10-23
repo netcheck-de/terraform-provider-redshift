@@ -46,7 +46,7 @@ func TestGrantUserFailures(t *testing.T) {
 					}
 					return c.Query(ctx, connection, sql, parameters)
 				}))
-				diagnostics := invoke(t, r, operation, model, false)
+				diagnostics := invoke(t, r, operation, model)
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
 					queries = calls
@@ -56,7 +56,7 @@ func TestGrantUserFailures(t *testing.T) {
 			}
 			r := newGrantResource()
 			configureTestResource(t, r, &catalog{database: true})
-			diagnostics := invoke(t, r, operation, model, false)
+			diagnostics := invoke(t, r, operation, model)
 			assert.Equal(t, operation == "create" || operation == "update", diagnostics.HasError(), "%v", diagnostics)
 		})
 	}

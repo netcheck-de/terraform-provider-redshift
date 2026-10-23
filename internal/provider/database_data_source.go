@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -68,10 +69,16 @@ func (d *databaseDataSource) Read(ctx context.Context, req datasource.ReadReques
 	data = observed
 	identity := map[string]string{"name": data.Name.ValueString()}
 	// SHOW DATABASES does not document the type of a zero-ETL destination, which may report as local, so every
-	// database but a shared one is looked up in SVV_INTEGRATION. A provider identity that is not a superuser sees no
-	// row there, which leaves the integration null.
+	// database but a shared one is looked up in SVV_INTEGRATION. This supplementary metadata must not prevent a
+	// non-superuser from looking up an ordinary local database; Redshift denies access to the view rather than
+	// filtering its rows. Only that specific denial is optional, not other catalog errors.
 	if data.DatabaseType.ValueString() != databaseTypeShared {
 		integration, found, err := d.databaseIntegration(ctx, data.Name.ValueString())
+		if err != nil && strings.Contains(strings.ToLower(err.Error()), "permission denied for relation svv_integration") {
+			resp.Diagnostics.AddWarning("Database integration metadata unavailable",
+				"SVV_INTEGRATION requires a superuser. The database metadata is returned, but integration is null because the provider SQL identity cannot inspect the view.")
+			err = nil
+		}
 		if err != nil {
 			resp.Diagnostics.AddError("Read database integration", err.Error())
 			return

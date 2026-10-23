@@ -5,6 +5,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // identityProviderAWSIDCFixture builds an AWSIDC provider; unset Azure and role-creation attributes stay null.
@@ -12,6 +13,20 @@ func identityProviderAWSIDCFixture(name, namespace, role string, enabled bool) i
 	return identityProviderModel{
 		Name: types.StringValue(name), Type: types.StringValue(identityProviderAWSIDC), Namespace: types.StringValue(namespace),
 		ApplicationARN: types.StringValue("application"), IAMRoleARN: types.StringValue(role), Enabled: types.BoolValue(enabled),
+	}
+}
+
+// Redshift refuses redundant IAM_ROLE, ENABLE, and DISABLE assignments, so unrelated updates must omit them.
+func TestIdentityProviderSkipsRedundantAssignments(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		prior := identityProviderAWSIDCFixture("identity", "old", "role-one", enabled)
+		planned := prior
+		planned.Namespace = types.StringValue("new")
+		role, options, status, err := identityProviderAlterBatches(prior, planned, "")
+		require.NoError(t, err)
+		assert.Empty(t, role)
+		assert.Empty(t, status)
+		assert.Equal(t, []string{"ALTER IDENTITY PROVIDER \"identity\" NAMESPACE 'new'"}, options)
 	}
 }
 

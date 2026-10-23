@@ -35,8 +35,8 @@ resource "redshift_datashare" "analytics" {
 
 ### Required
 
-- `database` (String) Local producer database owning the datashare; changing it replaces the resource.
-- `name` (String) Datashare name, unique within the producer namespace; changing it replaces the resource.
+- `database` (String) Local producer database owning the datashare.
+- `name` (String) Datashare name, unique within the producer namespace.
 
 ### Optional
 

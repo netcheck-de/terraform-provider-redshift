@@ -26,3 +26,12 @@ resource "redshift_template" "json_events" {
     TRUNCATECOLUMNS = ""
   }
 }
+
+# Simplify only geometries larger than Redshift's maximum geometry size.
+resource "redshift_template" "shapefile" {
+  database        = redshift_schema.staging.database
+  schema          = redshift_schema.staging.name
+  name            = "shapefile"
+  format          = "SHAPEFILE"
+  format_argument = "SIMPLIFY AUTO 0.000001"
+}

@@ -3,6 +3,7 @@ output "diagnostics" {
   value = {
     case_sensitive_identifiers = data.redshift_configuration.case_sensitive_identifiers.value
     search_path                = data.redshift_configuration.search_path.value
+    session_context            = try(data.redshift_configuration.session_context[0].value, null)
     reader_lockouts = var.user_lockouts ? [
       for lockout in data.redshift_user_lockouts.reader[0].user_lockouts : {
         locked                = lockout.is_locked

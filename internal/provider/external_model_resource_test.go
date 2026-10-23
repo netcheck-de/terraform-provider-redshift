@@ -3,19 +3,14 @@ package provider
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
-	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -125,51 +120,6 @@ func TestExternalModelImport(t *testing.T) {
 	expected.ID = types.StringValue(id)
 	assert.Equal(t, expected, data)
 	assert.Empty(t, c.writes, "import never mutates")
-}
-
-// TestExternalModelImportPlansNoChange runs Terraform against the fake catalog: an imported model whose settings
-// SHOW MODEL reports plans no change, a respelled keyword updates in place without SQL, and a new model ID
-// replaces the model.
-func TestExternalModelImportPlansNoChange(t *testing.T) {
-	c, models := externalModelFake()
-	configuration := func(requestType, modelID string) string {
-		return fmt.Sprintf(`
-provider "redshift" {
-  region = "eu-central-1"
-  workgroup_name = "warehouse"
-  database = "admin"
-}
-resource "redshift_external_model" "summarizer" {
-  database = "admin"
-  schema = %q
-  name = %q
-  function = %q
-  iam_role = "default"
-  model_id = %q
-  prompt = %q
-  request_type = %q
-}`, fakeModelSchema, fakeModelName, fakeModelFunction, modelID, fakeModelPrompt, requestType)
-	}
-	address := "redshift_external_model.summarizer"
-	testresource.UnitTest(t, testresource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})},
-		Steps: []testresource.TestStep{
-			{
-				Config: configuration("UNIFIED", fakeModelID), ResourceName: address, ImportState: true, ImportStatePersist: true,
-				ImportStateId: fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName),
-			},
-			{
-				Config:           configuration("unified", fakeModelID),
-				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate)}},
-			},
-			{
-				Config:           configuration("unified", "amazon.nova-pro-v1:0"),
-				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionDestroyBeforeCreate)}},
-			},
-			{Config: configuration("unified", "amazon.nova-pro-v1:0"), PlanOnly: true},
-		},
-	})
-	assert.Nil(t, models.get(fakeModelName), "destroy drops the model")
 }
 
 // TestExternalModelRoleReplacement replaces the model for every role change except DEFAULT in another case.

@@ -21,10 +21,21 @@ func TestCopyJobLookup(t *testing.T) {
 	exerciseCatalogLookup(t, newCopyJobDataSource, map[string]string{"database": "admin", "name": "events_load"}, map[string]attr.Value{
 		"iam_role":   types.StringValue(copyJobFakeRole),
 		"auto":       types.BoolValue(false),
-		"source":     types.StringNull(),
-		"parameters": types.MapNull(types.StringType),
-		"table":      types.ObjectNull(copyJobTableType.AttrTypes),
+		"source":     copyJobLifecycleModel.Source,
+		"format":     copyJobLifecycleModel.Format,
+		"parameters": copyJobLifecycleModel.Parameters,
+		"table":      copyJobLifecycleModel.Table,
 	}, fullCatalog())
+}
+
+func TestCopyJobLookupDefaultText(t *testing.T) {
+	c := fullCatalog()
+	fake := fakeState[*copyJobFake](c, copyJobFakeFamily)
+	fake.definition = `COPY "serving"."events" FROM 's3://example-bucket/events/' IAM_ROLE '' JOB CREATE events_load AUTO OFF`
+	exerciseCatalogLookup(t, newCopyJobDataSource, map[string]string{"database": "admin", "name": "events_load"}, map[string]attr.Value{
+		"format": types.StringNull(), "format_argument": types.StringNull(), "parameters": types.MapNull(types.StringType),
+		"table": copyJobTableObject("serving", "events"),
+	}, c)
 }
 
 // TestCopyJobsListing lists the visible jobs of a database with blanks of the character columns trimmed.

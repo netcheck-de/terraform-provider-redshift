@@ -37,8 +37,8 @@ resource "redshift_schema" "serving" {
 
 ### Required
 
-- `database` (String) Local database owning the schema. Changing it replaces the schema.
-- `name` (String) Schema name. Changing it replaces the schema; the provider never renames.
+- `database` (String) Local database owning the schema.
+- `name` (String) Schema name. The provider never renames a schema.
 
 ### Optional
 

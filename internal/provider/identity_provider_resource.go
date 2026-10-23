@@ -107,12 +107,12 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "SQL identity provider name. Changing it replaces the identity provider.",
+				Required: true, MarkdownDescription: "SQL identity provider name.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"type": schema.StringAttribute{
 				Optional: true, Computed: true, Default: stringdefault.StaticString(identityProviderAWSIDC),
-				MarkdownDescription: "Identity provider type: `AWSIDC` (AWS IAM Identity Center) or `AZURE` (Microsoft Entra ID, native IdP federation). Defaults to `AWSIDC`. Accepted in any case; another case of the same type is recorded in place. Changing it replaces the identity provider.",
+				MarkdownDescription: "Identity provider type: `AWSIDC` (AWS IAM Identity Center) or `AZURE` (Microsoft Entra ID, native IdP federation). Defaults to `AWSIDC`. Accepted in any case; another case of the same type is recorded in place.",
 				Validators:          []validator.String{stringvalidator.OneOfCaseInsensitive(identityProviderAWSIDC, identityProviderAzure)},
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplaceIf(keywordChanged, "Changing the type replaces the identity provider.", "Changing the type replaces the identity provider.")},
 			},
@@ -121,11 +121,11 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 				Validators: []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"application_arn": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Identity Center managed application ARN. Required for `AWSIDC`; not allowed for `AZURE`. Changing it replaces the identity provider.",
+				Optional: true, MarkdownDescription: "Identity Center managed application ARN. Required for `AWSIDC`; not allowed for `AZURE`.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"iam_role_arn": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "IAM role attached to the Redshift namespace for the Identity Center connection. Required for `AWSIDC`; not allowed for `AZURE`. Updated in place and reapplied on every update.",
+				Optional: true, MarkdownDescription: "IAM role attached to the Redshift namespace for the Identity Center connection. Required for `AWSIDC`; not allowed for `AZURE`. Updated in place when changed; catalog refresh detects drift.",
 			},
 			"issuer": schema.StringAttribute{
 				Optional: true, MarkdownDescription: "Token issuer URL of the Microsoft Entra ID tenant (`issuer` in `PARAMETERS`). Required for `AZURE`; not allowed for `AWSIDC`. Updated in place together with `client_secret_wo`.",
@@ -154,7 +154,7 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 			"auto_create_roles_exclude_groups": identityProviderGroupFilter("EXCLUDE", "auto_create_roles_include_groups"),
 			"enabled": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(true),
-				MarkdownDescription: "Whether the provider is enabled; defaults to `true`. Updated in place and reapplied on every update.",
+				MarkdownDescription: "Whether the provider is enabled; defaults to `true`. Updated in place when changed; catalog refresh detects drift.",
 			},
 			"provider_id": schema.Int64Attribute{
 				Computed: true, MarkdownDescription: "Catalog ID of the identity provider (`svv_identity_providers.uid`).",
@@ -223,14 +223,6 @@ func decodeIdentityProviderParameters(text string) (identityProviderCatalogParam
 	return parameters, err
 }
 
-// identityProviderOptional maps an empty catalog value, which is how both transports return NULL, to null.
-func identityProviderOptional(value string) types.String {
-	if value == "" {
-		return types.StringNull()
-	}
-	return types.StringValue(value)
-}
-
 // read verifies the provider binding and refreshes its observable settings. auto_create_roles, its filters, and the
 // secret version are not in the catalog and keep their state.
 func (r *identityProviderResource) read(ctx context.Context, data *identityProviderModel) (bool, error) {
@@ -266,7 +258,7 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 		}
 		data.ApplicationARN = types.StringValue(row["instanceid"])
 		data.IAMRoleARN = types.StringValue(parameters.IAMRole)
-		data.IdentityCenterInstanceARN = identityProviderOptional(parameters.InstanceARN)
+		data.IdentityCenterInstanceARN = optionalString(parameters.InstanceARN)
 	case identityProviderAzure:
 		if parameters.Issuer == "" || parameters.ClientID == "" {
 			return false, fmt.Errorf("identity provider %q has no issuer or client_id in its catalog parameters", data.Name.ValueString())
@@ -289,7 +281,7 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 	data.Name = types.StringValue(row["name"])
 	data.Type = keywordValue(data.Type, kind)
 	data.Namespace = types.StringValue(row["namespc"])
-	data.InstanceID = identityProviderOptional(row["instanceid"])
+	data.InstanceID = optionalString(row["instanceid"])
 	data.Enabled = types.BoolValue(enabled)
 	return true, nil
 }
@@ -406,6 +398,16 @@ func (r *identityProviderResource) Update(ctx context.Context, req resource.Upda
 		resp.Diagnostics.AddError("Update identity provider", err.Error())
 		return
 	}
+	// Even a role/status change after planning must not turn into a redundant assignment: Redshift rejects those.
+	found, err := r.read(ctx, &previous)
+	if err != nil {
+		resp.Diagnostics.AddError("Read identity provider before update", err.Error())
+		return
+	}
+	if !found {
+		resp.Diagnostics.AddError("Update identity provider", "The identity provider disappeared before updating; refresh and retry.")
+		return
+	}
 	role, options, status, err := identityProviderAlterBatches(previous, data, identityProviderSecret(ctx, req.Config))
 	if err != nil {
 		resp.Diagnostics.AddError("Update identity provider", err.Error())
@@ -427,7 +429,7 @@ func (r *identityProviderResource) Update(ctx context.Context, req resource.Upda
 		}
 	}
 	expected := data
-	found, err := r.read(ctx, &data)
+	found, err = r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify identity provider", err.Error())
 		return
@@ -465,12 +467,6 @@ func (r *identityProviderResource) Delete(ctx context.Context, req resource.Dele
 	if err := r.exec(ctx, r.database.ValueString(), dropIdentityProviderStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Delete identity provider", err.Error())
 		return
-	}
-	found, err = r.read(ctx, &data)
-	if err != nil {
-		resp.Diagnostics.AddError("Verify identity provider deletion", err.Error())
-	} else if found {
-		resp.Diagnostics.AddError("Verify identity provider deletion", "The identity provider remains after deletion.")
 	}
 }
 

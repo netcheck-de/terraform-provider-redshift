@@ -28,8 +28,43 @@ const (
 	commentConstraintSource sqlclient.Keyword = "pg_constraint k JOIN pg_class o ON o.oid = k.conrelid JOIN pg_namespace n ON n.oid = o.relnamespace LEFT JOIN pg_description d ON d.objoid = k.oid AND d.classoid = 'pg_constraint'::regclass AND d.objsubid = 0"
 )
 
-// commentTarget validates the target and renders its COMMENT ON prefix together with the catalog query reading its
-// annotation, so both always address the same object.
+// commentKnownTarget checks target constraints as soon as their dependent inputs are known.
+func commentKnownTarget(data commentModel) error {
+	if data.ObjectType.IsUnknown() {
+		return nil
+	}
+	kind := data.ObjectType.ValueString()
+	if _, supported := commentKinds[kind]; !supported {
+		return fmt.Errorf("unsupported comment object_type %q", kind)
+	}
+	if kind == "DATABASE" || kind == "SCHEMA" {
+		if knownString(data.SchemaName) != "" || knownString(data.ColumnName) != "" {
+			return fmt.Errorf("%s does not accept schema_name or column_name", kind)
+		}
+		if knownString(data.ConstraintName) != "" {
+			return fmt.Errorf("constraint_name is required only for CONSTRAINT")
+		}
+		if kind == "DATABASE" && !data.ObjectName.IsUnknown() && !data.DatabaseName.IsUnknown() && !data.ObjectName.Equal(data.DatabaseName) {
+			return fmt.Errorf("DATABASE object_name must equal database_name")
+		}
+		return nil
+	}
+	if !data.SchemaName.IsUnknown() && data.SchemaName.ValueString() == "" {
+		return fmt.Errorf("schema_name is required for %s", kind)
+	}
+	if !data.ColumnName.IsUnknown() && (kind == "COLUMN") != (data.ColumnName.ValueString() != "") {
+		return fmt.Errorf("column_name is required only for COLUMN")
+	}
+	if !data.ConstraintName.IsUnknown() && (kind == "CONSTRAINT") != (data.ConstraintName.ValueString() != "") {
+		return fmt.Errorf("constraint_name is required only for CONSTRAINT")
+	}
+	if !data.ObjectName.IsUnknown() && data.ObjectName.ValueString() == "" {
+		return fmt.Errorf("object_name is required for %s", kind)
+	}
+	return nil
+}
+
+// commentTarget validates and renders the same target for both COMMENT ON and catalog reads.
 func commentTarget(data commentModel) (sqlclient.Statement, sqlclient.Query, error) {
 	kind, name, schemaName, column := data.ObjectType.ValueString(), data.ObjectName.ValueString(), data.SchemaName.ValueString(), data.ColumnName.ValueString()
 	constraint := data.ConstraintName.ValueString()

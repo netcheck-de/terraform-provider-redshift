@@ -57,13 +57,13 @@ resource "redshift_procedure" "purge" {
 ### Required
 
 - `body` (String) PL/pgSQL block, usually `BEGIN ... END;` with an optional `DECLARE` section, sent dollar-quoted and verbatim. Changed in place with `CREATE OR REPLACE PROCEDURE`. A body changed outside Terraform appears here as the catalog text.
-- `database` (String) Local database containing the procedure. Changing it replaces the procedure.
-- `name` (String) Procedure name; AWS recommends the reserved `sp_` prefix. Overloads share a name and differ in their input argument types. Changing it replaces the procedure.
-- `schema` (String) Schema containing the procedure. Changing it replaces the procedure.
+- `database` (String) Local database containing the procedure.
+- `name` (String) Procedure name; AWS recommends the reserved `sp_` prefix. Overloads share a name and differ in their input argument types.
+- `schema` (String) Schema containing the procedure.
 
 ### Optional
 
-- `argument` (Block List) One block per argument, in order: at most 32 input (`IN`, `INOUT`) and 32 output (`OUT`, `INOUT`) arguments. Omit for a procedure without arguments. The input types identify the procedure; another spelling of the same types, a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the procedure. (see [below for nested schema](#nestedblock--argument))
+- `argument` (Block List) One block per argument, in order: at most 32 input (`IN`, `INOUT`) and 32 output (`OUT`, `INOUT`) arguments. Omit for a procedure without arguments. The input types identify the procedure; another spelling of the same types, a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place. (see [below for nested schema](#nestedblock--argument))
 - `configuration` (Map of String) One configuration parameter set while the procedure runs, rendered as `SET <name> TO '<value>'`, for example `{ search_path = "analytics, public" }`. A `search_path` value is a comma-separated list of schema names, each rendered as its own literal, such as `SET search_path TO 'analytics', 'public'`; any other value is one literal. Not supported with `nonatomic`. Redshift does not report it in its catalog, so drift is not detected and an import leaves it `null`. Changed in place with `CREATE OR REPLACE PROCEDURE`.
 - `nonatomic` (Boolean) Creates the procedure in `NONATOMIC` transaction mode, which commits each statement automatically. Redshift does not report the mode in its catalog, so drift is not detected and an import leaves it `null`. Changed in place with `CREATE OR REPLACE PROCEDURE`.
 - `owner` (String) SQL user owning the procedure. When set, applied with `ALTER PROCEDURE ... OWNER TO`, which requires a superuser; when omitted, the catalog owner is reported.

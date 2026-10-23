@@ -54,9 +54,9 @@ func (r *columnGrantResource) Metadata(_ context.Context, req resource.MetadataR
 func (r *columnGrantResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	attributes := map[string]schema.Attribute{
 		"id":            idAttribute(),
-		"database_name": privilegeString("Local database containing the table or view. Changing it replaces the grant.", false),
-		"schema_name":   privilegeString("Schema containing the table or view. Changing it replaces the grant.", false),
-		"object_name":   privilegeString("Table, view, or materialized view whose columns are granted; late-binding views do not support column privileges. Changing it replaces the grant.", false),
+		"database_name": privilegeString("Local database containing the table or view.", false),
+		"schema_name":   privilegeString("Schema containing the table or view.", false),
+		"object_name":   privilegeString("Table, view, or materialized view whose columns are granted; late-binding views do not support column privileges.", false),
 		"privileges": schema.MapAttribute{
 			Required: true, ElementType: types.SetType{ElemType: types.StringType},
 			MarkdownDescription: "Exact explicit column privileges: a map from `SELECT` or `UPDATE` to the set of column names that hold it. " +
@@ -67,8 +67,8 @@ func (r *columnGrantResource) Schema(_ context.Context, _ resource.SchemaRequest
 			},
 		},
 	}
-	attributes["grantee"] = privilegeString("Receiving identity name; use `public` for `PUBLIC`. Changing it replaces the grant.", false)
-	attributes["grantee_type"] = privilegeString("`ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.", false, "ROLE", "USER", "GROUP", "PUBLIC")
+	attributes["grantee"] = privilegeString("Receiving identity name; use `public` for `PUBLIC`.", false)
+	attributes["grantee_type"] = privilegeString("`ROLE`, `USER`, `GROUP`, or `PUBLIC`.", false, "ROLE", "USER", "GROUP", "PUBLIC")
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Owns the exact column-level `SELECT` and `UPDATE` privileges of one grantee on one table or view. Table-level grants, other grantees, and other relations are independent.",
 		Attributes:          attributes,
@@ -181,11 +181,11 @@ func columnGrantField(data columnGrantModel, field string) string {
 	}[field].ValueString()
 }
 
-// ValidateConfig reports invalid tuples and privileges during planning once the configuration is known.
+// ValidateConfig checks known tuple fields and privilege elements independently.
 func (r *columnGrantResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data columnGrantModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	if err := validateColumnGrant(data); err != nil {

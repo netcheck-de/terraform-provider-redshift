@@ -57,8 +57,8 @@ func newGrantResource() resource.Resource { return &grantResource{} }
 // descriptions that carry the replacement note of permission tuples.
 func grantRecipientAttributes(attributes map[string]schema.Attribute) {
 	granteeAttributes(attributes)
-	attributes["grantee"] = privilegeString("Receiving identity name; use `public` with `grantee_type = \"PUBLIC\"`. Changing it replaces the grant.", false)
-	attributes["grantee_type"] = privilegeString("`ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.", false, "ROLE", "USER", "GROUP", "PUBLIC")
+	attributes["grantee"] = privilegeString("Receiving identity name; use `public` with `grantee_type = \"PUBLIC\"`.", false)
+	attributes["grantee_type"] = privilegeString("`ROLE`, `USER`, `GROUP`, or `PUBLIC`.", false, "ROLE", "USER", "GROUP", "PUBLIC")
 }
 
 // grantPrivilegesAttribute defines the authoritative privilege set with a type-specific description.
@@ -79,28 +79,28 @@ func (r *grantResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database_name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local or shared database receiving scoped grants. Changing it replaces the grant.",
+				Required: true, MarkdownDescription: "Local or shared database receiving scoped grants.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"schema_name": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Required for `SCHEMA`; optional for `TABLES`, `FUNCTIONS`, `PROCEDURES`, and `TEMPLATES` to limit the grant to one schema. Omit for `DATABASE`, `SCHEMAS`, `LANGUAGES`, and `COPY JOBS`. Changing it replaces the grant.",
+				Optional: true, MarkdownDescription: "Required for `SCHEMA`; optional for `TABLES`, `FUNCTIONS`, `PROCEDURES`, and `TEMPLATES` to limit the grant to one schema. Omit for `DATABASE`, `SCHEMAS`, `LANGUAGES`, and `COPY JOBS`.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"role": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Receiving Redshift role; configure exactly one of `role`, `user`, or `datashare`. Changing it replaces the grant.",
+				Optional: true, MarkdownDescription: "Receiving Redshift role; configure exactly one of `role`, `user`, or `datashare`.",
 				Validators:    []validator.String{stringvalidator.ExactlyOneOf(recipients...)},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"user": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Receiving database user; the only recipient that can hold grant options. Changing it replaces the grant.",
+				Optional: true, MarkdownDescription: "Receiving database user; the only recipient that can hold grant options.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"datashare": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Producer datashare receiving `SCHEMA` `USAGE` or schema-scoped `TABLES` `SELECT`; requires a local database and `schema_name`. Conflicts with datashare membership resources for the same tuple. Changing it replaces the grant.",
+				Optional: true, MarkdownDescription: "Producer datashare receiving `SCHEMA` `USAGE` or schema-scoped `TABLES` `SELECT`; requires a local database and `schema_name`. Conflicts with datashare membership resources for the same tuple.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"scope": schema.StringAttribute{
-				Required: true, MarkdownDescription: "`DATABASE` or `SCHEMA` for the database or schema itself, or the object class of a scoped grant that covers current and future objects: `SCHEMAS`, `TABLES`, `FUNCTIONS`, `PROCEDURES`, `LANGUAGES`, `COPY JOBS`, or `TEMPLATES`. `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope. Changing it replaces the grant.",
+				Required: true, MarkdownDescription: "`DATABASE` or `SCHEMA` for the database or schema itself, or the object class of a scoped grant that covers current and future objects: `SCHEMAS`, `TABLES`, `FUNCTIONS`, `PROCEDURES`, `LANGUAGES`, `COPY JOBS`, or `TEMPLATES`. `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.OneOf(grantScopes...)},
 			},
@@ -117,39 +117,31 @@ func (r *grantResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 // validate checks scope, recipient, privilege, and grant option rules without issuing SQL.
 func (data grantModel) validate() error {
 	schemaName, scope := knownString(data.SchemaName), data.Scope.ValueString()
-	if _, ok := grantScopePrivileges[scope]; !ok {
+	if _, ok := grantScopePrivileges[scope]; !ok && !data.Scope.IsUnknown() {
 		return fmt.Errorf("unsupported scope %q", scope)
 	}
-	if (scope == "SCHEMA" && schemaName == "") || (schemaName != "" && !slices.Contains(grantSchemaScopes, scope)) {
+	if !data.Scope.IsUnknown() && !data.SchemaName.IsUnknown() && ((scope == "SCHEMA" && schemaName == "") || (schemaName != "" && !slices.Contains(grantSchemaScopes, scope))) {
 		return fmt.Errorf("schema_name is required for SCHEMA and only valid with SCHEMA, TABLES, FUNCTIONS, PROCEDURES, or TEMPLATES scope")
 	}
 	kind, _, err := data.recipient()
-	if err != nil {
+	recipientKnown := !data.Role.IsUnknown() && !data.User.IsUnknown() && !data.Datashare.IsUnknown()
+	if err != nil && recipientKnown {
 		return err
 	}
-	if kind == "DATASHARE" && (schemaName == "" || (scope != "SCHEMA" && scope != "TABLES")) {
+	if knownString(data.Datashare) != "" && ((!data.SchemaName.IsUnknown() && schemaName == "") || (!data.Scope.IsUnknown() && scope != "SCHEMA" && scope != "TABLES")) {
 		return fmt.Errorf("datashare grants require a local database, schema_name, SCHEMA or TABLES scope, and no role")
 	}
 	allowed := data.allowed()
 	privileges := knownStrings(data.Privileges)
 	for _, privilege := range privileges {
-		if !privilegeAllowed(allowed, privilege) {
+		if !data.Scope.IsUnknown() && !privilegeAllowed(allowed, privilege) {
 			if kind == "DATASHARE" {
 				return fmt.Errorf("datashare %s grants support only %s", scope, allowed[0])
 			}
 			return fmt.Errorf("%s grants support only %s, not %q", scope, strings.Join(privilegeNames(allowed), ", "), privilege)
 		}
 	}
-	options := knownStrings(data.GrantOptionPrivileges)
-	if len(options) != 0 && kind != "USER" {
-		return fmt.Errorf("grant_option_privileges requires a user recipient; Redshift grants options only to users")
-	}
-	for _, option := range options {
-		if !slices.Contains(privileges, option) {
-			return fmt.Errorf("grant option privilege %q is not in privileges", option)
-		}
-	}
-	return nil
+	return validateGrantOptions(data.Privileges, data.GrantOptionPrivileges, recipientKnown, kind == "USER")
 }
 
 // read refreshes explicit scoped privileges and grant options, routing local grants to their database and shared
@@ -319,7 +311,7 @@ func grantStringValues(names []string) []attr.Value {
 func (r *grantResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data grantModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	if err := data.validate(); err != nil {

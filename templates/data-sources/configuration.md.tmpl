@@ -21,6 +21,7 @@ SHOW name;
 {{ tffile "examples/data-sources/redshift_configuration/data-source.tf" }}
 
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -30,6 +31,7 @@ changed by the parameter group and by `ALTER USER ... SET` defaults of the provi
 so the value can differ between plans. Settings applied with `ALTER SYSTEM` take effect as reported, but this data
 source neither sets nor manages them.
 
-`name` must be a bare lowercase identifier, because `SHOW` takes it unquoted; `all` and dotted session context
-variables are rejected. An unknown parameter is an error. `id` (String, computed) is the read's JSON identity: the
-warehouse binding, the provider database, and `name`. Only `SHOW` is executed.
+`name` must be a lowercase identifier or a dotted session context name such as `app_context.user_id`, because `SHOW`
+takes it unquoted; `all` is rejected. A context variable must exist in the provider's own session: a `SET` in another
+session is not visible. An unknown parameter or context variable is an error. `id` (String, computed) is the read's JSON
+identity: the warehouse binding, the provider database, and `name`. Only `SHOW` is executed.

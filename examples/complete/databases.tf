@@ -1,4 +1,22 @@
 # SQL fixtures live in an owned disposable database; the AWS-created admin database is never managed here.
+variable "database_collation_insensitive" {
+  description = "Switch the deliberately empty collation probe database from CASE_SENSITIVE to CASE_INSENSITIVE in place. Keep all database objects out of this probe: Redshift refuses COLLATE when user tables exist."
+  type        = bool
+  default     = false
+}
+
+# An empty database makes the collation migration reproducible without touching the example's populated databases.
+resource "redshift_database" "collation_probe" {
+  provider  = redshift.consumer
+  name      = "example_collation_probe"
+  collation = var.database_collation_insensitive ? "CASE_INSENSITIVE" : "CASE_SENSITIVE"
+}
+
+data "redshift_database" "collation_probe" {
+  provider = redshift.consumer
+  name     = redshift_database.collation_probe.name
+}
+
 resource "redshift_database" "producer" {
   provider = redshift.producer
   name     = "example_producer"

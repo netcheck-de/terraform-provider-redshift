@@ -18,7 +18,7 @@ func routineLookupIdentity(fields map[string]string) {
 
 // newFunctionDataSource looks up one SQL UDF overload by its schema, name, and input types.
 func newFunctionDataSource() datasource.DataSource {
-	return newCatalogDataSource(catalogSpec{
+	return lookupDescriptions(newCatalogDataSource(catalogSpec{
 		name: "function", factory: newFunctionResource, computed: []string{"return_type", "body"},
 		identityFields: []string{"schema", "name", "signature"}, identityDatabase: "database", adjust: routineLookupIdentity,
 		lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
@@ -40,5 +40,5 @@ func newFunctionDataSource() datasource.DataSource {
 			}
 			return true, nil
 		},
-	})
+	}), map[string]string{"definition_fingerprint": viewLookupFingerprintDescription})
 }

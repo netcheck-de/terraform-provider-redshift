@@ -110,11 +110,11 @@ func (r *datashareResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local producer database owning the datashare; changing it replaces the resource.",
+				Required: true, MarkdownDescription: "Local producer database owning the datashare.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Datashare name, unique within the producer namespace; changing it replaces the resource.",
+				Required: true, MarkdownDescription: "Datashare name, unique within the producer namespace.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"publicly_accessible": schema.BoolAttribute{
@@ -263,12 +263,6 @@ func (r *datashareResource) Delete(ctx context.Context, req resource.DeleteReque
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropDatashareStatement(data))
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete datashare", "The datashare remains after deletion.")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete datashare", err.Error())

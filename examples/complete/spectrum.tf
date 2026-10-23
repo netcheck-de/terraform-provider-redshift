@@ -109,6 +109,7 @@ resource "aws_iam_role_policy" "producer_spectrum_tables" {
           local.glue_catalog_arn,
           aws_glue_catalog_database.fixture.arn,
           "${replace(aws_glue_catalog_database.fixture.arn, ":database/", ":table/")}/${local.spectrum_table_name}",
+          "${replace(aws_glue_catalog_database.fixture.arn, ":database/", ":table/")}/parquet_events",
         ]
       },
       {
@@ -177,4 +178,48 @@ data "redshift_external_partition" "events_first_day" {
   schema   = redshift_external_partition.events_first_day.schema
   table    = redshift_external_partition.events_first_day.table
   values   = redshift_external_partition.events_first_day.values
+}
+
+variable "spectrum_parquet_add_column" {
+  description = "Add amount between id and label in place: Parquet maps by name even though the catalog appends the column."
+  type        = bool
+  default     = false
+}
+
+# This empty prefix needs no fixture data: the example manages and reads the definition, not file contents.
+resource "redshift_external_table" "parquet_events" {
+  provider = redshift.producer
+  database = redshift_external_schema.glue.database
+  schema   = redshift_external_schema.glue.name
+  name     = "parquet_events"
+
+  column {
+    name = "id"
+    type = "INTEGER"
+  }
+
+  dynamic "column" {
+    for_each = var.spectrum_parquet_add_column ? [true] : []
+    content {
+      name = "amount"
+      type = "DECIMAL(8,2)"
+    }
+  }
+
+  column {
+    name = "label"
+    type = "VARCHAR(64)"
+  }
+
+  stored_as = "PARQUET"
+  location  = "s3://${module.fixture_bucket.s3_bucket_id}/spectrum/parquet_events/"
+
+  depends_on = [aws_iam_role_policy.producer_spectrum_tables]
+}
+
+data "redshift_external_table" "parquet_events" {
+  provider = redshift.producer
+  database = redshift_external_table.parquet_events.database
+  schema   = redshift_external_table.parquet_events.schema
+  name     = redshift_external_table.parquet_events.name
 }
