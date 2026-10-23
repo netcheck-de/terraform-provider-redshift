@@ -41,8 +41,3 @@ These wait for a documented way to read their state back:
 
 - **User lockouts:** Redshift 1.0.485645 rejects `SHOW USER LOCKOUT` ("account lockout security is not supported") on
   Serverless and provisioned; the complete example gates the listing behind `user_lockouts`. Recheck when it rolls out.
-
-### Live checks
-
-- **Concurrency hardening:** confirm against Redshift that a cancelled Data API statement reaches a final state within
-  the settle wait, and that repeated `GRANT ... ON ALL` and `ADD ALL` rounds cover objects created in parallel.

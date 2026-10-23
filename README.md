@@ -113,8 +113,6 @@ the tests still verify the certificate chain and hostname.
 - Redshift folds object names to lowercase, quoted ones included, unless `enable_case_sensitive_identifier` is set, so
   the provider rejects database, schema, table, and other object names with uppercase letters at plan time. User names
   and identity-provider principals and roles such as `AAD:alice` or `aad:Sales` keep their case.
-- `redshift_database` with `with_permissions = false` and cross-account datashare grants have not been tested against
-  live warehouses yet.
 - On macOS, native trust can reject Serverless certificates that lack Certificate Transparency timestamps. Add the
   Amazon Trust Services root through `ca_cert_file` to retain full certificate and hostname verification, or connect
   through the Data API. `sslmode = "require"` disables server authentication and is only a disposable-fixture fallback.
