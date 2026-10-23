@@ -34,6 +34,8 @@ through the Data API or a direct TLS connection.
 - Validate a tuple before the first `State.Set` in Create, and expose the same check in `ValidateConfig`.
 - Create and Update re-read the catalog to verify convergence; Read calls `RemoveResource` when the object or its parent
   is gone, and returns errors only for real failures.
+- Ordinary synchronous DROP operations need no post-delete refresh. Use only the identity and parent/existence checks
+  needed to delete safely; retain convergence checks for permission reconciliation and asynchronous operations.
 - Resource IDs are JSON objects built by `resourceClient.identity` and checked by `bound`; imports use the same JSON.
 - Nested configuration uses blocks with singular names; a required block validates with `listvalidator.IsRequired()`,
   `setvalidator.IsRequired()`, or `objectvalidator.IsRequired()` (plus `SizeAtLeast(1)` for lists and sets) and its

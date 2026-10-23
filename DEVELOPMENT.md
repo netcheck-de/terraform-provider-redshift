@@ -85,6 +85,10 @@ New types add files rather than modifying shared infrastructure. Follow this che
 - Keep SQL type names and keyword-like values uppercase in generated SQL, catalog readback, documentation, and
   examples. Preserve canonically equivalent configured spelling and never rewrite user-supplied SQL. Hand-written
   example SQL uses uppercase keywords/functions/casts; Terraform function names remain lowercase.
+- Both transports wait for statement completion. Ordinary synchronous DROP needs no catalog readback. Delete checks
+  existence with the resource's read, or with a minimal catalog read only where the full read issues extra queries.
+  Keep missing-parent and warehouse ownership checks, and retain verification for permission reconciliation or
+  asynchronous operations.
 
 ### Shared infrastructure
 

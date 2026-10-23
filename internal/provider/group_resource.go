@@ -158,12 +158,6 @@ func (r *groupResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, r.database.ValueString(), dropGroupStatement(data))
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete Redshift group", "The group remains after deletion.")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete Redshift group", err.Error())

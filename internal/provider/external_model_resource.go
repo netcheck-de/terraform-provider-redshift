@@ -380,7 +380,7 @@ func (r *externalModelResource) Update(ctx context.Context, req resource.UpdateR
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the model, which drops its inference function too, and verifies catalog removal.
+// Delete drops the model, which drops its inference function too.
 func (r *externalModelResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data externalModelModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -392,11 +392,6 @@ func (r *externalModelResource) Delete(ctx context.Context, req resource.DeleteR
 		var statement string
 		if statement, err = dropExternalModelStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
-		}
-		if err == nil {
-			if found, err = r.read(ctx, &data); err == nil && found {
-				resp.Diagnostics.AddError("Delete external model", "The model remains after deletion.")
-			}
 		}
 	}
 	if err != nil {

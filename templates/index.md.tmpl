@@ -53,7 +53,7 @@ external SQL clients are not coordinated by this gate.
   handshake, and authentication. `PGCONNECT_TIMEOUT` does not override it.
 - A `timeouts` block on [`redshift_table`](resources/table.md),
   [`redshift_materialized_view`](resources/materialized_view.md), and [`redshift_database`](resources/database.md)
-  bounds a whole create, update, or delete, including its catalog verification. Unset, an operation has no limit of
+  bounds a whole create, update, or delete, including any catalog verification. Unset, an operation has no limit of
   its own beyond `query_timeout` per statement; set, it also cancels a statement still running when the operation's
   time is up.
 - `max_retries` and `retry_mode` control retries of AWS API calls: Data API requests, endpoint discovery, and IAM

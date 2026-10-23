@@ -340,7 +340,13 @@ func (r *privilegeResource) reconcile(ctx context.Context, data types.Object) er
 	if !found {
 		return fmt.Errorf("target object or identity does not exist")
 	}
+	return r.reconcilePrivileges(ctx, data, actual, target)
+}
+
+// reconcilePrivileges reuses an observed tuple, so Delete does not repeat parent and privilege discovery.
+func (r *privilegeResource) reconcilePrivileges(ctx context.Context, data, actual types.Object, target privilegeTarget) error {
 	desired := data.Attributes()["privileges"].(types.Set)
+	desiredPrivileges := knownStrings(desired)
 	current := actual.Attributes()["privileges"].(types.Set)
 	desiredOptions := grantOptionPrivileges(data)
 	currentOptions := grantOptionPrivileges(actual)
@@ -355,7 +361,7 @@ func (r *privilegeResource) reconcile(ctx context.Context, data types.Object) er
 	held := knownStrings(current)
 	for _, privilege := range target.implicit {
 		// REVOKE of a privilege the grantee does not hold changes nothing, so revoking an unseen default is safe.
-		if !slices.Contains(held, privilege) && !slices.Contains(knownStrings(desired), privilege) {
+		if !slices.Contains(held, privilege) && !slices.Contains(desiredPrivileges, privilege) {
 			held = append(held, privilege)
 		}
 	}
@@ -367,13 +373,13 @@ func (r *privilegeResource) reconcile(ctx context.Context, data types.Object) er
 	for _, grant := range grants {
 		changes, err := privilegeOptionStatements(grant, target.allowed,
 			privilegeSets{privileges: held, options: currentOptions},
-			privilegeSets{privileges: knownStrings(desired), options: desiredOptions})
+			privilegeSets{privileges: desiredPrivileges, options: desiredOptions})
 		if err != nil {
 			return err
 		}
 		statements = append(statements, changes...)
 	}
-	if target.mutationGuard != nil && (len(knownStrings(desired)) != 0 || len(statements) != 0) {
+	if target.mutationGuard != nil && (len(desiredPrivileges) != 0 || len(statements) != 0) {
 		guard := target.mutationGuard
 		rows, err := r.queryDatabase(ctx, r.targetDatabase(target), guard.sql, guard.parameters)
 		if err != nil {
@@ -386,7 +392,7 @@ func (r *privilegeResource) reconcile(ctx context.Context, data types.Object) er
 	if err := r.exec(ctx, r.targetDatabase(target), statements...); err != nil {
 		return err
 	}
-	_, found, err = r.read(ctx, &actual)
+	_, found, err := r.read(ctx, &actual)
 	if err == nil && (!found || !actual.Attributes()["privileges"].Equal(desired) || !slices.Equal(grantOptionPrivileges(actual), desiredOptions)) {
 		return fmt.Errorf("privileges did not converge")
 	}
@@ -475,7 +481,7 @@ func (r *privilegeResource) Delete(ctx context.Context, req resource.DeleteReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	_, found, err := r.read(ctx, &data)
+	target, found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read "+r.name, err.Error())
 		return
@@ -491,7 +497,12 @@ func (r *privilegeResource) Delete(ctx context.Context, req resource.DeleteReque
 			return
 		}
 	}
-	if err := r.reconcile(ctx, withGrantOptions(withPrivileges(data, desired), nil)); err != nil {
+	planned := withGrantOptions(withPrivileges(data, desired), nil)
+	if err := r.validate(planned); err != nil {
+		resp.Diagnostics.AddError("Delete "+r.name, err.Error())
+		return
+	}
+	if err := r.reconcilePrivileges(ctx, planned, data, target); err != nil {
 		resp.Diagnostics.AddError("Delete "+r.name, err.Error())
 	}
 }

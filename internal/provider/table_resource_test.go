@@ -1095,3 +1095,30 @@ func TestTableSpecKeepsOwnerCase(t *testing.T) {
 	}))
 	assert.Equal(t, "IAMR:AWSReservedSSO_DevOps", spec.owner)
 }
+
+// TestTableDeleteDoesNotReadDefinition drops a table after checking only its identity, without the column and
+// constraint reads a refresh needs.
+func TestTableDeleteDoesNotReadDefinition(t *testing.T) {
+	model := tableEventsModel()
+	spec := tableSpec{schema: model.Schema.ValueString(), name: model.Name.ValueString()}
+	lookup, _, err := readTableQuery(spec).Build()
+	require.NoError(t, err)
+	dropped := false
+	r := newTableResource()
+	configureTestResource(t, r, queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+		switch sql {
+		case lookup:
+			assert.False(t, dropped, "successful synchronous DROP needs no readback")
+			// Identity is enough to delete even when the rest of the catalog metadata is unavailable.
+			return []dataapi.Row{{}}, nil
+		case dropTableStatement(spec):
+			dropped = true
+			return nil, nil
+		default:
+			return nil, fmt.Errorf("deletion should not read the table definition: %s", sql)
+		}
+	}))
+	_, diagnostics := applyOperation(t, r, "delete", model, nil, nil)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	assert.True(t, dropped)
+}

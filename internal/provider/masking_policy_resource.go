@@ -243,7 +243,7 @@ func (r *maskingPolicyResource) Update(ctx context.Context, req resource.UpdateR
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-// Delete drops the policy and verifies its removal; Redshift refuses while it is still attached.
+// Delete drops the policy; Redshift refuses while it is still attached.
 func (r *maskingPolicyResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data maskingPolicyModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -253,12 +253,6 @@ func (r *maskingPolicyResource) Delete(ctx context.Context, req resource.DeleteR
 	_, found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropMaskingPolicyStatement(data))
-		if err == nil {
-			_, found, err = r.read(ctx, &data)
-			if err == nil && found {
-				err = fmt.Errorf("the masking policy remains after deletion")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete masking policy", err.Error())

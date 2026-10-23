@@ -9,7 +9,3 @@ SELECT autorefresh FROM svv_mv_info WHERE RTRIM(database_name) = :database AND R
 -- database: admin
 DROP MATERIALIZED VIEW "serving"."sales_summary";
 -- params: {}
-
--- database: admin
-SELECT schemaname, viewname, viewowner, definition FROM pg_views WHERE schemaname = :schema AND viewname = :name;
--- params: {"name":"sales_summary","schema":"serving"}

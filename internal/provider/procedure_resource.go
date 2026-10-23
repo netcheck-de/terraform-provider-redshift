@@ -222,27 +222,41 @@ func procedureParameters(rows []sqlclient.Row) ([]procedureArgumentModel, error)
 	return arguments, nil
 }
 
-// observe reads the procedure overload and its arguments, reporting false when it or its database is gone.
-func (r *procedureResource) observe(ctx context.Context, data procedureModel) (procedureRow, bool, error) {
+// catalogRow finds the overload's catalog row and its signature, returning a nil row when it or its database is
+// gone. Delete needs only this, not the parameter listing observe adds.
+func (r *procedureResource) catalogRow(ctx context.Context, data procedureModel) (sqlclient.Row, sqlclient.Keyword, error) {
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
-		return procedureRow{}, false, err
+		return nil, "", err
 	}
 	signature, err := procedureSignature(procedureArguments(data.Arguments))
 	if err != nil {
-		return procedureRow{}, false, err
+		return nil, "", err
 	}
 	database, schema, name := data.Database.ValueString(), data.Schema.ValueString(), data.Name.ValueString()
 	if exists, err := r.localDatabaseExists(ctx, database); err != nil || !exists {
-		return procedureRow{}, false, err
+		return nil, "", err
 	}
 	rows, err := r.selectRows(ctx, database, readProcedureQuery(schema, name, signature))
 	if err != nil || len(rows) == 0 {
+		return nil, "", err
+	}
+	if len(rows) != 1 {
+		return nil, "", fmt.Errorf("procedure %q has ambiguous catalog metadata", name)
+	}
+	return rows[0], signature, nil
+}
+
+// observe reads the procedure overload and its arguments, reporting false when it or its database is gone.
+func (r *procedureResource) observe(ctx context.Context, data procedureModel) (procedureRow, bool, error) {
+	row, signature, err := r.catalogRow(ctx, data)
+	if err != nil || row == nil {
 		return procedureRow{}, false, err
 	}
-	if len(rows) != 1 || rows[0]["owner"] == "" {
-		return procedureRow{}, false, fmt.Errorf("procedure %q has incomplete or ambiguous catalog metadata", name)
+	database, schema, name := data.Database.ValueString(), data.Schema.ValueString(), data.Name.ValueString()
+	if row["owner"] == "" {
+		return procedureRow{}, false, fmt.Errorf("procedure %q has incomplete catalog metadata", name)
 	}
-	definer, err := strconv.ParseBool(rows[0]["security_definer"])
+	definer, err := strconv.ParseBool(row["security_definer"])
 	if err != nil {
 		return procedureRow{}, false, fmt.Errorf("procedure %q has an invalid security mode: %w", name, err)
 	}
@@ -254,7 +268,7 @@ func (r *procedureResource) observe(ctx context.Context, data procedureModel) (p
 	if err != nil {
 		return procedureRow{}, false, err
 	}
-	return procedureRow{signature: routineCatalogSignature(rows[0]["arguments"]), owner: rows[0]["owner"], body: rows[0]["body"], definer: definer, arguments: arguments}, true, nil
+	return procedureRow{signature: routineCatalogSignature(row["arguments"]), owner: row["owner"], body: row["body"], definer: definer, arguments: arguments}, true, nil
 }
 
 // procedureCatalogArguments keeps the configured arguments the catalog confirms and otherwise reports the
@@ -416,23 +430,18 @@ func (r *procedureResource) Update(ctx context.Context, req resource.UpdateReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the procedure and verifies its removal.
+// Delete drops the selected overload without needing its argument modes or body.
 func (r *procedureResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data procedureModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	_, found, err := r.observe(ctx, data)
-	if err == nil && found {
+	row, _, err := r.catalogRow(ctx, data)
+	if err == nil && row != nil {
 		var statement string
 		if statement, err = dropProcedureStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
-		}
-		if err == nil {
-			if _, found, err = r.observe(ctx, data); err == nil && found {
-				resp.Diagnostics.AddError("Delete procedure", "The procedure remains after deletion.")
-			}
 		}
 	}
 	if err != nil {

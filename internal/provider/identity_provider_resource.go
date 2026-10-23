@@ -476,12 +476,6 @@ func (r *identityProviderResource) Delete(ctx context.Context, req resource.Dele
 		resp.Diagnostics.AddError("Delete identity provider", err.Error())
 		return
 	}
-	found, err = r.read(ctx, &data)
-	if err != nil {
-		resp.Diagnostics.AddError("Verify identity provider deletion", err.Error())
-	} else if found {
-		resp.Diagnostics.AddError("Verify identity provider deletion", "The identity provider remains after deletion.")
-	}
 }
 
 // federatedUsersRemain reports, with an error under summary, whether users carrying data's namespace prefix exist or

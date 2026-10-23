@@ -9,7 +9,3 @@ SELECT connection_limit, syslog_access, session_timeout, external_user_id FROM s
 -- database: admin
 DROP USER "grafana";
 -- params: {}
-
--- database: admin
-SELECT usename, usesuper, usecreatedb, valuntil, array_to_string(useconfig, chr(30)) AS useconfig FROM pg_user WHERE usename = :name;
--- params: {"name":"grafana"}

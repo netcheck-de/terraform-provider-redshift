@@ -392,7 +392,7 @@ func (r *externalFunctionResource) Update(ctx context.Context, req resource.Upda
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-// Delete drops the function restrictively and verifies catalog removal.
+// Delete drops the function restrictively, after confirming it is an external function.
 func (r *externalFunctionResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data externalFunctionModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -404,12 +404,6 @@ func (r *externalFunctionResource) Delete(ctx context.Context, req resource.Dele
 		var statement string
 		if statement, err = dropExternalFunctionStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
-		}
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete external function", "The external function remains after deletion.")
-			}
 		}
 	}
 	if err != nil {

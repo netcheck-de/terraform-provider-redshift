@@ -1010,7 +1010,7 @@ func (r *tableResource) refreshEncodings(ctx context.Context, plan tableModel) (
 	return tableAlterState{model: refreshed, spec: spec, constraints: names}, nil
 }
 
-// Delete drops the table without CASCADE and verifies its removal.
+// Delete drops the table without CASCADE. Successful DROP completes synchronously.
 func (r *tableResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state tableResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -1020,16 +1020,22 @@ func (r *tableResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 		return
 	}
 	data := state.tableModel
-	found, _, err := r.read(ctx, &data)
-
-	if err == nil && found {
-		err = r.exec(ctx, data.Database.ValueString(), dropTableStatement(tableSpec{schema: data.Schema.ValueString(), name: data.Name.ValueString()}))
-		if err == nil {
-			found, _, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete table", "The table remains after deletion.")
-			}
+	database := data.Database.ValueString()
+	if err := r.bound(data.ID, database); err != nil {
+		resp.Diagnostics.AddError("Delete table", err.Error())
+		return
+	}
+	if exists, err := r.localDatabaseExists(ctx, database); err != nil || !exists {
+		if err != nil {
+			resp.Diagnostics.AddError("Delete table", err.Error())
 		}
+		return
+	}
+	spec := tableSpec{schema: data.Schema.ValueString(), name: data.Name.ValueString()}
+	// Dropping a table needs its identity, not a decodable definition or visible constraint metadata.
+	rows, err := r.selectRows(ctx, database, readTableQuery(spec))
+	if err == nil && len(rows) > 0 {
+		err = r.exec(ctx, database, dropTableStatement(spec))
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete table", err.Error())

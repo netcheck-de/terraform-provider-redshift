@@ -263,12 +263,6 @@ func (r *datashareResource) Delete(ctx context.Context, req resource.DeleteReque
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropDatashareStatement(data))
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete datashare", "The datashare remains after deletion.")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete datashare", err.Error())

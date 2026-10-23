@@ -434,12 +434,6 @@ func (r *externalSchemaResource) Delete(ctx context.Context, req resource.Delete
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropExternalSchemaStatement(data))
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete external schema", "The external schema remains after deletion.")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete external schema", err.Error())

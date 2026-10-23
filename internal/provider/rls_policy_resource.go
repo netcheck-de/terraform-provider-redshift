@@ -315,7 +315,7 @@ func (r *rlsPolicyResource) Update(ctx context.Context, req resource.UpdateReque
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-// Delete drops the policy restrictively and verifies catalog removal.
+// Delete drops the policy without cascading to attachments.
 func (r *rlsPolicyResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data rlsPolicyModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -325,12 +325,6 @@ func (r *rlsPolicyResource) Delete(ctx context.Context, req resource.DeleteReque
 	found, _, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropRlsPolicyStatement(data))
-		if err == nil {
-			found, _, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete RLS policy", "The RLS policy remains after deletion.")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete RLS policy", err.Error())

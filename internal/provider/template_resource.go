@@ -315,7 +315,7 @@ func (r *templateResource) Update(ctx context.Context, req resource.UpdateReques
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the template and verifies catalog removal.
+// Delete drops the template after checking its identity.
 func (r *templateResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data templateModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -327,11 +327,6 @@ func (r *templateResource) Delete(ctx context.Context, req resource.DeleteReques
 		var statement string
 		if statement, err = dropTemplateStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
-		}
-		if err == nil {
-			if _, found, err = r.read(ctx, data); err == nil && found {
-				err = errors.New("the template remains after deletion")
-			}
 		}
 	}
 	if err != nil {

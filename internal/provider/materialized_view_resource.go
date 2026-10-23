@@ -396,7 +396,7 @@ func (r *materializedViewResource) Update(ctx context.Context, req resource.Upda
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the materialized view restrictively and verifies catalog removal.
+// Delete drops the materialized view without cascading to dependent objects.
 func (r *materializedViewResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state materializedViewResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -412,11 +412,6 @@ func (r *materializedViewResource) Delete(ctx context.Context, req resource.Dele
 		var statement string
 		if statement, err = dropMaterializedViewStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
-		}
-		if err == nil {
-			if _, found, err = r.read(ctx, data); err == nil && found {
-				resp.Diagnostics.AddError("Delete materialized view", "The materialized view remains after deletion.")
-			}
 		}
 	}
 	if err != nil {

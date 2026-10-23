@@ -13,7 +13,3 @@ SELECT TRIM(integration_id) AS integration_id, TRIM(source_database) AS source_d
 -- database: admin
 DROP DATABASE "replica";
 -- params: {}
-
--- database: admin
-SHOW DATABASES LIKE 'replica';
--- params: {}

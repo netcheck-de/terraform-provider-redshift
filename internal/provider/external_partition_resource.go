@@ -250,7 +250,7 @@ func (r *externalPartitionResource) Update(ctx context.Context, req resource.Upd
 	}
 }
 
-// Delete drops the partition and verifies its removal; the S3 data is not touched.
+// Delete drops the partition; the S3 data is not touched.
 func (r *externalPartitionResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data externalPartitionModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -260,12 +260,6 @@ func (r *externalPartitionResource) Delete(ctx context.Context, req resource.Del
 	spec, found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropExternalPartitionStatement(spec))
-		if err == nil {
-			_, found, err = r.read(ctx, &data)
-			if err == nil && found {
-				err = fmt.Errorf("the partition remains after deletion")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete external partition", err.Error())

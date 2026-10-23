@@ -270,7 +270,7 @@ func (r *copyJobResource) Update(ctx context.Context, req resource.UpdateRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-// Delete drops the job and verifies its removal; data it loaded stays in the table.
+// Delete drops the job; data it loaded stays in the table.
 func (r *copyJobResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data copyJobModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -282,11 +282,6 @@ func (r *copyJobResource) Delete(ctx context.Context, req resource.DeleteRequest
 		var statement string
 		if statement, err = dropCopyJobStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
-		}
-		if err == nil {
-			if found, err = r.read(ctx, &data); err == nil && found {
-				err = errors.New("the copy job remains after deletion")
-			}
 		}
 	}
 	if err != nil {

@@ -744,7 +744,7 @@ func (r *databaseResource) Update(ctx context.Context, req resource.UpdateReques
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the selected database and verifies catalog removal.
+// Delete drops the selected database after checking its ownership and kind.
 func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state databaseResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -766,12 +766,6 @@ func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteReques
 				"database before the integration it depends on. Delete the integration outside Terraform, for example with "+
 				"aws rds delete-integration (Aurora/RDS) or aws redshift delete-integration (DynamoDB), wait until it is gone, and destroy again.", err))
 			return
-		}
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete shared database", "The database remains after deletion.")
-			}
 		}
 	}
 	if err != nil {

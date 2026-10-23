@@ -245,7 +245,7 @@ func TestUserLifecycleErrorPaths(t *testing.T) {
 		data.ID = r.identity("admin", map[string]string{"name": "grafana"})
 		assert.False(t, runUser(t, r, operation, data, data, "").HasError())
 	}
-	for _, stage := range []string{"create", "create verification", "create missing", "create mismatch", "delete remains"} {
+	for _, stage := range []string{"create", "create verification", "create missing", "create mismatch"} {
 		t.Run(stage, func(t *testing.T) {
 			c := &catalog{}
 			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, params map[string]string) ([]dataapi.Row, error) {
@@ -261,9 +261,6 @@ func TestUserLifecycleErrorPaths(t *testing.T) {
 				if stage == "create mismatch" && strings.HasPrefix(sql, "SELECT usename") {
 					return []dataapi.Row{{"usename": "grafana", "usesuper": "false", "usecreatedb": "false"}}, nil
 				}
-				if stage == "delete remains" && strings.HasPrefix(sql, "DROP USER") {
-					return nil, nil
-				}
 				return c.Query(ctx, target, sql, params)
 			})
 			r := &userResource{testResourceClient(client)}
@@ -271,13 +268,7 @@ func TestUserLifecycleErrorPaths(t *testing.T) {
 			if stage == "create mismatch" {
 				data.Superuser = types.BoolValue(true)
 			}
-			if stage == "delete remains" {
-				c.user = true
-				data.ID = r.identity("admin", map[string]string{"name": "grafana"})
-				assert.True(t, runUser(t, r, "delete", data, data, "").HasError())
-			} else {
-				assert.True(t, runUser(t, r, "create", data, data, "InitialPass123").HasError())
-			}
+			assert.True(t, runUser(t, r, "create", data, data, "InitialPass123").HasError())
 		})
 	}
 }

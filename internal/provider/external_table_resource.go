@@ -734,7 +734,7 @@ func (r *externalTableResource) Update(ctx context.Context, req resource.UpdateR
 	resp.Diagnostics.Append(resp.State.Set(ctx, &observed)...)
 }
 
-// Delete drops the table restrictively and verifies its removal; the S3 data is not touched.
+// Delete drops the table restrictively; the S3 data is not touched.
 func (r *externalTableResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data externalTableModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -744,12 +744,6 @@ func (r *externalTableResource) Delete(ctx context.Context, req resource.DeleteR
 	catalog, err := r.fetch(ctx, data)
 	if err == nil && catalog != nil {
 		err = r.exec(ctx, data.Database.ValueString(), dropExternalTableStatement(data))
-		if err == nil {
-			catalog, err = r.fetch(ctx, data)
-			if err == nil && catalog != nil {
-				err = fmt.Errorf("the external table remains after deletion")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete external table", err.Error())

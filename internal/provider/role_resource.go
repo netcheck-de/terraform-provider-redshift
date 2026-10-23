@@ -214,7 +214,7 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Delete drops the role without cascading and verifies its removal.
+// Delete drops the role without cascading to grants or memberships.
 func (r *roleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data roleModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -224,12 +224,6 @@ func (r *roleResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, r.database.ValueString(), dropRoleStatement(data))
-		if err == nil {
-			found, err = r.read(ctx, &data)
-			if err == nil && found {
-				resp.Diagnostics.AddError("Delete Redshift role", "The role remains after deletion.")
-			}
-		}
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Delete Redshift role", err.Error())

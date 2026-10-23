@@ -9,7 +9,3 @@ SHOW MODEL "serving"."summarizer";
 -- database: admin
 DROP MODEL "serving"."summarizer";
 -- params: {}
-
--- database: admin
-SHOW MODEL ALL;
--- params: {}

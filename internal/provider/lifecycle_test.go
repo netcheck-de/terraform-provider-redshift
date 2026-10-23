@@ -277,9 +277,12 @@ func TestLifecycleMissingObjects(t *testing.T) {
 	}
 }
 
-// TestDeletionVerifiesRemoval checks that acknowledged but ineffective deletion fails verification.
-func TestDeletionVerifiesRemoval(t *testing.T) {
+// TestPermissionDeletionVerifiesRemoval checks that acknowledged revocations actually converge.
+func TestPermissionDeletionVerifiesRemoval(t *testing.T) {
 	for _, test := range lifecycleCases() {
+		if test.kind != lifecyclePermission {
+			continue
+		}
 		t.Run(test.name, func(t *testing.T) {
 			c := test.catalog()
 			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
