@@ -128,7 +128,7 @@ func TestViewRejectsMaterializedRelation(t *testing.T) {
 	require.ErrorIs(t, err, errViewIsMaterialized)
 	for _, operation := range []string{"read", "update", "delete"} {
 		configureTestResource(t, r, c)
-		assert.True(t, invoke(t, r, operation, data, false).HasError(), operation)
+		assert.True(t, invoke(t, r, operation, data).HasError(), operation)
 	}
 	assert.Empty(t, c.writes)
 }

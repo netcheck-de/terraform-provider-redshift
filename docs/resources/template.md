@@ -76,9 +76,9 @@ resource "redshift_template" "shapefile" {
 
 ### Required
 
-- `database` (String) Local database containing the template; templates cannot be referenced from other databases. Changing it replaces the template.
+- `database` (String) Local database containing the template; templates cannot be referenced from other databases.
 - `name` (String) Template name, in lowercase. A change renames the template in place with `ALTER TEMPLATE ... RENAME TO`.
-- `schema` (String) Existing schema containing the template. Changing it replaces the template.
+- `schema` (String) Existing schema containing the template.
 
 ### Optional
 

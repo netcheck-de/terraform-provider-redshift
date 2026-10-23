@@ -9,9 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,20 +50,7 @@ func testSchemaListing() datasource.DataSource {
 // collectionConfig builds a listing configuration with the given string filters and null computed values.
 func collectionConfig(t *testing.T, source datasource.DataSource, filters map[string]string) types.Object {
 	t.Helper()
-	var response datasource.SchemaResponse
-	source.Schema(context.Background(), datasource.SchemaRequest{}, &response)
-	attributes, attributeTypes := map[string]attr.Value{}, map[string]attr.Type{}
-	for name, attribute := range response.Schema.Attributes {
-		attributeType := attribute.GetType()
-		attributeTypes[name] = attributeType
-		value, err := attributeType.ValueFromTerraform(context.Background(), tftypes.NewValue(attributeType.TerraformType(context.Background()), nil))
-		require.NoError(t, err)
-		attributes[name] = value
-		if filter, ok := filters[name]; ok {
-			attributes[name] = types.StringValue(filter)
-		}
-	}
-	return types.ObjectValueMust(attributeTypes, attributes)
+	return catalogLookupObject(t, source, filters)
 }
 
 // TestCollectionDataSourceSchema checks the filter, identity, and element shape shared by all listings.
@@ -106,6 +91,21 @@ func TestCollectionElementFromBlocks(t *testing.T) {
 	column := element["column"].(schema.ListNestedAttribute)
 	assert.True(t, column.Computed)
 	assert.IsType(t, schema.SingleNestedAttribute{}, column.NestedObject.Attributes["identity"])
+}
+
+// TestCollectionID ignores unset filters and keeps JSON identities stable regardless of map iteration order.
+func TestCollectionID(t *testing.T) {
+	source := testSchemaListing().(*collectionDataSource)
+	source.resourceClient = testResourceClient(fullCatalog())
+	data := collectionConfig(t, source, map[string]string{"database": "analytics", "owner": "etl"})
+	id := source.collectionID(data)
+	assertLookupIdentity(t, id, "analytics", map[string]string{"owner": "etl"})
+	for range 20 {
+		assert.Equal(t, id, source.collectionID(data))
+	}
+	lookupValue(&data, "database", types.StringUnknown())
+	lookupValue(&data, "owner", types.StringNull())
+	assertLookupIdentity(t, source.collectionID(data), "admin", map[string]string{})
 }
 
 // TestCollectionDataSourceRead checks filtered and unfiltered listings, empty results, and failures.
@@ -165,9 +165,12 @@ func TestCollectionDataSourceRead(t *testing.T) {
 	}})
 	_, diagnostics = readSource(t, malformed, collectionConfig(t, malformed, nil), client)
 	assert.True(t, diagnostics.HasError(), "elements must match the element type")
-	var response datasource.SchemaResponse
-	source.Schema(context.Background(), datasource.SchemaRequest{}, &response)
-	resp := datasource.ReadResponse{State: tfsdk.State{Schema: response.Schema}}
-	source.Read(context.Background(), datasource.ReadRequest{Config: tfsdk.Config{Schema: response.Schema, Raw: tftypes.NewValue(tftypes.String, "invalid")}}, &resp)
-	assert.True(t, resp.Diagnostics.HasError())
+}
+
+// TestCollectionIdentityIncludesBooleanFilter records a boolean filter in the listing identity as text.
+func TestCollectionIdentityIncludesBooleanFilter(t *testing.T) {
+	d := newCollectionDataSource(collectionSpec{name: "items", filters: map[string]schema.Attribute{"enabled": schema.BoolAttribute{Optional: true}}}).(*collectionDataSource)
+	d.resourceClient = testResourceClient(fullCatalog())
+	data := types.ObjectValueMust(map[string]attr.Type{"enabled": types.BoolType}, map[string]attr.Value{"enabled": types.BoolValue(true)})
+	assertLookupIdentity(t, d.collectionID(data), "admin", map[string]string{"enabled": "true"})
 }

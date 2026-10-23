@@ -23,11 +23,11 @@ var _ = registerReplacementPolicy("redshift_external_schema", map[string]replace
 	"glue_database":      replaceAlways,
 	"source_database":    replaceAlways,
 	"source_schema":      replaceAlways,
-	"iam_role_arn":       replaceConditional("TestExternalSchemaConditionalReplacement"),
+	"iam_role_arn":       replaceConditional,
 	"region":             replaceAlways,
-	"uri":                replaceConditional("TestExternalSchemaConditionalReplacement"),
+	"uri":                replaceConditional,
 	"port":               replaceAlways,
-	"secret_arn":         replaceConditional("TestExternalSchemaConditionalReplacement"),
+	"secret_arn":         replaceConditional,
 	"authentication":     replaceNever,
 	"authentication_arn": replaceNever,
 	"owner":              replaceNever,
@@ -46,7 +46,7 @@ func TestExternalSchemaRegionRoundTrips(t *testing.T) {
 				return []dataapi.Row{{"schemaname": "example_external", "eskind": "1", "databasename": "glue", "esoptions": `{"IAM_ROLE":"role","` + key + `":"eu-central-1"}`, "owner": "admin"}}, nil
 			}))}
 			data := externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("example_external"), GlueDatabase: types.StringValue("glue"), IAMRoleARN: types.StringValue("role"), Region: types.StringValue("eu-central-1")}
-			require.False(t, invoke(t, r, "create", data, false).HasError())
+			require.False(t, invoke(t, r, "create", data).HasError())
 			found, err := r.read(context.Background(), &data)
 			require.NoError(t, err)
 			require.True(t, found)

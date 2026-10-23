@@ -103,7 +103,7 @@ func (r *datashareGrantResource) Schema(_ context.Context, _ resource.SchemaRequ
 				// all record the same state.
 				Optional: true, Computed: true, Default: booldefault.StaticBool(false),
 				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.RequiresReplaceIf(datashareGrantFormChanged, datashareGrantFormChange, datashareGrantFormChange)},
-				MarkdownDescription: "Grants usage `VIA DATA CATALOG`, to a Lake Formation account instead of an account that owns a cluster; requires `account_id`. Defaults to `false`, the plain account form. `SVV_DATASHARE_CONSUMERS` reports both forms alike, so refresh cannot detect a grant re-created in the other form. Changing it replaces the grant.",
+				MarkdownDescription: "Grants usage `VIA DATA CATALOG`, to a Lake Formation account instead of an account that owns a cluster; requires `account_id`. Defaults to `false`, the plain account form. `SVV_DATASHARE_CONSUMERS` reports both forms alike, so refresh cannot detect a grant re-created in the other form.",
 			},
 		},
 	}

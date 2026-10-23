@@ -15,10 +15,10 @@ var _ = registerResource(newDatasharePrivilegeResource)
 // stay off: REVOKE ON DATASHARE documents no GRANT OPTION FOR form that would remove only the option.
 func newDatasharePrivilegeResource() resource.Resource {
 	attributes := privilegeAttributes()
-	attributes["database_name"] = privilegeString("Local producer database that owns the datashare; grants run in it. Changing it replaces the grant.", false)
-	attributes["datashare_name"] = privilegeString("Outbound datashare receiving the permissions. Changing it replaces the grant.", false)
-	attributes["grantee"] = privilegeString("Receiving user, role, or group name; use `public` with `PUBLIC`. Changing it replaces the grant.", false)
-	attributes["grantee_type"] = privilegeString("`USER`, `ROLE`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.", false, "USER", "ROLE", "GROUP", "PUBLIC")
+	attributes["database_name"] = privilegeString("Local producer database that owns the datashare; grants run in it.", false)
+	attributes["datashare_name"] = privilegeString("Outbound datashare receiving the permissions.", false)
+	attributes["grantee"] = privilegeString("Receiving user, role, or group name; use `public` with `PUBLIC`.", false)
+	attributes["grantee_type"] = privilegeString("`USER`, `ROLE`, `GROUP`, or `PUBLIC`.", false, "USER", "ROLE", "GROUP", "PUBLIC")
 	attributes["privileges"] = schema.SetAttribute{
 		Required: true, ElementType: types.StringType,
 		Validators:          []validator.Set{setvalidator.ValueStringsAre(stringvalidator.OneOf(privilegeNames(datasharePrivileges)...))},

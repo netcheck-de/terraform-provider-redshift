@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"maps"
-	"slices"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -94,7 +93,7 @@ func (d *collectionDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 func (d *collectionDataSource) collectionID(data types.Object) types.String {
 	fields := map[string]string{}
 	attributes := data.Attributes()
-	for _, name := range slices.Sorted(maps.Keys(d.spec.filters)) {
+	for name := range d.spec.filters {
 		value := attributes[name]
 		if value == nil || value.IsNull() || value.IsUnknown() {
 			continue

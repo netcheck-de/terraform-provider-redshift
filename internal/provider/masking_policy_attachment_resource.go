@@ -79,20 +79,20 @@ func (r *maskingPolicyAttachmentResource) Schema(_ context.Context, _ resource.S
 		MarkdownDescription: "Attaches a dynamic data masking policy to columns of one relation for one user, role, or `PUBLIC`. Attaching a policy does not need any table-level setting; Redshift masks the columns for the recipient right away.",
 		Attributes: map[string]schema.Attribute{
 			"id":           idAttribute(),
-			"database":     maskingAttachmentString("Local database that holds both the policy and the relation. Changing it replaces the attachment."),
-			"policy":       maskingAttachmentString("Masking policy to attach, such as `redshift_masking_policy.example.name`. Changing it replaces the attachment."),
-			"schema":       maskingAttachmentString("Schema of the relation. Changing it replaces the attachment."),
-			"relation":     maskingAttachmentString("Table or view whose columns are masked. Changing it replaces the attachment."),
-			"grantee":      maskingAttachmentString("User or role the policy applies to; use `public` with `grantee_type = \"PUBLIC\"`. Changing it replaces the attachment."),
-			"grantee_type": maskingAttachmentString("`USER`, `ROLE`, or `PUBLIC`. Changing it replaces the attachment.", "USER", "ROLE", "PUBLIC"),
+			"database":     maskingAttachmentString("Local database that holds both the policy and the relation."),
+			"policy":       maskingAttachmentString("Masking policy to attach, such as `redshift_masking_policy.example.name`."),
+			"schema":       maskingAttachmentString("Schema of the relation."),
+			"relation":     maskingAttachmentString("Table or view whose columns are masked."),
+			"grantee":      maskingAttachmentString("User or role the policy applies to; use `public` with `grantee_type = \"PUBLIC\"`."),
+			"grantee_type": maskingAttachmentString("`USER`, `ROLE`, or `PUBLIC`.", "USER", "ROLE", "PUBLIC"),
 			"columns": schema.ListAttribute{
 				Required: true, ElementType: types.StringType, Validators: nonEmpty,
-				MarkdownDescription: "Ordered output columns that the policy masks, one per policy output. Changing it replaces the attachment.",
+				MarkdownDescription: "Ordered output columns that the policy masks, one per policy output.",
 				PlanModifiers:       []planmodifier.List{listplanmodifier.RequiresReplace()},
 			},
 			"input_columns": schema.ListAttribute{
 				Optional: true, Computed: true, ElementType: types.StringType, Validators: nonEmpty,
-				MarkdownDescription: "Ordered relation columns passed to the policy's input columns (`USING`). Defaults to `columns`, as Redshift does. Changing it replaces the attachment.",
+				MarkdownDescription: "Ordered relation columns passed to the policy's input columns (`USING`). Defaults to `columns`, as Redshift does.",
 				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown(), listplanmodifier.RequiresReplace()},
 			},
 			"priority": schema.Int64Attribute{

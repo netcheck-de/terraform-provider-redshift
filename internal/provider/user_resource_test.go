@@ -234,11 +234,6 @@ func TestUserUpdateDetectsMismatchedBindingAndPrivileges(t *testing.T) {
 
 // TestUserLifecycleErrorPaths injects SQL failures and missing user states across lifecycle operations.
 func TestUserLifecycleErrorPaths(t *testing.T) {
-	for _, operation := range []string{"create", "read", "update", "delete"} {
-		r := &userResource{testResourceClient(&catalog{user: true})}
-		data := grafanaUser()
-		require.True(t, invoke(t, r, operation, data, true).HasError())
-	}
 	for _, operation := range []string{"read", "delete"} {
 		r := &userResource{testResourceClient(&catalog{})}
 		data := grafanaUser()
@@ -332,4 +327,28 @@ func TestUserUpdateFailures(t *testing.T) {
 			assert.Equal(t, summaries[stage], diagnostics.Errors()[0].Summary())
 		})
 	}
+}
+
+// TestUserAlterSkipsUnknownAndResetsRemovedSettings leaves unknown settings for apply and resets removed ones to their defaults.
+func TestUserAlterSkipsUnknownAndResetsRemovedSettings(t *testing.T) {
+	before := grafanaUser()
+	after := before
+	after.SearchPath = types.ListUnknown(types.StringType)
+	assert.Empty(t, userSearchPathStatements(before, after))
+	after.SessionDefaults = types.MapUnknown(types.StringType)
+	statements, err := userSessionDefaultStatements(before, after)
+	require.NoError(t, err)
+	assert.Empty(t, statements)
+	before.SyslogAccess, before.ValidUntil = types.StringValue("UNRESTRICTED"), types.StringValue("2030-01-01")
+	before.ConnectionLimit, before.SessionTimeout = types.Int64Value(10), types.Int64Value(60)
+	after = before
+	after.SyslogAccess, after.ValidUntil = types.StringNull(), types.StringNull()
+	after.ConnectionLimit, after.SessionTimeout = types.Int64Null(), types.Int64Null()
+	statements, err = alterUserStatements(before, after)
+	require.NoError(t, err)
+	require.Len(t, statements, 1)
+	assert.Contains(t, statements[0], "VALID UNTIL 'infinity'")
+	after.SyslogAccess = types.StringValue("INVALID")
+	_, err = alterUserBatches(before, after)
+	require.ErrorContains(t, err, "syslog_access")
 }

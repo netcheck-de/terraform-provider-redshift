@@ -218,15 +218,15 @@ func (r *externalTableResource) Schema(_ context.Context, _ resource.SchemaReque
 		MarkdownDescription: "Manages one Redshift Spectrum external table, created with `CREATE EXTERNAL TABLE` in an external schema. Partitions are managed separately with `redshift_external_partition`.",
 		Attributes: map[string]schema.Attribute{
 			"id":              idAttribute(),
-			"database":        schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local Redshift database holding the external schema. Changing it replaces the table."},
-			"schema":          schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "External schema that maps the external catalog database, for example a `redshift_external_schema`. Changing it replaces the table."},
-			"name":            schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Table name; the external catalog stores it in lowercase. Changing it replaces the table."},
-			"field_delimiter": schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "`ROW FORMAT DELIMITED FIELDS TERMINATED BY` character: one ASCII character; write control characters as HCL escapes such as `\"\\t\"` or `\"\\u0007\"`. Conflicts with `serde`. Changing it replaces the table."},
-			"line_delimiter":  schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "`ROW FORMAT DELIMITED LINES TERMINATED BY` character, usually `\"\\n\"`. Conflicts with `serde`. Changing it replaces the table."},
-			"serde":           schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "`ROW FORMAT SERDE` class, such as `org.openx.data.jsonserde.JsonSerDe` or `org.apache.hadoop.hive.serde2.OpenCSVSerde`. Conflicts with the delimiters. Changing it replaces the table."},
+			"database":        schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local Redshift database holding the external schema."},
+			"schema":          schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "External schema that maps the external catalog database, for example a `redshift_external_schema`."},
+			"name":            schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Table name; the external catalog stores it in lowercase."},
+			"field_delimiter": schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "`ROW FORMAT DELIMITED FIELDS TERMINATED BY` character: one ASCII character; write control characters as HCL escapes such as `\"\\t\"` or `\"\\u0007\"`. Conflicts with `serde`."},
+			"line_delimiter":  schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "`ROW FORMAT DELIMITED LINES TERMINATED BY` character, usually `\"\\n\"`. Conflicts with `serde`."},
+			"serde":           schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "`ROW FORMAT SERDE` class, such as `org.openx.data.jsonserde.JsonSerDe` or `org.apache.hadoop.hive.serde2.OpenCSVSerde`. Conflicts with the delimiters."},
 			"serde_properties": schema.MapAttribute{
 				ElementType: types.StringType, Optional: true, PlanModifiers: []planmodifier.Map{mapplanmodifier.RequiresReplace()},
-				MarkdownDescription: "`WITH SERDEPROPERTIES` pairs for `serde`, such as `{ \"strip.outer.array\" = \"true\" }`. Changing it replaces the table.",
+				MarkdownDescription: "`WITH SERDEPROPERTIES` pairs for `serde`, such as `{ \"strip.outer.array\" = \"true\" }`.",
 			},
 			"stored_as": schema.StringAttribute{
 				Optional: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(externalTableStoredAsReplace, "Changing stored_as replaces the table unless SET FILE FORMAT supports both formats and the columns fit the resulting mapping.", "Changing `stored_as` replaces the table unless `SET FILE FORMAT` supports both formats and the columns fit the resulting mapping.")},
@@ -234,11 +234,11 @@ func (r *externalTableResource) Schema(_ context.Context, _ resource.SchemaReque
 			},
 			"input_format": schema.StringAttribute{
 				Optional: true, Computed: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIfConfigured()},
-				MarkdownDescription: "`STORED AS INPUTFORMAT` class, for formats such as Hudi or Delta Lake manifests; requires `output_format`. Without it, the class the catalog records for `stored_as` is reported. Changing it replaces the table.",
+				MarkdownDescription: "`STORED AS INPUTFORMAT` class, for formats such as Hudi or Delta Lake manifests; requires `output_format`. Without it, the class the catalog records for `stored_as` is reported.",
 			},
 			"output_format": schema.StringAttribute{
 				Optional: true, Computed: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIfConfigured()},
-				MarkdownDescription: "`OUTPUTFORMAT` class paired with `input_format`. Without it, the class the catalog records for `stored_as` is reported. Changing it replaces the table.",
+				MarkdownDescription: "`OUTPUTFORMAT` class paired with `input_format`. Without it, the class the catalog records for `stored_as` is reported.",
 			},
 			"location": schema.StringAttribute{Required: true, MarkdownDescription: "`s3://` folder (ending in `/`) or manifest file holding the data, in the warehouse's AWS Region. Changes run `ALTER TABLE ... SET LOCATION`."},
 			"table_properties": schema.MapAttribute{

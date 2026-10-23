@@ -26,13 +26,13 @@ var _ = registerReplacementPolicy("redshift_table", map[string]replaceRule{
 	"schema":       replaceAlways,
 	"name":         replaceAlways,
 	"owner":        replaceNever,
-	"column":       replaceConditional("TestTableConditionalReplacement"),
-	"primary_key":  replaceConditional("TestTableConditionalReplacement"),
+	"column":       replaceConditional,
+	"primary_key":  replaceConditional,
 	"unique":       replaceNever,
 	"foreign_key":  replaceNever,
-	"distribution": replaceConditional("TestTableConditionalReplacement"),
-	"sort_key":     replaceConditional("TestTableConditionalReplacement"),
-	"backup":       replaceConditional("TestTableConditionalReplacement"),
+	"distribution": replaceConditional,
+	"sort_key":     replaceConditional,
+	"backup":       replaceConditional,
 })
 
 var _ = registerLifecycleCase(lifecycleCase{
@@ -172,7 +172,7 @@ func tableTestForeignKeys(keys ...attr.Value) types.Set {
 
 // tableTestDistribution builds a distribution block; empty strings are omitted attributes.
 func tableTestDistribution(style, key string) types.Object {
-	return types.ObjectValueMust(tableDistributionAttributeTypes, map[string]attr.Value{"style": tableOptionalString(style), "key": tableOptionalString(key)})
+	return types.ObjectValueMust(tableDistributionAttributeTypes, map[string]attr.Value{"style": optionalString(style), "key": optionalString(key)})
 }
 
 // tableTestSortKey builds a sort_key block; no columns leaves them omitted.
@@ -181,7 +181,7 @@ func tableTestSortKey(style string, columns ...string) types.Object {
 	if len(columns) > 0 {
 		list = tableTestList(columns...)
 	}
-	return types.ObjectValueMust(tableSortKeyAttributeTypes, map[string]attr.Value{"style": tableOptionalString(style), "columns": list})
+	return types.ObjectValueMust(tableSortKeyAttributeTypes, map[string]attr.Value{"style": optionalString(style), "columns": list})
 }
 
 // tableAuto omits both layout blocks and records layouts Redshift chose, as a read of an AUTO table reports them.
@@ -1121,4 +1121,42 @@ func TestTableDeleteDoesNotReadDefinition(t *testing.T) {
 	_, diagnostics := applyOperation(t, r, "delete", model, nil, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.True(t, dropped)
+}
+
+// TestTableReadRejectsInconsistentDistribution fails when the catalog reports KEY distribution without a key column.
+func TestTableReadRejectsInconsistentDistribution(t *testing.T) {
+	c := fullCatalog()
+	r := &tableResource{}
+	configureTestResource(t, r, queryFunc(func(ctx context.Context, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+		rows, err := c.Query(ctx, connection, sql, parameters)
+		if strings.Contains(sql, "c.reldiststyle AS diststyle") {
+			for _, row := range rows {
+				row["diststyle"] = "1"
+			}
+		}
+		if strings.Contains(sql, "svv_redshift_columns") {
+			for _, row := range rows {
+				row["distkey"] = "false"
+			}
+		}
+		return rows, err
+	}))
+	model := tableEventsModel()
+	found, _, err := r.read(context.Background(), &model)
+	assert.False(t, found)
+	require.ErrorContains(t, err, "without a distribution key")
+}
+
+// TestTableUpdateValidatesBeforeSQL rejects an invalid plan before issuing any statement.
+func TestTableUpdateValidatesBeforeSQL(t *testing.T) {
+	c := fullCatalog()
+	r := &tableResource{}
+	configureTestResource(t, r, c)
+	prior := tableEventsModel()
+	plan := prior
+	plan.Schema = types.StringValue("")
+	_, diagnostics := applyOperation(t, r, "update", prior, plan, nil)
+	require.True(t, diagnostics.HasError())
+	assert.Equal(t, "Invalid table", diagnostics.Errors()[0].Summary())
+	assert.Empty(t, c.writes)
 }

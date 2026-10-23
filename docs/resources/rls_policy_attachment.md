@@ -54,12 +54,12 @@ resource "redshift_rls_policy_attachment" "everyone" {
 
 ### Required
 
-- `database` (String) Local database containing both the policy and the relation. Changing it replaces the attachment.
-- `grantee` (String) User or role name the policy applies to; use `public` with `grantee_type = "PUBLIC"`. Policies attached to superusers or `sys:secadmin` holders are ignored. Changing it replaces the attachment.
-- `grantee_type` (String) `USER`, `ROLE`, or `PUBLIC`. Changing it replaces the attachment.
-- `policy` (String) RLS policy to attach. Changing it replaces the attachment.
-- `relation` (String) Table, view, late-binding view, or materialized view the policy filters; it must have every `WITH` column of the policy. Changing it replaces the attachment.
-- `schema` (String) Schema of the relation. Changing it replaces the attachment.
+- `database` (String) Local database containing both the policy and the relation.
+- `grantee` (String) User or role name the policy applies to; use `public` with `grantee_type = "PUBLIC"`. Policies attached to superusers or `sys:secadmin` holders are ignored.
+- `grantee_type` (String) `USER`, `ROLE`, or `PUBLIC`.
+- `policy` (String) RLS policy to attach.
+- `relation` (String) Table, view, late-binding view, or materialized view the policy filters; it must have every `WITH` column of the policy.
+- `schema` (String) Schema of the relation.
 
 ### Read-Only
 

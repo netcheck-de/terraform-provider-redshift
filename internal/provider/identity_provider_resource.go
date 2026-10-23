@@ -107,12 +107,12 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "SQL identity provider name. Changing it replaces the identity provider.",
+				Required: true, MarkdownDescription: "SQL identity provider name.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"type": schema.StringAttribute{
 				Optional: true, Computed: true, Default: stringdefault.StaticString(identityProviderAWSIDC),
-				MarkdownDescription: "Identity provider type: `AWSIDC` (AWS IAM Identity Center) or `AZURE` (Microsoft Entra ID, native IdP federation). Defaults to `AWSIDC`. Accepted in any case; another case of the same type is recorded in place. Changing it replaces the identity provider.",
+				MarkdownDescription: "Identity provider type: `AWSIDC` (AWS IAM Identity Center) or `AZURE` (Microsoft Entra ID, native IdP federation). Defaults to `AWSIDC`. Accepted in any case; another case of the same type is recorded in place.",
 				Validators:          []validator.String{stringvalidator.OneOfCaseInsensitive(identityProviderAWSIDC, identityProviderAzure)},
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplaceIf(keywordChanged, "Changing the type replaces the identity provider.", "Changing the type replaces the identity provider.")},
 			},
@@ -121,7 +121,7 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 				Validators: []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"application_arn": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Identity Center managed application ARN. Required for `AWSIDC`; not allowed for `AZURE`. Changing it replaces the identity provider.",
+				Optional: true, MarkdownDescription: "Identity Center managed application ARN. Required for `AWSIDC`; not allowed for `AZURE`.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"iam_role_arn": schema.StringAttribute{
@@ -223,14 +223,6 @@ func decodeIdentityProviderParameters(text string) (identityProviderCatalogParam
 	return parameters, err
 }
 
-// identityProviderOptional maps an empty catalog value, which is how both transports return NULL, to null.
-func identityProviderOptional(value string) types.String {
-	if value == "" {
-		return types.StringNull()
-	}
-	return types.StringValue(value)
-}
-
 // read verifies the provider binding and refreshes its observable settings. auto_create_roles, its filters, and the
 // secret version are not in the catalog and keep their state.
 func (r *identityProviderResource) read(ctx context.Context, data *identityProviderModel) (bool, error) {
@@ -266,7 +258,7 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 		}
 		data.ApplicationARN = types.StringValue(row["instanceid"])
 		data.IAMRoleARN = types.StringValue(parameters.IAMRole)
-		data.IdentityCenterInstanceARN = identityProviderOptional(parameters.InstanceARN)
+		data.IdentityCenterInstanceARN = optionalString(parameters.InstanceARN)
 	case identityProviderAzure:
 		if parameters.Issuer == "" || parameters.ClientID == "" {
 			return false, fmt.Errorf("identity provider %q has no issuer or client_id in its catalog parameters", data.Name.ValueString())
@@ -289,7 +281,7 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 	data.Name = types.StringValue(row["name"])
 	data.Type = keywordValue(data.Type, kind)
 	data.Namespace = types.StringValue(row["namespc"])
-	data.InstanceID = identityProviderOptional(row["instanceid"])
+	data.InstanceID = optionalString(row["instanceid"])
 	data.Enabled = types.BoolValue(enabled)
 	return true, nil
 }

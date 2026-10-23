@@ -46,9 +46,9 @@ func TestObjectGrantTemplateSQL(t *testing.T) {
 	})
 }
 
-// TestObjectGrantTemplateLifecycle grants, narrows, and revokes template privileges through the fake catalog,
+// TestObjectGrantTemplateTranscripts grants, narrows, and revokes template privileges through the fake catalog,
 // records the conversation, and removes the grant from state once the template is gone.
-func TestObjectGrantTemplateLifecycle(t *testing.T) {
+func TestObjectGrantTemplateTranscripts(t *testing.T) {
 	r := newObjectGrantResource().(*privilegeResource)
 	model := func(privileges []string, options ...string) types.Object {
 		fields := maps.Clone(templateGrantFields)

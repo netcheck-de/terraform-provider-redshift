@@ -57,12 +57,12 @@ func (r *maskingPolicyResource) Schema(_ context.Context, _ resource.SchemaReque
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
 				Required: true, Validators: nonEmpty,
-				MarkdownDescription: "Local database that holds the policy; the policy can only be attached to relations in this database. Changing it replaces the policy.",
+				MarkdownDescription: "Local database that holds the policy; the policy can only be attached to relations in this database.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
 				Required: true, Validators: nonEmpty,
-				MarkdownDescription: "Policy name, unique among the masking policies of the database. Changing it replaces the policy.",
+				MarkdownDescription: "Policy name, unique among the masking policies of the database.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"expression": schema.StringAttribute{

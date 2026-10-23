@@ -247,25 +247,17 @@ func tableStringListValue(values []string) types.List {
 	return types.ListValueMust(types.StringType, elements)
 }
 
-// tableOptionalString returns null for an empty string.
-func tableOptionalString(value string) types.String {
-	if value == "" {
-		return types.StringNull()
-	}
-	return types.StringValue(value)
-}
-
 // tableEffectiveDistributionValue builds an effective_distribution value; empty strings are null.
 func tableEffectiveDistributionValue(style, key string, auto bool) types.Object {
 	return types.ObjectValueMust(tableEffectiveDistributionAttributeTypes, map[string]attr.Value{
-		"style": tableOptionalString(style), "key": tableOptionalString(key), "auto": types.BoolValue(auto),
+		"style": optionalString(style), "key": optionalString(key), "auto": types.BoolValue(auto),
 	})
 }
 
 // tableEffectiveSortKeyValue builds an effective_sort_key value; a table without a sort key has no columns.
 func tableEffectiveSortKeyValue(style string, columns []string, auto bool) types.Object {
 	return types.ObjectValueMust(tableEffectiveSortKeyAttributeTypes, map[string]attr.Value{
-		"style": tableOptionalString(style), "columns": tableStringListValue(columns), "auto": types.BoolValue(auto),
+		"style": optionalString(style), "columns": tableStringListValue(columns), "auto": types.BoolValue(auto),
 	})
 }
 
@@ -441,7 +433,7 @@ func tableReconcile(prior tableModel, catalog tableCatalog) (tableModel, map[str
 	observed.Distribution = types.ObjectNull(tableDistributionAttributeTypes)
 	if !prior.Distribution.IsNull() || catalog.distStyle != "AUTO" {
 		observed.Distribution = types.ObjectValueMust(tableDistributionAttributeTypes, map[string]attr.Value{
-			"style": types.StringValue(catalog.distStyle), "key": tableOptionalString(declaredKey),
+			"style": types.StringValue(catalog.distStyle), "key": optionalString(declaredKey),
 		})
 	}
 	effectiveStyle := catalog.distStyle

@@ -62,7 +62,7 @@ func TestDatashareMembershipRepairsCurrentCoverage(t *testing.T) {
 			assert.True(t, data.All.ValueBool())
 			// An externally added member belongs to the exclusive owner and is removed on destroy, not adopted
 			// into a historical snapshot that would later be mistaken for a different resource's ownership.
-			require.False(t, invoke(t, r, "delete", data, false).HasError())
+			require.False(t, invoke(t, r, "delete", data).HasError())
 			assert.Empty(t, f.bulkMembers[kind])
 			assert.Equal(t, otherMembers, f.bulkMembers[otherKind], "destroy must preserve the other kind")
 		})
@@ -92,7 +92,7 @@ func TestDatashareMembershipRejectsIncludeNewAndAmbiguousNames(t *testing.T) {
 		c := fullCatalog()
 		c.includeNew = true
 		r := &datashareMembershipResource{testResourceClient(c)}
-		diagnostics := invoke(t, r, operation, datashareMembershipFixture("TABLES"), false)
+		diagnostics := invoke(t, r, operation, datashareMembershipFixture("TABLES"))
 		assert.True(t, diagnostics.HasError(), "%s: %v", operation, diagnostics)
 		assert.Empty(t, c.writes)
 	}
@@ -100,7 +100,7 @@ func TestDatashareMembershipRejectsIncludeNewAndAmbiguousNames(t *testing.T) {
 	c.includeNew = false
 	fakeState[*fakeDatashares](c, "datashare").bulkCandidates["TABLES"] = []string{"ambiguous.name"}
 	r := &datashareMembershipResource{testResourceClient(c)}
-	diagnostics := invoke(t, r, "create", datashareMembershipFixture("TABLES"), false)
+	diagnostics := invoke(t, r, "create", datashareMembershipFixture("TABLES"))
 	assert.True(t, diagnostics.HasError())
 	assert.Empty(t, c.writes)
 	invalid := datashareMembershipFixture("TABLES")
@@ -167,7 +167,7 @@ func TestDatashareMembershipRestrictedLifecycleRetainsState(t *testing.T) {
 	assert.Equal(t, state.Raw, response.State.Raw)
 	assert.Equal(t, 1, calls)
 	for _, operation := range []string{"create", "update", "delete"} {
-		diagnostics := invoke(t, r, operation, data, false)
+		diagnostics := invoke(t, r, operation, data)
 		assert.True(t, diagnostics.HasError(), "%s: %v", operation, diagnostics)
 	}
 	assert.Empty(t, c.writes)
@@ -235,7 +235,7 @@ func TestDatashareMembershipVerificationFailureRemainsRemovable(t *testing.T) {
 	require.False(t, response.State.Get(context.Background(), &recorded).HasError())
 	require.NotEmpty(t, recorded.ID.ValueString(), "successful mutation must retain removable ownership")
 	r.resourceClient = testResourceClient(c)
-	diagnostics := invoke(t, r, "delete", recorded, false)
+	diagnostics := invoke(t, r, "delete", recorded)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.Empty(t, f.bulkMembers["TABLES"])
 }
@@ -248,8 +248,56 @@ func TestDatashareMembershipPreservesOtherSchema(t *testing.T) {
 	r := &datashareMembershipResource{testResourceClient(c)}
 	data := datashareMembershipFixture("TABLES")
 	require.NoError(t, r.verify(context.Background(), &data), "other schemas must not affect coverage")
-	diagnostics := invoke(t, r, "delete", data, false)
+	diagnostics := invoke(t, r, "delete", data)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.Empty(t, f.bulkMembers["TABLES"])
 	assert.Equal(t, []sqlclient.Row{{"object_name": "other_schema.table"}}, f.bulkOtherMembers["TABLES"])
+}
+
+// TestDatashareMembershipValidateConfig rejects empty database, datashare, and schema names.
+func TestDatashareMembershipValidateConfig(t *testing.T) {
+	r := &datashareMembershipResource{}
+	for _, test := range []struct {
+		name    string
+		change  func(*datashareMembershipModel)
+		invalid bool
+	}{
+		{"valid fully known", func(*datashareMembershipModel) {}, false},
+		{"empty database", func(m *datashareMembershipModel) { m.Database = types.StringValue("") }, true},
+		{"empty share", func(m *datashareMembershipModel) { m.Datashare = types.StringValue("") }, true},
+		{"empty schema", func(m *datashareMembershipModel) { m.Schema = types.StringValue("") }, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			data := datashareMembershipFixture("TABLES")
+			data.ID = types.StringValue("known")
+			test.change(&data)
+			var response resource.ValidateConfigResponse
+			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, data))}, &response)
+			assert.Equal(t, test.invalid, response.Diagnostics.HasError(), "%v", response.Diagnostics)
+		})
+	}
+}
+
+// TestDatashareMembershipVerifyReportsNonConvergence fails when the share still lacks objects after the membership is applied.
+func TestDatashareMembershipVerifyReportsNonConvergence(t *testing.T) {
+	c := fullCatalog()
+	c.includeNew = false
+	fakeState[*fakeDatashares](c, "datashare").bulkMembers["TABLES"] = nil
+	r := &datashareMembershipResource{testResourceClient(c)}
+	data := datashareMembershipFixture("TABLES")
+	require.ErrorContains(t, r.verify(context.Background(), &data), "did not converge")
+}
+
+// TestDatashareMembershipReadWarnsAboutIncludeNew keeps the membership but warns while INCLUDENEW shares future objects implicitly.
+func TestDatashareMembershipReadWarnsAboutIncludeNew(t *testing.T) {
+	c := fullCatalog()
+	c.includeNew = true
+	r := &datashareMembershipResource{testResourceClient(c)}
+	state := testState(t, r, datashareMembershipFixture("TABLES"))
+	response := resource.ReadResponse{State: state}
+	r.Read(context.Background(), resource.ReadRequest{State: state}, &response)
+	require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
+	require.Len(t, response.Diagnostics.Warnings(), 1)
+	assert.Contains(t, response.Diagnostics.Warnings()[0].Detail(), "include_new = false")
+	assert.False(t, response.State.Raw.IsNull())
 }

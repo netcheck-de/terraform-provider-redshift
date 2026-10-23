@@ -225,15 +225,15 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local database containing the table. Changing it replaces the table.",
+				Required: true, MarkdownDescription: "Local database containing the table.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"schema": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Existing schema containing the table, in lowercase. Changing it replaces the table.",
+				Required: true, MarkdownDescription: "Existing schema containing the table, in lowercase.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Table name, in lowercase, because Redshift folds ASCII letters of identifiers to lowercase. Changing it replaces the table.",
+				Required: true, MarkdownDescription: "Table name, in lowercase, because Redshift folds ASCII letters of identifiers to lowercase.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"owner": schema.StringAttribute{
@@ -447,8 +447,7 @@ func (m tableDerivedStyle) Description(context.Context) string {
 // MarkdownDescription explains the derived default.
 func (m tableDerivedStyle) MarkdownDescription(ctx context.Context) string { return m.Description(ctx) }
 
-// PlanModifyString derives the style when it is not configured. Configuration it cannot read, as in schema
-// tests, leaves the plan alone.
+// PlanModifyString derives the style when it is not configured.
 func (m tableDerivedStyle) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
 	if !req.ConfigValue.IsNull() {
 		return
@@ -456,7 +455,8 @@ func (m tableDerivedStyle) PlanModifyString(ctx context.Context, req planmodifie
 	sibling := req.Path.ParentPath().AtName(m.source)
 	if m.source == "key" {
 		var key types.String
-		if req.Config.GetAttribute(ctx, sibling, &key).HasError() {
+		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, sibling, &key)...)
+		if resp.Diagnostics.HasError() {
 			return
 		}
 		switch {
@@ -470,7 +470,8 @@ func (m tableDerivedStyle) PlanModifyString(ctx context.Context, req planmodifie
 		return
 	}
 	var columns types.List
-	if req.Config.GetAttribute(ctx, sibling, &columns).HasError() {
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, sibling, &columns)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 	switch {

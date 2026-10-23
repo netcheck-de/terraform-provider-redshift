@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -55,7 +56,7 @@ func TestObjectGrantSharedLifecycle(t *testing.T) {
 	}))
 	data := privilegeObject(t, r, fields, "SELECT")
 	for _, operation := range []string{"create", "read", "update", "delete"} {
-		diagnostics := invoke(t, r, operation, data, false)
+		diagnostics := invoke(t, r, operation, data)
 		require.False(t, diagnostics.HasError(), "%s: %v", operation, diagnostics)
 	}
 	assert.Equal(t, []string{`GRANT SELECT ON TABLE "shared_db"."serving"."events" TO "reader"`, `REVOKE SELECT ON TABLE "shared_db"."serving"."events" FROM "reader"`}, c.writes)
@@ -103,4 +104,63 @@ func TestObjectGrantSharedReadErrorsKeepState(t *testing.T) {
 			assert.Empty(t, catalog.writes)
 		})
 	}
+}
+
+// TestObjectGrantSelectors rejects selectors an object type does not take and grant options on shared databases.
+func TestObjectGrantSelectors(t *testing.T) {
+	r := newObjectGrantResource().(*privilegeResource)
+	base := map[string]string{"database_name": "shared_db", "database_type": "shared", "object_type": "TABLE", "schema_name": "serving", "object_name": "orders", "grantee_type": "USER", "grantee": "reader"}
+	for _, test := range []struct {
+		name    string
+		fields  map[string]string
+		message string
+	}{
+		{"unsupported kind", map[string]string{"object_type": "VIEW"}, "unsupported object_type"},
+		{"arguments on table", map[string]string{"database_type": "", "arguments": "integer"}, "arguments is only valid"},
+		{"missing object", map[string]string{"object_name": ""}, "object_name is required"},
+		{"unexpected object", map[string]string{"object_type": "SCHEMA"}, "does not accept object_name"},
+		{"invalid principal", map[string]string{"grantee_type": "GROUP", "grantee": ""}, "parameter :name is empty"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fields := maps.Clone(base)
+			maps.Copy(fields, test.fields)
+			data := privilegeObject(t, r, fields)
+			_, err := objectGrantConfigAllowed(data)
+			if test.name != "invalid principal" {
+				require.ErrorContains(t, err, test.message)
+			} else {
+				require.NoError(t, err)
+			}
+			_, err = sharedObjectGrantTarget(data)
+			require.ErrorContains(t, err, test.message)
+		})
+	}
+	for _, kind := range []string{"DATABASE", "SCHEMA"} {
+		t.Run(kind, func(t *testing.T) {
+			fields := maps.Clone(base)
+			fields["object_type"], fields["object_name"] = kind, ""
+			if kind == "DATABASE" {
+				fields["schema_name"] = ""
+			}
+			data := privilegeObject(t, r, fields, "USAGE")
+			allowed, err := objectGrantConfigAllowed(data)
+			require.NoError(t, err)
+			assert.Equal(t, []sqlclient.Keyword{"USAGE"}, allowed)
+			_, err = sharedObjectGrantTarget(withGrantOptions(data, []string{"USAGE"}))
+			require.ErrorContains(t, err, "do not support grant options")
+		})
+	}
+}
+
+// TestSharedGrantReadReportsVisibilityFailure fails when it cannot verify that the catalog listing is complete.
+func TestSharedGrantReadReportsVisibilityFailure(t *testing.T) {
+	r := newObjectGrantResource().(*privilegeResource)
+	r.resourceClient = testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+		assert.Contains(t, sql, "usesuper")
+		return nil, errors.New("visibility unavailable")
+	}))
+	data := privilegeObject(t, r, map[string]string{"database_name": "shared_db", "database_type": "shared", "schema_name": "serving", "object_type": "ALL TABLES", "grantee": "reader", "grantee_type": "USER"})
+	_, found, err := r.read(context.Background(), &data)
+	require.ErrorContains(t, err, "visibility unavailable")
+	assert.False(t, found)
 }

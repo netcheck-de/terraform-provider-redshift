@@ -93,7 +93,7 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Database user name. Changing it replaces the user.",
+				Required: true, MarkdownDescription: "Database user name.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"password_wo": schema.StringAttribute{

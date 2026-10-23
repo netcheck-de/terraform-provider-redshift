@@ -89,7 +89,7 @@ resource "aws_redshift_data_share_authorization" "lake_formation" {
 
 - `account_id` (String) 12-digit consumer AWS account ID. Specify exactly one of `account_id` and `namespace_id`.
 - `namespace_id` (String) Consumer Redshift namespace UUID, not an ARN. Specify exactly one of `account_id` and `namespace_id`.
-- `via_data_catalog` (Boolean) Grants usage `VIA DATA CATALOG`, to a Lake Formation account instead of an account that owns a cluster; requires `account_id`. Defaults to `false`, the plain account form. `SVV_DATASHARE_CONSUMERS` reports both forms alike, so refresh cannot detect a grant re-created in the other form. Changing it replaces the grant.
+- `via_data_catalog` (Boolean) Grants usage `VIA DATA CATALOG`, to a Lake Formation account instead of an account that owns a cluster; requires `account_id`. Defaults to `false`, the plain account form. `SVV_DATASHARE_CONSUMERS` reports both forms alike, so refresh cannot detect a grant re-created in the other form.
 
 ### Read-Only
 

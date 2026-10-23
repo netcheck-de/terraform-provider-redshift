@@ -59,17 +59,17 @@ resource "redshift_masking_policy_attachment" "card_public" {
 
 ### Required
 
-- `columns` (List of String) Ordered output columns that the policy masks, one per policy output. Changing it replaces the attachment.
-- `database` (String) Local database that holds both the policy and the relation. Changing it replaces the attachment.
-- `grantee` (String) User or role the policy applies to; use `public` with `grantee_type = "PUBLIC"`. Changing it replaces the attachment.
-- `grantee_type` (String) `USER`, `ROLE`, or `PUBLIC`. Changing it replaces the attachment.
-- `policy` (String) Masking policy to attach, such as `redshift_masking_policy.example.name`. Changing it replaces the attachment.
-- `relation` (String) Table or view whose columns are masked. Changing it replaces the attachment.
-- `schema` (String) Schema of the relation. Changing it replaces the attachment.
+- `columns` (List of String) Ordered output columns that the policy masks, one per policy output.
+- `database` (String) Local database that holds both the policy and the relation.
+- `grantee` (String) User or role the policy applies to; use `public` with `grantee_type = "PUBLIC"`.
+- `grantee_type` (String) `USER`, `ROLE`, or `PUBLIC`.
+- `policy` (String) Masking policy to attach, such as `redshift_masking_policy.example.name`.
+- `relation` (String) Table or view whose columns are masked.
+- `schema` (String) Schema of the relation.
 
 ### Optional
 
-- `input_columns` (List of String) Ordered relation columns passed to the policy's input columns (`USING`). Defaults to `columns`, as Redshift does. Changing it replaces the attachment.
+- `input_columns` (List of String) Ordered relation columns passed to the policy's input columns (`USING`). Defaults to `columns`, as Redshift does.
 - `priority` (Number) Priority among the policies that apply to a column; the highest wins, and two different policies on one column cannot share a priority even for different recipients. Defaults to `0`. Redshift has no command to change it, so an update first checks that no other policy holds the new priority on these columns, then detaches and re-attaches the policy: until the second statement completes, the recipient sees the column under the next applicable policy, or unmasked if there is none. If the re-attach fails, the update restores the previous attachment and reports the error.
 
 ### Read-Only

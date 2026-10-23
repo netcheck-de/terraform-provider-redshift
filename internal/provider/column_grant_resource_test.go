@@ -229,3 +229,19 @@ func TestColumnGrantImport(t *testing.T) {
 		}
 	}
 }
+
+// TestColumnGrantPartialPrincipal checks a known grantee type while the database or privileges are unknown.
+func TestColumnGrantPartialPrincipal(t *testing.T) {
+	m := columnGrantTestModel(columnGrantBaseFields, columnGrantLifecycleColumns)
+	m.DatabaseName = types.StringUnknown()
+	m.GranteeType = types.StringValue("INVALID")
+	require.Error(t, validateColumnGrant(m))
+	m.GranteeType = types.StringValue("USER")
+	m.Privileges = types.MapValueMust(types.SetType{ElemType: types.StringType}, map[string]attr.Value{"SELECT": types.SetUnknown(types.StringType)})
+	require.NoError(t, validateColumnGrant(m))
+	m.Privileges = types.MapUnknown(types.SetType{ElemType: types.StringType})
+	require.NoError(t, validateColumnGrant(m))
+	r := &columnGrantResource{}
+	m.GranteeType = types.StringValue("INVALID")
+	require.Error(t, r.reconcile(context.Background(), m))
+}

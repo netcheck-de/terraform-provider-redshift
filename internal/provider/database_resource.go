@@ -134,11 +134,11 @@ func (r *databaseResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 			"producer_account":   schema.StringAttribute{Computed: true, MarkdownDescription: "Producer account ID; null for local databases."},
 			"producer_namespace": schema.StringAttribute{Computed: true, MarkdownDescription: "Producer namespace ID; null for local databases."},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Database name. Changing it replaces the database.",
+				Required: true, MarkdownDescription: "Database name.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"datashare_arn": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database. Changing it replaces the database.",
+				Optional: true, MarkdownDescription: "Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"with_permissions": schema.BoolAttribute{

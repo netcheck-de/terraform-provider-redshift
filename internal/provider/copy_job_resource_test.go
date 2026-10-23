@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -28,7 +29,7 @@ var _ = registerReplacementPolicy("redshift_copy_job", map[string]replaceRule{
 	"name":            replaceAlways,
 	"iam_role":        replaceAlways,
 	"source":          replaceAlways,
-	"format":          replaceConditional("TestCopyJobImportAdoptsDefinition"),
+	"format":          replaceConditional,
 	"format_argument": replaceAlways,
 	"parameters":      replaceAlways,
 	"table":           replaceAlways,
@@ -87,11 +88,11 @@ func TestCopyJobReadReconciles(t *testing.T) {
 		return nil, fmt.Errorf("unexpected SQL %q", sql)
 	})
 	configureTestResource(t, r, ambiguous)
-	assert.True(t, invoke(t, r, "read", copyJobLifecycleModel, false).HasError())
+	assert.True(t, invoke(t, r, "read", copyJobLifecycleModel).HasError())
 	configureTestResource(t, r, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return []sqlclient.Row{{"job_name": "events_load", "iam_role": copyJobFakeRole, "is_auto": "maybe"}}, nil
 	}))
-	assert.True(t, invoke(t, r, "read", copyJobLifecycleModel, false).HasError())
+	assert.True(t, invoke(t, r, "read", copyJobLifecycleModel).HasError())
 }
 
 // TestCopyJobConvergence fails an apply whose AUTO setting or role did not take effect.
@@ -226,4 +227,58 @@ func TestCopyJobImportAdoptsDefinition(t *testing.T) {
 	statements, err := alterCopyJobStatements(state, copyJobLifecycleModel)
 	require.NoError(t, err)
 	assert.Empty(t, statements)
+}
+
+// TestCopyJobDefinitionRejectsMalformedText rejects stored COPY JOB text it cannot parse and requires a known target table.
+func TestCopyJobDefinitionRejectsMalformedText(t *testing.T) {
+	for _, text := range []string{`COPY 'unterminated`, `SELECT a.b`, `COPY`, `COPY a.`, `COPY wrong.a.b FROM 's3://bucket/' IAM_ROLE '' JOB CREATE events_load`, `COPY a.b () FROM 's3://bucket/' IAM_ROLE '' JOB CREATE events_load`, `COPY a.b (c FROM 's3://bucket/' IAM_ROLE '' JOB CREATE events_load`, `COPY a.b`, `COPY a.b FROM 's3://bucket/'`} {
+		t.Run(text, func(t *testing.T) {
+			data := copyJobLifecycleModel
+			require.Error(t, readCopyJobDefinition(&data, text))
+		})
+	}
+	data := copyJobLifecycleModel
+	require.NoError(t, readCopyJobDefinition(&data, `COPY admin.serving.events FROM 's3://bucket/' IAM_ROLE '' JOB CREATE events_load`))
+	assert.Equal(t, "serving", copyJobTarget(data.Table).schema)
+	assert.Empty(t, copyJobTarget(types.ObjectNull(copyJobTableType.AttrTypes)))
+	data = copyJobLifecycleModel
+	attributes := data.Table.Attributes()
+	attributes["schema"] = types.StringValue("")
+	data.Table = types.ObjectValueMust(copyJobTableType.AttrTypes, attributes)
+	require.Error(t, copyJobValidate(data))
+	attributes["schema"] = types.StringUnknown()
+	data.Table = types.ObjectValueMust(copyJobTableType.AttrTypes, attributes)
+	_, err := createCopyJobStatement(data)
+	require.ErrorContains(t, err, "table must be known")
+}
+
+// TestCopyJobLifecycleEdges treats a missing database as absence, records the server's auto value, and reports a failed ALTER.
+func TestCopyJobLifecycleEdges(t *testing.T) {
+	ctx := context.Background()
+	c := fullCatalog()
+	r := &copyJobResource{testResourceClient(c)}
+	data := copyJobLifecycleModel
+	data.Database = types.StringValue("missing")
+	found, err := readCopyJob(ctx, &r.resourceClient, &data)
+	require.NoError(t, err)
+	assert.False(t, found)
+	fakeState[*copyJobFake](c, copyJobFakeFamily).exists = false
+	data = copyJobLifecycleModel
+	data.Auto = types.BoolUnknown()
+	state, diagnostics := applyOperation(t, r, "create", nil, data, nil)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	var observed copyJobModel
+	require.False(t, state.Get(ctx, &observed).HasError())
+	assert.True(t, observed.Auto.ValueBool())
+	r = &copyJobResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		if strings.HasPrefix(sql, "COPY JOB ALTER") {
+			return nil, errors.New("alter denied")
+		}
+		return c.Query(ctx, target, sql, parameters)
+	}))}
+	planned := copyJobLifecycleModel
+	planned.Auto = types.BoolValue(true)
+	_, diagnostics = applyOperation(t, r, "update", copyJobLifecycleModel, planned, nil)
+	require.True(t, diagnostics.HasError())
+	assert.Contains(t, diagnostics.Errors()[0].Detail(), "alter denied")
 }

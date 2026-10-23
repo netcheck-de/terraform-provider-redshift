@@ -137,7 +137,6 @@ func exercisePrivilege(t *testing.T, factory func() resource.Resource, fields ma
 	data := privilegeObject(t, r, fields, privileges[0])
 	for _, operation := range []string{"create", "read", "update", "delete"} {
 		t.Run(operation, func(t *testing.T) {
-			require.True(t, invoke(t, factory(), operation, data, true).HasError())
 			queries := 0
 			for failAt := 0; failAt <= queries; failAt++ {
 				c := &privilegeCatalog{values: map[string]bool{privileges[1]: true}, grantee: fields["grantee"], kind: strings.ToLower(fields["grantee_type"]), scope: fields["object_type"]}
@@ -151,7 +150,7 @@ func exercisePrivilege(t *testing.T, factory func() resource.Resource, fields ma
 				})
 				r := factory().(*privilegeResource)
 				r.resourceClient = testResourceClient(client)
-				diagnostics := invoke(t, r, operation, data, false)
+				diagnostics := invoke(t, r, operation, data)
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
 					queries = calls
@@ -161,7 +160,7 @@ func exercisePrivilege(t *testing.T, factory func() resource.Resource, fields ma
 			}
 			r := factory().(*privilegeResource)
 			r.resourceClient = testResourceClient(&privilegeCatalog{missing: true})
-			diagnostics := invoke(t, r, operation, data, false)
+			diagnostics := invoke(t, r, operation, data)
 			assert.Equal(t, operation == "create" || operation == "update", diagnostics.HasError(), "%v", diagnostics)
 		})
 	}

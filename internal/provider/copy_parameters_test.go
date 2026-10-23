@@ -3,6 +3,7 @@ package provider
 import (
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
@@ -108,4 +109,36 @@ func TestCopyCanonicalValue(t *testing.T) {
 			assert.Equal(t, test.canonical, canonical, "%s=%q", test.name, test.value)
 		}
 	}
+}
+
+// TestCopyParameterEdges covers literal decoding, invalid parameters, SIMPLIFY forms, and unknown parameter values.
+func TestCopyParameterEdges(t *testing.T) {
+	assert.Equal(t, "decoded", copyLiteralValue(sqlclient.Token{Text: "decoded"}))
+	assert.Equal(t, "\b\f\v", copyLiteralValue(sqlclient.Token{Raw: `'\b\f\v'`}))
+	for _, parameters := range []map[string]string{{"MANIFEST": ""}, {"IGNOREHEADER": "bad"}} {
+		_, err := copyCanonicalParameters(parameters, false)
+		require.Error(t, err)
+		_, err = copyParameterFragments(parameters, false)
+		require.Error(t, err)
+	}
+	for _, argument := range []string{"", "SIMPLIFY -0"} {
+		fragment, err := copySimplify(argument)
+		require.NoError(t, err)
+		assert.NotContains(t, fragment.String(), "-0")
+	}
+	assert.Equal(t, types.StringValue(""), copyFormatArgumentValue(types.StringValue(""), "CSV", ""))
+	fragment, err := copyParameterFragment("ACCEPTINVCHARS", "", false)
+	require.NoError(t, err)
+	assert.Equal(t, "ACCEPTINVCHARS", fragment.String())
+	for _, text := range []string{"SHAPEFILE SIMPLIFY SIMPLIFY", "SHAPEFILE SIMPLIFY 'bad'", "CSV SIMPLIFY"} {
+		tokens, err := sqlclient.Tokens(text)
+		require.NoError(t, err)
+		_, err = parseCopyOptions(tokens)
+		require.Error(t, err)
+	}
+	require.Error(t, copyValidateKnown(types.StringValue("bad"), types.StringUnknown(), types.MapNull(types.StringType), false))
+	nullParameter := types.MapValueMust(types.StringType, map[string]attr.Value{"DELIMITER": types.StringNull()})
+	require.Error(t, copyValidateKnown(types.StringNull(), types.StringNull(), nullParameter, false))
+	unknownParameter := types.MapValueMust(types.StringType, map[string]attr.Value{"DELIMITER": types.StringUnknown()})
+	assert.False(t, copyOptionsKnown(types.StringNull(), types.StringNull(), unknownParameter))
 }

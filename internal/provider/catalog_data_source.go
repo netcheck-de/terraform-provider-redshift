@@ -56,28 +56,17 @@ func lookupValue(data *types.Object, name string, value attr.Value) {
 	*data = types.ObjectValueMust(data.AttributeTypes(context.Background()), attributes)
 }
 
-// replacementNote matches resource-only replacement wording that does not apply to lookups.
-var replacementNote = regexp.MustCompile(`(;\s*c|\s*C)hanging it replaces the \w+\.`)
-
 // requiredBlockNote matches the sentence that opens a required block's description. Resources need it because
 // tfplugindocs labels every block as optional, but a lookup's output is never configured.
 var requiredBlockNote = regexp.MustCompile(`^At least one [^.]* is required\.\s*`)
 
-// lookupDescription removes replacement and required-block notes from a paired resource's description.
+// lookupDescription removes the required-block note from a paired resource's description.
 func lookupDescription(description string) string {
-	// Most schema descriptions contain neither note; avoid regex scratch allocations for those unchanged strings.
-	if strings.HasPrefix(description, "At least one ") {
-		description = requiredBlockNote.ReplaceAllString(description, "")
-	}
-	if !strings.Contains(description, "hanging it replaces the ") {
+	// Most descriptions do not open with the note; skip the regex for those.
+	if !strings.HasPrefix(description, "At least one ") {
 		return description
 	}
-	return replacementNote.ReplaceAllStringFunc(description, func(note string) string {
-		if strings.HasPrefix(note, ";") {
-			return "."
-		}
-		return ""
-	})
+	return requiredBlockNote.ReplaceAllString(description, "")
 }
 
 // privilegesLookupDescription replaces the resource's authoritative wording, because a lookup reports what
@@ -110,7 +99,7 @@ func lookupAttributes(source map[string]resourceschema.Attribute, observeAll boo
 	return attributes
 }
 
-// lookupAttribute converts one resource attribute of any kind, recursing into nested objects so a nested
+// lookupAttribute converts the attribute kinds used by resources, recursing into nested objects so a nested
 // output is computed throughout.
 func lookupAttribute(attribute resourceschema.Attribute, observed bool, description string) schema.Attribute {
 	required, optional := attribute.IsRequired() && !observed, attribute.IsOptional() && !observed
@@ -133,36 +122,6 @@ func lookupAttribute(attribute resourceschema.Attribute, observed bool, descript
 			value.Validators = attribute.Validators
 		}
 		return value
-	case resourceschema.Int32Attribute:
-		value := schema.Int32Attribute{Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
-		if !observed {
-			value.Validators = attribute.Validators
-		}
-		return value
-	case resourceschema.Float32Attribute:
-		value := schema.Float32Attribute{Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
-		if !observed {
-			value.Validators = attribute.Validators
-		}
-		return value
-	case resourceschema.DynamicAttribute:
-		value := schema.DynamicAttribute{Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
-		if !observed {
-			value.Validators = attribute.Validators
-		}
-		return value
-	case resourceschema.Float64Attribute:
-		value := schema.Float64Attribute{Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
-		if !observed {
-			value.Validators = attribute.Validators
-		}
-		return value
-	case resourceschema.NumberAttribute:
-		value := schema.NumberAttribute{Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
-		if !observed {
-			value.Validators = attribute.Validators
-		}
-		return value
 	case resourceschema.ListAttribute:
 		value := schema.ListAttribute{ElementType: attribute.ElementType, Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
 		if !observed {
@@ -181,30 +140,6 @@ func lookupAttribute(attribute resourceschema.Attribute, observed bool, descript
 			value.Validators = attribute.Validators
 		}
 		return value
-	case resourceschema.ObjectAttribute:
-		value := schema.ObjectAttribute{AttributeTypes: attribute.AttributeTypes, Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
-		if !observed {
-			value.Validators = attribute.Validators
-		}
-		return value
-	case resourceschema.ListNestedAttribute:
-		value := schema.ListNestedAttribute{NestedObject: lookupNestedObject(attribute.NestedObject, observed), Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
-		if !observed {
-			value.Validators = attribute.Validators
-		}
-		return value
-	case resourceschema.SetNestedAttribute:
-		value := schema.SetNestedAttribute{NestedObject: lookupNestedObject(attribute.NestedObject, observed), Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
-		if !observed {
-			value.Validators = attribute.Validators
-		}
-		return value
-	case resourceschema.MapNestedAttribute:
-		value := schema.MapNestedAttribute{NestedObject: lookupNestedObject(attribute.NestedObject, observed), Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
-		if !observed {
-			value.Validators = attribute.Validators
-		}
-		return value
 	case resourceschema.SingleNestedAttribute:
 		value := schema.SingleNestedAttribute{Attributes: lookupAttributes(attribute.Attributes, observed, nil), Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
 		if !observed {
@@ -212,7 +147,7 @@ func lookupAttribute(attribute resourceschema.Attribute, observed bool, descript
 		}
 		return value
 	default:
-		// Every framework attribute kind is handled above; a new kind must fail at schema construction
+		// A newly used attribute kind must fail at schema construction
 		// rather than silently drop an output.
 		panic("lookupAttribute: unsupported resource attribute type")
 	}
@@ -254,15 +189,6 @@ func lookupBlocks(blocks map[string]resourceschema.Block) map[string]schema.Attr
 // lookupBlockObject converts the element object of a list or set block, including its nested blocks.
 func lookupBlockObject(object resourceschema.NestedBlockObject) schema.NestedAttributeObject {
 	return schema.NestedAttributeObject{Attributes: lookupSchemaAttributes(object.Attributes, object.Blocks, true, nil), CustomType: object.CustomType}
-}
-
-// lookupNestedObject converts the element object of a nested collection.
-func lookupNestedObject(object resourceschema.NestedAttributeObject, observed bool) schema.NestedAttributeObject {
-	value := schema.NestedAttributeObject{Attributes: lookupAttributes(object.Attributes, observed, nil), CustomType: object.CustomType}
-	if !observed {
-		value.Validators = object.Validators
-	}
-	return value
 }
 
 // newCatalogDataSource reuses a resource's identity schema while making observed values read-only.
@@ -350,13 +276,6 @@ func describedAttribute(attribute schema.Attribute, rest []string, name, descrip
 			attribute.MarkdownDescription = description
 		}
 		return attribute
-	case schema.MapNestedAttribute:
-		if nested {
-			attribute.NestedObject.Attributes = describedAttributes(attribute.NestedObject.Attributes, rest, name, description)
-		} else {
-			attribute.MarkdownDescription = description
-		}
-		return attribute
 	case schema.SingleNestedAttribute:
 		if nested {
 			attribute.Attributes = describedAttributes(attribute.Attributes, rest, name, description)
@@ -378,21 +297,6 @@ func describedAttribute(attribute schema.Attribute, rest []string, name, descrip
 	case schema.Int64Attribute:
 		attribute.MarkdownDescription = description
 		return attribute
-	case schema.Int32Attribute:
-		attribute.MarkdownDescription = description
-		return attribute
-	case schema.Float64Attribute:
-		attribute.MarkdownDescription = description
-		return attribute
-	case schema.Float32Attribute:
-		attribute.MarkdownDescription = description
-		return attribute
-	case schema.NumberAttribute:
-		attribute.MarkdownDescription = description
-		return attribute
-	case schema.DynamicAttribute:
-		attribute.MarkdownDescription = description
-		return attribute
 	case schema.ListAttribute:
 		attribute.MarkdownDescription = description
 		return attribute
@@ -400,9 +304,6 @@ func describedAttribute(attribute schema.Attribute, rest []string, name, descrip
 		attribute.MarkdownDescription = description
 		return attribute
 	case schema.MapAttribute:
-		attribute.MarkdownDescription = description
-		return attribute
-	case schema.ObjectAttribute:
 		attribute.MarkdownDescription = description
 		return attribute
 	default:

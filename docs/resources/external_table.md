@@ -111,21 +111,21 @@ resource "redshift_external_table" "clicks" {
 
 ### Required
 
-- `database` (String) Local Redshift database holding the external schema. Changing it replaces the table.
+- `database` (String) Local Redshift database holding the external schema.
 - `location` (String) `s3://` folder (ending in `/`) or manifest file holding the data, in the warehouse's AWS Region. Changes run `ALTER TABLE ... SET LOCATION`.
-- `name` (String) Table name; the external catalog stores it in lowercase. Changing it replaces the table.
-- `schema` (String) External schema that maps the external catalog database, for example a `redshift_external_schema`. Changing it replaces the table.
+- `name` (String) Table name; the external catalog stores it in lowercase.
+- `schema` (String) External schema that maps the external catalog database, for example a `redshift_external_schema`.
 
 ### Optional
 
 - `column` (Block List) At least one `column` block is required. Data columns in file order for positional formats. Dropping columns and appending them at the end run `ALTER TABLE ... DROP COLUMN` and `ADD COLUMN`; positional formats replace the table for reordering or inserting columns. `PARQUET` tables map columns by name, as do `ORC` tables unless their `orc.schema.resolution` table property, configured or in the catalog, is anything but `name`: they add and drop columns anywhere in place, and reordering their blocks runs no statement. Retyping a column replaces the table. Any column change of an `AVRO` table except a respelling replaces it. (see [below for nested schema](#nestedblock--column))
-- `field_delimiter` (String) `ROW FORMAT DELIMITED FIELDS TERMINATED BY` character: one ASCII character; write control characters as HCL escapes such as `"\t"` or `"\u0007"`. Conflicts with `serde`. Changing it replaces the table.
-- `input_format` (String) `STORED AS INPUTFORMAT` class, for formats such as Hudi or Delta Lake manifests; requires `output_format`. Without it, the class the catalog records for `stored_as` is reported. Changing it replaces the table.
-- `line_delimiter` (String) `ROW FORMAT DELIMITED LINES TERMINATED BY` character, usually `"\n"`. Conflicts with `serde`. Changing it replaces the table.
-- `output_format` (String) `OUTPUTFORMAT` class paired with `input_format`. Without it, the class the catalog records for `stored_as` is reported. Changing it replaces the table.
+- `field_delimiter` (String) `ROW FORMAT DELIMITED FIELDS TERMINATED BY` character: one ASCII character; write control characters as HCL escapes such as `"\t"` or `"\u0007"`. Conflicts with `serde`.
+- `input_format` (String) `STORED AS INPUTFORMAT` class, for formats such as Hudi or Delta Lake manifests; requires `output_format`. Without it, the class the catalog records for `stored_as` is reported.
+- `line_delimiter` (String) `ROW FORMAT DELIMITED LINES TERMINATED BY` character, usually `"\n"`. Conflicts with `serde`.
+- `output_format` (String) `OUTPUTFORMAT` class paired with `input_format`. Without it, the class the catalog records for `stored_as` is reported.
 - `partition_key` (Block List) Ordered `PARTITIONED BY` columns; their names must differ from the data columns. Spelling a name in another case or a type with an alias stays in place; any other change replaces the table. (see [below for nested schema](#nestedblock--partition_key))
-- `serde` (String) `ROW FORMAT SERDE` class, such as `org.openx.data.jsonserde.JsonSerDe` or `org.apache.hadoop.hive.serde2.OpenCSVSerde`. Conflicts with the delimiters. Changing it replaces the table.
-- `serde_properties` (Map of String) `WITH SERDEPROPERTIES` pairs for `serde`, such as `{ "strip.outer.array" = "true" }`. Changing it replaces the table.
+- `serde` (String) `ROW FORMAT SERDE` class, such as `org.openx.data.jsonserde.JsonSerDe` or `org.apache.hadoop.hive.serde2.OpenCSVSerde`. Conflicts with the delimiters.
+- `serde_properties` (Map of String) `WITH SERDEPROPERTIES` pairs for `serde`, such as `{ "strip.outer.array" = "true" }`.
 - `stored_as` (String) File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; switching from name to position mapping also requires the `column` blocks to follow catalog order. Other changes replace the table.
 - `table_properties` (Map of String) `TABLE PROPERTIES` pairs; names are case-sensitive. Only the configured properties are managed. Adding or changing `numRows`, `skip.header.line.count`, or `orc.schema.resolution` runs `ALTER TABLE ... SET TABLE PROPERTIES`; removing a property, or adding or changing any other property, replaces the table. Switching an `ORC` table to position mapping also replaces it unless the `column` blocks follow the catalog order, to which `ADD COLUMN` appends.
 

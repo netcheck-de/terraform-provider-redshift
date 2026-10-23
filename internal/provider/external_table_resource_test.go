@@ -30,17 +30,17 @@ var _ = registerReplacementPolicy("redshift_external_table", map[string]replaceR
 	"database":         replaceAlways,
 	"schema":           replaceAlways,
 	"name":             replaceAlways,
-	"column":           replaceConditional("TestExternalTableColumnsReplacement"),
-	"partition_key":    replaceConditional("TestExternalTablePartitionKeysReplacement"),
+	"column":           replaceConditional,
+	"partition_key":    replaceConditional,
 	"field_delimiter":  replaceAlways,
 	"line_delimiter":   replaceAlways,
 	"serde":            replaceAlways,
 	"serde_properties": replaceAlways,
-	"stored_as":        replaceConditional("TestExternalTableStoredAsReplacement"),
+	"stored_as":        replaceConditional,
 	"input_format":     replaceAlways,
 	"output_format":    replaceAlways,
 	"location":         replaceNever,
-	"table_properties": replaceConditional("TestExternalTablePropertiesReplacement"),
+	"table_properties": replaceConditional,
 })
 
 var _ = registerValidateConfigCase("external_table", validateConfigCase{
@@ -729,4 +729,52 @@ func TestExternalTableObservedColumnOrder(t *testing.T) {
 	delete(catalog.parameters, "orc.schema.resolution")
 	observed = observeExternalTable(catalog, prior, externalTableRefresh)
 	assert.Equal(t, externalTableTestColumns("Amount", "numeric(8,2)", "id", "int4", "label", "varchar(64)", "extra", "date"), observed.Columns, "Parquet maps by name")
+}
+
+// TestExternalTableValidatesKnownOptionsWithUnknownColumns checks known format and location options while the columns are still unknown.
+func TestExternalTableValidatesKnownOptionsWithUnknownColumns(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		change func(*externalTableModel)
+		want   string
+	}{
+		{"serde delimiter conflict", func(m *externalTableModel) {
+			m.Serde = types.StringValue("custom.Serde")
+			m.FieldDelimiter = types.StringValue(",")
+		}, "serde conflicts"},
+		{"invalid delimiter", func(m *externalTableModel) { m.FieldDelimiter = types.StringValue("long delimiter") }, "delimiter"},
+		{"invalid location", func(m *externalTableModel) { m.Location = types.StringValue("file:///local") }, "s3://"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			model := externalTableTestModel()
+			model.Columns = types.ListUnknown(externalTableColumnType)
+			test.change(&model)
+			r := &externalTableResource{}
+			var response resource.ValidateConfigResponse
+			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, model))}, &response)
+			require.True(t, response.Diagnostics.HasError())
+			assert.Contains(t, response.Diagnostics.Errors()[0].Detail(), test.want)
+		})
+	}
+}
+
+// TestExternalTableObservationEdges covers empty layouts, unnamed SerDe properties, unmatched physical columns, renamed tables, and format drift.
+func TestExternalTableObservationEdges(t *testing.T) {
+	ctx := context.Background()
+	assert.Empty(t, recordExternalTableLayout(ctx, nil, nil))
+	model := externalTableTestModel()
+	model.SerdeProperties = externalTableTestMap("", "value")
+	_, err := externalTableSpecFrom(model)
+	require.ErrorContains(t, err, "nonempty names")
+	layout := &externalTableLayout{Columns: []string{"missing"}}
+	_, ok := layout.physical([]externalTableColumnValue{{Name: types.StringValue("id"), Type: types.StringValue("integer")}})
+	assert.False(t, ok)
+	prior := externalTableTestModel()
+	observed := observeExternalTable(&externalTableCatalog{table: map[string]string{"tablename": "renamed", "location": "s3://bucket/path"}}, prior, externalTableLookup)
+	assert.Equal(t, "renamed", observed.Name.ValueString())
+	prior.StoredAs = types.StringNull()
+	observed = prior
+	prior.InputFormat = types.StringValue("custom.Input")
+	observed.InputFormat = types.StringValue("different.Input")
+	assert.Contains(t, externalTableDivergence(prior, observed), "input_format")
 }

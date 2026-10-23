@@ -32,7 +32,7 @@ var (
 		"database":      replaceAlways,
 		"schema":        replaceAlways,
 		"name":          replaceAlways,
-		"argument":      replaceConditional("TestProcedureArgumentChangesReplace"),
+		"argument":      replaceConditional,
 		"body":          replaceNever,
 		"security":      replaceNever,
 		"nonatomic":     replaceNever,

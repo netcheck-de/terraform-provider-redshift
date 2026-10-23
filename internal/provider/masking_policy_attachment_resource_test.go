@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -219,4 +220,54 @@ func TestMaskingPolicyAttachmentPriorityUpdateSafety(t *testing.T) {
 			assert.Equal(t, test.writes, writes, "a conflicting priority must not detach the policy")
 		})
 	}
+}
+
+// TestPolicyAttachmentKnownConfig rejects invalid known masking and RLS attachment options and defers unknown ones.
+func TestPolicyAttachmentKnownConfig(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		change  func(*maskingPolicyAttachmentModel)
+		message string
+	}{
+		{"database", func(m *maskingPolicyAttachmentModel) { m.Database = types.StringValue("") }, "database must not be empty"},
+		{"recipient", func(m *maskingPolicyAttachmentModel) { m.GranteeType = types.StringValue("GROUP") }, "grantee_type"},
+		{"missing columns", func(m *maskingPolicyAttachmentModel) { m.Columns = types.ListNull(types.StringType) }, "columns needs"},
+		{"empty columns", func(m *maskingPolicyAttachmentModel) { m.Columns = types.ListValueMust(types.StringType, nil) }, "columns needs"},
+		{"priority", func(m *maskingPolicyAttachmentModel) { m.Priority = types.Int64Value(-1) }, "priority must not be negative"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			require.ErrorContains(t, maskingAttachmentKnownConfig(maskingTestAttachment(test.change)), test.message)
+		})
+	}
+	rls := rlsPolicyAttachmentLifecycleModel()
+	rls.Policy = types.StringValue("")
+	require.ErrorContains(t, rlsPolicyAttachmentKnownConfig(rls), "nonempty")
+	rls = rlsPolicyAttachmentLifecycleModel()
+	rls.GranteeType = types.StringUnknown()
+	require.NoError(t, rlsPolicyAttachmentKnownConfig(rls))
+	rls.GranteeType = types.StringValue("GROUP")
+	require.ErrorContains(t, rlsPolicyAttachmentKnownConfig(rls), "not one of")
+}
+
+// TestMaskingPolicyAttachmentPartialCreateKeepsKnownState saves a fully known state with null input columns when verification fails after ATTACH.
+func TestMaskingPolicyAttachmentPartialCreateKeepsKnownState(t *testing.T) {
+	r := &maskingPolicyAttachmentResource{resourceClient: creationOnlyClient(false)}
+	model := maskingTestAttachment(func(m *maskingPolicyAttachmentModel) { m.InputColumns = types.ListUnknown(types.StringType) })
+	state, diagnostics := applyOperation(t, r, "create", nil, model, nil)
+	require.True(t, diagnostics.HasError())
+	var actual maskingPolicyAttachmentModel
+	require.False(t, state.Get(context.Background(), &actual).HasError())
+	assert.False(t, actual.ID.IsNull())
+	assert.True(t, actual.InputColumns.IsNull())
+	assert.True(t, state.Raw.IsFullyKnown())
+}
+
+// TestMaskingPolicyAttachmentLookupReportsFailure surfaces a failing catalog query from the attachment lookup.
+func TestMaskingPolicyAttachmentLookupReportsFailure(t *testing.T) {
+	client := queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+		return nil, errors.New("attachment catalog unavailable")
+	})
+	_, diagnostics := readSource(t, newMaskingPolicyAttachmentDataSource(), maskingAttachmentLookupConfig(t, maskingTestAttachment(nil)), client)
+	require.True(t, diagnostics.HasError())
+	assert.Contains(t, diagnostics[0].Detail(), "attachment catalog unavailable")
 }

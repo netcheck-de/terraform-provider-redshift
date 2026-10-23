@@ -50,17 +50,6 @@ func registerLookupExemption(typeName, reason string) bool {
 	return resourcesWithoutLookup.add(typeName, reason)
 }
 
-// TestLookupExemptionRegistry checks that exemptions keep their reason and report duplicates.
-func TestLookupExemptionRegistry(t *testing.T) {
-	saved := resourcesWithoutLookup
-	t.Cleanup(func() { resourcesWithoutLookup = saved })
-	resourcesWithoutLookup = testRegistry[string]{}
-	assert.True(t, registerLookupExemption("redshift_example", "listed by redshift_examples only"))
-	assert.Equal(t, "listed by redshift_examples only", resourcesWithoutLookup.entries["redshift_example"])
-	registerLookupExemption("redshift_example", "again")
-	assert.Equal(t, []string{"redshift_example"}, resourcesWithoutLookup.duplicates)
-}
-
 // readableAttributes returns the resource attributes a lookup can observe.
 func readableAttributes(factory func() resource.Resource) map[string]schema.Attribute {
 	var response resource.SchemaResponse

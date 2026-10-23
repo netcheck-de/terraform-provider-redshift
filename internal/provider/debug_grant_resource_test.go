@@ -190,3 +190,15 @@ func TestDebugGrantDrift(t *testing.T) {
 	require.True(t, diagnostics.HasError(), "applyOperation reports the removal")
 	assert.True(t, state.Raw.IsNull())
 }
+
+// TestDebugGrantRemoteVisibilityError fails when SHOW DATABASES cannot confirm a remote alias.
+func TestDebugGrantRemoteVisibilityError(t *testing.T) {
+	r := &debugGrantResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+		if strings.Contains(sql, "sys_connection_log") {
+			return []sqlclient.Row{{"auth_method": "IAM AssumeUser"}}, nil
+		}
+		assert.Contains(t, sql, "SHOW DATABASES")
+		return nil, errors.New("listing unavailable")
+	}))}
+	require.ErrorContains(t, r.remoteVisible(context.Background(), "db@catalog"), "cannot verify remote DEBUG database visibility")
+}

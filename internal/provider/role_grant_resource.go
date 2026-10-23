@@ -54,16 +54,16 @@ func (r *roleGrantResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"role": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Role being granted, including built-in `sys:` roles. Changing it replaces the grant.",
+				Required: true, MarkdownDescription: "Role being granted, including built-in `sys:` roles.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"to_role": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Receiving role; exactly one of `to_role` and `to_user` is required. Changing it replaces the grant.",
+				Optional: true, MarkdownDescription: "Receiving role; exactly one of `to_role` and `to_user` is required.",
 				Validators:    []validator.String{stringvalidator.ExactlyOneOf(path.MatchRoot("to_role"), path.MatchRoot("to_user"))},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"to_user": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Receiving database user; exactly one of `to_role` and `to_user` is required. Changing it replaces the grant.",
+				Optional: true, MarkdownDescription: "Receiving database user; exactly one of `to_role` and `to_user` is required.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"admin_option": schema.BoolAttribute{

@@ -37,11 +37,11 @@ resource "redshift_external_partition" "sales_2008_01" {
 
 ### Required
 
-- `database` (String) Local Redshift database holding the external schema. Changing it replaces the partition.
+- `database` (String) Local Redshift database holding the external schema.
 - `location` (String) `s3://` folder or manifest file holding the partition's data. Changes run `ALTER TABLE ... PARTITION (...) SET LOCATION`.
-- `schema` (String) External schema of the table. Changing it replaces the partition.
-- `table` (String) Partitioned external table, for example a `redshift_external_table`. Changing it replaces the partition.
-- `values` (Map of String) Partition value for every partition key of the table, keyed by partition key name, such as `{ saledate = "2008-01" }`. Statements list the keys in the table's partition-key order. Changing it replaces the partition.
+- `schema` (String) External schema of the table.
+- `table` (String) Partitioned external table, for example a `redshift_external_table`.
+- `values` (Map of String) Partition value for every partition key of the table, keyed by partition key name, such as `{ saledate = "2008-01" }`. Statements list the keys in the table's partition-key order.
 
 ### Read-Only
 

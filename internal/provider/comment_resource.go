@@ -51,12 +51,12 @@ func (r *commentResource) Metadata(_ context.Context, req resource.MetadataReque
 func (r *commentResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{MarkdownDescription: "Manages an object's comment independently of its definition. Destroy clears only the annotation.", Attributes: map[string]schema.Attribute{
 		"id":              idAttribute(),
-		"database_name":   privilegeString("Local database containing the target object. Changing it replaces the comment.", false),
-		"object_type":     privilegeString("Kind of the annotated object: `DATABASE`, `SCHEMA`, `TABLE`, `VIEW`, `COLUMN`, or `CONSTRAINT`. Changing it replaces the comment.", false, "DATABASE", "SCHEMA", "TABLE", "VIEW", "COLUMN", "CONSTRAINT"),
-		"object_name":     privilegeString("Name of the database or schema itself; for `TABLE` and `VIEW` the relation; for `COLUMN` and `CONSTRAINT` the table that holds it. Changing it replaces the comment.", false),
-		"schema_name":     privilegeString("Schema of the relation; required for `TABLE`, `VIEW`, `COLUMN`, and `CONSTRAINT`, and rejected for `DATABASE` and `SCHEMA`. Changing it replaces the comment.", true),
-		"column_name":     privilegeString("Column within `object_name`; required for `COLUMN` and rejected otherwise. Changing it replaces the comment.", true),
-		"constraint_name": privilegeString("Primary key, unique, or foreign key constraint on the table `object_name`; required for `CONSTRAINT` and rejected otherwise. Changing it replaces the comment.", true),
+		"database_name":   privilegeString("Local database containing the target object.", false),
+		"object_type":     privilegeString("Kind of the annotated object: `DATABASE`, `SCHEMA`, `TABLE`, `VIEW`, `COLUMN`, or `CONSTRAINT`.", false, "DATABASE", "SCHEMA", "TABLE", "VIEW", "COLUMN", "CONSTRAINT"),
+		"object_name":     privilegeString("Name of the database or schema itself; for `TABLE` and `VIEW` the relation; for `COLUMN` and `CONSTRAINT` the table that holds it.", false),
+		"schema_name":     privilegeString("Schema of the relation; required for `TABLE`, `VIEW`, `COLUMN`, and `CONSTRAINT`, and rejected for `DATABASE` and `SCHEMA`.", true),
+		"column_name":     privilegeString("Column within `object_name`; required for `COLUMN` and rejected otherwise.", true),
+		"constraint_name": privilegeString("Primary key, unique, or foreign key constraint on the table `object_name`; required for `CONSTRAINT` and rejected otherwise.", true),
 		"text":            schema.StringAttribute{Required: true, MarkdownDescription: "Comment text. An empty string represents no annotation and clears it with `IS NULL`."},
 	}}
 }

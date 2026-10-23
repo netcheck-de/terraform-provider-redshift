@@ -33,9 +33,9 @@ func TestAssumeroleGrantPublicSwitch(t *testing.T) {
 		"REVOKE ASSUMEROLE ON ALL FROM PUBLIC FOR UNLOAD",
 	}, c.writes)
 	c.writes = nil
-	require.False(t, invoke(t, r, "delete", privilegeObject(t, r, fields), false).HasError())
+	require.False(t, invoke(t, r, "delete", privilegeObject(t, r, fields)).HasError())
 	assert.Empty(t, c.writes, "deleting the revoked switch leaves access control on")
 	c.values["COPY"] = true
-	require.False(t, invoke(t, r, "delete", privilegeObject(t, r, fields, "COPY"), false).HasError())
+	require.False(t, invoke(t, r, "delete", privilegeObject(t, r, fields, "COPY")).HasError())
 	assert.Equal(t, []string{"REVOKE ASSUMEROLE ON ALL FROM PUBLIC FOR COPY"}, c.writes, "deleting revokes what the tuple owns")
 }

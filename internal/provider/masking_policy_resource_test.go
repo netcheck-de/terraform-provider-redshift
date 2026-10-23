@@ -34,7 +34,7 @@ var _ = registerLifecycleCase(lifecycleCase{
 var _ = registerReplacementPolicy("redshift_masking_policy", map[string]replaceRule{
 	"database":     replaceAlways,
 	"name":         replaceAlways,
-	"input_column": replaceConditional("TestMaskingPolicyInputsReplacement"),
+	"input_column": replaceConditional,
 	"expression":   replaceNever,
 })
 
@@ -142,7 +142,7 @@ func TestMaskingPolicyCatalogFailures(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			r := newMaskingPolicyResource()
 			configureTestResource(t, r, maskingPolicyCatalogClient(test.rows...))
-			assert.True(t, invoke(t, r, test.operation, maskingLifecyclePolicy, false).HasError())
+			assert.True(t, invoke(t, r, test.operation, maskingLifecyclePolicy).HasError())
 		})
 	}
 }
@@ -160,7 +160,7 @@ func TestMaskingPolicyCreateRejectsInvalidBeforeState(t *testing.T) {
 	r.Create(context.Background(), resource.CreateRequest{Plan: plan}, &resp)
 	require.True(t, resp.Diagnostics.HasError())
 	assert.True(t, resp.State.Raw.IsNull(), "an invalid policy must not be recorded in state")
-	assert.True(t, invoke(t, r, "update", model, false).HasError(), "update validates before ALTER")
+	assert.True(t, invoke(t, r, "update", model).HasError(), "update validates before ALTER")
 }
 
 // TestMaskingPolicyAbsentInputsReportedOnce leaves absent input_column blocks to the schema's IsRequired validator
@@ -271,4 +271,32 @@ func TestMaskingPolicyInputsReplacement(t *testing.T) {
 	var observed maskingPolicyModel
 	require.False(t, updated.Get(ctx, &observed).HasError())
 	assert.True(t, observed.InputColumn.Equal(maskingLifecyclePolicy.InputColumn), "the update records the configured spelling")
+}
+
+// TestPolicyValidationWithUnknownExpressions rejects invalid input columns while the expression or predicate is still unknown.
+func TestPolicyValidationWithUnknownExpressions(t *testing.T) {
+	masking := maskingLifecyclePolicy
+	masking.Expression = types.StringUnknown()
+	masking.InputColumn = maskingPolicyColumnList([]maskingPolicyColumn{{Name: "value", Type: "anyelement"}})
+	rls := rlsPolicyLifecycleModel()
+	rls.Predicate = types.StringUnknown()
+	rls.Column = types.ListValueMust(rlsPolicyColumnType, []attr.Value{types.ObjectValueMust(rlsPolicyColumnType.AttrTypes, map[string]attr.Value{"name": types.StringValue("value"), "type": types.StringValue("money")})})
+	for _, test := range []struct {
+		r     resource.Resource
+		model any
+	}{
+		{newMaskingPolicyResource(), masking}, {newRlsPolicyResource(), rls},
+	} {
+		var response resource.ValidateConfigResponse
+		test.r.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, test.r, test.model))}, &response)
+		require.True(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
+	}
+	unknown := types.ListValueMust(maskingPolicyColumnType, []attr.Value{types.ObjectUnknown(maskingPolicyColumnType.AttrTypes)})
+	assert.Empty(t, maskingPolicyColumns(unknown))
+	assert.Empty(t, rlsPolicyCatalogColumnsOf(types.ListUnknown(rlsPolicyColumnType)))
+	assert.Empty(t, rlsPolicyCatalogColumnsOf(types.ListValueMust(rlsPolicyColumnType, []attr.Value{types.ObjectUnknown(rlsPolicyColumnType.AttrTypes)})))
+	_, err := maskingPolicyInputs([]maskingPolicyColumn{{Name: "value", Type: "anyelement"}})
+	require.ErrorContains(t, err, "input column")
+	_, err = maskingPolicyUsing(types.StringValue("x; DROP TABLE t"))
+	require.ErrorContains(t, err, "expression")
 }

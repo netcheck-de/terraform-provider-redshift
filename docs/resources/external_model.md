@@ -54,19 +54,19 @@ resource "redshift_object_grant" "summarizer" {
 
 ### Required
 
-- `database` (String) Local database containing the model. Changing it replaces the model.
-- `function` (String) Name of the inference function the model creates in `schema`. The model owns the function: `DROP MODEL` drops it, `EXECUTE` is granted on the model, and `redshift_function` must not manage it. Changing it replaces the model.
-- `iam_role` (String) `DEFAULT`, in any case, for the warehouse's default IAM role, or the ARN of an associated IAM role allowed to invoke the Amazon Bedrock model. Changing it replaces the model; another case of `DEFAULT` is recorded in place.
-- `model_id` (String) Amazon Bedrock model ID, such as `anthropic.claude-v2`. Changing it replaces the model.
-- `name` (String) Model name, unique among the models of the schema. Changing it replaces the model.
-- `schema` (String) Existing schema containing the model and its inference function. Changing it replaces the model.
+- `database` (String) Local database containing the model.
+- `function` (String) Name of the inference function the model creates in `schema`. The model owns the function: `DROP MODEL` drops it, `EXECUTE` is granted on the model, and `redshift_function` must not manage it.
+- `iam_role` (String) `DEFAULT`, in any case, for the warehouse's default IAM role, or the ARN of an associated IAM role allowed to invoke the Amazon Bedrock model. Another case of `DEFAULT` is recorded in place.
+- `model_id` (String) Amazon Bedrock model ID, such as `anthropic.claude-v2`.
+- `name` (String) Model name, unique among the models of the schema.
+- `schema` (String) Existing schema containing the model and its inference function.
 
 ### Optional
 
-- `prompt` (String) Static prompt prefix added to the beginning of every request; only with `request_type = "UNIFIED"`. Changing it replaces the model.
-- `request_type` (String) Request format: `UNIFIED` (the default) uses the Amazon Bedrock Converse API and an inference function taking the input text with optional settings; `RAW` passes one `SUPER` request in the model's own format. Changing it replaces the model; another case is recorded in place.
-- `response_type` (String) Response format: `VARCHAR` (the default) returns the generated text, `SUPER` the whole response. `RAW` requests require `SUPER`. Changing it replaces the model; another case is recorded in place.
-- `suffix` (String) Static prompt suffix added to the end of every request; only with `request_type = "UNIFIED"`. Changing it replaces the model.
+- `prompt` (String) Static prompt prefix added to the beginning of every request; only with `request_type = "UNIFIED"`.
+- `request_type` (String) Request format: `UNIFIED` (the default) uses the Amazon Bedrock Converse API and an inference function taking the input text with optional settings; `RAW` passes one `SUPER` request in the model's own format. Accepted in any case; another case of the same keyword is recorded in place.
+- `response_type` (String) Response format: `VARCHAR` (the default) returns the generated text, `SUPER` the whole response. `RAW` requests require `SUPER`. Accepted in any case; another case of the same keyword is recorded in place.
+- `suffix` (String) Static prompt suffix added to the end of every request; only with `request_type = "UNIFIED"`.
 
 ### Read-Only
 

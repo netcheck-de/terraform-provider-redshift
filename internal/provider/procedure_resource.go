@@ -81,17 +81,17 @@ func (r *procedureResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local database containing the procedure. Changing it replaces the procedure.",
+				Required: true, MarkdownDescription: "Local database containing the procedure.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"schema": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Schema containing the procedure. Changing it replaces the procedure.",
+				Required: true, MarkdownDescription: "Schema containing the procedure.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Procedure name; AWS recommends the reserved `sp_` prefix. Overloads share a name and differ in their input argument types. Changing it replaces the procedure.",
+				Required: true, MarkdownDescription: "Procedure name; AWS recommends the reserved `sp_` prefix. Overloads share a name and differ in their input argument types.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
@@ -125,7 +125,7 @@ func (r *procedureResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Blocks: map[string]schema.Block{
 			"argument": schema.ListNestedBlock{
 				MarkdownDescription: "One block per argument, in order: at most 32 input (`IN`, `INOUT`) and 32 output (`OUT`, `INOUT`) arguments. Omit for a procedure without arguments. The input types identify the procedure; another spelling of the same types, " +
-					"a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the procedure.",
+					"a `null` mode for `IN`, or a name differing only in case is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place.",
 				PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplaceIf(procedureArgumentsChanged, "Changing the arguments replaces the procedure.", "Changing the arguments replaces the procedure.")},
 				Validators:    []validator.List{listvalidator.SizeAtMost(2 * routineMaxArguments)},
 				NestedObject: schema.NestedBlockObject{Attributes: map[string]schema.Attribute{

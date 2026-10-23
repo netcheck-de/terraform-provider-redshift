@@ -57,14 +57,14 @@ resource "redshift_identity_provider" "entra" {
 
 ### Required
 
-- `name` (String) SQL identity provider name. Changing it replaces the identity provider.
+- `name` (String) SQL identity provider name.
 - `namespace` (String) Prefix of federated users and group roles (`namespace:name`). Updated in place with `ALTER IDENTITY PROVIDER ... NAMESPACE`; existing users and roles keep their names, so the change is refused while federated users with the previous prefix exist. Rename or remove them first.
 
 ### Optional
 
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
-- `application_arn` (String) Identity Center managed application ARN. Required for `AWSIDC`; not allowed for `AZURE`. Changing it replaces the identity provider.
+- `application_arn` (String) Identity Center managed application ARN. Required for `AWSIDC`; not allowed for `AZURE`.
 - `audience` (Set of String) Accepted token audiences (`audience` in `PARAMETERS`), for example the Power BI connector. Only for `AZURE`. Updated in place together with `client_secret_wo`.
 - `auto_create_roles` (Boolean) Whether Redshift creates roles for the provider's groups automatically (`AUTO_CREATE_ROLES`). Unset keeps the type default, `false` for `AWSIDC` and `true` for `AZURE`, and removing the attribute restores that default. The catalog does not report this setting, so Terraform keeps the configured value, changes made outside Terraform are not detected, and imports and lookups report null. Updated in place.
 - `auto_create_roles_exclude_groups` (String) Case-sensitive `LIKE` pattern (`EXCLUDE GROUPS LIKE`) of the identity-provider groups for which Redshift does not create roles automatically. Requires `auto_create_roles = true`; conflicts with `auto_create_roles_include_groups`. Patterns use letters, digits, and `_ % ^ * + ? { } , $`. Not reported by the catalog, like `auto_create_roles`. Updated in place.
@@ -75,7 +75,7 @@ resource "redshift_identity_provider" "entra" {
 - `enabled` (Boolean) Whether the provider is enabled; defaults to `true`. Updated in place when changed; catalog refresh detects drift.
 - `iam_role_arn` (String) IAM role attached to the Redshift namespace for the Identity Center connection. Required for `AWSIDC`; not allowed for `AZURE`. Updated in place when changed; catalog refresh detects drift.
 - `issuer` (String) Token issuer URL of the Microsoft Entra ID tenant (`issuer` in `PARAMETERS`). Required for `AZURE`; not allowed for `AWSIDC`. Updated in place together with `client_secret_wo`.
-- `type` (String) Identity provider type: `AWSIDC` (AWS IAM Identity Center) or `AZURE` (Microsoft Entra ID, native IdP federation). Defaults to `AWSIDC`. Accepted in any case; another case of the same type is recorded in place. Changing it replaces the identity provider.
+- `type` (String) Identity provider type: `AWSIDC` (AWS IAM Identity Center) or `AZURE` (Microsoft Entra ID, native IdP federation). Defaults to `AWSIDC`. Accepted in any case; another case of the same type is recorded in place.
 
 ### Read-Only
 

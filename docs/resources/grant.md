@@ -44,17 +44,17 @@ resource "redshift_grant" "readers" {
 
 ### Required
 
-- `database_name` (String) Local or shared database receiving scoped grants. Changing it replaces the grant.
+- `database_name` (String) Local or shared database receiving scoped grants.
 - `privileges` (Set of String) Desired uppercase SQL privileges; updated in place. An empty set revokes all grants for this tuple. `DATABASE`: `CREATE`, `USAGE`, `TEMPORARY`, `ALTER`. `SCHEMAS` and `SCHEMA`: `CREATE`, `USAGE`, `ALTER`, `DROP`. `TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `TRUNCATE`, `REFERENCES`. `FUNCTIONS` and `PROCEDURES`: `EXECUTE`. `LANGUAGES`: `USAGE`. `COPY JOBS`: `CREATE`, `ALTER`, `DROP`. `TEMPLATES`: `ALTER`, `DROP`, `USAGE`.
-- `scope` (String) `DATABASE` or `SCHEMA` for the database or schema itself, or the object class of a scoped grant that covers current and future objects: `SCHEMAS`, `TABLES`, `FUNCTIONS`, `PROCEDURES`, `LANGUAGES`, `COPY JOBS`, or `TEMPLATES`. `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope. Changing it replaces the grant.
+- `scope` (String) `DATABASE` or `SCHEMA` for the database or schema itself, or the object class of a scoped grant that covers current and future objects: `SCHEMAS`, `TABLES`, `FUNCTIONS`, `PROCEDURES`, `LANGUAGES`, `COPY JOBS`, or `TEMPLATES`. `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope.
 
 ### Optional
 
-- `datashare` (String) Producer datashare receiving `SCHEMA` `USAGE` or schema-scoped `TABLES` `SELECT`; requires a local database and `schema_name`. Conflicts with datashare membership resources for the same tuple. Changing it replaces the grant.
+- `datashare` (String) Producer datashare receiving `SCHEMA` `USAGE` or schema-scoped `TABLES` `SELECT`; requires a local database and `schema_name`. Conflicts with datashare membership resources for the same tuple.
 - `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
-- `role` (String) Receiving Redshift role; configure exactly one of `role`, `user`, or `datashare`. Changing it replaces the grant.
-- `schema_name` (String) Required for `SCHEMA`; optional for `TABLES`, `FUNCTIONS`, `PROCEDURES`, and `TEMPLATES` to limit the grant to one schema. Omit for `DATABASE`, `SCHEMAS`, `LANGUAGES`, and `COPY JOBS`. Changing it replaces the grant.
-- `user` (String) Receiving database user; the only recipient that can hold grant options. Changing it replaces the grant.
+- `role` (String) Receiving Redshift role; configure exactly one of `role`, `user`, or `datashare`.
+- `schema_name` (String) Required for `SCHEMA`; optional for `TABLES`, `FUNCTIONS`, `PROCEDURES`, and `TEMPLATES` to limit the grant to one schema. Omit for `DATABASE`, `SCHEMAS`, `LANGUAGES`, and `COPY JOBS`.
+- `user` (String) Receiving database user; the only recipient that can hold grant options.
 
 ### Read-Only
 

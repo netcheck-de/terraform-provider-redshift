@@ -34,14 +34,14 @@ func (r *blockTestResource) Schema(ctx context.Context, _ resource.SchemaRequest
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"id":       schema.StringAttribute{Computed: true, MarkdownDescription: "JSON identity."},
-			"database": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Database containing the table. Changing it replaces the table."},
-			"name":     schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Table name. Changing it replaces the table."},
+			"database": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Database containing the table."},
+			"name":     schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Table name."},
 			"owner":    schema.StringAttribute{Optional: true, Computed: true, MarkdownDescription: "Owning user."},
 		},
 		Blocks: map[string]schema.Block{
 			timeoutsBlockName: operationTimeoutsBlock(ctx, ""),
 			"column": schema.ListNestedBlock{
-				MarkdownDescription: "At least one `column` block is required. Columns in order; changing it replaces the table.",
+				MarkdownDescription: "At least one `column` block is required. Columns in order.",
 				Validators:          []validator.List{listvalidator.IsRequired(), listvalidator.SizeAtLeast(1)},
 				PlanModifiers:       []planmodifier.List{listplanmodifier.RequiresReplace()},
 				NestedObject: schema.NestedBlockObject{

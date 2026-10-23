@@ -87,12 +87,12 @@ func databaseIntegrationBlock() schema.SingleNestedBlock {
 		Attributes: map[string]schema.Attribute{
 			"integration_id": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "Zero-ETL integration identifier, the `integration_id` of `SVV_INTEGRATION`; required in the block. Changing it replaces the database.",
+				MarkdownDescription: "Zero-ETL integration identifier, the `integration_id` of `SVV_INTEGRATION`; required in the block.",
 				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"source_database": schema.StringAttribute{
 				Optional: true, Computed: true,
-				MarkdownDescription: "Source database to replicate (`DATABASE`), required for Aurora PostgreSQL, RDS for PostgreSQL, and RDS for Oracle sources. Omit it to report the source database `SVV_INTEGRATION` names. Changing it replaces the database.",
+				MarkdownDescription: "Source database to replicate (`DATABASE`), required for Aurora PostgreSQL, RDS for PostgreSQL, and RDS for Oracle sources. Omit it to report the source database `SVV_INTEGRATION` names.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
 			},

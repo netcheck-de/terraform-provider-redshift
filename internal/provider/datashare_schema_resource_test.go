@@ -60,6 +60,6 @@ func TestDatashareSchemaReportsIncludeNewFailure(t *testing.T) {
 		return c.Query(ctx, target, sql, parameters)
 	}))}
 	data := datashareSchemaModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), Schema: types.StringValue("serving"), IncludeNew: types.BoolValue(true)}
-	assert.True(t, invoke(t, r, "create", data, false).HasError())
+	assert.True(t, invoke(t, r, "create", data).HasError())
 	assert.True(t, c.shareSchema)
 }

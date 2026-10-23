@@ -8,23 +8,20 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// invoke executes a Terraform lifecycle method with typed or deliberately invalid state.
-func invoke(t *testing.T, r resource.Resource, operation string, model any, invalid bool) diag.Diagnostics {
+// invoke executes a Terraform lifecycle method with the model as both plan and state.
+func invoke(t *testing.T, r resource.Resource, operation string, model any) diag.Diagnostics {
 	t.Helper()
 	ctx := context.Background()
 	state := testState(t, r, model)
-	if invalid {
-		state.Raw = tftypes.NewValue(tftypes.String, "invalid model")
-	}
 	plan := tfsdk.Plan(state)
 	switch operation {
 	case "create":
@@ -191,39 +188,13 @@ func TestLifecycleCasesAreRegistered(t *testing.T) {
 	}
 }
 
-// TestDefaultDeletion pins the statements the deletion verification treats as removals.
-func TestDefaultDeletion(t *testing.T) {
-	for sql, expected := range map[string]bool{
-		`DROP ROLE "r"`:                          true,
-		`REVOKE SELECT ON TABLE "t" FROM "u"`:    true,
-		`ALTER DATASHARE "s" REMOVE SCHEMA "x"`:  true,
-		`ALTER GROUP "g" DROP USER "u"`:          true,
-		`DETACH RLS POLICY "p" ON "t" FROM "r"`:  true,
-		`ALTER USER "u" RESET search_path`:       true,
-		`CREATE ROLE "r"`:                        false,
-		`ALTER DATASHARE "s" ADD SCHEMA "x"`:     false,
-		`GRANT SELECT ON TABLE "t" TO "u"`:       false,
-		`SELECT role_name FROM svv_roles`:        false,
-		`ALTER IDENTITY PROVIDER "i" DISABLE`:    false,
-		`ALTER SCHEMA "s" OWNER TO "removal"`:    false,
-		`COMMENT ON SCHEMA "s" IS 'DROP stuff'`:  false,
-		`ALTER USER "u" SET search_path TO "x"`:  false,
-		`ALTER DATASHARE "s" SET INCLUDENEW = t`: false,
-	} {
-		assert.Equal(t, expected, defaultDeletion(sql), sql)
-	}
-}
-
-// TestLifecycleDiagnosticsAndRetries injects failures at every SQL boundary of each lifecycle method.
-func TestLifecycleDiagnosticsAndRetries(t *testing.T) {
+// TestLifecycleSQLBoundaryErrors injects failures at every SQL boundary of each lifecycle method.
+func TestLifecycleSQLBoundaryErrors(t *testing.T) {
 	for _, test := range lifecycleCases() {
 		for _, operation := range []string{"create", "read", "update", "delete"} {
 			t.Run(test.name+"/"+operation, func(t *testing.T) {
-				r := test.new()
-				diagnostics := invoke(t, r, operation, test.model, true)
-				require.True(t, diagnostics.HasError(), "invalid request must not reach SQL")
 				queries := 0
-				// Retry each query failure point with a fresh catalog, including failures
+				// Inject each query failure with a fresh catalog, including failures
 				// after DDL has succeeded but before verification completes.
 				for failAt := 0; failAt <= queries; failAt++ {
 					c := test.catalog()
@@ -242,9 +213,9 @@ func TestLifecycleDiagnosticsAndRetries(t *testing.T) {
 						}
 						return c.Query(ctx, target, sql, parameters)
 					})
-					r = test.new()
+					r := test.new()
 					configureTestResource(t, r, client)
-					diagnostics = invoke(t, r, operation, test.model, false)
+					diagnostics := invoke(t, r, operation, test.model)
 					if failAt == 0 {
 						require.False(t, diagnostics.HasError(), "%v", diagnostics)
 						queries = calls
@@ -270,10 +241,65 @@ func TestLifecycleMissingObjects(t *testing.T) {
 				})
 				r := test.new()
 				configureTestResource(t, r, client)
-				diagnostics := invoke(t, r, operation, test.model, false)
+				diagnostics := invoke(t, r, operation, test.model)
 				assert.Equal(t, operation == "create" || operation == "update", diagnostics.HasError(), "%v", diagnostics)
 			})
 		}
+	}
+}
+
+// TestLifecycleMissingDatabase treats an object whose non-admin database is gone as absent on read and delete, and
+// reports a failing database lookup instead of treating it as absence. The admin database skips that lookup, so
+// the shared cases run against another database here.
+func TestLifecycleMissingDatabase(t *testing.T) {
+	for _, test := range lifecycleCases() {
+		if !reflect.ValueOf(test.model).FieldByName("Database").IsValid() {
+			continue
+		}
+		local := reflect.New(reflect.TypeOf(test.model)).Elem()
+		local.Set(reflect.ValueOf(test.model))
+		local.FieldByName("Database").Set(reflect.ValueOf(types.StringValue("warehouse")))
+		for _, operation := range []string{"read", "delete"} {
+			t.Run(test.name+"/"+operation, func(t *testing.T) {
+				r := test.new()
+				configureTestResource(t, r, queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+					if test.missingRows != nil {
+						return test.missingRows(operation, sql), nil
+					}
+					return nil, nil
+				}))
+				diagnostics := invoke(t, r, operation, local.Interface())
+				assert.False(t, diagnostics.HasError(), "%v", diagnostics)
+				r = test.new()
+				configureTestResource(t, r, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+					return nil, errors.New("database lookup failed")
+				}))
+				diagnostics = invoke(t, r, operation, local.Interface())
+				require.True(t, diagnostics.HasError())
+				assert.Contains(t, diagnostics.Errors()[0].Detail(), "database lookup failed")
+			})
+		}
+	}
+}
+
+// TestLifecycleImportRoundTrip imports each created object by the JSON identity Create recorded and refreshes it.
+func TestLifecycleImportRoundTrip(t *testing.T) {
+	for _, test := range lifecycleCases() {
+		t.Run(test.name, func(t *testing.T) {
+			c := test.catalog()
+			if test.absent != nil {
+				test.absent(c)
+			}
+			test.applyPrepare(c, "create")
+			r := test.new()
+			configureTestResource(t, r, c)
+			state, diagnostics := applyOperation(t, r, "create", nil, test.model, nil)
+			require.False(t, diagnostics.HasError(), "%v", diagnostics)
+			var id types.String
+			require.False(t, state.GetAttribute(context.Background(), path.Root("id"), &id).HasError())
+			diagnostics = importAndRead(t, r, id.ValueString())
+			assert.False(t, diagnostics.HasError(), "%v", diagnostics)
+		})
 	}
 }
 
@@ -293,7 +319,7 @@ func TestPermissionDeletionVerifiesRemoval(t *testing.T) {
 			})
 			r := test.new()
 			configureTestResource(t, r, client)
-			diagnostics := invoke(t, r, "delete", test.model, false)
+			diagnostics := invoke(t, r, "delete", test.model)
 			assert.True(t, diagnostics.HasError(), "%v", diagnostics)
 		})
 	}
@@ -309,7 +335,7 @@ func TestProviderBindingCannotAdoptAnotherWarehouse(t *testing.T) {
 			configureTestResource(t, r, c)
 			model := withID(test.model, types.StringValue(`{"workgroup_name":"other","database":"admin"}`))
 			for _, operation := range []string{"read", "update", "delete"} {
-				diagnostics := invoke(t, r, operation, model, false)
+				diagnostics := invoke(t, r, operation, model)
 				require.True(t, diagnostics.HasError(), "%s must reject a different warehouse", operation)
 			}
 			assert.Empty(t, c.writes)

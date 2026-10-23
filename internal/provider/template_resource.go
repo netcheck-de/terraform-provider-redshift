@@ -89,8 +89,8 @@ func (r *templateResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 		MarkdownDescription: "Manages a reusable template of `COPY` options in a local schema.",
 		Attributes: map[string]schema.Attribute{
 			"id":       id,
-			"database": schema.StringAttribute{Required: true, Validators: nonEmpty, PlanModifiers: replace, MarkdownDescription: "Local database containing the template; templates cannot be referenced from other databases. Changing it replaces the template."},
-			"schema":   schema.StringAttribute{Required: true, Validators: nonEmpty, PlanModifiers: replace, MarkdownDescription: "Existing schema containing the template. Changing it replaces the template."},
+			"database": schema.StringAttribute{Required: true, Validators: nonEmpty, PlanModifiers: replace, MarkdownDescription: "Local database containing the template; templates cannot be referenced from other databases."},
+			"schema":   schema.StringAttribute{Required: true, Validators: nonEmpty, PlanModifiers: replace, MarkdownDescription: "Existing schema containing the template."},
 			"name": schema.StringAttribute{
 				Required: true, MarkdownDescription: "Template name, in lowercase. A change renames the template in place with `ALTER TEMPLATE ... RENAME TO`.",
 				Validators: []validator.String{stringvalidator.LengthAtLeast(1)},

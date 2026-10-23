@@ -113,9 +113,9 @@ resource "redshift_table" "events" {
 
 ### Required
 
-- `database` (String) Local database containing the table. Changing it replaces the table.
-- `name` (String) Table name, in lowercase, because Redshift folds ASCII letters of identifiers to lowercase. Changing it replaces the table.
-- `schema` (String) Existing schema containing the table, in lowercase. Changing it replaces the table.
+- `database` (String) Local database containing the table.
+- `name` (String) Table name, in lowercase, because Redshift folds ASCII letters of identifiers to lowercase.
+- `schema` (String) Existing schema containing the table, in lowercase.
 
 ### Optional
 

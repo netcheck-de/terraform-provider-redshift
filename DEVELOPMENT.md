@@ -42,6 +42,12 @@ Refresh Go dependencies with `go get -u ./...` followed by `go mod tidy`; update
 - Successful `resource.UnitTest` applies already check empty plans without and with refresh. Add explicit `PlanOnly`
   steps only for distinct behavior: changed configuration, drift, validation errors, failed applies, or import-only
   convergence.
+- Check built-in plan modifiers through schema wiring; test conditional/custom behavior with realistic resource
+  requests or Terraform plan checks. Avoid simulating the framework, testing unused attribute kinds, or repeating
+  malformed framework-request tests for each resource.
+- Prefer final-state and mutation assertions for ordinary lifecycles. Keep exact transcripts where mutation ordering
+  matters, not to freeze incidental refresh/import query sequences. Test partial-create recovery with returned state,
+  separately from tests that inject errors at SQL boundaries.
 
 ## Adding resources and data sources
 
@@ -55,8 +61,9 @@ New types add files rather than modifying shared infrastructure. Follow this che
 4. Add a template and per-type examples, including resource import instructions, then run `task docs`.
 5. Add usage to `examples/complete/<block>.tf`, data-source outputs to `outputs_<block>.tf`, and mocked assertions to
    `tests/<block>.tftest.hcl` using the shared mocks.
-6. Update pinned type counts in `main_test.go`, provider-index tables and ownership entries in
-   `templates/index.md.tmpl`, and any affected README or backlog entries. Run `task check` and the Terraform checks.
+6. Update provider-index tables and ownership entries in `templates/index.md.tmpl`, and any affected README or backlog
+   entries. Registration/documentation tests check completeness without pinned type counts. Run `task check` and the
+   Terraform checks.
 
 ### Schema conventions
 
@@ -68,6 +75,8 @@ New types add files rather than modifying shared infrastructure. Follow this che
 - Data sources never declare blocks. `newCatalogDataSource` / `collectionElement` convert resource blocks to computed
   nested attributes. Lookup-only inputs go in `catalogSpec.selectors`; listing results use the data-source name.
   Use `lookupDescriptions` for resource wording that does not apply to lookups.
+- Resource descriptions say what a field holds, not whether changing it replaces the object; the template's
+  Reconciliation table records that, so lookups reuse resource descriptions verbatim.
 - Register replacement rules for every configurable attribute/block. Parity registration covers shared readable
   fields and lookup-only selectors; unpaired lookups use `standalone`, and resources without lookups need exemptions.
 - Keep validation rules in one place: schema validators handle local constraints, while shared domain checks handle

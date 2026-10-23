@@ -57,11 +57,11 @@ func (r *schemaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local database owning the schema. Changing it replaces the schema.",
+				Required: true, MarkdownDescription: "Local database owning the schema.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Schema name. Changing it replaces the schema; the provider never renames.",
+				Required: true, MarkdownDescription: "Schema name. The provider never renames a schema.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"owner": schema.StringAttribute{

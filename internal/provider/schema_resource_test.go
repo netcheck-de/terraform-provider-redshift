@@ -114,3 +114,61 @@ func TestSchemaCreationErrorsRetainKnownState(t *testing.T) {
 		})
 	}
 }
+
+// TestSchemaQuotaRejectsMalformedSession fails instead of guessing quota visibility from an ambiguous or unrecognized session row.
+func TestSchemaQuotaRejectsMalformedSession(t *testing.T) {
+	for _, test := range []struct {
+		rows    []dataapi.Row
+		message string
+	}{
+		{nil, "no unique row"},
+		{[]dataapi.Row{{"superuser": "true"}, {"superuser": "false"}}, "no unique row"},
+		{[]dataapi.Row{{"superuser": "unexpected"}}, "unrecognized usesuper"},
+	} {
+		calls := 0
+		r := &schemaResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+			calls++
+			if calls == 1 {
+				return nil, nil
+			}
+			return test.rows, nil
+		}))}
+		_, visible, err := r.schemaQuota(context.Background(), schemaModel{Database: types.StringValue("admin"), Name: types.StringValue("serving")}, "owner")
+		require.ErrorContains(t, err, test.message)
+		assert.False(t, visible)
+		assert.Equal(t, 2, calls)
+	}
+}
+
+// TestSchemaUpdateReportsDisappearance reports a local or external schema that vanishes between ALTER and verification.
+func TestSchemaUpdateReportsDisappearance(t *testing.T) {
+	for _, external := range []bool{false, true} {
+		c := fullCatalog()
+		client := queryFunc(func(ctx context.Context, connection dataapi.Connection, query string, parameters map[string]string) ([]dataapi.Row, error) {
+			rows, err := c.Query(ctx, connection, query, parameters)
+			if strings.HasPrefix(query, "ALTER SCHEMA ") || strings.HasPrefix(query, "ALTER EXTERNAL SCHEMA ") {
+				c.schema, c.external = false, false
+			}
+			return rows, err
+		})
+		var r resource.Resource
+		var before, after any
+		if external {
+			r = newExternalSchemaResource()
+			model := externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("example_external"), GlueDatabase: types.StringValue("example_glue"), IAMRoleARN: types.StringValue("arn:aws:iam::123456789012:role/spectrum"), RefreshRevision: types.StringNull(), Owner: types.StringValue("admin")}
+			before = model
+			model.Owner = types.StringValue("replacement_owner")
+			after = model
+		} else {
+			r = newSchemaResource()
+			model := schemaModel{Database: types.StringValue("admin"), Name: types.StringValue("serving"), Owner: types.StringValue("admin")}
+			before = model
+			model.Owner = types.StringValue("replacement_owner")
+			after = model
+		}
+		configureTestResource(t, r, client)
+		_, diagnostics := applyOperation(t, r, "update", before, after, nil)
+		require.True(t, diagnostics.HasError(), "%v", diagnostics)
+		assert.Contains(t, diagnostics[0].Detail(), "disappeared during the update")
+	}
+}

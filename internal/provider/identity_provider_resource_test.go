@@ -132,7 +132,7 @@ func TestIdentityProviderKeepsFederatedUsers(t *testing.T) {
 		}
 	}))}
 	data := identityProviderModel{Name: types.StringValue("identity"), Namespace: types.StringValue("example"), ApplicationARN: types.StringValue("application"), IAMRoleARN: types.StringValue("role"), Enabled: types.BoolValue(true)}
-	diagnostics := invoke(t, r, "delete", data, false)
+	diagnostics := invoke(t, r, "delete", data)
 	assert.True(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.Zero(t, writes, "federated provider must not be dropped")
 }
@@ -184,7 +184,7 @@ func TestIdentityProviderRefusesChangedIdentityOnDelete(t *testing.T) {
 			} else {
 				data.ApplicationARN = types.StringValue("previous")
 			}
-			diagnostics := invoke(t, r, "delete", data, false)
+			diagnostics := invoke(t, r, "delete", data)
 			assert.True(t, diagnostics.HasError())
 			assert.Empty(t, c.writes)
 		})
@@ -206,7 +206,7 @@ func TestIdentityProviderCreatesDisabled(t *testing.T) {
 			})
 			r := &identityProviderResource{testResourceClient(client)}
 			data := identityProviderModel{Name: types.StringValue("identity"), Namespace: types.StringValue("example"), ApplicationARN: types.StringValue("application"), IAMRoleARN: types.StringValue("role-one"), Enabled: types.BoolValue(false)}
-			diagnostics := invoke(t, r, "create", data, false)
+			diagnostics := invoke(t, r, "create", data)
 			assert.Equal(t, failAt != 0, diagnostics.HasError(), "%v", diagnostics)
 			if failAt == 0 {
 				assert.False(t, c.enabled)
@@ -276,7 +276,7 @@ func TestIdentityProviderAzureLifecycle(t *testing.T) {
 	_, diagnostics = applyOperation(t, r, "update", rotated, reissued, identityProviderWithSecret(reissued, "second"))
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 
-	diagnostics = invoke(t, r, "delete", reissued, false)
+	diagnostics = invoke(t, r, "delete", reissued)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.False(t, c.identity)
 }

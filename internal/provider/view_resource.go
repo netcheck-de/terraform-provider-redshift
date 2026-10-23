@@ -77,9 +77,9 @@ func (r *viewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 		MarkdownDescription: "Manages an ordinary or late-binding view in a local Redshift schema.",
 		Attributes: map[string]schema.Attribute{
 			"id":       idAttribute(),
-			"database": viewNameAttribute("Local database containing the view. Changing it replaces the view."),
-			"schema":   viewNameAttribute("Existing schema containing the view. Changing it replaces the view."),
-			"name":     viewNameAttribute("View name. Changing it replaces the view."),
+			"database": viewNameAttribute("Local database containing the view."),
+			"schema":   viewNameAttribute("Existing schema containing the view."),
+			"name":     viewNameAttribute("View name."),
 			"query": schema.StringAttribute{
 				Required: true,
 				MarkdownDescription: "SELECT statement defining the view, without a trailing `;`. A change runs `CREATE OR REPLACE VIEW`, " +

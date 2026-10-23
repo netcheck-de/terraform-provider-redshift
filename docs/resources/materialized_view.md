@@ -55,15 +55,15 @@ resource "redshift_materialized_view" "revenue_by_region" {
 
 ### Required
 
-- `database` (String) Local database containing the materialized view. Changing it replaces the view.
-- `name` (String) Materialized view name. Changing it replaces the view.
-- `query` (String) SELECT statement defining the materialized view, without a trailing `;`. Redshift cannot alter the definition. Changing it replaces the view. State keeps this text while the catalog definition is unchanged; a change made outside Terraform surfaces the catalog definition and plans a replacement. An import leaves it unset; the first apply after an import records the configured value without replacing the view and warns with the catalog definition, which it cannot compare.
-- `schema` (String) Existing schema containing the materialized view. Changing it replaces the view.
+- `database` (String) Local database containing the materialized view.
+- `name` (String) Materialized view name.
+- `query` (String) SELECT statement defining the materialized view, without a trailing `;`. Redshift cannot alter the definition. State keeps this text while the catalog definition is unchanged; a change made outside Terraform surfaces the catalog definition and plans a replacement. An import leaves it unset; the first apply after an import records the configured value without replacing the view and warns with the catalog definition, which it cannot compare.
+- `schema` (String) Existing schema containing the materialized view.
 
 ### Optional
 
 - `auto_refresh` (Boolean) Refresh automatically when base tables change (`AUTO REFRESH YES`). Changed in place with `ALTER MATERIALIZED VIEW`. Redshift rejects it for queries with mutable functions, external tables, or other materialized views. Defaults to `false`.
-- `backup` (Boolean) Include the materialized view in snapshots (`BACKUP YES`) or not (`BACKUP NO`); unset uses the server default, `YES`. Not reported by a documented catalog view, so it is not read back. Changing it replaces the view. An import leaves it unset; the first apply after an import records the configured value without replacing the view and warns with the catalog definition, which it cannot compare.
+- `backup` (Boolean) Include the materialized view in snapshots (`BACKUP YES`) or not (`BACKUP NO`); unset uses the server default, `YES`. Not reported by a documented catalog view, so it is not read back. An import leaves it unset; the first apply after an import records the configured value without replacing the view and warns with the catalog definition, which it cannot compare.
 - `distribution` (Block, Optional) Distribution of the rows across the compute nodes; omitted uses the server default, `EVEN`. Changed in place with `ALTER MATERIALIZED VIEW ... ALTER DISTSTYLE`; removing the block returns the view to `EVEN`. Not read back, so changes made outside Terraform are not detected. (see [below for nested schema](#nestedblock--distribution))
 - `owner` (String) SQL user owning the materialized view. When set, it is applied with `ALTER TABLE ... OWNER TO`; when unset, the creating user owns the materialized view and the attribute reports the catalog owner. `SVV_MV_INFO` shows a regular user only the materialized views it owns, so after a provider identity that is not a superuser transfers ownership away, `auto_refresh` is no longer read back, and changing or dropping the view needs privileges that the new owner grants.
 - `sort_key` (Block, Optional) Compound sort key. Changed in place with `ALTER MATERIALIZED VIEW ... ALTER COMPOUND SORTKEY`; removing the block runs `ALTER SORTKEY NONE`. Not read back, so changes made outside Terraform are not detected. (see [below for nested schema](#nestedblock--sort_key))

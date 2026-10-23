@@ -67,18 +67,18 @@ resource "redshift_copy_job" "archive" {
 
 ### Required
 
-- `database` (String) Local database containing the target table; the job's statements run there. Changing it replaces the job.
-- `iam_role` (String) ARN of an IAM role associated with the warehouse that can read `source`. COPY JOB does not support the default role. Changing it replaces the job.
-- `name` (String) Job name: lowercase letters, digits, and underscores, without hyphens. Changing it replaces the job.
-- `source` (String) Amazon S3 prefix the job monitors, such as `s3://bucket/staging/`. Its bucket needs an S3 event integration with the warehouse, also with `auto = false`. Changing it replaces the job.
+- `database` (String) Local database containing the target table; the job's statements run there.
+- `iam_role` (String) ARN of an IAM role associated with the warehouse that can read `source`. COPY JOB does not support the default role.
+- `name` (String) Job name: lowercase letters, digits, and underscores, without hyphens.
+- `source` (String) Amazon S3 prefix the job monitors, such as `s3://bucket/staging/`. Its bucket needs an S3 event integration with the warehouse, also with `auto = false`.
 
 ### Optional
 
 - `auto` (Boolean) Whether Redshift loads new files automatically (`AUTO ON`); updated in place with `COPY JOB ALTER`. Defaults to `true`, the Redshift default.
-- `format` (String) Data format of `FORMAT AS`: `AVRO`, `CSV`, `FIXEDWIDTH`, `JSON`, `ORC`, `PARQUET`, `SHAPEFILE`. Omit it for pipe-delimited text. Changing it replaces the job.
-- `format_argument` (String) Argument of the format, required for `JSON` and `AVRO` (`auto`, `auto ignorecase`, `noshred`, or an `s3://` JSONPaths file) and `FIXEDWIDTH`. For `SHAPEFILE`, optionally use `SIMPLIFY [AUTO] [tolerance]`, with a finite non-negative numeric tolerance. Rejected for other formats. Changing it replaces the job.
-- `parameters` (Map of String) COPY parameters keyed by their UPPERCASE keyword, with `""` for keywords without an argument, such as `{ IGNOREHEADER = "1", GZIP = "" }`. Accepted: `ACCEPTANYDATE`, `ACCEPTINVCHARS`, `BLANKSASNULL`, `BZIP2`, `COMPROWS`, `COMPUPDATE`, `DATEFORMAT`, `DELIMITER`, `EMPTYASNULL`, `ENCODING`, `ENCRYPTED`, `ESCAPE`, `EXPLICIT_IDS`, `FILLRECORD`, `GZIP`, `IGNOREBLANKLINES`, `IGNOREHEADER`, `LZOP`, `NOLOAD`, `NULL`, `QUOTE`, `REGION`, `REMOVEQUOTES`, `ROUNDEC`, `STATUPDATE`, `TIMEFORMAT`, `TRIMBLANKS`, `TRUNCATECOLUMNS`, `ZSTD`. COPY JOB rejects `MAXERROR`, `IGNOREALLERRORS`, `MANIFEST`, and key-based credentials. Changing it replaces the job.
-- `table` (Block, Optional) At least one `table` block is required. Target table of the COPY command. Changing it replaces the job. (see [below for nested schema](#nestedblock--table))
+- `format` (String) Data format of `FORMAT AS`: `AVRO`, `CSV`, `FIXEDWIDTH`, `JSON`, `ORC`, `PARQUET`, `SHAPEFILE`. Omit it for pipe-delimited text.
+- `format_argument` (String) Argument of the format, required for `JSON` and `AVRO` (`auto`, `auto ignorecase`, `noshred`, or an `s3://` JSONPaths file) and `FIXEDWIDTH`. For `SHAPEFILE`, optionally use `SIMPLIFY [AUTO] [tolerance]`, with a finite non-negative numeric tolerance. Rejected for other formats.
+- `parameters` (Map of String) COPY parameters keyed by their UPPERCASE keyword, with `""` for keywords without an argument, such as `{ IGNOREHEADER = "1", GZIP = "" }`. Accepted: `ACCEPTANYDATE`, `ACCEPTINVCHARS`, `BLANKSASNULL`, `BZIP2`, `COMPROWS`, `COMPUPDATE`, `DATEFORMAT`, `DELIMITER`, `EMPTYASNULL`, `ENCODING`, `ENCRYPTED`, `ESCAPE`, `EXPLICIT_IDS`, `FILLRECORD`, `GZIP`, `IGNOREBLANKLINES`, `IGNOREHEADER`, `LZOP`, `NOLOAD`, `NULL`, `QUOTE`, `REGION`, `REMOVEQUOTES`, `ROUNDEC`, `STATUPDATE`, `TIMEFORMAT`, `TRIMBLANKS`, `TRUNCATECOLUMNS`, `ZSTD`. COPY JOB rejects `MAXERROR`, `IGNOREALLERRORS`, `MANIFEST`, and key-based credentials.
+- `table` (Block, Optional) At least one `table` block is required. Target table of the COPY command. (see [below for nested schema](#nestedblock--table))
 
 ### Read-Only
 

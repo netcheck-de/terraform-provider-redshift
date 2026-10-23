@@ -32,12 +32,12 @@ func (r *debugGrantResource) Schema(_ context.Context, _ resource.SchemaRequest,
 		MarkdownDescription: "Grants `DEBUG` on one database in a warehouse with federated permissions, so the grantee sees secure logging records unredacted, to a global identity, an Identity Center group, or the administrators of an account.",
 		Attributes: map[string]schema.Attribute{
 			"id":       idAttribute(),
-			"database": privilegeString("Database with federated permissions that `DEBUG` applies to. `ACCOUNT` requires a producer-local name such as `sales_db` and a provider connected to that producer. Remote `USER`/`ROLE` aliases such as `sales_db@finance-catalog` require a SQL superuser, a verified `IAM AssumeUser` current-session authentication event in `SYS_CONNECTION_LOG`, and alias visibility in `SHOW DATABASES`. Password, unavailable, or unverified remote contexts are errors even if the alias is listed. Changing it replaces the grant.", false),
+			"database": privilegeString("Database with federated permissions that `DEBUG` applies to. `ACCOUNT` requires a producer-local name such as `sales_db` and a provider connected to that producer. Remote `USER`/`ROLE` aliases such as `sales_db@finance-catalog` require a SQL superuser, a verified `IAM AssumeUser` current-session authentication event in `SYS_CONNECTION_LOG`, and alias visibility in `SHOW DATABASES`. Password, unavailable, or unverified remote contexts are errors even if the alias is listed.", false),
 			"grantee": privilegeString("Receiving identity: a global identity `<prefix>:<name>` (such as `IAM:sales_auditor` or `IAMR:audit_role`) for `USER`, "+
-				"an Identity Center group `<prefix>:<group>` for `ROLE`, or a 12-digit AWS account ID for `ACCOUNT`, which must own the producer. Changing it replaces the grant.", false),
+				"an Identity Center group `<prefix>:<group>` for `ROLE`, or a 12-digit AWS account ID for `ACCOUNT`, which must own the producer.", false),
 			"grantee_type": privilegeKeyword("`USER` for a global identity (`TO \"<prefix>:<name>\"`), `ROLE` for an Identity Center group (`TO ROLE \"<prefix>:<group>\"`), "+
-				"or `ACCOUNT` for the superusers of an account (`TO ADMINS OF ACCOUNT '<account_id>'`). Accepted in any case; another case of the same keyword is recorded in place. "+
-				"Changing it replaces the grant.", "USER", "ROLE", "ACCOUNT"),
+				"or `ACCOUNT` for the superusers of an account (`TO ADMINS OF ACCOUNT '<account_id>'`). Accepted in any case; another case of the same keyword is recorded in place.",
+				"USER", "ROLE", "ACCOUNT"),
 		},
 	}
 }

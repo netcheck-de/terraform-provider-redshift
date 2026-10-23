@@ -38,9 +38,9 @@ resource "redshift_assumerole_grant" "loader" {
 
 ### Required
 
-- `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`. Changing it replaces the grant.
-- `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.
-- `iam_role_arn` (String) IAM role ARN, `DEFAULT` for the namespace default IAM role, or `ALL` for every IAM role. `DEFAULT` and `ALL` are keywords accepted in any case, and another case of the same one is recorded in place; an ARN is case-sensitive and compared exactly. A grant on `ALL` absorbs the grantee's grant on `DEFAULT` and also shows up under every IAM role that another grant names, so manage a grantee through either `ALL` or individual roles. Changing it replaces the grant.
+- `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`.
+- `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`.
+- `iam_role_arn` (String) IAM role ARN, `DEFAULT` for the namespace default IAM role, or `ALL` for every IAM role. `DEFAULT` and `ALL` are keywords accepted in any case, and another case of the same one is recorded in place; an ARN is case-sensitive and compared exactly. A grant on `ALL` absorbs the grantee's grant on `DEFAULT` and also shows up under every IAM role that another grant names, so manage a grantee through either `ALL` or individual roles.
 - `privileges` (Set of String) Exact set of supported commands the grantee may run with the role: `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, `CREATE MODEL`, `RESULT_OFFLOAD`. The provider issues one statement per command, not `FOR ALL`, which can include additional engine-specific commands. `RESULT_OFFLOAD` uses the exact standalone keyword and catalog spelling verified against Redshift. An empty set revokes owned commands. `PUBLIC` holds every command `ON ALL` until revoked, which the `ALL`/`PUBLIC` tuple reports; deleting that tuple revokes what it holds and never grants the default back.
 
 ### Read-Only

@@ -316,3 +316,23 @@ func TestObjectGrantSharedCompleteVisibilityRequired(t *testing.T) {
 		})
 	}
 }
+
+// TestSharedGrantSnapshotIgnoresOtherRecipients keeps only the managed grantee's rows from SHOW GRANTS.
+func TestSharedGrantSnapshotIgnoresOtherRecipients(t *testing.T) {
+	r := newObjectGrantResource().(*privilegeResource)
+	r.resourceClient = testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+		if strings.Contains(sql, "DISTINCT table_name AS object_name") {
+			return []sqlclient.Row{{"object_name": "orders"}}, nil
+		}
+		assert.Equal(t, `SHOW GRANTS ON TABLE "shared_db"."serving"."orders"`, sql)
+		return []sqlclient.Row{{"identity_name": "other", "identity_type": "user", "privilege_scope": "TABLE", "privilege_type": "SELECT"}, {"identity_name": "reader", "identity_type": "user", "privilege_scope": "TABLE", "privilege_type": "SELECT"}}, nil
+	}))
+	data := privilegeObject(t, r, map[string]string{"database_name": "shared_db", "database_type": "shared", "schema_name": "serving", "object_type": "ALL TABLES", "grantee": "reader", "grantee_type": "USER"})
+	target, err := sharedObjectGrantTarget(data)
+	require.NoError(t, err)
+	rows, found, err := r.privilegeRows(context.Background(), target)
+	require.NoError(t, err)
+	assert.True(t, found)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "reader", rows[0]["identity_name"])
+}

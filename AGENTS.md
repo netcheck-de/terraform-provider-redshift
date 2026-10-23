@@ -48,8 +48,12 @@ through the Data API or a direct TLS connection.
 
 - testify only: `require` for preconditions and errors, `assert` for independent checks.
 - Offline tests fake SQL with `queryFunc` (`resource_test.go`) or the `catalog` fake (`fake_catalog_test.go`).
-- Golden files under `testdata/sql/` pin all SQL (`checkSQL` for renderers, `runTranscripts` for lifecycle calls);
-  `task golden` rewrites them, and every changed file needs a reason.
+- Golden files under `testdata/sql/` pin rendered SQL (`checkSQL`) and mutation ordering worth preserving
+  (`runTranscripts`). Do not pin routine refresh/import query sequences merely for completeness. `task golden`
+  rewrites them, and every changed file needs a reason.
+- Test provider behavior, not framework internals: check schema wiring for built-in modifiers and use focused tests
+  for custom planning, unknown values, ownership, and partial-failure recovery. Do not accommodate invalid synthetic
+  schemas in production code to satisfy generic tests.
 - Acceptance tests use `resource.Test`, gated by `testAccPreCheck`/`testAccWorkgroup` (`acc_test.go`) and `TF_ACC=1`.
 
 ## Adding a resource or data source
@@ -72,8 +76,9 @@ separate foundation change.
    names every argument and block field, true to the code (see "Documentation" in `DEVELOPMENT.md`).
 5. In `examples/complete`, use it in the block's own `<block>.tf`, expose each data source in `outputs_<block>.tf`, and
    assert it in `tests/<block>.tftest.hcl`, which declares the shared mocks from `tests/mocks/`.
-6. Raise the pinned counts in `main_test.go` and add the type to the tables and, where it shares an object with other
-   types, the ownership matrix in `templates/index.md.tmpl`. In parallel block work the integration step does this.
+6. Add the type to the tables and, where it shares an object with other types, the ownership matrix in
+   `templates/index.md.tmpl`. Registration/documentation tests check completeness without pinned type counts.
+   In parallel block work the integration step does this.
 
 ## Changes and releases
 

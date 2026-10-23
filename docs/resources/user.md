@@ -58,7 +58,7 @@ resource "redshift_role_grant" "grafana_monitor" {
 
 ### Required
 
-- `name` (String) Database user name. Changing it replaces the user.
+- `name` (String) Database user name.
 
 ### Optional
 

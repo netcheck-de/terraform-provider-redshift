@@ -57,8 +57,8 @@ func newGrantResource() resource.Resource { return &grantResource{} }
 // descriptions that carry the replacement note of permission tuples.
 func grantRecipientAttributes(attributes map[string]schema.Attribute) {
 	granteeAttributes(attributes)
-	attributes["grantee"] = privilegeString("Receiving identity name; use `public` with `grantee_type = \"PUBLIC\"`. Changing it replaces the grant.", false)
-	attributes["grantee_type"] = privilegeString("`ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.", false, "ROLE", "USER", "GROUP", "PUBLIC")
+	attributes["grantee"] = privilegeString("Receiving identity name; use `public` with `grantee_type = \"PUBLIC\"`.", false)
+	attributes["grantee_type"] = privilegeString("`ROLE`, `USER`, `GROUP`, or `PUBLIC`.", false, "ROLE", "USER", "GROUP", "PUBLIC")
 }
 
 // grantPrivilegesAttribute defines the authoritative privilege set with a type-specific description.
@@ -79,28 +79,28 @@ func (r *grantResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database_name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local or shared database receiving scoped grants. Changing it replaces the grant.",
+				Required: true, MarkdownDescription: "Local or shared database receiving scoped grants.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"schema_name": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Required for `SCHEMA`; optional for `TABLES`, `FUNCTIONS`, `PROCEDURES`, and `TEMPLATES` to limit the grant to one schema. Omit for `DATABASE`, `SCHEMAS`, `LANGUAGES`, and `COPY JOBS`. Changing it replaces the grant.",
+				Optional: true, MarkdownDescription: "Required for `SCHEMA`; optional for `TABLES`, `FUNCTIONS`, `PROCEDURES`, and `TEMPLATES` to limit the grant to one schema. Omit for `DATABASE`, `SCHEMAS`, `LANGUAGES`, and `COPY JOBS`.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"role": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Receiving Redshift role; configure exactly one of `role`, `user`, or `datashare`. Changing it replaces the grant.",
+				Optional: true, MarkdownDescription: "Receiving Redshift role; configure exactly one of `role`, `user`, or `datashare`.",
 				Validators:    []validator.String{stringvalidator.ExactlyOneOf(recipients...)},
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"user": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Receiving database user; the only recipient that can hold grant options. Changing it replaces the grant.",
+				Optional: true, MarkdownDescription: "Receiving database user; the only recipient that can hold grant options.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"datashare": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Producer datashare receiving `SCHEMA` `USAGE` or schema-scoped `TABLES` `SELECT`; requires a local database and `schema_name`. Conflicts with datashare membership resources for the same tuple. Changing it replaces the grant.",
+				Optional: true, MarkdownDescription: "Producer datashare receiving `SCHEMA` `USAGE` or schema-scoped `TABLES` `SELECT`; requires a local database and `schema_name`. Conflicts with datashare membership resources for the same tuple.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"scope": schema.StringAttribute{
-				Required: true, MarkdownDescription: "`DATABASE` or `SCHEMA` for the database or schema itself, or the object class of a scoped grant that covers current and future objects: `SCHEMAS`, `TABLES`, `FUNCTIONS`, `PROCEDURES`, `LANGUAGES`, `COPY JOBS`, or `TEMPLATES`. `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope. Changing it replaces the grant.",
+				Required: true, MarkdownDescription: "`DATABASE` or `SCHEMA` for the database or schema itself, or the object class of a scoped grant that covers current and future objects: `SCHEMAS`, `TABLES`, `FUNCTIONS`, `PROCEDURES`, `LANGUAGES`, `COPY JOBS`, or `TEMPLATES`. `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.OneOf(grantScopes...)},
 			},

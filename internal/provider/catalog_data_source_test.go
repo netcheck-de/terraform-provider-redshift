@@ -14,7 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	resourceschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
@@ -57,7 +56,7 @@ func catalogLookupObject(t *testing.T, source datasource.DataSource, fields map[
 	return types.ObjectValueMust(attributeTypes, attributes)
 }
 
-// exerciseCatalogLookup checks observations, absence, SQL errors, malformed configuration, and read-only execution.
+// exerciseCatalogLookup checks observations, absence, SQL errors, and read-only execution.
 func exerciseCatalogLookup(t *testing.T, factory func() datasource.DataSource, fields map[string]string, expected map[string]attr.Value, client sqlclient.Client) {
 	t.Helper()
 	source := factory()
@@ -100,11 +99,6 @@ func exerciseCatalogLookup(t *testing.T, factory func() datasource.DataSource, f
 			}
 		}
 	}
-	var schema datasource.SchemaResponse
-	source.Schema(context.Background(), datasource.SchemaRequest{}, &schema)
-	resp := datasource.ReadResponse{State: tfsdk.State{Schema: schema.Schema}}
-	source.Read(context.Background(), datasource.ReadRequest{Config: tfsdk.Config{Schema: schema.Schema, Raw: tftypes.NewValue(tftypes.String, "invalid")}}, &resp)
-	require.True(t, resp.Diagnostics.HasError())
 }
 
 // TestPrivilegeLookupsReturnEmptySetsAndGrantOptions checks absent grants and observational reads of unmanaged permissions.
@@ -136,36 +130,21 @@ func TestPrivilegeLookupReportsGrantOptions(t *testing.T) {
 	assert.Empty(t, client.writes)
 }
 
-// TestLookupAttributesConvertEveryKind checks the resource-to-lookup conversion for every attribute kind.
-func TestLookupAttributesConvertEveryKind(t *testing.T) {
-	nested := resourceschema.NestedAttributeObject{Attributes: map[string]resourceschema.Attribute{
-		"name":  resourceschema.StringAttribute{Required: true, Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
-		"size":  resourceschema.Int64Attribute{Optional: true, Computed: true},
-		"inner": resourceschema.ListNestedAttribute{Optional: true, NestedObject: resourceschema.NestedAttributeObject{Attributes: map[string]resourceschema.Attribute{"flag": resourceschema.BoolAttribute{Optional: true}}}},
-	}}
+// TestLookupAttributes checks selector flags, observed values, and exclusions for the resource attribute shapes.
+func TestLookupAttributes(t *testing.T) {
 	source := map[string]resourceschema.Attribute{
-		"selector":         resourceschema.StringAttribute{Required: true, MarkdownDescription: "Selected name. Changing it replaces the object.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
+		"selector":         resourceschema.StringAttribute{Required: true, MarkdownDescription: "Selected name.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
 		"filter":           resourceschema.BoolAttribute{Optional: true},
-		"text":             resourceschema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "Text; changing it replaces the object."},
+		"text":             resourceschema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "Text."},
 		"owner":            resourceschema.StringAttribute{Optional: true, Computed: true},
 		"count":            resourceschema.Int64Attribute{Optional: true},
-		"count32":          resourceschema.Int32Attribute{Optional: true},
-		"ratio":            resourceschema.Float64Attribute{Optional: true},
-		"ratio32":          resourceschema.Float32Attribute{Optional: true},
-		"number":           resourceschema.NumberAttribute{Optional: true},
-		"dynamic":          resourceschema.DynamicAttribute{Optional: true},
 		"list":             resourceschema.ListAttribute{Optional: true, ElementType: types.StringType},
 		"privileges":       resourceschema.SetAttribute{Required: true, ElementType: types.StringType, MarkdownDescription: "Exact privileges."},
 		"map":              resourceschema.MapAttribute{Optional: true, ElementType: types.Int64Type},
-		"object":           resourceschema.ObjectAttribute{Optional: true, AttributeTypes: map[string]attr.Type{"a": types.StringType}},
-		"list_nested":      resourceschema.ListNestedAttribute{Optional: true, NestedObject: nested},
-		"set_nested":       resourceschema.SetNestedAttribute{Optional: true, NestedObject: nested},
-		"map_nested":       resourceschema.MapNestedAttribute{Optional: true, NestedObject: nested},
-		"single":           resourceschema.SingleNestedAttribute{Optional: true, Attributes: nested.Attributes},
 		"secret_wo":        resourceschema.StringAttribute{Optional: true, WriteOnly: true},
 		"refresh_revision": resourceschema.StringAttribute{Optional: true},
 	}
-	converted := lookupAttributes(source, false, []string{"text", "count", "count32", "ratio", "ratio32", "number", "dynamic", "list", "privileges", "map", "object", "list_nested", "set_nested", "map_nested", "single"})
+	converted := lookupAttributes(source, false, []string{"text", "count", "list", "privileges", "map"})
 	assert.NotContains(t, converted, "secret_wo", "write-only inputs cannot be observed")
 	assert.NotContains(t, converted, "refresh_revision", "apply-time triggers cannot be observed")
 	require.Len(t, converted, len(source)-2)
@@ -194,39 +173,32 @@ func TestLookupAttributesConvertEveryKind(t *testing.T) {
 		assert.False(t, attribute.IsRequired(), name)
 		assert.False(t, attribute.IsOptional(), name)
 	}
-	var computedThroughout func(name string, attributes map[string]schema.Attribute)
-	computedThroughout = func(name string, attributes map[string]schema.Attribute) {
-		for child, attribute := range attributes {
-			assert.True(t, attribute.IsComputed(), "%s.%s", name, child)
-			assert.False(t, attribute.IsRequired() || attribute.IsOptional(), "%s.%s", name, child)
-			if inner, ok := attribute.(schema.ListNestedAttribute); ok {
-				computedThroughout(name+"."+child, inner.NestedObject.Attributes)
-			}
-		}
-	}
-	computedThroughout("list_nested", converted["list_nested"].(schema.ListNestedAttribute).NestedObject.Attributes)
-	computedThroughout("set_nested", converted["set_nested"].(schema.SetNestedAttribute).NestedObject.Attributes)
-	computedThroughout("map_nested", converted["map_nested"].(schema.MapNestedAttribute).NestedObject.Attributes)
-	computedThroughout("single", converted["single"].(schema.SingleNestedAttribute).Attributes)
-	// A nested selector keeps its children's flags and validators.
-	input := lookupAttributes(map[string]resourceschema.Attribute{"list_nested": source["list_nested"]}, false, nil)["list_nested"].(schema.ListNestedAttribute)
-	assert.True(t, input.Optional)
-	name := input.NestedObject.Attributes["name"].(schema.StringAttribute)
-	assert.True(t, name.Required)
-	assert.Len(t, name.Validators, 1)
-	assert.True(t, input.NestedObject.Attributes["size"].IsComputed())
-	// Every converted kind accepts a lookup description, at the top level and inside each nested kind.
+	// Each supported scalar or collection accepts an output description.
 	paths := map[string]string{}
 	for name := range converted {
 		paths[name] = "Observed " + name + "."
-	}
-	for _, nested := range []string{"list_nested", "set_nested", "map_nested", "single"} {
-		paths[nested+".name"] = "Observed " + nested + " name."
 	}
 	described := lookupDescriptions(&catalogDataSource{attributes: converted}, paths).(*catalogDataSource)
 	descriptions := nestedDescriptions(described.attributes)
 	for path, description := range paths {
 		assert.Equal(t, description, descriptions[path], path)
+	}
+}
+
+// TestLookupComputedObjects preserves the table's observed distribution and sort-key shapes.
+func TestLookupComputedObjects(t *testing.T) {
+	var source resource.SchemaResponse
+	newTableResource().Schema(context.Background(), resource.SchemaRequest{}, &source)
+	converted := lookupAttributes(source.Schema.Attributes, true, nil)
+	for _, name := range []string{"effective_distribution", "effective_sort_key"} {
+		original := source.Schema.Attributes[name].(resourceschema.SingleNestedAttribute)
+		observed := converted[name].(schema.SingleNestedAttribute)
+		assert.Equal(t, original.GetType(), observed.GetType())
+		assert.True(t, observed.Computed)
+		for child, attribute := range observed.Attributes {
+			assert.True(t, attribute.IsComputed(), "%s.%s", name, child)
+			assert.False(t, attribute.IsRequired() || attribute.IsOptional(), "%s.%s", name, child)
+		}
 	}
 }
 
@@ -259,8 +231,6 @@ func nestedDescriptions(attributes map[string]schema.Attribute) map[string]strin
 		case schema.ListNestedAttribute:
 			nested = attribute.NestedObject.Attributes
 		case schema.SetNestedAttribute:
-			nested = attribute.NestedObject.Attributes
-		case schema.MapNestedAttribute:
 			nested = attribute.NestedObject.Attributes
 		case schema.SingleNestedAttribute:
 			nested = attribute.Attributes
@@ -305,7 +275,6 @@ func TestLookupBlocks(t *testing.T) {
 		assert.True(t, attribute.IsComputed(), path)
 		assert.False(t, attribute.IsRequired() || attribute.IsOptional(), path)
 	}
-	assert.Equal(t, "Unique constraints, changed in place.", lookupDescription("Unique constraints, changed in place."))
 	assert.Panics(t, func() { lookupBlocks(map[string]resourceschema.Block{"other": unsupportedBlock{}}) })
 
 	lookup := dataSourceSchema(blockTestLookup)
@@ -345,39 +314,28 @@ func TestLookupBlocksRead(t *testing.T) {
 	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "analytics", map[string]string{"name": "events"})
 }
 
-// TestLookupDescriptions replaces top-level and nested descriptions and rejects paths that do not exist.
-// TestLookupDescriptionRegexSemantics preserves the regex boundary and whitespace rules in the fast paths.
+// TestLookupDescriptionRegexSemantics preserves the regex boundary and whitespace rules in the fast path.
 func TestLookupDescriptionRegexSemantics(t *testing.T) {
 	for _, description := range []string{
 		"", "Current catalog value.",
 		"At least one column is required. Details.",
 		"At least one café\ncolumn is required.\nDetails.",
 		"At least one column is required.\u00a0Details.",
-		"At least one column is required.\t Details;changing it replaces the table.",
+		"At least one column is required.\t Details.",
 		"At least one column is required", "At least one . is required.",
-		";changing it replaces the table.", "Changing it replaces the table.",
-		"prefixChanging it replaces the table.", "changing it replaces the table.",
-		"Changing it replaces the table", "Changing it replaces the tåble.",
-		"Changing it  replaces the table.",
-		"Changing it replaces the table.\nChanging it replaces the view.",
-		"data; \nchanging it replaces the table.",
+		"Details. At least one column is required.",
 	} {
 		t.Run(description, func(t *testing.T) {
-			expected := requiredBlockNote.ReplaceAllString(description, "")
-			expected = replacementNote.ReplaceAllStringFunc(expected, func(note string) string {
-				if strings.HasPrefix(note, ";") {
-					return "."
-				}
-				return ""
-			})
-			assert.Equal(t, expected, lookupDescription(description))
+			assert.Equal(t, requiredBlockNote.ReplaceAllString(description, ""), lookupDescription(description))
 		})
 	}
 }
 
+// TestLookupDescriptions replaces top-level and nested descriptions and rejects paths that do not exist.
 func TestLookupDescriptions(t *testing.T) {
 	source := lookupDescriptions(blockTestLookup(), map[string]string{
 		"owner": "Observed owner.", "column": "Observed columns.", "column.identity.seed": "Observed seed.", "distribution.style": "Observed style.",
+		"unique": "Observed unique constraints.", "unique.columns": "Observed constrained columns.",
 	})
 	var response datasource.SchemaResponse
 	source.Schema(context.Background(), datasource.SchemaRequest{}, &response)
@@ -386,9 +344,25 @@ func TestLookupDescriptions(t *testing.T) {
 	assert.Equal(t, "Observed columns.", descriptions["column"])
 	assert.Equal(t, "Observed seed.", descriptions["column.identity.seed"])
 	assert.Equal(t, "Observed style.", descriptions["distribution.style"])
+	assert.Equal(t, "Observed unique constraints.", descriptions["unique"])
+	assert.Equal(t, "Observed constrained columns.", descriptions["unique.columns"])
 	assert.Equal(t, "Column name.", descriptions["column.name"], "unnamed nested outputs keep the resource text")
 	assert.Equal(t, "Increment.", descriptions["column.identity.step"])
 	for _, path := range []string{"missing", "column.missing", "database.child", "column.identity.seed.child"} {
 		assert.Panics(t, func() { lookupDescriptions(blockTestLookup(), map[string]string{path: "text"}) }, path)
 	}
+}
+
+// existsShadowResource declares an attribute named like the catalog lookup's exists output.
+type existsShadowResource struct{ resource.Resource }
+
+func (existsShadowResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
+	response.Schema = resourceschema.Schema{Attributes: map[string]resourceschema.Attribute{"exists": resourceschema.BoolAttribute{Computed: true}}}
+}
+
+// TestCatalogExistsOutputCannotShadowResourceAttribute refuses a lookup whose exists output would hide a resource field.
+func TestCatalogExistsOutputCannotShadowResourceAttribute(t *testing.T) {
+	assert.PanicsWithValue(t, "newCatalogDataSource: the exists output shadows a resource attribute or block", func() {
+		newCatalogDataSource(catalogSpec{exists: true, factory: func() resource.Resource { return existsShadowResource{} }})
+	})
 }

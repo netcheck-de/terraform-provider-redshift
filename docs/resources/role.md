@@ -44,7 +44,7 @@ resource "redshift_role" "entra_finance" {
 
 ### Required
 
-- `name` (String) Role name, including any identity namespace prefix. Changing it replaces the role.
+- `name` (String) Role name, including any identity namespace prefix.
 
 ### Optional
 

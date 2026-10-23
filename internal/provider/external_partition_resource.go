@@ -56,12 +56,12 @@ func (r *externalPartitionResource) Schema(_ context.Context, _ resource.SchemaR
 		MarkdownDescription: "Manages one partition of a partitioned Redshift Spectrum external table with `ALTER TABLE ... ADD PARTITION`.",
 		Attributes: map[string]schema.Attribute{
 			"id":       idAttribute(),
-			"database": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local Redshift database holding the external schema. Changing it replaces the partition."},
-			"schema":   schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "External schema of the table. Changing it replaces the partition."},
-			"table":    schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Partitioned external table, for example a `redshift_external_table`. Changing it replaces the partition."},
+			"database": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local Redshift database holding the external schema."},
+			"schema":   schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "External schema of the table."},
+			"table":    schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Partitioned external table, for example a `redshift_external_table`."},
 			"values": schema.MapAttribute{
 				ElementType: types.StringType, Required: true, PlanModifiers: []planmodifier.Map{mapplanmodifier.RequiresReplace()},
-				MarkdownDescription: "Partition value for every partition key of the table, keyed by partition key name, such as `{ saledate = \"2008-01\" }`. Statements list the keys in the table's partition-key order. Changing it replaces the partition.",
+				MarkdownDescription: "Partition value for every partition key of the table, keyed by partition key name, such as `{ saledate = \"2008-01\" }`. Statements list the keys in the table's partition-key order.",
 			},
 			"location": schema.StringAttribute{Required: true, MarkdownDescription: "`s3://` folder or manifest file holding the partition's data. Changes run `ALTER TABLE ... PARTITION (...) SET LOCATION`."},
 		},

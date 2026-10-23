@@ -225,3 +225,65 @@ func TestExternalPartitionTranscripts(t *testing.T) {
 		{name: "delete_multiple_keys", operation: "delete", catalog: catalogWith(multi), prior: existing},
 	})
 }
+
+// TestExternalPartitionValidation rejects empty names and missing values and requires partition keys to match exactly.
+func TestExternalPartitionValidation(t *testing.T) {
+	model := externalPartitionTestModel()
+	model.Schema = types.StringValue("")
+	require.ErrorContains(t, validateExternalPartitionKnownConfig(model), "nonempty schema")
+	_, err := externalPartitionSpecFrom(model, []string{"event_date"})
+	require.ErrorContains(t, err, "nonempty schema")
+	model = externalPartitionTestModel()
+	model.Values = types.MapNull(types.StringType)
+	require.ErrorContains(t, validateExternalPartitionConfig(model), "at least one")
+	assert.False(t, externalPartitionKeysMatch(nil, nil))
+	assert.False(t, externalPartitionKeysMatch(map[string]string{"day": "1"}, []string{"day", "hour"}))
+}
+
+// TestExternalPartitionVerification reports a partition that is absent or misplaced after ADD PARTITION or SET LOCATION.
+func TestExternalPartitionVerification(t *testing.T) {
+	for _, test := range []struct {
+		name, operation, want string
+		absent                bool
+	}{
+		{"create absent", "create", "absent after adding", true},
+		{"create wrong location", "create", "after adding the partition", false},
+		{"update disappeared", "update", "disappeared during the update", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := fullCatalog()
+			model := externalPartitionTestModel()
+			if test.operation == "create" {
+				externalTableFakeOf(c).partitions = nil
+			}
+			client := queryFunc(func(ctx context.Context, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+				if strings.Contains(sql, " ADD PARTITION ") || strings.Contains(sql, " SET LOCATION ") {
+					if test.absent {
+						externalTableFakeOf(c).partitions = nil
+						return nil, nil
+					}
+					rows, err := c.Query(ctx, connection, sql, parameters)
+					externalTableFakeOf(c).partitions[0].location = "s3://bucket/wrong"
+					return rows, err
+				}
+				return c.Query(ctx, connection, sql, parameters)
+			})
+			plan := model
+			if test.operation == "update" {
+				plan.Location = types.StringValue("s3://bucket/moved")
+			}
+			_, err := externalPartitionState(t, client, test.operation, model, plan)
+			require.ErrorContains(t, err, test.want)
+		})
+	}
+}
+
+// TestExternalPartitionRejectsMalformedKeyCatalog fails on partition key metadata it cannot decode.
+func TestExternalPartitionRejectsMalformedKeyCatalog(t *testing.T) {
+	r := &externalPartitionResource{}
+	configureTestResource(t, r, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		return []dataapi.Row{{"columnname": "day", "external_type": "date", "columnnum": "invalid", "part_key": "1"}}, nil
+	}))
+	_, err := r.partitionKeys(context.Background(), externalPartitionTestModel())
+	require.Error(t, err)
+}

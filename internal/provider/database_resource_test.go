@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -41,7 +43,7 @@ var _ = registerReplacementPolicy("redshift_database", map[string]replaceRule{
 	"connection_limit": replaceNever,
 	"collation":        replaceNever,
 	"isolation_level":  replaceNever,
-	"integration":      replaceConditional("TestDatabaseIntegrationReplacement"),
+	"integration":      replaceConditional,
 })
 
 // localDatabaseClient answers the local option reads with Redshift's defaults and passes every other statement,
@@ -377,4 +379,98 @@ func TestDatabaseMetadataFindsWildcardNames(t *testing.T) {
 			assert.True(t, found)
 		})
 	}
+}
+
+// TestDatabaseIntegrationReadEdges rejects ambiguous integrations and integration settings on a shared database.
+func TestDatabaseIntegrationReadEdges(t *testing.T) {
+	ctx := context.Background()
+	client := testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		return []dataapi.Row{{}, {}}, nil
+	}))
+	_, found, err := client.databaseIntegration(ctx, "replica")
+	require.ErrorContains(t, err, "2 integrations")
+	assert.False(t, found)
+	observed := integrationState()
+	observed.DatabaseType = types.StringValue(databaseTypeShared)
+	require.ErrorContains(t, client.databaseReadIntegration(ctx, observed.Integration, &observed), "shared database")
+	assert.Empty(t, alterDatabaseIntegrationStatements(databaseModel{}, databaseModel{}))
+}
+
+// TestDatabaseIntegrationWaitFailures stops waiting on a catalog error or a vanished database after one poll interval.
+func TestDatabaseIntegrationWaitFailures(t *testing.T) {
+	for _, missing := range []bool{false, true} {
+		t.Run(map[bool]string{false: "read error", true: "vanished"}[missing], func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				failure := errors.New("catalog denied")
+				client := queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+					if missing {
+						return nil, nil
+					}
+					return nil, failure
+				})
+				r := &databaseResource{testResourceClient(client)}
+				expected := integrationState()
+				observed := integrationState()
+				integration := *observed.Integration
+				observed.Integration = &integration
+				observed.Integration.RefreshInterval = types.Int64Value(1)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				defer cancel()
+				started := time.Now()
+				err := r.waitDatabaseIntegration(ctx, expected, &observed)
+				if missing {
+					require.ErrorIs(t, err, errDatabaseVanished)
+				} else {
+					require.ErrorIs(t, err, failure)
+				}
+				assert.Equal(t, time.Second, time.Since(started))
+			})
+		})
+	}
+}
+
+// TestDatabaseUnreadableCollation records a null collation, with a warning when the collation query fails.
+func TestDatabaseUnreadableCollation(t *testing.T) {
+	c := fullCatalog()
+	c.localDB = true
+	r := &databaseResource{testResourceClient(c)}
+	data := databaseLocalOptionsModel("etl", 25, "CASE_INSENSITIVE", "SERIALIZABLE")
+	data.ID = r.identity("admin", map[string]string{"name": "warehouse"})
+	data.Collation = types.StringUnknown()
+	found, err := r.read(context.Background(), &data)
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.True(t, data.Collation.IsNull())
+	r = &databaseResource{testResourceClient(queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+		if strings.Contains(strings.ToUpper(sql), "DB_COLLATION()") {
+			return nil, errors.New("connection limit")
+		}
+		return c.Query(ctx, target, sql, parameters)
+	}))}
+	data.Collation = types.StringUnknown()
+	data.DatabaseType = types.StringValue(databaseTypeLocal)
+	var diagnostics diag.Diagnostics
+	r.databaseReadCollation(context.Background(), &data, &diagnostics)
+	assert.True(t, data.Collation.IsNull())
+	assert.NotEmpty(t, diagnostics.Warnings())
+}
+
+// TestDatabaseUpdateReportsDisappearance reports a database that vanishes between ALTER and verification.
+func TestDatabaseUpdateReportsDisappearance(t *testing.T) {
+	c := fullCatalog()
+	c.localDB = true
+	r := &databaseResource{testResourceClient(queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+		rows, err := c.Query(ctx, target, sql, parameters)
+		if strings.HasPrefix(sql, "ALTER DATABASE") {
+			c.localDB = false
+		}
+		return rows, err
+	}))}
+	prior := databaseLocalOptionsModel("admin", -1, "CASE_SENSITIVE", "SNAPSHOT")
+	prior.ID = r.identity("admin", map[string]string{"name": "warehouse"})
+	planned := prior
+	planned.Owner = types.StringValue("etl")
+	_, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
+	require.True(t, diagnostics.HasError())
+	assert.Contains(t, diagnostics.Errors()[0].Detail(), errDatabaseVanished.Error())
 }

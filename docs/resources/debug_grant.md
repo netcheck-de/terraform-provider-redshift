@@ -60,9 +60,9 @@ resource "redshift_debug_grant" "producer_admins" {
 
 ### Required
 
-- `database` (String) Database with federated permissions that `DEBUG` applies to. `ACCOUNT` requires a producer-local name such as `sales_db` and a provider connected to that producer. Remote `USER`/`ROLE` aliases such as `sales_db@finance-catalog` require a SQL superuser, a verified `IAM AssumeUser` current-session authentication event in `SYS_CONNECTION_LOG`, and alias visibility in `SHOW DATABASES`. Password, unavailable, or unverified remote contexts are errors even if the alias is listed. Changing it replaces the grant.
-- `grantee` (String) Receiving identity: a global identity `<prefix>:<name>` (such as `IAM:sales_auditor` or `IAMR:audit_role`) for `USER`, an Identity Center group `<prefix>:<group>` for `ROLE`, or a 12-digit AWS account ID for `ACCOUNT`, which must own the producer. Changing it replaces the grant.
-- `grantee_type` (String) `USER` for a global identity (`TO "<prefix>:<name>"`), `ROLE` for an Identity Center group (`TO ROLE "<prefix>:<group>"`), or `ACCOUNT` for the superusers of an account (`TO ADMINS OF ACCOUNT '<account_id>'`). Accepted in any case; another case of the same keyword is recorded in place. Changing it replaces the grant.
+- `database` (String) Database with federated permissions that `DEBUG` applies to. `ACCOUNT` requires a producer-local name such as `sales_db` and a provider connected to that producer. Remote `USER`/`ROLE` aliases such as `sales_db@finance-catalog` require a SQL superuser, a verified `IAM AssumeUser` current-session authentication event in `SYS_CONNECTION_LOG`, and alias visibility in `SHOW DATABASES`. Password, unavailable, or unverified remote contexts are errors even if the alias is listed.
+- `grantee` (String) Receiving identity: a global identity `<prefix>:<name>` (such as `IAM:sales_auditor` or `IAMR:audit_role`) for `USER`, an Identity Center group `<prefix>:<group>` for `ROLE`, or a 12-digit AWS account ID for `ACCOUNT`, which must own the producer.
+- `grantee_type` (String) `USER` for a global identity (`TO "<prefix>:<name>"`), `ROLE` for an Identity Center group (`TO ROLE "<prefix>:<group>"`), or `ACCOUNT` for the superusers of an account (`TO ADMINS OF ACCOUNT '<account_id>'`). Accepted in any case; another case of the same keyword is recorded in place.
 
 ### Read-Only
 

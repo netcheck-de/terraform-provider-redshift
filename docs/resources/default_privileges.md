@@ -41,18 +41,18 @@ resource "redshift_default_privileges" "reports" {
 
 ### Required
 
-- `database_name` (String) Local database receiving default privileges. Changing it replaces the grant.
-- `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`. Changing it replaces the grant.
-- `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`. Changing it replaces the grant.
-- `object_type` (String) `TABLES` (tables and views), `FUNCTIONS`, or `PROCEDURES`. Changing it replaces the grant.
+- `database_name` (String) Local database receiving default privileges.
+- `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`.
+- `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`.
+- `object_type` (String) `TABLES` (tables and views), `FUNCTIONS`, or `PROCEDURES`.
 - `privileges` (Set of String) Exact explicit default privilege set; updated in place. `TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `TRUNCATE`. `FUNCTIONS` and `PROCEDURES`: `EXECUTE`. Redshift grants `EXECUTE` on new functions to `PUBLIC` without being asked; the database-wide `PUBLIC` `FUNCTIONS` tuple reports it, an empty set revokes it, and deleting that tuple leaves it revoked unless `restore_default_on_destroy` is true.
 
 ### Optional
 
 - `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
-- `owner` (String) User whose future objects receive the privileges (`FOR USER`). Omit it to define the defaults of the user the provider connects as, which is what Redshift applies without `FOR USER`; the tuple then follows that connection user. Changing it replaces the grant.
+- `owner` (String) User whose future objects receive the privileges (`FOR USER`). Omit it to define the defaults of the user the provider connects as, which is what Redshift applies without `FOR USER`; the tuple then follows that connection user.
 - `restore_default_on_destroy` (Boolean) Opt in to restoring the built-in PUBLIC privilege on destroy instead of leaving it revoked. Defaults to false. Only valid for a PUBLIC language grant or database-wide PUBLIC FUNCTIONS default privileges, respectively. This can widen access after Terraform stops managing the tuple; it does not restore historical grants.
-- `schema_name` (String) Schema whose future objects receive the privileges (`IN SCHEMA`); omit it for database-wide defaults. Schema defaults add to the database-wide ones and cannot remove them. Changing it replaces the grant.
+- `schema_name` (String) Schema whose future objects receive the privileges (`IN SCHEMA`); omit it for database-wide defaults. Schema defaults add to the database-wide ones and cannot remove them.
 
 ### Read-Only
 

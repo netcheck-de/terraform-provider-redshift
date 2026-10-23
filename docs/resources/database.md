@@ -75,13 +75,13 @@ resource "redshift_database" "dynamodb_replica" {
 
 ### Required
 
-- `name` (String) Database name. Changing it replaces the database.
+- `name` (String) Database name.
 
 ### Optional
 
 - `collation` (String) `CASE_SENSITIVE` (the Redshift default) or `CASE_INSENSITIVE` string comparison for a local database. Changed in place with `ALTER DATABASE ... COLLATE`; Redshift may reject the change when database objects exist, without replacing the database. A change strictly reads `DB_COLLATION()` in fresh sessions before and immediately after COLLATE, before changing other options. Verified partial progress is saved if later work fails. Refresh also reads collation; a refused session warns and keeps the last known value. Omit it to keep the current collation. Not supported for shared or integration databases.
 - `connection_limit` (Number) Maximum number of concurrent connections to a local database; `-1` means `UNLIMITED`, the Redshift default. Superusers are exempt. Updated in place with `ALTER DATABASE ... CONNECTION LIMIT`. Omit it to keep and report the current limit. Not supported for shared databases, where it is null.
-- `datashare_arn` (String) Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database. Changing it replaces the database.
+- `datashare_arn` (String) Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database.
 - `integration` (Block, Optional) Creates the database as the read-only destination of an active zero-ETL integration with `CREATE DATABASE ... FROM INTEGRATION`, which needs a superuser or a user with `CREATEDB` and `CREATEUSER`; replication runs with that user's permissions. The warehouse must set `enable_case_sensitive_identifier`. Conflicts with `datashare_arn` and `collation`. Adding or removing the block, or changing `integration_id` or `source_database`, replaces the database. Refresh reads `SVV_INTEGRATION`, which only superusers can see. Create and Update wait up to one minute for readable settings to propagate to the catalog, bounded by any shorter operation timeout. (see [below for nested schema](#nestedblock--integration))
 - `isolation_level` (String) `SERIALIZABLE` or `SNAPSHOT` (the Redshift default) isolation for a local database. Updated in place with `ALTER DATABASE ... ISOLATION LEVEL`, which fails while other sessions are connected to the database. Omit it to keep and report the current level. Not supported for shared databases, where it is null.
 - `owner` (String) SQL user owning a local database. Set with `OWNER` at creation and changed in place with `ALTER DATABASE ... OWNER TO`, which requires a superuser. Omit it to keep and report the current owner. Not supported for shared databases, where it is null.
@@ -104,10 +104,10 @@ Optional:
 - `accept_invalid_chars` (Boolean) Replace invalid VARCHAR characters with `?` instead of stopping ingestion (`ACCEPTINVCHARS`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No supported catalog readback is used, so changes made outside Terraform are not detected; omitted, it is not managed.
 - `auto_remediation` (Boolean) Resynchronize tables affected by duplicate rows automatically (`AUTO_REMEDIATION`). Omit it to keep and report the current setting. Updated in place with `ALTER DATABASE ... INTEGRATION SET`.
 - `history_mode` (Boolean) Turn history mode on for all tables (`HISTORY_MODE`). Omit it to keep and report the current setting. Updated in place with `ALTER DATABASE ... INTEGRATION SET`, which switches only tables in the `Synced` state.
-- `integration_id` (String) Zero-ETL integration identifier, the `integration_id` of `SVV_INTEGRATION`; required in the block. Changing it replaces the database.
+- `integration_id` (String) Zero-ETL integration identifier, the `integration_id` of `SVV_INTEGRATION`; required in the block.
 - `query_all_states` (Boolean) Allow queries on tables in every replication state, not only `Synced` (`QUERY_ALL_STATES`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No supported catalog readback is used, so changes made outside Terraform are not detected; omitted, it is not managed.
 - `refresh_interval` (Number) Approximate seconds between refresh cycles (`REFRESH_INTERVAL`), from 0 to 432000; DynamoDB sources need at least 900. Omit it to keep and report the current interval. Updated in place with `ALTER DATABASE ... INTEGRATION SET`.
-- `source_database` (String) Source database to replicate (`DATABASE`), required for Aurora PostgreSQL, RDS for PostgreSQL, and RDS for Oracle sources. Omit it to report the source database `SVV_INTEGRATION` names. Changing it replaces the database.
+- `source_database` (String) Source database to replicate (`DATABASE`), required for Aurora PostgreSQL, RDS for PostgreSQL, and RDS for Oracle sources. Omit it to report the source database `SVV_INTEGRATION` names.
 - `truncate_columns` (Boolean) Truncate VARCHAR and SUPER values that exceed the column instead of stopping ingestion (`TRUNCATECOLUMNS`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No supported catalog readback is used, so changes made outside Terraform are not detected; omitted, it is not managed.
 
 

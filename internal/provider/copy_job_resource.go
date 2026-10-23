@@ -78,33 +78,33 @@ func (r *copyJobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 		MarkdownDescription: "Manages a `COPY JOB` that loads files newly created under an Amazon S3 prefix into a table.",
 		Attributes: map[string]schema.Attribute{
 			"id":       idAttribute(),
-			"database": schema.StringAttribute{Required: true, Validators: nonEmpty, PlanModifiers: replace, MarkdownDescription: "Local database containing the target table; the job's statements run there. Changing it replaces the job."},
+			"database": schema.StringAttribute{Required: true, Validators: nonEmpty, PlanModifiers: replace, MarkdownDescription: "Local database containing the target table; the job's statements run there."},
 			"name": schema.StringAttribute{
 				Required: true, PlanModifiers: replace,
-				MarkdownDescription: "Job name: lowercase letters, digits, and underscores, without hyphens. Changing it replaces the job.",
+				MarkdownDescription: "Job name: lowercase letters, digits, and underscores, without hyphens.",
 				Validators:          []validator.String{stringvalidator.RegexMatches(copyJobName, "must be lowercase letters, digits, or underscores, starting with a letter or underscore, at most 127 characters")},
 			},
 			"source": schema.StringAttribute{
 				Required: true, PlanModifiers: definition, Validators: []validator.String{stringvalidator.RegexMatches(copyJobSourcePattern, "must start with s3://")},
-				MarkdownDescription: "Amazon S3 prefix the job monitors, such as `s3://bucket/staging/`. Its bucket needs an S3 event integration with the warehouse, also with `auto = false`. Changing it replaces the job.",
+				MarkdownDescription: "Amazon S3 prefix the job monitors, such as `s3://bucket/staging/`. Its bucket needs an S3 event integration with the warehouse, also with `auto = false`.",
 			},
 			"iam_role": schema.StringAttribute{
 				Required: true, PlanModifiers: replace, Validators: []validator.String{stringvalidator.RegexMatches(copyJobRolePattern, "must be an IAM role ARN")},
-				MarkdownDescription: "ARN of an IAM role associated with the warehouse that can read `source`. COPY JOB does not support the default role. Changing it replaces the job.",
+				MarkdownDescription: "ARN of an IAM role associated with the warehouse that can read `source`. COPY JOB does not support the default role.",
 			},
 			"format": schema.StringAttribute{
 				Optional: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(copyJobDefinitionFormat, copyJobDefinitionNote, copyJobDefinitionNote)},
-				MarkdownDescription: "Data format of `FORMAT AS`: `" + strings.Join(copyFormatNames(), "`, `") + "`. Omit it for pipe-delimited text. Changing it replaces the job.",
+				MarkdownDescription: "Data format of `FORMAT AS`: `" + strings.Join(copyFormatNames(), "`, `") + "`. Omit it for pipe-delimited text.",
 				Validators:          []validator.String{stringvalidator.OneOfCaseInsensitive(copyFormatNames()...)},
 			},
 			"format_argument": schema.StringAttribute{
 				Optional: true, PlanModifiers: definition,
-				MarkdownDescription: "Argument of the format, required for `JSON` and `AVRO` (`auto`, `auto ignorecase`, `noshred`, or an `s3://` JSONPaths file) and `FIXEDWIDTH`. For `SHAPEFILE`, optionally use `SIMPLIFY [AUTO] [tolerance]`, with a finite non-negative numeric tolerance. Rejected for other formats. Changing it replaces the job.",
+				MarkdownDescription: "Argument of the format, required for `JSON` and `AVRO` (`auto`, `auto ignorecase`, `noshred`, or an `s3://` JSONPaths file) and `FIXEDWIDTH`. For `SHAPEFILE`, optionally use `SIMPLIFY [AUTO] [tolerance]`, with a finite non-negative numeric tolerance. Rejected for other formats.",
 			},
 			"parameters": schema.MapAttribute{
 				Optional: true, ElementType: types.StringType, PlanModifiers: []planmodifier.Map{mapplanmodifier.RequiresReplace()},
 				MarkdownDescription: "COPY parameters keyed by their UPPERCASE keyword, with `\"\"` for keywords without an argument, such as `{ IGNOREHEADER = \"1\", GZIP = \"\" }`. " +
-					"Accepted: `" + strings.Join(copyParameterNames(true), "`, `") + "`. COPY JOB rejects `MAXERROR`, `IGNOREALLERRORS`, `MANIFEST`, and key-based credentials. Changing it replaces the job.",
+					"Accepted: `" + strings.Join(copyParameterNames(true), "`, `") + "`. COPY JOB rejects `MAXERROR`, `IGNOREALLERRORS`, `MANIFEST`, and key-based credentials.",
 			},
 			"auto": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(true),
@@ -113,7 +113,7 @@ func (r *copyJobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 		},
 		Blocks: map[string]schema.Block{
 			"table": schema.SingleNestedBlock{
-				MarkdownDescription: "At least one `table` block is required. Target table of the COPY command. Changing it replaces the job.",
+				MarkdownDescription: "At least one `table` block is required. Target table of the COPY command.",
 				Validators:          []validator.Object{objectvalidator.IsRequired(), objectvalidator.AlsoRequires(path.MatchRelative().AtName("schema"), path.MatchRelative().AtName("name"))},
 				PlanModifiers:       []planmodifier.Object{objectplanmodifier.RequiresReplace()},
 				Attributes: map[string]schema.Attribute{

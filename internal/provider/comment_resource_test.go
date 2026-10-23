@@ -42,7 +42,6 @@ func schemaComment() commentModel {
 func TestCommentLifecycle(t *testing.T) {
 	for _, operation := range []string{"create", "read", "update", "delete"} {
 		t.Run(operation, func(t *testing.T) {
-			require.True(t, invoke(t, newCommentResource(), operation, schemaComment(), true).HasError())
 			queries := 0
 			for failAt := 0; failAt <= queries; failAt++ {
 				calls, text := 0, "before"
@@ -65,7 +64,7 @@ func TestCommentLifecycle(t *testing.T) {
 					return []sqlclient.Row{{"text": text}}, nil
 				})
 				r := &commentResource{testResourceClient(client)}
-				diagnostics := invoke(t, r, operation, schemaComment(), false)
+				diagnostics := invoke(t, r, operation, schemaComment())
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
 					queries = calls
@@ -134,7 +133,7 @@ func TestCommentMissingTargets(t *testing.T) {
 		if mode == "database" || mode == "object" {
 			require.NoError(t, err)
 			for _, operation := range []string{"create", "read", "update", "delete"} {
-				assert.Equal(t, operation == "create" || operation == "update", invoke(t, r, operation, data, false).HasError())
+				assert.Equal(t, operation == "create" || operation == "update", invoke(t, r, operation, data).HasError())
 			}
 		} else {
 			require.Error(t, err)
@@ -174,7 +173,7 @@ func TestCommentImport(t *testing.T) {
 	r.resourceClient = testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return []sqlclient.Row{{"text": "after"}}, nil
 	}))
-	require.False(t, invoke(t, r, "create", data, false).HasError())
+	require.False(t, invoke(t, r, "create", data).HasError())
 }
 
 // TestCommentCreateRejectsInvalidTargetBeforeState keeps invalid targets out of state so they cannot block refresh.
@@ -188,4 +187,19 @@ func TestCommentCreateRejectsInvalidTargetBeforeState(t *testing.T) {
 	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(plan)}, &resp)
 	require.True(t, resp.Diagnostics.HasError())
 	assert.True(t, resp.State.Raw.IsNull(), "invalid target must not be recorded in state")
+}
+
+// TestCommentKnownTargetRejectsMismatchedNames rejects unsupported object types and names the target type does not take.
+func TestCommentKnownTargetRejectsMismatchedNames(t *testing.T) {
+	for _, test := range []struct {
+		data    commentModel
+		message string
+	}{
+		{commentModel{ObjectType: types.StringValue("FUNCTION")}, "unsupported"},
+		{commentModel{ObjectType: types.StringValue("SCHEMA"), SchemaName: types.StringValue("public")}, "does not accept"},
+		{commentModel{ObjectType: types.StringValue("SCHEMA"), ConstraintName: types.StringValue("pk")}, "constraint_name"},
+		{commentModel{ObjectType: types.StringValue("TABLE"), SchemaName: types.StringValue("public")}, "object_name"},
+	} {
+		require.ErrorContains(t, commentKnownTarget(test.data), test.message)
+	}
 }

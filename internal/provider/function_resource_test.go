@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -34,8 +35,8 @@ var (
 		"database":    replaceAlways,
 		"schema":      replaceAlways,
 		"name":        replaceAlways,
-		"arguments":   replaceConditional("TestFunctionTypeChangesReplace"),
-		"return_type": replaceConditional("TestFunctionTypeChangesReplace"),
+		"arguments":   replaceConditional,
+		"return_type": replaceConditional,
 		"language":    replaceAlways,
 		"volatility":  replaceNever,
 		"body":        replaceNever,
@@ -362,4 +363,48 @@ func TestFunctionUpdateFailures(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRoutineValidationWithPartialArguments checks known function and procedure arguments while others are unknown.
+func TestRoutineValidationWithPartialArguments(t *testing.T) {
+	function := functionTestModel("integer")
+	function.Body = types.StringUnknown()
+	function.Arguments = types.ListValueMust(types.StringType, []attr.Value{types.StringUnknown(), types.StringValue("anyelement")})
+	procedure := procedureTestDefault()
+	procedure.Body, procedure.Nonatomic = types.StringUnknown(), types.BoolValue(true)
+	procedure.Configuration = procedureTestSettings(map[string]string{"statement_timeout": "100"})
+	procedure.Arguments = types.ListValueMust(types.ObjectType{AttrTypes: procedureArgumentTypes}, []attr.Value{
+		types.ObjectUnknown(procedureArgumentTypes),
+		procedureArgumentList([]procedureArgumentModel{procedureTestArgument("x", "", "anyelement")}).Elements()[0],
+	})
+	for _, test := range []struct {
+		name    string
+		r       resource.Resource
+		model   any
+		message string
+	}{
+		{"function", newFunctionResource(), function, "Invalid function argument"},
+		{"procedure", newProcedureResource(), procedure, "SET configuration parameters"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var response resource.ValidateConfigResponse
+			test.r.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, test.r, test.model))}, &response)
+			require.True(t, response.Diagnostics.HasError())
+			assert.Contains(t, fmt.Sprint(response.Diagnostics), test.message)
+		})
+	}
+}
+
+// TestFunctionPartialCreateKeepsKnownState saves a fully known state with a null owner when verification fails after CREATE.
+func TestFunctionPartialCreateKeepsKnownState(t *testing.T) {
+	r := &functionResource{resourceClient: creationOnlyClient(false)}
+	model := functionTestModel("integer")
+	model.Owner = types.StringUnknown()
+	state, diagnostics := applyOperation(t, r, "create", nil, model, nil)
+	require.True(t, diagnostics.HasError())
+	var actual functionModel
+	require.False(t, state.Get(context.Background(), &actual).HasError())
+	assert.False(t, actual.ID.IsNull())
+	assert.True(t, actual.Owner.IsNull())
+	assert.True(t, state.Raw.IsFullyKnown())
 }

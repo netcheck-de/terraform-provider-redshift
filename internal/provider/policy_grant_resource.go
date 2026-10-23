@@ -26,11 +26,11 @@ var _ = registerResource(newPolicyGrantResource)
 func newPolicyGrantResource() resource.Resource {
 	attributes := privilegeAttributes()
 	attributes["privileges"] = schema.SetAttribute{Required: true, ElementType: types.StringType, MarkdownDescription: "Privileges Terraform grants: `[\"SELECT\"]`, the only permission a policy can hold, or empty to revoke it. Redshift does not report grants to policies, so this records what Terraform applied and does not detect changes made outside Terraform."}
-	attributes["database_name"] = privilegeString("Local database that holds the lookup table and the policy. Changing it replaces the grant.", false)
-	attributes["schema_name"] = privilegeString("Schema of the lookup table. Changing it replaces the grant.", false)
-	attributes["object_name"] = privilegeString("Lookup table that the policy's expression reads. Changing it replaces the grant.", false)
-	attributes["policy_type"] = privilegeString("`RLS` for a row-level security policy or `MASKING` for a dynamic data masking policy. Changing it replaces the grant.", false, "RLS", "MASKING")
-	attributes["policy_name"] = privilegeString("Policy that receives the permission. Changing it replaces the grant.", false)
+	attributes["database_name"] = privilegeString("Local database that holds the lookup table and the policy.", false)
+	attributes["schema_name"] = privilegeString("Schema of the lookup table.", false)
+	attributes["object_name"] = privilegeString("Lookup table that the policy's expression reads.", false)
+	attributes["policy_type"] = privilegeString("`RLS` for a row-level security policy or `MASKING` for a dynamic data masking policy.", false, "RLS", "MASKING")
+	attributes["policy_name"] = privilegeString("Policy that receives the permission.", false)
 	return &policyGrantResource{privilegeResource: &privilegeResource{
 		name: "policy_grant", attributes: attributes,
 		fields:  []string{"database_name", "schema_name", "object_name", "policy_type", "policy_name"},

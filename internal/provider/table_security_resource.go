@@ -58,9 +58,9 @@ func (r *tableSecurityResource) Schema(_ context.Context, _ resource.SchemaReque
 		MarkdownDescription: "Turns row-level security (RLS) on or off for one existing table or view with `ALTER TABLE ... ROW LEVEL SECURITY`. **Destroying this resource turns row-level security OFF for the relation**, so every attached policy stops filtering and all rows become visible to anyone with `SELECT`.",
 		Attributes: map[string]schema.Attribute{
 			"id":       idAttribute(),
-			"database": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local database containing the relation. Changing it replaces the table security."},
-			"schema":   schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Schema of the relation. Changing it replaces the table security."},
-			"relation": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Table, view, late-binding view, or materialized view; the resource never creates or drops it. Changing it replaces the table security."},
+			"database": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local database containing the relation."},
+			"schema":   schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Schema of the relation."},
+			"relation": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Table, view, late-binding view, or materialized view; the resource never creates or drops it."},
 			"row_level_security": schema.BoolAttribute{
 				Required: true, MarkdownDescription: "Whether row-level security is on. While it is on, users see only the rows an attached policy permits, and no rows when no policy applies to them; superusers and `sys:secadmin` holders are exempt.",
 			},

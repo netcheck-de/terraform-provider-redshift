@@ -28,6 +28,7 @@ func TestTablePlanModifiers(t *testing.T) {
 		}
 		resp := planmodifier.StringResponse{PlanValue: types.StringUnknown()}
 		tableDerivedStyle{source: source}.PlanModifyString(ctx, planmodifier.StringRequest{Path: path.Root(block).AtName("style"), Config: configured, ConfigValue: types.StringNull()}, &resp)
+		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 		return resp.PlanValue
 	}
 	assert.Equal(t, types.StringValue("KEY"), style("key", config(func(*tableModel) {})))
@@ -40,9 +41,6 @@ func TestTablePlanModifiers(t *testing.T) {
 	assert.True(t, style("columns", config(func(m *tableModel) {
 		m.SortKey = types.ObjectValueMust(tableSortKeyAttributeTypes, map[string]attr.Value{"style": types.StringNull(), "columns": types.ListUnknown(types.StringType)})
 	})).IsUnknown())
-	single := tfsdk.Config(testState(t, newSchemaResource(), schemaModel{Database: types.StringValue("admin"), Name: types.StringValue("serving"), Owner: types.StringNull(), ID: types.StringNull()}))
-	assert.True(t, style("columns", single).IsUnknown(), "unreadable configuration leaves the plan alone")
-	assert.True(t, style("key", single).IsUnknown(), "unreadable configuration leaves the plan alone")
 	configured := types.StringValue("EVEN")
 	resp := planmodifier.StringResponse{PlanValue: configured}
 	tableDerivedStyle{source: "key"}.PlanModifyString(ctx, planmodifier.StringRequest{ConfigValue: configured}, &resp)
@@ -127,6 +125,20 @@ func TestTablePlanModifiers(t *testing.T) {
 	request.ConfigValue = types.ListUnknown(planned.ElementType(ctx))
 	tableColumnDefaults{}.PlanModifyList(ctx, request, &unknownResp)
 	assert.Equal(t, planned, unknownResp.PlanValue, "unknown configuration is left for apply")
+}
+
+func TestTableDerivedStyleReportsConfigurationErrors(t *testing.T) {
+	r := newTableResource()
+	config := tfsdk.Config(testState(t, r, tableMinimalModel()))
+	for _, source := range []string{"key", "columns"} {
+		t.Run(source, func(t *testing.T) {
+			var resp planmodifier.StringResponse
+			tableDerivedStyle{source: source}.PlanModifyString(context.Background(), planmodifier.StringRequest{
+				Path: path.Root("missing").AtName("style"), Config: config, ConfigValue: types.StringNull(),
+			}, &resp)
+			assert.True(t, resp.Diagnostics.HasError())
+		})
+	}
 }
 
 // TestTableModifyPlanEffective plans a known effective layout for explicit layouts, keeps the recorded one for a plan
@@ -271,4 +283,57 @@ func TestTableKnownState(t *testing.T) {
 	assert.True(t, columns[0].Nullable.IsNull())
 	unknownColumns := tableWith(model, func(m *tableModel) { m.Column = types.ListUnknown(m.Column.ElementType(context.Background())) })
 	assert.True(t, tableKnownState(unknownColumns).Column.IsUnknown())
+}
+
+// TestTablePlanningWithPartialColumns derives configured names, renames, and sort-key moves from partially known columns.
+func TestTablePlanningWithPartialColumns(t *testing.T) {
+	ctx := context.Background()
+	r := &tableResource{}
+	for _, test := range []struct {
+		name    string
+		columns types.List
+		known   bool
+		want    map[string]bool
+	}{
+		{"unknown list", types.ListUnknown(types.ObjectType{AttrTypes: tableColumnAttributeTypes}), false, nil},
+		{"unknown name", tableTestColumns(tableTestColumn("id", "integer", func(c *tableColumnModel) { c.Name = types.StringUnknown() })), false, nil},
+		{"rename endpoints", tableTestColumns(tableTestColumn("new", "integer", func(c *tableColumnModel) { c.RenamedFrom = types.StringValue("old") })), true, map[string]bool{"new": true, "old": true}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			model := tableMinimalModel()
+			model.Column = test.columns
+			config := tfsdk.Config(testState(t, r, model))
+			names, known := tableConfiguredColumnNames(ctx, config)
+			assert.Equal(t, test.known, known)
+			assert.Equal(t, test.want, names)
+		})
+	}
+	assert.True(t, tableStyleUnknown(types.ObjectUnknown(tableSortKeyAttributeTypes)))
+	assert.True(t, (tableSpec{primaryKey: []string{"id"}}).constrained("id"))
+	model := tableMinimalModel()
+	model.Backup = types.StringUnknown()
+	observed, _, err := tableReconcile(model, tableCatalog{owner: "admin", distStyle: "AUTO", columns: []tableCatalogColumn{{name: "payload", dataType: "SUPER", encoding: "RAW"}}})
+	require.NoError(t, err)
+	assert.True(t, observed.Backup.IsNull())
+	// The lookup's computed layout starts unknown; AUTO cannot yet identify specific columns.
+	model.Column = types.ListUnknown(types.ObjectType{AttrTypes: tableColumnAttributeTypes})
+	model.SortKey = types.ObjectNull(tableSortKeyAttributeTypes)
+	stateModel := tableMinimalModel()
+	stateModel.EffectiveSortKey = tableEffectiveSortKeyValue("COMPOUND", []string{"payload"}, true)
+	_, all := tableSortKeyMoves(ctx, tfsdk.Config(testState(t, r, model)), testState(t, r, stateModel))
+	assert.True(t, all)
+	model.Column = tableTestColumns(tableTestColumn("new", "integer", func(c *tableColumnModel) { c.RenamedFrom = types.StringValue("old") }))
+	stateModel.EffectiveSortKey = tableEffectiveSortKeyValue("COMPOUND", []string{"old", "dropped"}, true)
+	moved, all := tableSortKeyMoves(ctx, tfsdk.Config(testState(t, r, model)), testState(t, r, stateModel))
+	assert.False(t, all)
+	assert.Equal(t, map[string]bool{"old": true, "new": true, "dropped": true}, moved)
+}
+
+// TestTableColumnDefaultsKeepUnknownBlocks leaves an unknown column block for apply.
+func TestTableColumnDefaultsKeepUnknownBlocks(t *testing.T) {
+	planned := types.ListValueMust(types.ObjectType{AttrTypes: tableColumnAttributeTypes}, []attr.Value{types.ObjectUnknown(tableColumnAttributeTypes)})
+	response := planmodifier.ListResponse{PlanValue: planned}
+	(tableColumnDefaults{}).PlanModifyList(context.Background(), planmodifier.ListRequest{PlanValue: planned, ConfigValue: planned}, &response)
+	assert.Equal(t, planned, response.PlanValue)
+	assert.Empty(t, response.Diagnostics)
 }

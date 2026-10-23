@@ -58,9 +58,9 @@ resource "redshift_masking_policy" "card" {
 
 ### Required
 
-- `database` (String) Local database that holds the policy; the policy can only be attached to relations in this database. Changing it replaces the policy.
+- `database` (String) Local database that holds the policy; the policy can only be attached to relations in this database.
 - `expression` (String) SQL expression of the `USING` clause that computes the masked value from the input columns, for example `'XXXX'::VARCHAR(256)` or a `CASE` over the inputs. A constant must be cast to the input type. Updated in place with `ALTER MASKING POLICY`. Redshift stores its own rendering, so refresh keeps the configured text while `definition_fingerprint` matches and shows the catalog text after a change made outside Terraform.
-- `name` (String) Policy name, unique among the masking policies of the database. Changing it replaces the policy.
+- `name` (String) Policy name, unique among the masking policies of the database.
 
 ### Optional
 

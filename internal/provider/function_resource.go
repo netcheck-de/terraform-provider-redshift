@@ -98,23 +98,23 @@ func (r *functionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local database containing the function. Changing it replaces the function.",
+				Required: true, MarkdownDescription: "Local database containing the function.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"schema": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Schema containing the function. Changing it replaces the function.",
+				Required: true, MarkdownDescription: "Schema containing the function.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Function name; AWS recommends the reserved `f_` prefix. Overloads share a name and differ in `arguments`. Changing it replaces the function.",
+				Required: true, MarkdownDescription: "Function name; AWS recommends the reserved `f_` prefix. Overloads share a name and differ in `arguments`.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"arguments": schema.ListAttribute{
 				ElementType: types.StringType, Optional: true,
-				MarkdownDescription: "Ordered input argument data types, at most 32, referenced in `body` as `$1`, `$2`, and so on. SQL UDF arguments have no names. Omit for a function without arguments. The types identify the overload; another spelling of the same types, such as `INT` for `INTEGER`, is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place. Changing it replaces the function.",
+				MarkdownDescription: "Ordered input argument data types, at most 32, referenced in `body` as `$1`, `$2`, and so on. SQL UDF arguments have no names. Omit for a function without arguments. The types identify the overload; another spelling of the same types, such as `INT` for `INTEGER`, is no change, and a modifier such as `VARCHAR(64)` added to a bare type in state, as after an import, is restated in place.",
 				PlanModifiers:       []planmodifier.List{listplanmodifier.RequiresReplaceIf(functionArgumentsChanged, "Changing the argument types replaces the function.", "Changing the argument types replaces the function.")},
 				Validators:          []validator.List{listvalidator.SizeAtMost(routineMaxArguments), listvalidator.NoNullValues()},
 			},
@@ -123,7 +123,7 @@ func (r *functionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"return_type": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Data type of the returned value; another spelling of the same type is no change, and a modifier added to a bare type in state, as after an import, is restated in place. Changing it replaces the function.",
+				Required: true, MarkdownDescription: "Data type of the returned value; another spelling of the same type is no change, and a modifier added to a bare type in state, as after an import, is restated in place.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(functionReturnTypeChanged, "Changing the return type replaces the function.", "Changing the return type replaces the function.")},
 			},
 			"volatility": schema.StringAttribute{
@@ -133,7 +133,7 @@ func (r *functionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"language": schema.StringAttribute{
 				Optional: true, Computed: true, Default: stringdefault.StaticString(functionLanguageSQL),
-				MarkdownDescription: "Function language; only `SQL`, in any case, is accepted, and another spelling of it is recorded in place. `PLPYTHONU` is rejected because AWS ends Python UDF support after June 30, 2026. Changing it replaces the function.",
+				MarkdownDescription: "Function language; only `SQL`, in any case, is accepted, and another spelling of it is recorded in place. `PLPYTHONU` is rejected because AWS ends Python UDF support after June 30, 2026.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplaceIf(keywordChanged, "Changing the language replaces the function.", "Changing the language replaces the function.")},
 			},
 			"body": schema.StringAttribute{

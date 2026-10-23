@@ -51,16 +51,16 @@ resource "redshift_comment" "primary_key" {
 
 ### Required
 
-- `database_name` (String) Local database containing the target object. Changing it replaces the comment.
-- `object_name` (String) Name of the database or schema itself; for `TABLE` and `VIEW` the relation; for `COLUMN` and `CONSTRAINT` the table that holds it. Changing it replaces the comment.
-- `object_type` (String) Kind of the annotated object: `DATABASE`, `SCHEMA`, `TABLE`, `VIEW`, `COLUMN`, or `CONSTRAINT`. Changing it replaces the comment.
+- `database_name` (String) Local database containing the target object.
+- `object_name` (String) Name of the database or schema itself; for `TABLE` and `VIEW` the relation; for `COLUMN` and `CONSTRAINT` the table that holds it.
+- `object_type` (String) Kind of the annotated object: `DATABASE`, `SCHEMA`, `TABLE`, `VIEW`, `COLUMN`, or `CONSTRAINT`.
 - `text` (String) Comment text. An empty string represents no annotation and clears it with `IS NULL`.
 
 ### Optional
 
-- `column_name` (String) Column within `object_name`; required for `COLUMN` and rejected otherwise. Changing it replaces the comment.
-- `constraint_name` (String) Primary key, unique, or foreign key constraint on the table `object_name`; required for `CONSTRAINT` and rejected otherwise. Changing it replaces the comment.
-- `schema_name` (String) Schema of the relation; required for `TABLE`, `VIEW`, `COLUMN`, and `CONSTRAINT`, and rejected for `DATABASE` and `SCHEMA`. Changing it replaces the comment.
+- `column_name` (String) Column within `object_name`; required for `COLUMN` and rejected otherwise.
+- `constraint_name` (String) Primary key, unique, or foreign key constraint on the table `object_name`; required for `CONSTRAINT` and rejected otherwise.
+- `schema_name` (String) Schema of the relation; required for `TABLE`, `VIEW`, `COLUMN`, and `CONSTRAINT`, and rejected for `DATABASE` and `SCHEMA`.
 
 ### Read-Only
 

@@ -107,17 +107,17 @@ func (r *externalFunctionResource) Schema(_ context.Context, _ resource.SchemaRe
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Local database containing the function. Changing it replaces the function.",
+				Required: true, MarkdownDescription: "Local database containing the function.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"schema": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Schema containing the function. Changing it replaces the function.",
+				Required: true, MarkdownDescription: "Schema containing the function.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"name": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Function name; AWS recommends the reserved `f_` prefix to avoid conflicts with built-in functions. Changing it replaces the function.",
+				Required: true, MarkdownDescription: "Function name; AWS recommends the reserved `f_` prefix to avoid conflicts with built-in functions.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
