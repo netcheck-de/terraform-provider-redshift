@@ -255,12 +255,9 @@ func tableDefinitionSpec(data tableModel, migrationHints bool) (tableSpec, error
 		if column.renamedFrom == "" {
 			continue
 		}
-		if sources[column.renamedFrom] {
-			return spec, fmt.Errorf("renamed_from %q is used more than once", column.renamedFrom)
-		}
-		sources[column.renamedFrom] = true
-		if _, exists := spec.column(column.renamedFrom); exists {
-			return spec, fmt.Errorf("renamed_from %q is also a configured column name; self-renames, chains, and swaps are not supported", column.renamedFrom)
+		_, declared := spec.column(column.renamedFrom)
+		if err := tableRenameSource(column.renamedFrom, sources, declared); err != nil {
+			return spec, err
 		}
 	}
 	if spec.primaryKey, err = tablePrimaryKeyOf(data.PrimaryKey); err != nil {
@@ -331,20 +328,16 @@ func tableColumnSpecOf(model tableColumnModel) (tableColumnSpec, error) {
 	if column.name, err = tableKnownString(model.Name, "name"); err != nil {
 		return column, err
 	}
-	if column.name == "" {
-		return column, fmt.Errorf("name must be nonempty")
-	}
-	if err := tableFolded("column name", column.name); err != nil {
+	if err := tableNonemptyName("column name", column.name); err != nil {
 		return column, err
 	}
 	if column.renamedFrom, err = tableKnownString(model.RenamedFrom, "renamed_from"); err != nil {
 		return column, err
 	}
-	if !model.RenamedFrom.IsNull() && column.renamedFrom == "" {
-		return column, fmt.Errorf("renamed_from must be nonempty")
-	}
-	if err := tableFolded("renamed_from", column.renamedFrom); err != nil {
-		return column, err
+	if !model.RenamedFrom.IsNull() {
+		if err := tableNonemptyName("renamed_from", column.renamedFrom); err != nil {
+			return column, err
+		}
 	}
 	text, err := tableKnownString(model.Type, "type")
 	if err != nil {
@@ -375,20 +368,10 @@ func tableColumnSpecOf(model tableColumnModel) (tableColumnSpec, error) {
 	if diagnostics := model.Identity.As(context.Background(), &identity, basetypes.ObjectAsOptions{}); diagnostics.HasError() || identity.Seed.IsUnknown() || identity.Step.IsUnknown() || identity.GeneratedByDefault.IsUnknown() {
 		return column, fmt.Errorf("column %q: identity must be known", column.name)
 	}
-	if identity.Seed.IsNull() || identity.Step.IsNull() {
-		return column, fmt.Errorf("column %q: identity needs a seed and a step", column.name)
+	if err := tableValidateIdentity(column.name, column.dataType, identity, column.defaultSQL != "", model.Nullable.ValueBool()); err != nil {
+		return column, err
 	}
 	column.identity = &tableIdentitySpec{seed: identity.Seed.ValueInt64(), step: identity.Step.ValueInt64(), generatedByDefault: identity.GeneratedByDefault.ValueBool()}
-	switch {
-	case column.dataType != "INTEGER" && column.dataType != "BIGINT":
-		return column, fmt.Errorf("identity column %q must be INTEGER or BIGINT", column.name)
-	case column.identity.step == 0:
-		return column, fmt.Errorf("identity column %q needs a nonzero step", column.name)
-	case column.defaultSQL != "":
-		return column, fmt.Errorf("identity column %q cannot also have a default", column.name)
-	case column.nullable != nil && *column.nullable:
-		return column, fmt.Errorf("identity column %q is always NOT NULL", column.name)
-	}
 	return column, nil
 }
 
@@ -545,11 +528,8 @@ func (s *tableSpec) resolveDistribution(value types.Object) error {
 			s.distStyle = "KEY"
 		}
 	}
-	switch {
-	case s.distStyle == "KEY" && s.distKey == "":
-		return fmt.Errorf("distribution style KEY needs a key")
-	case s.distStyle != "KEY" && s.distKey != "":
-		return fmt.Errorf("distribution key requires style KEY")
+	if err := tableDistributionKey(s.distStyle, s.distKey); err != nil {
+		return err
 	}
 	if s.distKey != "" {
 		return s.checkKeyColumns("distribution.key", []string{s.distKey})
@@ -582,15 +562,8 @@ func (s *tableSpec) resolveSortKey(value types.Object) error {
 			s.sortStyle = "COMPOUND"
 		}
 	}
-	switch {
-	case (s.sortStyle == "AUTO" || s.sortStyle == "NONE") && len(s.sortKey) > 0:
-		return fmt.Errorf("sort key style %s takes no columns; remove sort_key.columns", s.sortStyle)
-	case s.sortStyle != "AUTO" && s.sortStyle != "NONE" && len(s.sortKey) == 0:
-		return fmt.Errorf("sort key style %s needs sort_key.columns", s.sortStyle)
-	case s.sortStyle == "COMPOUND" && len(s.sortKey) > tableMaxCompoundSortKeys:
-		return fmt.Errorf("a compound sort key has at most %d columns", tableMaxCompoundSortKeys)
-	case s.sortStyle == "INTERLEAVED" && len(s.sortKey) > tableMaxInterleavedSortKey:
-		return fmt.Errorf("an interleaved sort key has at most %d columns", tableMaxInterleavedSortKey)
+	if err := tableSortKeyCount(s.sortStyle, len(s.sortKey)); err != nil {
+		return err
 	}
 	return s.checkKeyColumns("sort_key.columns", s.sortKey)
 }
@@ -604,10 +577,18 @@ func (s tableSpec) checkKeyColumns(what string, names []string) error {
 	}
 	for _, name := range names {
 		column, _ := s.column(name)
-		base, _, _ := strings.Cut(string(column.dataType), "(")
-		if !slices.Contains(tableKeyTypes, base) {
-			return fmt.Errorf("%s column %q has type %s, which Redshift does not allow in a key", what, name, column.dataType)
+		if err := tableKeyType(what, name, column.dataType); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// tableKeyType rejects key columns of types Redshift cannot sort or distribute on; an empty type is not yet known.
+func tableKeyType(what, name string, dataType sqlclient.Keyword) error {
+	base, _, _ := strings.Cut(string(dataType), "(")
+	if dataType != "" && !slices.Contains(tableKeyTypes, base) {
+		return fmt.Errorf("%s column %q has type %s, which Redshift does not allow in a key", what, name, dataType)
 	}
 	return nil
 }

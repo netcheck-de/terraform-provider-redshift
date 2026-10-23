@@ -70,6 +70,8 @@ New types add files rather than modifying shared infrastructure. Follow this che
   Use `lookupDescriptions` for resource wording that does not apply to lookups.
 - Register replacement rules for every configurable attribute/block. Parity registration covers shared readable
   fields and lookup-only selectors; unpaired lookups use `standalone`, and resources without lookups need exemptions.
+- Keep validation rules in one place: schema validators handle local constraints, while shared domain checks handle
+  relationships between fields. Partial-known validation checks each rule once its own dependencies are known.
 - Long-running resources use `operationTimeoutsBlock`, a resource-specific model with `timeouts.Value`, and
   `boundOperation` around Create/Update/Delete. Lookups and replacement/alter checks exclude the timeouts block.
 

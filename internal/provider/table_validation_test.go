@@ -195,3 +195,75 @@ func TestTableValidatePartiallyKnownNestedBlocks(t *testing.T) {
 		})
 	}
 }
+
+func TestTableColumnValidationAgreesWithSQLDefinition(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		column tableColumnModel
+		want   string
+	}{
+		{"integer alias identity", tableTestColumn("id", "int4", tableIdentity(0, 1, false)), ""},
+		{"bigint alias descending identity", tableTestColumn("id", "int8", tableIdentity(10, -1, true)), ""},
+		{"smallint alias cannot be identity", tableTestColumn("id", "int2", tableIdentity(1, 1, false)), "INTEGER or BIGINT"},
+		{"zero identity step", tableTestColumn("id", "int", tableIdentity(1, 0, false)), "nonzero step"},
+		{"nullable identity", tableTestColumn("id", "int", tableIdentity(1, 1, false), tableNullable(true)), "always NOT NULL"},
+		{"identity with default", tableTestColumn("id", "int", tableIdentity(1, 1, false), tableDefault("1")), "also have a default"},
+		{"unsafe default", tableTestColumn("id", "int", tableDefault("1; DROP TABLE x")), "without ';'"},
+		{"quoted identifier and literal", tableTestColumn(`odd"id`, "varchar(32)", tableDefault("'O''Reilly'")), ""},
+		{"folded column name", tableTestColumn("ID", "int"), "lowercase"},
+		{"empty rename source", tableTestColumn("id", "int", tableRenamedFrom("")), "nonempty"},
+		{"folded rename source", tableTestColumn("id", "int", tableRenamedFrom("Old")), "lowercase"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			knownErr := tableValidateKnownColumn(test.column)
+			_, specErr := tableColumnSpecOf(test.column)
+			if test.want == "" {
+				require.NoError(t, knownErr)
+				require.NoError(t, specErr)
+			} else {
+				require.ErrorContains(t, knownErr, test.want)
+				require.ErrorContains(t, specErr, test.want)
+			}
+		})
+	}
+}
+
+func TestTableKeyAndRenameValidationAgreesWithSQLDefinition(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		change func(*tableModel)
+		want   string
+	}{
+		{"inferred distribution style", func(m *tableModel) { m.Distribution = tableTestDistribution("", "id") }, ""},
+		{"distribution key required", func(m *tableModel) { m.Distribution = tableTestDistribution("KEY", "") }, "needs a key"},
+		{"distribution key disallowed", func(m *tableModel) { m.Distribution = tableTestDistribution("EVEN", "id") }, "requires style KEY"},
+		{"unsupported distribution type", func(m *tableModel) { m.Distribution = tableTestDistribution("KEY", "payload") }, "does not allow in a key"},
+		{"inferred compound sort style", func(m *tableModel) { m.SortKey = tableTestSortKey("", "id") }, ""},
+		{"sort columns required", func(m *tableModel) { m.SortKey = tableTestSortKey("COMPOUND") }, "needs sort_key.columns"},
+		{"automatic sort has no columns", func(m *tableModel) { m.SortKey = tableTestSortKey("AUTO", "id") }, "takes no columns"},
+		{"unsupported sort type", func(m *tableModel) { m.SortKey = tableTestSortKey("COMPOUND", "payload") }, "does not allow in a key"},
+		{"duplicate sort names", func(m *tableModel) { m.SortKey = tableTestSortKey("COMPOUND", "id", "id") }, "distinct nonempty"},
+		{"independent rename", func(m *tableModel) {
+			m.Column = tableTestColumns(tableTestColumn("id", "int", tableRenamedFrom("old")))
+		}, ""},
+		{"rename cannot be a configured name", func(m *tableModel) { m.Column = tableTestColumns(tableTestColumn("id", "int", tableRenamedFrom("id"))) }, "also a configured"},
+		{"rename sources must be distinct", func(m *tableModel) {
+			m.Column = tableTestColumns(tableTestColumn("id", "int", tableRenamedFrom("old")), tableTestColumn("other", "int", tableRenamedFrom("old")))
+		}, "used more than once"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			model := tableMinimalModel()
+			model.Column = tableTestColumns(tableTestColumn("id", "int4"), tableTestColumn("payload", "super"))
+			test.change(&model)
+			knownErr := tableValidateKnown(model)
+			_, specErr := tableSpecOf(model)
+			if test.want == "" {
+				require.NoError(t, knownErr)
+				require.NoError(t, specErr)
+			} else {
+				require.ErrorContains(t, knownErr, test.want)
+				require.ErrorContains(t, specErr, test.want)
+			}
+		})
+	}
+}

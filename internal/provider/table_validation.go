@@ -3,8 +3,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"slices"
-	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
@@ -17,10 +15,7 @@ func tableValidateKnown(data tableModel) error {
 	ctx := context.Background()
 	for label, value := range map[string]types.String{"schema": data.Schema, "name": data.Name} {
 		if !value.IsUnknown() {
-			if value.ValueString() == "" {
-				return fmt.Errorf("%s must be nonempty", label)
-			}
-			if err := tableFolded(label, value.ValueString()); err != nil {
+			if err := tableNonemptyName(label, value.ValueString()); err != nil {
 				return err
 			}
 		}
@@ -71,12 +66,9 @@ func tableValidateKnown(data tableModel) error {
 			continue
 		}
 		source := column.RenamedFrom.ValueString()
-		if sources[source] {
-			return fmt.Errorf("renamed_from %q is used more than once", source)
-		}
-		sources[source] = true
-		if _, exists := columns[source]; exists {
-			return fmt.Errorf("renamed_from %q is also a configured column name; self-renames, chains, and swaps are not supported", source)
+		_, declared := columns[source]
+		if err := tableRenameSource(source, sources, declared); err != nil {
+			return err
 		}
 	}
 	checkNames := func(value types.List, what string, local, key bool) error {
@@ -86,7 +78,7 @@ func tableValidateKnown(data tableModel) error {
 		if value.IsNull() || len(value.Elements()) == 0 {
 			return fmt.Errorf("%s needs at least one column", what)
 		}
-		seen := map[string]bool{}
+		var names []string
 		for _, element := range value.Elements() {
 			name, ok := element.(types.String)
 			if !ok || name.IsNull() {
@@ -95,21 +87,21 @@ func tableValidateKnown(data tableModel) error {
 			if name.IsUnknown() {
 				continue
 			}
-			text := name.ValueString()
-			if text == "" || seen[text] {
-				return fmt.Errorf("%s must list distinct nonempty names", what)
-			}
-			seen[text] = true
-			if err := tableFolded(what, text); err != nil {
-				return err
-			}
+			names = append(names, name.ValueString())
+		}
+		if err := tableDistinctNames(what, names); err != nil {
+			return err
+		}
+		if err := tableFolded(what, names...); err != nil {
+			return err
+		}
+		for _, text := range names {
 			if _, exists := columns[text]; local && allNames && !exists {
 				return fmt.Errorf("%s names column %q, which the table does not declare", what, text)
 			}
-			if dataType := columnTypes[text]; key && dataType != "" {
-				base, _, _ := strings.Cut(string(dataType), "(")
-				if !slices.Contains(tableKeyTypes, base) {
-					return fmt.Errorf("%s column %q has type %s, which Redshift does not allow in a key", what, text, dataType)
+			if key {
+				if err := tableKeyType(what, text, columnTypes[text]); err != nil {
+					return err
 				}
 			}
 		}
@@ -195,11 +187,8 @@ func tableValidateKnown(data tableModel) error {
 		if !distribution.Key.IsUnknown() {
 			key := distribution.Key.ValueString()
 			if !distribution.Style.IsUnknown() {
-				if style == "KEY" && key == "" {
-					return fmt.Errorf("distribution style KEY needs a key")
-				}
-				if style != "" && style != "KEY" && key != "" {
-					return fmt.Errorf("distribution key requires style KEY")
+				if err := tableDistributionKey(style, key); err != nil {
+					return err
 				}
 			}
 			if key != "" {
@@ -220,18 +209,8 @@ func tableValidateKnown(data tableModel) error {
 		}
 		if !sort.Columns.IsUnknown() {
 			count := len(sort.Columns.Elements())
-			if count > tableMaxCompoundSortKeys {
-				return fmt.Errorf("a sort key has at most %d columns", tableMaxCompoundSortKeys)
-			}
-			if !sort.Style.IsUnknown() {
-				switch {
-				case (style == "AUTO" || style == "NONE") && count > 0:
-					return fmt.Errorf("sort key style %s takes no columns; remove sort_key.columns", style)
-				case (style == "COMPOUND" || style == "INTERLEAVED") && count == 0:
-					return fmt.Errorf("sort key style %s needs sort_key.columns", style)
-				case style == "INTERLEAVED" && count > tableMaxInterleavedSortKey:
-					return fmt.Errorf("an interleaved sort key has at most %d columns", tableMaxInterleavedSortKey)
-				}
+			if err := tableSortKeyCount(style, count); err != nil {
+				return err
 			}
 			if count > 0 || !sort.Columns.IsNull() {
 				if err := checkNames(sort.Columns, "sort_key.columns", true, true); err != nil {
@@ -248,10 +227,7 @@ func tableValidateKnownColumn(column tableColumnModel) error {
 		if value.IsUnknown() || (label == "renamed_from" && value.IsNull()) {
 			continue
 		}
-		if value.ValueString() == "" {
-			return fmt.Errorf("%s must be nonempty", label)
-		}
-		if err := tableFolded(label, value.ValueString()); err != nil {
+		if err := tableNonemptyName(label, value.ValueString()); err != nil {
 			return err
 		}
 	}
@@ -277,17 +253,68 @@ func tableValidateKnownColumn(column tableColumnModel) error {
 	if column.Identity.As(context.Background(), &identity, basetypes.ObjectAsOptions{}).HasError() {
 		return fmt.Errorf("invalid identity block")
 	}
+	return tableValidateIdentity(column.Name.ValueString(), dataType, identity,
+		!column.Default.IsNull() && !column.Default.IsUnknown(), column.Nullable.ValueBool())
+}
+
+// tableValidateIdentity checks an identity column's options; an empty type is not yet known and skips only the
+// type check.
+func tableValidateIdentity(name string, dataType sqlclient.Keyword, identity tableIdentityModel, hasDefault, nullable bool) error {
 	switch {
 	case dataType != "" && dataType != "INTEGER" && dataType != "BIGINT":
-		return fmt.Errorf("identity column %q must be INTEGER or BIGINT", column.Name.ValueString())
+		return fmt.Errorf("identity column %q must be INTEGER or BIGINT", name)
 	case identity.Seed.IsNull() || identity.Step.IsNull():
-		return fmt.Errorf("identity needs a seed and a step")
+		return fmt.Errorf("identity column %q needs a seed and a step", name)
 	case !identity.Step.IsUnknown() && identity.Step.ValueInt64() == 0:
-		return fmt.Errorf("identity needs a nonzero step")
-	case !column.Default.IsNull() && !column.Default.IsUnknown():
-		return fmt.Errorf("identity column cannot also have a default")
-	case column.Nullable.ValueBool():
-		return fmt.Errorf("identity column is always NOT NULL")
+		return fmt.Errorf("identity column %q needs a nonzero step", name)
+	case hasDefault:
+		return fmt.Errorf("identity column %q cannot also have a default", name)
+	case nullable:
+		return fmt.Errorf("identity column %q is always NOT NULL", name)
+	}
+	return nil
+}
+
+func tableNonemptyName(what, name string) error {
+	if name == "" {
+		return fmt.Errorf("%s must be nonempty", what)
+	}
+	return tableFolded(what, name)
+}
+
+func tableRenameSource(source string, seen map[string]bool, declared bool) error {
+	if seen[source] {
+		return fmt.Errorf("renamed_from %q is used more than once", source)
+	}
+	seen[source] = true
+	if declared {
+		return fmt.Errorf("renamed_from %q is also a configured column name; self-renames, chains, and swaps are not supported", source)
+	}
+	return nil
+}
+
+// tableDistributionKey pairs a distribution key with style KEY; an empty style is unset or not yet known and is
+// resolved when the definition is rendered.
+func tableDistributionKey(style sqlclient.Keyword, key string) error {
+	switch {
+	case style == "KEY" && key == "":
+		return fmt.Errorf("distribution style KEY needs a key")
+	case style != "" && style != "KEY" && key != "":
+		return fmt.Errorf("distribution key requires style KEY")
+	}
+	return nil
+}
+
+func tableSortKeyCount(style sqlclient.Keyword, count int) error {
+	switch {
+	case count > tableMaxCompoundSortKeys:
+		return fmt.Errorf("a sort key has at most %d columns", tableMaxCompoundSortKeys)
+	case (style == "AUTO" || style == "NONE") && count > 0:
+		return fmt.Errorf("sort key style %s takes no columns; remove sort_key.columns", style)
+	case (style == "COMPOUND" || style == "INTERLEAVED") && count == 0:
+		return fmt.Errorf("sort key style %s needs sort_key.columns", style)
+	case style == "INTERLEAVED" && count > tableMaxInterleavedSortKey:
+		return fmt.Errorf("an interleaved sort key has at most %d columns", tableMaxInterleavedSortKey)
 	}
 	return nil
 }
