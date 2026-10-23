@@ -7,6 +7,7 @@ linters:
     - depguard
     - durationcheck
     - errorlint
+    - godoclint
     - gocritic
     - misspell
     - nilerr
@@ -36,13 +37,15 @@ linters:
               desc: AWS service clients belong to provider wiring
             - pkg: github.com/jackc/pgx
               desc: pgx belongs to the direct SQL transport
-    revive:
-      rules:
-        - name: exported
-          arguments:
-            - check-private-receivers
-        - name: package-comments
-        - name: var-naming
+    godoclint:
+      # The default rules plus a doc comment on every declaration, unexported ones and tests included.
+      enable:
+        - require-doc
+      options:
+        require-doc:
+          ignore-unexported: false
+        start-with-name:
+          include-unexported: true
 
 formatters:
   enable:

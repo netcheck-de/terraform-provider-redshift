@@ -87,6 +87,8 @@ resource "redshift_grant" "schema" {
 	})
 }
 
+// TestAccClusterUserLockoutsRollout checks that SHOW USER LOCKOUT output from a provisioned cluster parses, and skips
+// while the feature has not rolled out there.
 func TestAccClusterUserLockoutsRollout(t *testing.T) {
 	testAccPreCheck(t, "REDSHIFT_ACC_CLUSTER")
 	region, profile := os.Getenv("REDSHIFT_ACC_REGION"), os.Getenv("REDSHIFT_ACC_PROFILE")

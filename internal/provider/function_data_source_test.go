@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestFunctionArgumentsRejectNullElements rejects null entries in arguments for both the resource and the lookup, since
+// a null cannot name an argument type.
 func TestFunctionArgumentsRejectNullElements(t *testing.T) {
 	ctx := context.Background()
 	var lookup datasource.SchemaResponse

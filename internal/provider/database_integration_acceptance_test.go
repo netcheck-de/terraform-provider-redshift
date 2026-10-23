@@ -32,6 +32,8 @@ type integrationSessionAPI struct {
 	session *string
 }
 
+// ExecuteStatement reuses the session the first statement opened, clearing the connection fields a session-bound call
+// must omit.
 func (a *integrationSessionAPI) ExecuteStatement(ctx context.Context, input *redshiftdata.ExecuteStatementInput, options ...func(*redshiftdata.Options)) (*redshiftdata.ExecuteStatementOutput, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()

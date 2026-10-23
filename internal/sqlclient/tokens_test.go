@@ -30,6 +30,8 @@ func TestTokens(t *testing.T) {
 	}
 }
 
+// TestTokensRetainRawLiteralEscapes keeps each literal's raw spelling, since generic decoding gives '\t' and '\\t' the
+// same text and only a command-specific parser knows which escape was meant.
 func TestTokensRetainRawLiteralEscapes(t *testing.T) {
 	tokens, err := Tokens(`'\t' '\\t' '\n' '\\n'`)
 	require.NoError(t, err)

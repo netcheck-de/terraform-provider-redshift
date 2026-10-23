@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestAssumeroleGrantOverlapGuard refuses to reconcile a per-command ASSUMEROLE grant whose grantee also holds ON ALL,
+// fails closed when the guard fails, skips it on reads, and still lets an empty failed create be forgotten.
 func TestAssumeroleGrantOverlapGuard(t *testing.T) {
 	for _, selector := range []string{"DEFAULT", "arn:aws:iam::123456789012:role/reader"} {
 		t.Run(selector, func(t *testing.T) {
@@ -44,6 +46,7 @@ func TestAssumeroleGrantOverlapGuard(t *testing.T) {
 	}
 }
 
+// TestAssumeroleGrantOverlapSQL pins the ON ALL overlap guard query for a grantee that needs quoting.
 func TestAssumeroleGrantOverlapSQL(t *testing.T) {
 	checkSQL(t, "assumerole_overlap", []sqlCase{{name: "guard", render: func() (string, error) {
 		statement, _, err := assumeroleGrantOverlapQuery(`Odd"O'Reilly`, "ROLE").Build()

@@ -9,6 +9,7 @@ import (
 
 var _ = registerDataSource(newDatashareMembershipDataSource)
 
+// newDatashareMembershipDataSource reports whether a share holds every current member of one kind in a schema.
 func newDatashareMembershipDataSource() datasource.DataSource {
 	return lookupDescriptions(newCatalogDataSource(catalogSpec{name: "datashare_membership", factory: newDatashareMembershipResource, computed: []string{"all"}, exists: true, identityFields: []string{"datashare", "schema", "kind"}, identityDatabase: "database", lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
 		attributes := data.Attributes()

@@ -132,6 +132,8 @@ func TestExternalTablePartialKnownColumnsValidation(t *testing.T) {
 	}
 }
 
+// TestExternalTablePartialKnownPropertiesValidation reports empty property names and serde_properties without serde at
+// plan time, deferring only checks that depend on an unknown value.
 func TestExternalTablePartialKnownPropertiesValidation(t *testing.T) {
 	properties := func(key string, value types.String) types.Map {
 		return types.MapValueMust(types.StringType, map[string]attr.Value{key: value})
@@ -177,6 +179,8 @@ func TestExternalTablePartialKnownPropertiesValidation(t *testing.T) {
 	}
 }
 
+// TestExternalTableNestedUnknownValidationAndStrictCreate rejects a known unsupported column type beside unknowns,
+// defers an unknown type at plan time, and has Create reject it before any SQL or state.
 func TestExternalTableNestedUnknownValidationAndStrictCreate(t *testing.T) {
 	model := externalTableTestModel()
 	model.Columns = externalTableColumnList([]externalTableColumnValue{

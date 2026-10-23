@@ -314,6 +314,8 @@ func databaseIntegrationConverged(expected, observed *databaseIntegrationModel) 
 // Redshift can acknowledge INTEGRATION SET roughly 30 seconds before SVV_INTEGRATION reflects the setting.
 const databaseIntegrationReadbackWait = time.Minute
 
+// waitDatabaseIntegration polls SVV_INTEGRATION until it reports the configured integration settings, because Redshift
+// can confirm INTEGRATION SET before the view shows it.
 func (r *databaseResource) waitDatabaseIntegration(ctx context.Context, expected databaseModel, observed *databaseModel) error {
 	if expected.Integration == nil {
 		return nil

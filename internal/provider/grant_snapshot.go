@@ -27,6 +27,8 @@ type privilegeSnapshot struct {
 	optionUnion []string
 }
 
+// grantCatalogVisibilityQuery reports whether the session is a superuser, whose catalog reads are not
+// privilege-filtered.
 func grantCatalogVisibilityQuery() sqlclient.Query {
 	return sqlclient.Select("usesuper").From("pg_user").Where("usename = current_user")
 }

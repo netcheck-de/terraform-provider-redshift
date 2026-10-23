@@ -16,8 +16,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
+// datashareMembershipResource owns every current member of one kind in a shared schema.
 type datashareMembershipResource struct{ resourceClient }
 
+// datashareMembershipModel is the exclusive membership tuple and its observed coverage.
 type datashareMembershipModel struct {
 	// ID is the JSON identity of the tuple.
 	ID types.String `tfsdk:"id"`
@@ -35,6 +37,7 @@ type datashareMembershipModel struct {
 
 var _ = registerResource(newDatashareMembershipResource)
 
+// newDatashareMembershipResource constructs an exclusive datashare membership handler.
 func newDatashareMembershipResource() resource.Resource { return &datashareMembershipResource{} }
 
 // Metadata registers exclusive membership separately from per-object ownership.
@@ -155,6 +158,7 @@ func (r *datashareMembershipResource) read(ctx context.Context, data *datashareM
 	return
 }
 
+// apply adds every current member of the selected kind after checking that the schema is shared without include_new.
 func (r *datashareMembershipResource) apply(ctx context.Context, data *datashareMembershipModel) error {
 	if !data.All.ValueBool() {
 		return fmt.Errorf("all must be true to acknowledge exclusive ownership")
@@ -222,6 +226,8 @@ func (r *datashareMembershipResource) Create(ctx context.Context, req resource.C
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
+// Read refreshes coverage, removes the membership when its share or schema is gone, and warns while include_new
+// shares future objects implicitly.
 func (r *datashareMembershipResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data datashareMembershipModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)

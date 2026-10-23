@@ -13,14 +13,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// sharedSnapshotCatalog fakes a consumer database's shared members and their per-member ACLs.
 type sharedSnapshotCatalog struct {
-	members    []string
+	// members lists the current shared object names.
+	members []string
+	// privileges records each member's held privileges.
 	privileges map[string]map[string]bool
-	options    map[string]map[string]bool
-	scope      string
-	writes     []string
+	// options records each member's privileges held with grant option.
+	options map[string]map[string]bool
+	// scope is the privilege_scope SHOW GRANTS reports.
+	scope string
+	// writes records the emitted mutations.
+	writes []string
 }
 
+// Query emulates a superuser's view of a shared schema: member listings, per-member SHOW GRANTS rows, and GRANT or
+// REVOKE applied to one member or to all of them.
 func (c *sharedSnapshotCatalog) Query(_ context.Context, _ sqlclient.Connection, statement string, parameters map[string]string) ([]sqlclient.Row, error) {
 	if strings.HasPrefix(statement, "SELECT usesuper") {
 		return []sqlclient.Row{{"usesuper": "true"}}, nil
@@ -87,6 +95,8 @@ func (c *sharedSnapshotCatalog) Query(_ context.Context, _ sqlclient.Connection,
 	return nil, nil
 }
 
+// TestObjectGrantSharedSnapshots grants an ALL-scope privilege on a shared schema member by member, revokes grant
+// options held by only some members, clears every member on destroy, and owns nothing once the schema is empty.
 func TestObjectGrantSharedSnapshots(t *testing.T) {
 	for _, kind := range []string{"ALL TABLES", "ALL FUNCTIONS", "ALL PROCEDURES"} {
 		t.Run(kind, func(t *testing.T) {
@@ -131,6 +141,8 @@ func TestObjectGrantSharedSnapshots(t *testing.T) {
 	}
 }
 
+// TestObjectGrantSharedExtendedSQL pins the visibility checks, reads, guards, and GRANT and REVOKE statements for
+// routine and ALL-scope grants on shared databases.
 func TestObjectGrantSharedExtendedSQL(t *testing.T) {
 	var cases []sqlCase
 	for _, test := range []struct{ name, kind, object, privilege string }{{"function", "FUNCTION", "routine", "EXECUTE"}, {"procedure", "PROCEDURE", "routine", "EXECUTE"}, {"all_tables", "ALL TABLES", "", "SELECT"}, {"all_functions", "ALL FUNCTIONS", "", "EXECUTE"}, {"all_procedures", "ALL PROCEDURES", "", "EXECUTE"}} {
@@ -183,6 +195,8 @@ func TestObjectGrantSharedExtendedSQL(t *testing.T) {
 	checkSQL(t, "object_grant_shared_extended", cases)
 }
 
+// TestObjectGrantSharedFunctionIsNameWide rejects arguments for shared routines, whose grants cover every overload of a
+// name, even when object_type is unknown.
 func TestObjectGrantSharedFunctionIsNameWide(t *testing.T) {
 	r := newObjectGrantResource().(*privilegeResource)
 	data := privilegeObject(t, r, map[string]string{"database_name": "shared_db", "database_type": "shared", "schema_name": "serving", "object_type": "FUNCTION", "object_name": "routine", "grantee": "reader", "grantee_type": "USER"}, "EXECUTE")
@@ -193,6 +207,8 @@ func TestObjectGrantSharedFunctionIsNameWide(t *testing.T) {
 	require.ErrorContains(t, r.validateConfig(data), "name-wide", "the shared argument rule does not depend on an unknown object kind")
 }
 
+// TestObjectGrantSharedSnapshotReadErrors fails Read, without reporting the grant missing, when the member listing or a
+// member's grants cannot be read or a member has no name.
 func TestObjectGrantSharedSnapshotReadErrors(t *testing.T) {
 	for _, failure := range []string{"members", "object", "empty name"} {
 		t.Run(failure, func(t *testing.T) {
@@ -224,6 +240,8 @@ func TestObjectGrantSharedSnapshotReadErrors(t *testing.T) {
 	}
 }
 
+// TestObjectGrantSharedSnapshotTranscripts pins the per-member statements for changing grant options held by only some
+// members and for deleting privileges held by only some.
 func TestObjectGrantSharedSnapshotTranscripts(t *testing.T) {
 	r := newObjectGrantResource().(*privilegeResource)
 	fields := map[string]string{"database_name": "shared_db", "database_type": "shared", "schema_name": "serving", "object_type": "ALL FUNCTIONS", "grantee": "reader", "grantee_type": "USER"}
@@ -245,6 +263,8 @@ func TestObjectGrantSharedSnapshotTranscripts(t *testing.T) {
 	})
 }
 
+// TestObjectGrantSharedAmbiguousRoutineNames refuses to mutate a shared routine grant when another routine kind shares
+// the name, because the consumer sees one name-wide ACL that neither kind can own alone.
 func TestObjectGrantSharedAmbiguousRoutineNames(t *testing.T) {
 	for _, kind := range []string{"FUNCTION", "PROCEDURE", "ALL PROCEDURES"} {
 		t.Run(kind, func(t *testing.T) {
@@ -294,6 +314,8 @@ func TestObjectGrantSharedAmbiguousRoutineNames(t *testing.T) {
 	}
 }
 
+// TestObjectGrantSharedCompleteVisibilityRequired requires a SQL superuser before reading routine or ALL-scope grants
+// on a shared database, because other users see a filtered catalog.
 func TestObjectGrantSharedCompleteVisibilityRequired(t *testing.T) {
 	for _, kind := range []string{"FUNCTION", "PROCEDURE", "ALL TABLES", "ALL FUNCTIONS", "ALL PROCEDURES"} {
 		t.Run(kind, func(t *testing.T) {

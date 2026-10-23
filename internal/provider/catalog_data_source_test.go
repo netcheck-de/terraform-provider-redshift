@@ -356,6 +356,7 @@ func TestLookupDescriptions(t *testing.T) {
 // existsShadowResource declares an attribute named like the catalog lookup's exists output.
 type existsShadowResource struct{ resource.Resource }
 
+// Schema declares only a computed exists attribute, colliding with the lookup's own exists output.
 func (existsShadowResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
 	response.Schema = resourceschema.Schema{Attributes: map[string]resourceschema.Attribute{"exists": resourceschema.BoolAttribute{Computed: true}}}
 }

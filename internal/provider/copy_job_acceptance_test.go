@@ -23,6 +23,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// copyJobAcceptanceClient returns the acceptance Data API client, authenticated with REDSHIFT_ACC_SECRET_ARN when it is
+// set.
 func copyJobAcceptanceClient(t *testing.T, region, profile, workgroup string) sqlclient.Client {
 	t.Helper()
 	client := testAccRolesClient(t, region, profile, workgroup).(*dataapi.Client)
@@ -30,6 +32,8 @@ func copyJobAcceptanceClient(t *testing.T, region, profile, workgroup string) sq
 	return client
 }
 
+// TestAccCopyJobDatabaseScope confirms that SYS_COPY_JOB lists a job only in its own database, so the read query needs
+// no database filter.
 func TestAccCopyJobDatabaseScope(t *testing.T) {
 	region, profile, workgroup, _ := testAccWorkgroup(t, "REDSHIFT_ACC_COPY_JOB_NAME", "REDSHIFT_ACC_COPY_JOB_DATABASE", "REDSHIFT_ACC_COPY_JOB_OTHER_DATABASE")
 	client := copyJobAcceptanceClient(t, region, profile, workgroup)

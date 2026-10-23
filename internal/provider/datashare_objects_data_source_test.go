@@ -13,6 +13,8 @@ import (
 
 var _ = registerParity(parityCase{source: newDatashareObjectsDataSource, collection: true, filters: []string{"database", "datashare", "object_type"}})
 
+// TestDatashareObjectsList filters members by datashare and object type, defaults to the provider database, and reports
+// include_new only for schemas.
 func TestDatashareObjectsList(t *testing.T) {
 	for _, test := range []struct {
 		name, share, kind string
@@ -59,6 +61,8 @@ func TestDatashareObjectsList(t *testing.T) {
 	}
 }
 
+// TestDatashareObjectsOpaqueNamesAndFailures returns member names verbatim without parsing them, and fails on an
+// invalid include_new value or a catalog error.
 func TestDatashareObjectsOpaqueNamesAndFailures(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -92,6 +96,7 @@ func TestDatashareObjectsOpaqueNamesAndFailures(t *testing.T) {
 	}
 }
 
+// TestDatashareObjectsMissingDatabase returns an empty listing for a missing database without querying it for members.
 func TestDatashareObjectsMissingDatabase(t *testing.T) {
 	source := newDatashareObjectsDataSource()
 	state, diagnostics := readSource(t, source, collectionConfig(t, source, map[string]string{"database": "missing", "datashare": "producer"}), queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {

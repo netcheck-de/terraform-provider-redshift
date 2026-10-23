@@ -18,6 +18,7 @@ func privilegeFieldsKnown(data types.Object, fields ...string) bool {
 	return !data.IsUnknown()
 }
 
+// privilegeSetKnown reports whether the set and every element are known, so validation can wait for the rest.
 func privilegeSetKnown(value types.Set) bool {
 	if value.IsUnknown() {
 		return false

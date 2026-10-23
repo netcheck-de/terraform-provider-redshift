@@ -40,7 +40,8 @@ func registeredDataSources() []func() datasource.DataSource {
 	return sortedFactories(dataSourceFactories, registeredDataSourceName)
 }
 
-// Factories can build entire schemas, so discover names once instead of inside every sort comparison.
+// sortedFactories orders factories by type name. Factories can build entire schemas, so discover names once instead of
+// inside every sort comparison.
 func sortedFactories[T any](registered []T, name func(T) string) []T {
 	type namedFactory struct {
 		factory T

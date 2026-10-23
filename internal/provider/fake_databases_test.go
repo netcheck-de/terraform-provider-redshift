@@ -61,14 +61,22 @@ var (
 	fakeLiteralAfter = func(keyword string) *regexp.Regexp {
 		return regexp.MustCompile(`(?:^| )` + keyword + ` '((?:[^']|'')*)'`)
 	}
-	fakeOwner      = fakeIdentifierAfter(`(?:OWNER TO|OWNER|AUTHORIZATION)`)
-	fakeLimit      = regexp.MustCompile(`CONNECTION LIMIT (-?\d+|UNLIMITED)`)
-	fakeCollation  = regexp.MustCompile(`COLLATE (\w+)`)
-	fakeIsolation  = regexp.MustCompile(`ISOLATION LEVEL (\w+)`)
-	fakeQuota      = regexp.MustCompile(`QUOTA (UNLIMITED|(\d+) MB)`)
+	// fakeOwner captures the owner a statement assigns.
+	fakeOwner = fakeIdentifierAfter(`(?:OWNER TO|OWNER|AUTHORIZATION)`)
+	// fakeLimit captures a connection limit.
+	fakeLimit = regexp.MustCompile(`CONNECTION LIMIT (-?\d+|UNLIMITED)`)
+	// fakeCollation captures a database collation.
+	fakeCollation = regexp.MustCompile(`COLLATE (\w+)`)
+	// fakeIsolation captures a database isolation level.
+	fakeIsolation = regexp.MustCompile(`ISOLATION LEVEL (\w+)`)
+	// fakeQuota captures a schema quota, with the size in megabytes as its second group.
+	fakeQuota = regexp.MustCompile(`QUOTA (UNLIMITED|(\d+) MB)`)
+	// fakeExternalOf captures the source kind of an external schema.
 	fakeExternalOf = regexp.MustCompile(`FROM (DATA CATALOG|HIVE METASTORE|POSTGRES|MYSQL|REDSHIFT|KINESIS|MSK) `)
-	fakePort       = regexp.MustCompile(` PORT (\d+)`)
-	fakeAuth       = regexp.MustCompile(` AUTHENTICATION (NONE|IAM|MTLS)`)
+	// fakePort captures an identity provider or external source port.
+	fakePort = regexp.MustCompile(` PORT (\d+)`)
+	// fakeAuth captures a streaming source's authentication method.
+	fakeAuth = regexp.MustCompile(` AUTHENTICATION (NONE|IAM|MTLS)`)
 )
 
 // fakeIdentifier returns the unquoted identifier the pattern captured, if any.

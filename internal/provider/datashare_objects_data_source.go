@@ -16,6 +16,7 @@ import (
 
 var _ = registerDataSource(newDatashareObjectsDataSource)
 
+// newDatashareObjectsDataSource lists the objects of the datashares in one local database.
 func newDatashareObjectsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:        "datashare_objects",
@@ -35,6 +36,7 @@ func newDatashareObjectsDataSource() datasource.DataSource {
 	})
 }
 
+// datashareObjectsList returns no objects for a missing database instead of failing the lookup.
 func datashareObjectsList(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
 	database := objectString(filters, "database")
 	if database == "" {

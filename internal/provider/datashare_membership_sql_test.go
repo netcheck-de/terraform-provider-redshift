@@ -7,6 +7,8 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
+// TestDatashareMembershipSQL pins the superuser check, ADD and REMOVE statements, and member queries, including quoted
+// names and the dotted-schema refusal.
 func TestDatashareMembershipSQL(t *testing.T) {
 	query := func(q sqlclient.Query) func() (string, error) {
 		return func() (string, error) { sql, _, err := q.Build(); return sql, err }

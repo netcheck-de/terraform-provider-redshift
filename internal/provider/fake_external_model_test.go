@@ -37,6 +37,7 @@ type fakeExternalModel struct {
 // does not report the response type at all.
 const fakeModelDefaultRole = "default-aws-iam-role"
 
+// externalModelFamily fakes external models and their SHOW MODEL output.
 type externalModelFamily struct {
 	// models maps schema and name to the model.
 	models map[string]*fakeExternalModel

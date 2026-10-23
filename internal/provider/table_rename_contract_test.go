@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TestContractTableRenamePlans plans a renamed_from column as an in-place update, keeps the hint in state, and plans
+// removing the hint in place too.
 func TestContractTableRenamePlans(t *testing.T) {
 	t.Parallel()
 	c := fullCatalog()
@@ -28,6 +30,8 @@ func TestContractTableRenamePlans(t *testing.T) {
 	})
 }
 
+// TestContractTableRenameConflictPlans fails the plan without writing when both the rename source and destination
+// columns exist, and lets the prior configuration plan again.
 func TestContractTableRenameConflictPlans(t *testing.T) {
 	t.Parallel()
 	c := fullCatalog()
@@ -77,6 +81,8 @@ func TestContractTableRenameRecreatedSourcePlans(t *testing.T) {
 	})
 }
 
+// TestContractTableRenameAfterImportPlans renames a column of an imported table in place; only the test's final destroy
+// drops the table.
 func TestContractTableRenameAfterImportPlans(t *testing.T) {
 	t.Parallel()
 	c := fullCatalog()

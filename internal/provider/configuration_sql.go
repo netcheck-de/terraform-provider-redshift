@@ -8,7 +8,8 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
-// SHOW takes parameter and session context names unquoted, so each dotted segment must be an identifier.
+// configurationParameterName matches the names SHOW accepts; SHOW takes parameter and session context names unquoted,
+// so each dotted segment must be an identifier.
 var configurationParameterName = regexp.MustCompile(`^[a-z_][a-z0-9_]{0,126}(\.[a-z_][a-z0-9_]{0,126})*$`)
 
 // readConfigurationStatement renders SHOW for one configuration parameter.

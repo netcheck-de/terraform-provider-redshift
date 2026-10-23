@@ -28,6 +28,7 @@ func TestCopyJobLookup(t *testing.T) {
 	}, fullCatalog())
 }
 
+// TestCopyJobLookupDefaultText reports format, format argument, and parameters as null for a job created without them.
 func TestCopyJobLookupDefaultText(t *testing.T) {
 	c := fullCatalog()
 	fake := fakeState[*copyJobFake](c, copyJobFakeFamily)

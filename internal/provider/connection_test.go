@@ -136,8 +136,10 @@ func TestDatashareDiscoveryUsesProviderAWSConfiguration(t *testing.T) {
 	}
 }
 
+// dataAPIHTTPClientFunc serves Data API requests from a test function instead of the network.
 type dataAPIHTTPClientFunc func(*http.Request) (*http.Response, error)
 
+// Do lets a function stand in for the Data API SDK's HTTP client.
 func (f dataAPIHTTPClientFunc) Do(request *http.Request) (*http.Response, error) {
 	return f(request)
 }

@@ -27,6 +27,8 @@ type liveValidationFixture struct {
 	ctx    context.Context
 }
 
+// newLiveValidationFixture creates a uniquely named schema in the acceptance workgroup and drops it with CASCADE after
+// the test.
 func newLiveValidationFixture(t *testing.T, flags ...string) liveValidationFixture {
 	t.Helper()
 	region, profile, workgroup, database := testAccWorkgroup(t, flags...)
@@ -41,6 +43,7 @@ func newLiveValidationFixture(t *testing.T, flags ...string) liveValidationFixtu
 	return f
 }
 
+// exec runs a statement and fails the test on a rendering or SQL error.
 func (f liveValidationFixture) exec(t *testing.T, statement sqlclient.Statement) []sqlclient.Row {
 	t.Helper()
 	require.NoError(t, statement.Err())
@@ -49,6 +52,7 @@ func (f liveValidationFixture) exec(t *testing.T, statement sqlclient.Statement)
 	return rows
 }
 
+// query builds and runs a catalog query, failing the test on error.
 func (f liveValidationFixture) query(t *testing.T, query sqlclient.Query) []sqlclient.Row {
 	t.Helper()
 	text, args, err := query.Build()
@@ -58,6 +62,7 @@ func (f liveValidationFixture) query(t *testing.T, query sqlclient.Query) []sqlc
 	return rows
 }
 
+// user creates a password user named after the fixture schema and drops it after the test.
 func (f liveValidationFixture) user(t *testing.T) (string, string) {
 	t.Helper()
 	name, password := f.schema+"_user", "Acc1!"+f.schema
@@ -83,6 +88,8 @@ func (f liveValidationFixture) directUser(t *testing.T, name, password string) l
 	return f
 }
 
+// TestAccLiveValidationNotNullAdd confirms that Redshift refuses ADD COLUMN ... NOT NULL without a default even on an
+// empty table, which is why the provider replaces the table instead.
 func TestAccLiveValidationNotNullAdd(t *testing.T) {
 	f := newLiveValidationFixture(t)
 	for _, populated := range []bool{false, true} {
@@ -102,6 +109,8 @@ func TestAccLiveValidationNotNullAdd(t *testing.T) {
 	}
 }
 
+// TestAccLiveValidationAutoKeyDetours checks that a key column kept by AUTO can be dropped by leaving AUTO, dropping
+// it, and returning, without losing rows, and that interleaved tables refuse the detour.
 func TestAccLiveValidationAutoKeyDetours(t *testing.T) {
 	f := newLiveValidationFixture(t)
 	t.Run("distribution", func(t *testing.T) {
@@ -193,6 +202,8 @@ func TestAccLiveValidationAutoKeyDetours(t *testing.T) {
 	})
 }
 
+// TestAccLiveValidationNonSuperuserCatalog checks that a non-superuser granted SELECT sees the effective distribution
+// style and distribution key through the provider's table queries.
 func TestAccLiveValidationNonSuperuserCatalog(t *testing.T) {
 	f := newLiveValidationFixture(t, "REDSHIFT_ACC_DIRECT")
 	name, password := f.user(t)
@@ -218,6 +229,8 @@ func TestAccLiveValidationNonSuperuserCatalog(t *testing.T) {
 	assert.True(t, tableCatalogBool(columns[0]["distkey"]), "SVV_REDSHIFT_COLUMNS must expose the granted table's distribution key")
 }
 
+// TestAccLiveValidationMaterializedViewReset checks that the statements removing a materialized view's distribution and
+// sort keys run on Redshift and reset both in the catalog.
 func TestAccLiveValidationMaterializedViewReset(t *testing.T) {
 	f := newLiveValidationFixture(t)
 	f.exec(t, sqlclient.Stmt("CREATE TABLE").Qualified(f.schema, "source").Kw("(id INTEGER, payload INTEGER)"))
@@ -244,6 +257,7 @@ func TestAccLiveValidationMaterializedViewReset(t *testing.T) {
 	}
 }
 
+// templateDefinition reads a template back through SHOW TEMPLATE and parses it as the provider's Read does.
 func (f liveValidationFixture) templateDefinition(t *testing.T, data templateModel) copyDefinition {
 	t.Helper()
 	rows, err := f.client.Query(context.Background(), f.conn, showTemplateStatement(data), nil)
@@ -256,6 +270,8 @@ func (f liveValidationFixture) templateDefinition(t *testing.T, data templateMod
 	return definition
 }
 
+// TestAccLiveValidationTemplateKeywords creates a template for each supported COPY parameter and value class and checks
+// that SHOW TEMPLATE reads it back unchanged.
 func TestAccLiveValidationTemplateKeywords(t *testing.T) {
 	f := newLiveValidationFixture(t)
 	// Each keyword gets its own template: mutually exclusive compression and error options must not mask acceptance.
@@ -302,6 +318,8 @@ func TestAccLiveValidationTemplateKeywords(t *testing.T) {
 	}
 }
 
+// TestAccLiveValidationTemplateAlterAndReplace checks that the provider's ALTER statements change and remove
+// parameters, and that CREATE OR REPLACE keeps the template's owner and grants.
 func TestAccLiveValidationTemplateAlterAndReplace(t *testing.T) {
 	f := newLiveValidationFixture(t)
 	owner, _ := f.user(t)
@@ -359,6 +377,8 @@ func TestAccLiveValidationTemplateAlterAndReplace(t *testing.T) {
 	assert.ElementsMatch(t, beforeGrants, afterGrants, "CREATE OR REPLACE should preserve grants")
 }
 
+// TestAccLiveValidationShowUserDefaults checks that SHOW reads a user's persisted ALTER USER SET default in new
+// sessions without changing the admin's value.
 func TestAccLiveValidationShowUserDefaults(t *testing.T) {
 	f := newLiveValidationFixture(t, "REDSHIFT_ACC_DIRECT")
 	name, password := f.user(t)
@@ -381,6 +401,8 @@ func TestAccLiveValidationShowUserDefaults(t *testing.T) {
 	assert.Equal(t, userDefault, read(reader.client))
 }
 
+// TestAccLiveValidationUserLockoutRollout checks that a new password user appears unlocked with no failed attempts in
+// SHOW USER LOCKOUT, and skips where the feature has not rolled out.
 func TestAccLiveValidationUserLockoutRollout(t *testing.T) {
 	f := newLiveValidationFixture(t)
 	_, err := f.client.Query(context.Background(), f.conn, readUserLockoutsStatement(), nil)

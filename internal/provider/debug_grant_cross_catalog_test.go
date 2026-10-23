@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestDebugGrantCrossCatalogTransientReadPreservesState keeps a cross-catalog DEBUG grant in state when SHOW GRANTS
+// fails and the database listing omits it, since neither proves the database was dropped.
 func TestDebugGrantCrossCatalogTransientReadPreservesState(t *testing.T) {
 	r := newDebugGrantResource().(*debugGrantResource)
 	r.resourceClient = testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, statement string, _ map[string]string) ([]sqlclient.Row, error) {

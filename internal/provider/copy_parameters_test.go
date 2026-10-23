@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestCopySHOWControlEscapes decodes the backslash escapes SHOW prints in COPY options exactly once and keeps
+// configured values verbatim, so control characters and literal backslashes stay distinct.
 func TestCopySHOWControlEscapes(t *testing.T) {
 	for text, expected := range map[string]string{
 		`DELIMITER '\t'`:   "\t",

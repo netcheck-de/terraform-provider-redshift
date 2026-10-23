@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestPrivilegePartialKnownValidation reports known invalid object grant fields at plan time while others are unknown,
+// and defers checks that need an unknown value.
 func TestPrivilegePartialKnownValidation(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -42,6 +44,8 @@ func TestPrivilegePartialKnownValidation(t *testing.T) {
 	}
 }
 
+// TestGrantPartialKnownValidation rejects a privilege invalid for a known scope, and defers the check while scope,
+// schema, grantee, or privileges are unknown.
 func TestGrantPartialKnownValidation(t *testing.T) {
 	data := grantModel{DatabaseName: types.StringUnknown(), Scope: types.StringValue("TABLES"), Role: types.StringValue("reader"), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("USAGE")})}
 	require.ErrorContains(t, data.validate(), "not \"USAGE\"")
@@ -55,6 +59,8 @@ func TestGrantPartialKnownValidation(t *testing.T) {
 	require.NoError(t, data.validate())
 }
 
+// TestColumnGrantPartialKnownValidation rejects an unsupported column privilege even when its columns and grantee are
+// unknown.
 func TestColumnGrantPartialKnownValidation(t *testing.T) {
 	data := columnGrantModel{DatabaseName: types.StringUnknown(), Grantee: types.StringUnknown(), GranteeType: types.StringValue("USER"), Privileges: types.MapValueMust(types.SetType{ElemType: types.StringType}, map[string]attr.Value{"DELETE": types.SetUnknown(types.StringType)})}
 	require.ErrorContains(t, validateColumnGrant(data), "unsupported column privilege")
@@ -62,6 +68,8 @@ func TestColumnGrantPartialKnownValidation(t *testing.T) {
 	require.NoError(t, validateColumnGrant(data))
 }
 
+// TestDebugGrantPartialKnownValidation rejects a known local grantee, which cannot receive DEBUG, while the database is
+// unknown, and defers the check while the grantee is unknown.
 func TestDebugGrantPartialKnownValidation(t *testing.T) {
 	r := newDebugGrantResource().(*debugGrantResource)
 	data := debugGrantModel{Database: types.StringUnknown(), Grantee: types.StringValue("local_user"), GranteeType: types.StringValue("USER")}

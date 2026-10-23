@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestDebugGrantImportUnreliableRemoteReadPreservesState keeps an imported remote grant's identity when authentication,
+// visibility, or the scoped read cannot be trusted, and stops reading at the first such failure.
 func TestDebugGrantImportUnreliableRemoteReadPreservesState(t *testing.T) {
 	for _, kind := range []string{"USER", "ROLE"} {
 		for _, failure := range []struct {

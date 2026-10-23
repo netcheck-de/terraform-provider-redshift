@@ -49,6 +49,8 @@ func TestTemplatesListing(t *testing.T) {
 	assert.True(t, diagnostics.HasError())
 }
 
+// TestTemplatesListingPreservesQuotedWhitespace returns schema, template, and owner names with their surrounding spaces
+// instead of trimming them.
 func TestTemplatesListingPreservesQuotedWhitespace(t *testing.T) {
 	source := newTemplatesDataSource()
 	client := queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {

@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestObjectGrantSharedSQL pins the checks, reads, and GRANT and REVOKE statements for database, schema, and table
+// grants on a shared database whose name needs quoting.
 func TestObjectGrantSharedSQL(t *testing.T) {
 	r := newObjectGrantResource().(*privilegeResource)
 	var cases []sqlCase
@@ -46,6 +48,8 @@ func TestObjectGrantSharedSQL(t *testing.T) {
 	checkSQL(t, "object_grant_shared", cases)
 }
 
+// TestObjectGrantSharedLifecycle grants on a shared database's table from the administration database with three-part
+// names, ignores scoped grants, and keeps database_type in the identity so local grants stay unchanged.
 func TestObjectGrantSharedLifecycle(t *testing.T) {
 	fields := map[string]string{"database_name": "shared_db", "database_type": "shared", "schema_name": "serving", "object_name": "events", "object_type": "TABLE", "grantee": "reader", "grantee_type": "USER"}
 	r := newObjectGrantResource().(*privilegeResource)
@@ -73,6 +77,8 @@ func TestObjectGrantSharedLifecycle(t *testing.T) {
 	assert.Contains(t, r.identity("admin", fields).ValueString(), `"database_type":"shared"`)
 }
 
+// TestObjectGrantSharedReadErrorsKeepState keeps state unchanged and writes nothing when any check or read for a shared
+// database grant fails, since a permission error is not evidence of deletion.
 func TestObjectGrantSharedReadErrorsKeepState(t *testing.T) {
 	r := newObjectGrantResource().(*privilegeResource)
 	fields := map[string]string{"database_name": "shared_db", "database_type": "shared", "schema_name": "serving", "object_name": "events", "object_type": "TABLE", "grantee": "reader", "grantee_type": "USER"}

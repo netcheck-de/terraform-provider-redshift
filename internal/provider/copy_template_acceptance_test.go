@@ -18,6 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestAccCopyTemplateEscapeRoundtrip checks on Redshift that NULL AS and DELIMITER values with tabs, backslashes, and
+// quotes read back from SHOW TEMPLATE as configured.
 func TestAccCopyTemplateEscapeRoundtrip(t *testing.T) {
 	f := newLiveValidationFixture(t)
 	// Redshift rejects an actual newline in NULL AS; literal backslash+n must remain representable.
@@ -43,6 +45,8 @@ func TestAccCopyTemplateEscapeRoundtrip(t *testing.T) {
 	}
 }
 
+// TestAccCopyTemplateQuotedWhitespace checks that the templates listing keeps leading spaces in live schema, template,
+// and owner names.
 func TestAccCopyTemplateQuotedWhitespace(t *testing.T) {
 	f := newLiveValidationFixture(t)
 	schema, name, owner := " "+f.schema, " leading template", " "+f.schema+"_owner"

@@ -332,6 +332,8 @@ func TestDatabaseIntegrationAbsentThenVisible(t *testing.T) {
 	}
 }
 
+// TestDatabaseIntegrationInitiallyAbsentBeforeUpdate waits out an integration that is briefly invisible before Update,
+// then applies and verifies the planned refresh interval instead of waiting for the stale prior one.
 func TestDatabaseIntegrationInitiallyAbsentBeforeUpdate(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c := fullCatalog()

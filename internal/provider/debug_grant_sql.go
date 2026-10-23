@@ -73,7 +73,8 @@ func (data debugGrantModel) spec() (grantSpec, string, error) {
 	return grantSpec{object: sqlclient.Kw("ON DATABASE").Ident(data.Database.ValueString()), grantee: grantee}, identityType, nil
 }
 
-// Remote ACCOUNT has no authoritative FOR selector, while SHOW ON silently omits its existing grants.
+// validateRemote rejects remote ACCOUNT grants: remote ACCOUNT has no authoritative FOR selector, while SHOW ON
+// silently omits its existing grants.
 func (data debugGrantModel) validateRemote() error {
 	if strings.Contains(data.Database.ValueString(), "@") && strings.EqualFold(data.GranteeType.ValueString(), "ACCOUNT") {
 		return fmt.Errorf("cross-catalog ACCOUNT DEBUG grants have no reliable readback; configure a provider connected to the producer warehouse and use its local database name without @catalog")
@@ -90,8 +91,9 @@ func readDebugGrantRemoteStatement(data debugGrantModel) (string, error) {
 	return sqlclient.Stmt("SHOW GRANTS FOR").Append(spec.grantee).KwIdent("FROM DATABASE", data.Database.ValueString()).String(), nil
 }
 
-// Current-user/latest filtering excludes incidental rdsdb authentication records for the same backend PID.
-// The exact IAM AssumeUser result is live-verified; username shapes and SHOW GLOBAL IDENTITY are insufficient.
+// readDebugGrantAuthStatement reads the current session's authentication method. Current-user/latest filtering excludes
+// incidental rdsdb authentication records for the same backend PID. The exact IAM AssumeUser result is live-verified;
+// username shapes and SHOW GLOBAL IDENTITY are insufficient.
 func readDebugGrantAuthStatement() string {
 	return sqlclient.Stmt("SELECT").Kw("TRIM(auth_method) AS auth_method").Kw("FROM sys_connection_log").
 		Kw("WHERE session_id = pg_backend_pid()").Kw("AND user_name = current_user").

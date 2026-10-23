@@ -109,7 +109,7 @@ func alterTestSteps() []alterStep[alterTestModel] {
 			attribute:     "session_timeout",
 			value:         func(m alterTestModel) attr.Value { return m.Timeout },
 			skipNullPrior: true,
-			render: func(prev, plan alterTestModel) []string {
+			render: func(_, plan alterTestModel) []string {
 				if plan.Timeout.IsNull() {
 					return []string{prefix(plan).Kw("RESET SESSION TIMEOUT").String()}
 				}

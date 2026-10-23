@@ -15,6 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// datashareMembershipFixture builds a membership covering every object of one kind in schema serving of datashare
+// producer.
 func datashareMembershipFixture(kind string) datashareMembershipModel {
 	return datashareMembershipModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), Schema: types.StringValue("serving"), Kind: types.StringValue(kind), All: types.BoolValue(true)}
 }
@@ -27,11 +29,14 @@ var _ = registerLifecycleCase(lifecycleCase{name: "share all tables", new: newDa
 	return nil
 }})
 
+// TestDatashareMembershipFunctionTranscripts pins the SQL of the standard lifecycle for a FUNCTIONS membership.
 func TestDatashareMembershipFunctionTranscripts(t *testing.T) {
 	fixture := lifecycleCase{name: "share all functions", new: newDatashareMembershipResource, kind: lifecyclePermission, model: datashareMembershipFixture("FUNCTIONS"), setup: func(c *catalog) { c.includeNew = false }, absent: func(c *catalog) { fakeState[*fakeDatashares](c, "datashare").bulkMembers["FUNCTIONS"] = nil }}
 	runTranscripts(t, "datashare_membership_functions_lifecycle", newDatashareMembershipResource, standardTranscripts(fixture))
 }
 
+// TestDatashareMembershipRepairsCurrentCoverage plans an in-place repair when a new schema object is not shared, and on
+// destroy removes every member of its kind while leaving the other kind alone.
 func TestDatashareMembershipRepairsCurrentCoverage(t *testing.T) {
 	for _, kind := range []string{"TABLES", "FUNCTIONS"} {
 		t.Run(kind, func(t *testing.T) {
@@ -70,6 +75,8 @@ func TestDatashareMembershipRepairsCurrentCoverage(t *testing.T) {
 	}
 }
 
+// TestDatashareMembershipCountsEveryOverload counts one shared function name as incomplete coverage when overloads
+// share it, and repairs it on apply.
 func TestDatashareMembershipCountsEveryOverload(t *testing.T) {
 	c := fullCatalog()
 	c.includeNew = false
@@ -88,6 +95,8 @@ func TestDatashareMembershipCountsEveryOverload(t *testing.T) {
 	assert.True(t, data.All.ValueBool())
 }
 
+// TestDatashareMembershipRejectsIncludeNewAndAmbiguousNames refuses to mutate a datashare whose schema sets
+// include_new, or whose object or schema names contain a dot that makes members ambiguous.
 func TestDatashareMembershipRejectsIncludeNewAndAmbiguousNames(t *testing.T) {
 	for _, operation := range []string{"create", "update", "delete"} {
 		c := fullCatalog()
@@ -111,6 +120,7 @@ func TestDatashareMembershipRejectsIncludeNewAndAmbiguousNames(t *testing.T) {
 	assert.True(t, response.Diagnostics.HasError())
 }
 
+// TestDatashareMembershipEmptySchema counts a schema without objects as fully covered.
 func TestDatashareMembershipEmptySchema(t *testing.T) {
 	c := fullCatalog()
 	c.includeNew = false
@@ -122,6 +132,8 @@ func TestDatashareMembershipEmptySchema(t *testing.T) {
 	assert.True(t, data.All.ValueBool())
 }
 
+// TestDatashareMembershipPartialKnownValidation reports known invalid schema, kind, and all values at plan time while
+// the database is still unknown.
 func TestDatashareMembershipPartialKnownValidation(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -145,6 +157,8 @@ func TestDatashareMembershipPartialKnownValidation(t *testing.T) {
 	}
 }
 
+// TestDatashareMembershipRestrictedLifecycleRetainsState fails every operation without a superuser, keeping state and
+// writing nothing, because a restricted catalog can hide the schema and its members.
 func TestDatashareMembershipRestrictedLifecycleRetainsState(t *testing.T) {
 	c := fullCatalog()
 	c.includeNew = false
@@ -174,6 +188,8 @@ func TestDatashareMembershipRestrictedLifecycleRetainsState(t *testing.T) {
 	assert.Empty(t, c.writes)
 }
 
+// TestDatashareMembershipVisibilityProofFailsClosed keeps state when the superuser check returns no identity, an
+// unparsable flag, or several rows.
 func TestDatashareMembershipVisibilityProofFailsClosed(t *testing.T) {
 	for name, rows := range map[string][]sqlclient.Row{
 		"missing identity":   nil,
@@ -194,6 +210,8 @@ func TestDatashareMembershipVisibilityProofFailsClosed(t *testing.T) {
 	}
 }
 
+// TestDatashareMembershipMissingProducerAfterVisibilityProof removes the resource once a superuser read shows the
+// producer database is gone.
 func TestDatashareMembershipMissingProducerAfterVisibilityProof(t *testing.T) {
 	r := &datashareMembershipResource{testResourceClient(queryFunc(func(_ context.Context, target sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		assert.Equal(t, "admin", target.Database)
@@ -212,6 +230,8 @@ func TestDatashareMembershipMissingProducerAfterVisibilityProof(t *testing.T) {
 	assert.True(t, response.State.Raw.IsNull())
 }
 
+// TestDatashareMembershipVerificationFailureRemainsRemovable keeps state after ADD succeeded but verification failed,
+// so destroy can still remove the members.
 func TestDatashareMembershipVerificationFailureRemainsRemovable(t *testing.T) {
 	c := fullCatalog()
 	c.includeNew = false
@@ -241,6 +261,8 @@ func TestDatashareMembershipVerificationFailureRemainsRemovable(t *testing.T) {
 	assert.Empty(t, f.bulkMembers["TABLES"])
 }
 
+// TestDatashareMembershipPreservesOtherSchema ignores members of other schemas in the same datashare for coverage and
+// leaves them in place on destroy.
 func TestDatashareMembershipPreservesOtherSchema(t *testing.T) {
 	c := fullCatalog()
 	c.includeNew = false

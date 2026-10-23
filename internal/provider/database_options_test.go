@@ -200,6 +200,8 @@ func TestDatabaseCollationPartialProgress(t *testing.T) {
 	}
 }
 
+// TestDatabaseReadRecoversKnownCollation replaces a stale collation in state with the catalog's value, normalized to
+// the configured uppercase spelling.
 func TestDatabaseReadRecoversKnownCollation(t *testing.T) {
 	c := fullCatalog()
 	c.localDB = true

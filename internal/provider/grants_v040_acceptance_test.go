@@ -12,6 +12,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
+// grantAcceptanceProvider renders the provider block for grant acceptance tests, adding secret_arn only when one is
+// configured.
 func grantAcceptanceProvider(region, profile, workgroup, database string) string {
 	secret := ""
 	if arn := os.Getenv("REDSHIFT_ACC_SECRET_ARN"); arn != "" {

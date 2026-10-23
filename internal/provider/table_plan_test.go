@@ -127,6 +127,8 @@ func TestTablePlanModifiers(t *testing.T) {
 	assert.Equal(t, planned, unknownResp.PlanValue, "unknown configuration is left for apply")
 }
 
+// TestTableDerivedStyleReportsConfigurationErrors reports a diagnostic when the derived style modifier cannot read its
+// source block, instead of silently planning a style.
 func TestTableDerivedStyleReportsConfigurationErrors(t *testing.T) {
 	r := newTableResource()
 	config := tfsdk.Config(testState(t, r, tableMinimalModel()))

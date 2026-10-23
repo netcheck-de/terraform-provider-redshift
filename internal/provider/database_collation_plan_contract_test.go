@@ -14,6 +14,8 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
+// TestContractDatabaseCollationInPlacePlans plans a collation change as an in-place update, not a replacement of the
+// database.
 func TestContractDatabaseCollationInPlacePlans(t *testing.T) {
 	t.Parallel()
 	databasesPlanCase(t, &catalog{}, "redshift_database.warehouse", `

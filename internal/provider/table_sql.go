@@ -204,6 +204,8 @@ func tableObservedSpecOf(data tableModel) (tableSpec, error) {
 	return tableDefinitionSpec(data, false)
 }
 
+// tableDefinitionSpec converts a configuration into the renderable definition; migrationHints keeps renamed_from,
+// which the catalog never reports.
 func tableDefinitionSpec(data tableModel, migrationHints bool) (tableSpec, error) {
 	ctx := context.Background()
 	var spec tableSpec
@@ -1030,7 +1032,7 @@ func tableSortKeyReencodes(prev, plan tableSpec) bool {
 }
 
 // tableDropsAny reports whether the update drops one of names.
-func tableDropsAny(prev, plan tableSpec, names ...string) bool {
+func tableDropsAny(plan tableSpec, names ...string) bool {
 	return slices.ContainsFunc(names, func(name string) bool {
 		_, kept := plan.column(name)
 		return name != "" && !kept
@@ -1042,14 +1044,14 @@ func tableDropsAny(prev, plan tableSpec, names ...string) bool {
 // column the update drops, and DROP COLUMN refuses a sort key column even when Redshift chose it under AUTO.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html
 func tableSortKeyDetour(prev, plan tableSpec) bool {
-	return plan.sortStyle == "AUTO" && (prev.sortStyle == "INTERLEAVED" || tableDropsAny(prev, plan, prev.effectiveSortKey...))
+	return plan.sortStyle == "AUTO" && (prev.sortStyle == "INTERLEAVED" || tableDropsAny(plan, prev.effectiveSortKey...))
 }
 
 // tableDistributionDetour reports an update to DISTSTYLE AUTO that drops the current key column, whether declared or
 // chosen by Redshift: ALTER DISTSTYLE AUTO keeps the distribution key of a large table, and DROP COLUMN refuses the
 // distribution key.
 func tableDistributionDetour(prev, plan tableSpec) bool {
-	return plan.distStyle == "AUTO" && tableDropsAny(prev, plan, prev.effectiveDistKey)
+	return plan.distStyle == "AUTO" && tableDropsAny(plan, prev.effectiveDistKey)
 }
 
 // tableSortKeyStatements renders the sort key change of one phase; interleaved targets are replaced instead. A

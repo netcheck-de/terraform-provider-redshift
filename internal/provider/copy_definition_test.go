@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestCopyJobDefinitionDrift reads every field back from the job's COPY text except the redacted IAM role, and fails
+// Read on definitions it cannot parse instead of keeping stale state.
 func TestCopyJobDefinitionDrift(t *testing.T) {
 	c := fullCatalog()
 	fake := fakeState[*copyJobFake](c, copyJobFakeFamily)
@@ -42,6 +44,8 @@ func TestCopyJobDefinitionDrift(t *testing.T) {
 	}
 }
 
+// TestCopyJobDefinitionConvergence fails Create when the stored definition differs from the plan, but keeps the created
+// job in state so it can still be destroyed.
 func TestCopyJobDefinitionConvergence(t *testing.T) {
 	c := fullCatalog()
 	fakeState[*copyJobFake](c, copyJobFakeFamily).exists = false
@@ -59,6 +63,8 @@ func TestCopyJobDefinitionConvergence(t *testing.T) {
 	assert.False(t, state.Raw.IsNull(), "a created job must remain tracked when definition verification fails")
 }
 
+// TestCopyPartialKnownValidation rejects known invalid COPY parameters and format combinations at plan time, for
+// templates and jobs alike, even while other values are unknown.
 func TestCopyPartialKnownValidation(t *testing.T) {
 	ctx := context.Background()
 	for _, job := range []bool{false, true} {
@@ -94,6 +100,8 @@ func TestCopyPartialKnownValidation(t *testing.T) {
 	}
 }
 
+// TestCopyRenderersRejectUnknownDefinitions makes template and job renderers fail on unknown parameters, source, or
+// target columns instead of rendering placeholder SQL.
 func TestCopyRenderersRejectUnknownDefinitions(t *testing.T) {
 	template := templateLifecycleModel
 	template.Parameters = types.MapUnknown(types.StringType)
@@ -111,6 +119,8 @@ func TestCopyRenderersRejectUnknownDefinitions(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestCopyShapefileSimplify round-trips every SHAPEFILE SIMPLIFY spelling, rejects malformed tolerances, and parses the
+// SHOW TEMPLATE order that prints SIMPLIFY before the format.
 func TestCopyShapefileSimplify(t *testing.T) {
 	for _, argument := range []string{"SIMPLIFY", "SIMPLIFY AUTO", "SIMPLIFY 0.01", "SIMPLIFY AUTO 0.000001", "simplify auto 1e-06"} {
 		t.Run(argument, func(t *testing.T) {

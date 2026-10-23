@@ -73,13 +73,16 @@ func externalModelRoleChanged(ctx context.Context, req planmodifier.StringReques
 	resp.RequiresReplace = req.PlanValue.IsUnknown() || (before != after && !respelled)
 }
 
-// Import cannot recover settings that SHOW MODEL omits. Keep their adoption distinct from later changes.
+// externalModelUnreadPrefix marks private-state keys of settings import could not read. Import cannot recover settings
+// that SHOW MODEL omits. Keep their adoption distinct from later changes.
 const externalModelUnreadPrefix = "external_model_unread_"
 
+// externalModelPrivate is the private-state reader that plan modifiers and responses share.
 type externalModelPrivate interface {
 	GetKey(context.Context, string) ([]byte, diag.Diagnostics)
 }
 
+// externalModelUnread reports whether private state marks the argument as not read back from the catalog.
 func externalModelUnread(ctx context.Context, private externalModelPrivate, name string) bool {
 	if private == nil {
 		return false
@@ -88,6 +91,8 @@ func externalModelUnread(ctx context.Context, private externalModelPrivate, name
 	return len(value) != 0
 }
 
+// externalModelResponseChanged replaces the model for a changed response_type only when the catalog reported it, so an
+// unread value cannot force a replacement.
 func externalModelResponseChanged(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
 	if !externalModelUnread(ctx, req.Private, "response_type") {
 		keywordChanged(ctx, req, resp)

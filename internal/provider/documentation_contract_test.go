@@ -110,9 +110,12 @@ func exampleTypeValues(line string) []string {
 }
 
 var (
-	typeArgument  = regexp.MustCompile(`\b(?:type|return_type)\s*=\s*"([^"]+)"`)
+	// typeArgument captures a type or return_type value in an example.
+	typeArgument = regexp.MustCompile(`\b(?:type|return_type)\s*=\s*"([^"]+)"`)
+	// argumentsList captures the elements of an arguments list in an example.
 	argumentsList = regexp.MustCompile(`\barguments\s*=\s*\[([^\]]*)\]`)
-	quotedValue   = regexp.MustCompile(`"([^"]+)"`)
+	// quotedValue captures each quoted string of a list.
+	quotedValue = regexp.MustCompile(`"([^"]+)"`)
 )
 
 // terraformSnippets returns the lines of every example file and of every Terraform snippet in a template, keyed by

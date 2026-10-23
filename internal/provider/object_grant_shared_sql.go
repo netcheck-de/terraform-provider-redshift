@@ -10,9 +10,11 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
-// Shared routines have one name-wide ACL, including shared producer procedures, as SHOW GRANTS ON FUNCTION reports.
+// sharedObjectGrantKinds lists the object types a shared grant supports. Shared routines have one name-wide ACL,
+// including shared producer procedures, as SHOW GRANTS ON FUNCTION reports.
 var sharedObjectGrantKinds = []string{"DATABASE", "SCHEMA", "TABLE", "FUNCTION", "PROCEDURE", "ALL TABLES", "ALL FUNCTIONS", "ALL PROCEDURES"}
 
+// objectGrantConfigAllowed validates the tuple and returns the privileges its object type accepts.
 func objectGrantConfigAllowed(data types.Object) ([]sqlclient.Keyword, error) {
 	if err := validateObjectGrantConfig(data); err != nil {
 		return nil, err
@@ -180,15 +182,19 @@ func sharedObjectGrantTarget(data types.Object) (privilegeTarget, error) {
 	return target, nil
 }
 
+// sharedObjectGrantAmbiguityQuery finds routines of the other kind sharing the name, whose name-wide ACL a single
+// FUNCTION or PROCEDURE grant would also change.
 func sharedObjectGrantAmbiguityQuery(database, schema, name string) sqlclient.Query {
 	return sqlclient.Select("function_name").From("svv_redshift_functions").Where("database_name = :database", sqlclient.Bind("database", database)).Where("schema_name = :schema", sqlclient.Bind("schema", schema)).Where("function_name = :ambiguous_name", sqlclient.Bind("ambiguous_name", name))
 }
 
+// sharedObjectGrantProcedureMembersQuery lists the routine names and kinds that ALL PROCEDURES classifies.
 func sharedObjectGrantProcedureMembersQuery(database, schema string) sqlclient.Query {
 	return sqlclient.Select("DISTINCT function_name AS object_name", "function_type").From("svv_redshift_functions").Where("database_name = :database", sqlclient.Bind("database", database)).Where("schema_name = :schema", sqlclient.Bind("schema", schema)).OrderBy("object_name", "function_type")
 }
 
-// A correlated self-read of the shared SVV_REDSHIFT_FUNCTIONS view fails with bound Data API parameters (error 8001).
+// sharedObjectGrantProcedureMembers keeps names that only procedures use. A correlated self-read of the shared
+// SVV_REDSHIFT_FUNCTIONS view fails with bound Data API parameters (error 8001).
 // Classify one metadata result instead, rejecting mixed-kind names before reading or mutating their shared ACL.
 func sharedObjectGrantProcedureMembers(rows []sqlclient.Row) ([]sqlclient.Row, error) {
 	procedures, functions := map[string]bool{}, map[string]bool{}
@@ -210,6 +216,7 @@ func sharedObjectGrantProcedureMembers(rows []sqlclient.Row) ([]sqlclient.Row, e
 	return members, nil
 }
 
+// sharedObjectGrantFunctionQuery confirms that a shared routine name exists.
 func sharedObjectGrantFunctionQuery(database, schema, name string) sqlclient.Query {
 	return sqlclient.Select("function_name").From("svv_redshift_functions").
 		Where("database_name = :database", sqlclient.Bind("database", database)).
@@ -217,6 +224,7 @@ func sharedObjectGrantFunctionQuery(database, schema, name string) sqlclient.Que
 		Where("function_name = :name", sqlclient.Bind("name", name))
 }
 
+// sharedObjectGrantMembersQuery lists the table or routine names a shared snapshot covers.
 func sharedObjectGrantMembersQuery(database, schema, scope string) sqlclient.Query {
 	query := sqlclient.Select("DISTINCT table_name AS object_name").From("svv_all_tables")
 	if scope == "FUNCTION" {
@@ -227,6 +235,7 @@ func sharedObjectGrantMembersQuery(database, schema, scope string) sqlclient.Que
 		Where("schema_name = :schema", sqlclient.Bind("schema", schema)).OrderBy("object_name")
 }
 
+// sharedObjectGrantShow reads one shared member's ACL; no consumer privilege view reaches shared objects.
 func sharedObjectGrantShow(database, schema, name, scope string) string {
 	var keyword sqlclient.Keyword = "TABLE"
 	if scope == "FUNCTION" {

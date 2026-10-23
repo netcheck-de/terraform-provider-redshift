@@ -56,6 +56,8 @@ func defaultPrivilegesImplicit(data types.Object) bool {
 	return objectString(data, "grantee_type") == "PUBLIC" && objectString(data, "object_type") == "FUNCTIONS" && objectString(data, "schema_name") == ""
 }
 
+// defaultPrivilegesConfigAllowed returns the privileges ALTER DEFAULT PRIVILEGES accepts for the object type, or nil
+// while the type is unknown.
 func defaultPrivilegesConfigAllowed(data types.Object) ([]sqlclient.Keyword, error) {
 	if !privilegeFieldsKnown(data, "object_type") {
 		return nil, nil

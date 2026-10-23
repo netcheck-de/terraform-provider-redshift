@@ -54,6 +54,8 @@ func testAccSSLModeHCL() string {
 // testAccCACertFile allows explicit trust without weakening hostname or certificate verification.
 func testAccCACertFile() string { return os.Getenv("REDSHIFT_ACC_CA_CERT_FILE") }
 
+// TestAcceptanceTLSOverrides checks that the acceptance provider block sets sslmode and ca_cert_file only when their
+// environment variables are set, so unset variables keep the provider defaults.
 func TestAcceptanceTLSOverrides(t *testing.T) {
 	for _, test := range []struct{ name, mode, bundle, want string }{
 		{"defaults", "", "", ""},

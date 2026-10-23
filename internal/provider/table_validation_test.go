@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestTableValidatePartiallyKnownNestedBlocks reports known invalid column, key, and identity values at plan time
+// beside unknown nested values, and accepts configurations that are valid so far.
 func TestTableValidatePartiallyKnownNestedBlocks(t *testing.T) {
 	unknownName := types.StringUnknown()
 	partialNames := func(names ...types.String) types.List {
@@ -197,6 +199,8 @@ func TestTableValidatePartiallyKnownNestedBlocks(t *testing.T) {
 	}
 }
 
+// TestTableColumnValidationAgreesWithSQLDefinition keeps plan-time column validation and SQL rendering rejecting the
+// same columns with the same messages.
 func TestTableColumnValidationAgreesWithSQLDefinition(t *testing.T) {
 	for _, test := range []struct {
 		name   string
@@ -229,6 +233,8 @@ func TestTableColumnValidationAgreesWithSQLDefinition(t *testing.T) {
 	}
 }
 
+// TestTableKeyAndRenameValidationAgreesWithSQLDefinition keeps plan-time key and rename validation and SQL rendering
+// rejecting the same tables with the same messages.
 func TestTableKeyAndRenameValidationAgreesWithSQLDefinition(t *testing.T) {
 	for _, test := range []struct {
 		name   string

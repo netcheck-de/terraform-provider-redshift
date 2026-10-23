@@ -222,6 +222,7 @@ func tableValidateKnown(data tableModel) error {
 	return nil
 }
 
+// tableValidateKnownColumn checks the known names of one column, skipping values not yet known.
 func tableValidateKnownColumn(column tableColumnModel) error {
 	for label, value := range map[string]types.String{"column name": column.Name, "renamed_from": column.RenamedFrom} {
 		if value.IsUnknown() || (label == "renamed_from" && value.IsNull()) {
@@ -275,6 +276,7 @@ func tableValidateIdentity(name string, dataType sqlclient.Keyword, identity tab
 	return nil
 }
 
+// tableNonemptyName rejects an empty name and one with uppercase letters, which Redshift folds to lowercase.
 func tableNonemptyName(what, name string) error {
 	if name == "" {
 		return fmt.Errorf("%s must be nonempty", what)
@@ -282,6 +284,8 @@ func tableNonemptyName(what, name string) error {
 	return tableFolded(what, name)
 }
 
+// tableRenameSource rejects a renamed_from used twice or naming a configured column, which would make the rename
+// order ambiguous.
 func tableRenameSource(source string, seen map[string]bool, declared bool) error {
 	if seen[source] {
 		return fmt.Errorf("renamed_from %q is used more than once", source)
@@ -305,6 +309,7 @@ func tableDistributionKey(style sqlclient.Keyword, key string) error {
 	return nil
 }
 
+// tableSortKeyCount checks the column count against the sort key style; an empty style is unset or not yet known.
 func tableSortKeyCount(style sqlclient.Keyword, count int) error {
 	switch {
 	case count > tableMaxCompoundSortKeys:

@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestGrantRestoreDefaultOnDestroy regrants the PUBLIC default on destroy only when restore_default_on_destroy is true,
+// verifies that it converged, and rejects the option for other grantees.
 func TestGrantRestoreDefaultOnDestroy(t *testing.T) {
 	for _, test := range []struct {
 		name                 string
@@ -49,6 +51,8 @@ func TestGrantRestoreDefaultOnDestroy(t *testing.T) {
 	}
 }
 
+// TestDefaultPrivilegesRestoreScope allows restore_default_on_destroy only for schema-less FUNCTIONS defaults and keeps
+// it out of lookup schemas.
 func TestDefaultPrivilegesRestoreScope(t *testing.T) {
 	r := newDefaultPrivilegesResource().(*privilegeResource)
 	data := privilegeObject(t, r, map[string]string{"database_name": "warehouse", "object_type": "FUNCTIONS", "grantee": "public", "grantee_type": "PUBLIC"})

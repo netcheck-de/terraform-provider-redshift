@@ -33,6 +33,7 @@ var _ = registerFakeFamily("debug_grant", func() fakeFamily { return &debugGrant
 // debugGrantStatement parses the GRANT and REVOKE statements the renderers produce.
 var debugGrantStatement = regexp.MustCompile(`^(GRANT|REVOKE) DEBUG ON DATABASE ("(?:[^"]|"")*") (?:TO|FROM) (?:ROLE ("(?:[^"]|"")*")|ADMINS OF ACCOUNT '([0-9]+)'|("(?:[^"]|"")*"))$`)
 
+// debugGrantForStatement parses a scoped remote SHOW GRANTS FOR read.
 var debugGrantForStatement = regexp.MustCompile(`^SHOW GRANTS FOR (ROLE )?("(?:[^"]|"")*") FROM DATABASE ("(?:[^"]|"")*")$`)
 
 // grant records or removes one grantee on database.

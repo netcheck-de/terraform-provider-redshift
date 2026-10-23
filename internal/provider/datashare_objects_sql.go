@@ -2,7 +2,8 @@ package provider
 
 import "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 
-// Names remain opaque: AWS documents schema qualification but not a function overload encoding.
+// listDatashareObjectsQuery lists share members of one database. Names remain opaque: AWS documents schema
+// qualification but not a function overload encoding.
 func listDatashareObjectsQuery(database, share, objectType string) sqlclient.Query {
 	query := sqlclient.Select("share_name", "object_name", "object_type", "include_new").From("svv_datashare_objects").
 		Where("share_type = 'OUTBOUND'").

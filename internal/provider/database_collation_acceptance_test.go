@@ -13,10 +13,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 )
 
+// TestAccDatabaseCollationLifecycle runs the collation lifecycle on a serverless workgroup.
 func TestAccDatabaseCollationLifecycle(t *testing.T) {
 	testAccDatabaseCollation(t, false)
 }
 
+// TestAccClusterDatabaseCollationLifecycle runs the collation lifecycle on a provisioned cluster through a Secrets
+// Manager secret.
 func TestAccClusterDatabaseCollationLifecycle(t *testing.T) {
 	testAccPreCheck(t, "REDSHIFT_ACC_CLUSTER", "REDSHIFT_ACC_SECRET_ARN")
 	testAccDatabaseCollation(t, true)

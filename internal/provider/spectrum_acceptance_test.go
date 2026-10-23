@@ -31,6 +31,8 @@ func TestAccSpectrumExternalTableLifecycle(t *testing.T) {
 	}
 }
 
+// testAccSpectrumExternalTableLifecycle runs the external table lifecycle for one columnar format and drops leftover
+// tables from the shared Glue database afterwards.
 func testAccSpectrumExternalTableLifecycle(t *testing.T, format string) {
 	t.Helper()
 	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SPECTRUM_ROLE_ARN", "REDSHIFT_ACC_SPECTRUM_GLUE_DATABASE", "REDSHIFT_ACC_SPECTRUM_LOCATION")
