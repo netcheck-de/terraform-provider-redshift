@@ -19,12 +19,18 @@ import (
 type datashareMembershipResource struct{ resourceClient }
 
 type datashareMembershipModel struct {
-	ID        types.String `tfsdk:"id"`
-	Database  types.String `tfsdk:"database"`
+	// ID is the JSON identity of the tuple.
+	ID types.String `tfsdk:"id"`
+	// Database is the producer database holding the share.
+	Database types.String `tfsdk:"database"`
+	// Datashare names the outbound share.
 	Datashare types.String `tfsdk:"datashare"`
-	Schema    types.String `tfsdk:"schema"`
-	Kind      types.String `tfsdk:"kind"`
-	All       types.Bool   `tfsdk:"all"`
+	// Schema is the shared schema whose members are owned.
+	Schema types.String `tfsdk:"schema"`
+	// Kind selects TABLES or FUNCTIONS.
+	Kind types.String `tfsdk:"kind"`
+	// All acknowledges exclusive ownership and reports whether every current member is shared.
+	All types.Bool `tfsdk:"all"`
 }
 
 var _ = registerResource(newDatashareMembershipResource)
@@ -173,15 +179,26 @@ func (r *datashareMembershipResource) apply(ctx context.Context, data *datashare
 	return nil
 }
 
+// verify checks full coverage. While only members are missing, it adds the schema's current objects again for a
+// bounded number of rounds, because resources applied in parallel can create objects in the schema between the
+// write and the check.
 func (r *datashareMembershipResource) verify(ctx context.Context, data *datashareMembershipModel) error {
-	found, includeNew, _, err := r.readManaged(ctx, data)
-	if err != nil {
-		return err
+	for round := 1; ; round++ {
+		found, includeNew, _, err := r.readManaged(ctx, data)
+		if err != nil {
+			return err
+		}
+		if found && !includeNew && data.All.ValueBool() {
+			return nil
+		}
+		if !found || includeNew || round == snapshotRounds {
+			return fmt.Errorf("exclusive membership did not converge to full coverage with include_new = false")
+		}
+		data.All = types.BoolValue(true)
+		if err := r.apply(ctx, data); err != nil {
+			return err
+		}
 	}
-	if !found || includeNew || !data.All.ValueBool() {
-		return fmt.Errorf("exclusive membership did not converge to full coverage with include_new = false")
-	}
-	return nil
 }
 
 // Create records ownership before verification so a failed readback cannot orphan a successful mutation.

@@ -85,6 +85,9 @@ type privilegeTarget struct {
 	mutationConflict string
 	// snapshot intersects per-object catalog reads when no database-local privilege view reaches the target.
 	snapshot *privilegeSnapshot
+	// scopeWide marks a grant on a schema's current objects, which resources applied in parallel can add to between
+	// its write and its verification.
+	scopeWide bool
 	// completeCatalog requires proof that metadata enumeration and absence checks cannot be privilege-filtered.
 	completeCatalog bool
 }
@@ -343,10 +346,51 @@ func (r *privilegeResource) reconcile(ctx context.Context, data types.Object) er
 	return r.reconcilePrivileges(ctx, data, actual, target)
 }
 
+// snapshotRounds bounds how often a scope-wide grant repeats its idempotent statements to cover objects that
+// parallel resources create in the schema between its write and its verification.
+const snapshotRounds = 3
+
 // reconcilePrivileges reuses an observed tuple, so Delete does not repeat parent and privilege discovery.
 func (r *privilegeResource) reconcilePrivileges(ctx context.Context, data, actual types.Object, target privilegeTarget) error {
 	desired := data.Attributes()["privileges"].(types.Set)
-	desiredPrivileges := knownStrings(desired)
+	desiredOptions := grantOptionPrivileges(data)
+	for round := 1; ; round++ {
+		statements, err := reconcileStatements(data, actual, target)
+		if err != nil {
+			return err
+		}
+		if target.mutationGuard != nil && (len(knownStrings(desired)) != 0 || len(statements) != 0) {
+			guard := target.mutationGuard
+			rows, err := r.queryDatabase(ctx, r.targetDatabase(target), guard.sql, guard.parameters)
+			if err != nil {
+				return err
+			}
+			if len(rows) != 0 {
+				return fmt.Errorf("unsafe privilege overlap: %s", target.mutationConflict)
+			}
+		}
+		if err := r.exec(ctx, r.targetDatabase(target), statements...); err != nil {
+			return err
+		}
+		observed, found, err := r.read(ctx, &actual)
+		switch {
+		case err != nil:
+			return err
+		case !found && len(knownStrings(desired)) == 0:
+			// The object or its last member was dropped in parallel, which leaves nothing holding the privileges.
+			return nil
+		case found && actual.Attributes()["privileges"].Equal(desired) && slices.Equal(grantOptionPrivileges(actual), desiredOptions):
+			return nil
+		case !found || !target.scopeWide || round == snapshotRounds:
+			return fmt.Errorf("privileges did not converge")
+		}
+		target = observed
+	}
+}
+
+// reconcileStatements renders the GRANT and REVOKE statements that move the observed tuple to the desired one.
+func reconcileStatements(data, actual types.Object, target privilegeTarget) ([]string, error) {
+	desiredPrivileges := knownStrings(data.Attributes()["privileges"].(types.Set))
 	current := actual.Attributes()["privileges"].(types.Set)
 	desiredOptions := grantOptionPrivileges(data)
 	currentOptions := grantOptionPrivileges(actual)
@@ -375,28 +419,11 @@ func (r *privilegeResource) reconcilePrivileges(ctx context.Context, data, actua
 			privilegeSets{privileges: held, options: currentOptions},
 			privilegeSets{privileges: desiredPrivileges, options: desiredOptions})
 		if err != nil {
-			return err
+			return nil, err
 		}
 		statements = append(statements, changes...)
 	}
-	if target.mutationGuard != nil && (len(desiredPrivileges) != 0 || len(statements) != 0) {
-		guard := target.mutationGuard
-		rows, err := r.queryDatabase(ctx, r.targetDatabase(target), guard.sql, guard.parameters)
-		if err != nil {
-			return err
-		}
-		if len(rows) != 0 {
-			return fmt.Errorf("unsafe privilege overlap: %s", target.mutationConflict)
-		}
-	}
-	if err := r.exec(ctx, r.targetDatabase(target), statements...); err != nil {
-		return err
-	}
-	_, found, err := r.read(ctx, &actual)
-	if err == nil && (!found || !actual.Attributes()["privileges"].Equal(desired) || !slices.Equal(grantOptionPrivileges(actual), desiredOptions)) {
-		return fmt.Errorf("privileges did not converge")
-	}
-	return err
+	return statements, nil
 }
 
 // Create records tuple ownership before applying idempotent privilege mutations.

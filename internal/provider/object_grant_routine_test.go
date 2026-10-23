@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -16,6 +17,95 @@ import (
 // TestObjectGrantSnapshotLifecycle exercises a user's privileges common to all tables of a schema.
 func TestObjectGrantSnapshotLifecycle(t *testing.T) {
 	exercisePrivilege(t, newObjectGrantResource, map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_type": "ALL TABLES", "grantee_type": "USER", "grantee": "analyst"}, []string{"SELECT", "INSERT"})
+}
+
+// TestObjectGrantSnapshotsCoverParallelObjects repeats a scope-wide grant while objects created in parallel lack the
+// privilege after its write, gives up after snapshotRounds, and never repeats a single-object grant.
+func TestObjectGrantSnapshotsCoverParallelObjects(t *testing.T) {
+	for _, test := range []struct {
+		kind, name string
+		appearing  int
+		writes     int
+		converges  bool
+	}{
+		{"ALL TABLES", "", 1, 2, true},
+		{"ALL FUNCTIONS", "", 1, 2, true},
+		{"ALL TABLES", "", snapshotRounds, snapshotRounds, false},
+		{"TABLE", "orders", 1, 1, false},
+	} {
+		t.Run(test.kind+"/"+strconv.Itoa(test.appearing), func(t *testing.T) {
+			privilege := "SELECT"
+			if test.kind == "ALL FUNCTIONS" {
+				privilege = "EXECUTE"
+			}
+			c := &privilegeCatalog{values: map[string]bool{}, grantee: "analyst", kind: "user", scope: test.kind}
+			grants := 0
+			r := newObjectGrantResource().(*privilegeResource)
+			r.resourceClient = testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+				rows, err := c.Query(ctx, target, sql, parameters)
+				if strings.HasPrefix(sql, "GRANT ") {
+					if grants++; grants <= test.appearing {
+						// A new object without the privilege removes it from the privileges every object holds.
+						delete(c.values, privilege)
+					}
+				}
+				return rows, err
+			}))
+			fields := map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_type": test.kind, "grantee_type": "USER", "grantee": "analyst"}
+			if test.name != "" {
+				fields["object_name"] = test.name
+			}
+			err := r.reconcile(context.Background(), privilegeObject(t, r, fields, privilege))
+			if test.converges {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, "did not converge")
+			}
+			assert.Equal(t, test.writes, grants)
+		})
+	}
+}
+
+// TestObjectGrantSharedSnapshotCoversParallelMembers grants a member that appears in the shared database after the
+// first write in another round.
+func TestObjectGrantSharedSnapshotCoversParallelMembers(t *testing.T) {
+	c := &sharedSnapshotCatalog{members: []string{"first"}, privileges: map[string]map[string]bool{"first": {}}, options: map[string]map[string]bool{"first": {}}, scope: "TABLE"}
+	r := newObjectGrantResource().(*privilegeResource)
+	r.resourceClient = testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		rows, err := c.Query(ctx, target, sql, parameters)
+		if strings.HasPrefix(sql, "GRANT ") && len(c.members) == 1 {
+			c.members = append(c.members, "late")
+			c.privileges["late"], c.options["late"] = map[string]bool{}, map[string]bool{}
+		}
+		return rows, err
+	}))
+	data := privilegeObject(t, r, map[string]string{"database_name": "shared_db", "database_type": "shared", "schema_name": "serving", "object_type": "ALL TABLES", "grantee": "reader", "grantee_type": "USER"}, "SELECT")
+	require.NoError(t, r.reconcile(context.Background(), data))
+	var grants []string
+	for _, write := range c.writes {
+		if strings.HasPrefix(write, "GRANT ") {
+			grants = append(grants, write)
+		}
+	}
+	assert.Len(t, grants, 2)
+	assert.True(t, c.privileges["late"]["SELECT"])
+}
+
+// TestObjectGrantSnapshotDeleteAfterParallelDrop treats a schema emptied in parallel during destroy as revoked.
+func TestObjectGrantSnapshotDeleteAfterParallelDrop(t *testing.T) {
+	c := &privilegeCatalog{values: map[string]bool{"SELECT": true}, grantee: "analyst", kind: "user", scope: "ALL TABLES"}
+	r := newObjectGrantResource().(*privilegeResource)
+	r.resourceClient = testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		rows, err := c.Query(ctx, target, sql, parameters)
+		if strings.HasPrefix(sql, "REVOKE ") {
+			c.missing = true
+		}
+		return rows, err
+	}))
+	data := privilegeObject(t, r, map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_type": "ALL TABLES", "grantee_type": "USER", "grantee": "analyst"}, "SELECT")
+	diagnostics := invoke(t, r, "delete", data)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	assert.Len(t, c.writes, 1)
 }
 
 // TestObjectGrantRoutineLifecycle grants EXECUTE on one function overload with its grant option, revokes it, and

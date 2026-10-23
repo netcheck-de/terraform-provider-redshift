@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -278,14 +279,43 @@ func TestDatashareMembershipValidateConfig(t *testing.T) {
 	}
 }
 
-// TestDatashareMembershipVerifyReportsNonConvergence fails when the share still lacks objects after the membership is applied.
-func TestDatashareMembershipVerifyReportsNonConvergence(t *testing.T) {
-	c := fullCatalog()
-	c.includeNew = false
-	fakeState[*fakeDatashares](c, "datashare").bulkMembers["TABLES"] = nil
-	r := &datashareMembershipResource{testResourceClient(c)}
-	data := datashareMembershipFixture("TABLES")
-	require.ErrorContains(t, r.verify(context.Background(), &data), "did not converge")
+// TestDatashareMembershipCoversParallelObjects adds a table created in the schema after the first ADD ALL in another
+// round, and still fails, with ownership recorded, when tables keep appearing for every round.
+func TestDatashareMembershipCoversParallelObjects(t *testing.T) {
+	for _, appearing := range []int{1, snapshotRounds} {
+		t.Run(strconv.Itoa(appearing), func(t *testing.T) {
+			c := fullCatalog()
+			c.includeNew = false
+			f := fakeState[*fakeDatashares](c, "datashare")
+			f.bulkMembers["TABLES"] = nil
+			adds := 0
+			r := &datashareMembershipResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+				rows, err := c.Query(ctx, target, sql, parameters)
+				if strings.Contains(sql, " ADD ALL TABLES IN SCHEMA ") {
+					if adds++; adds <= appearing {
+						f.bulkCandidates["TABLES"] = append(f.bulkCandidates["TABLES"], "parallel_"+strconv.Itoa(adds))
+					}
+				}
+				return rows, err
+			}))}
+			state := testState(t, r, datashareMembershipFixture("TABLES"))
+			response := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
+			r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state)}, &response)
+			var recorded datashareMembershipModel
+			require.False(t, response.State.Get(context.Background(), &recorded).HasError())
+			assert.True(t, recorded.All.ValueBool())
+			assert.False(t, recorded.ID.IsNull(), "ownership is recorded before verification")
+			if appearing == snapshotRounds {
+				require.True(t, response.Diagnostics.HasError())
+				assert.Contains(t, response.Diagnostics.Errors()[0].Detail(), "did not converge")
+				assert.Equal(t, snapshotRounds, adds)
+				return
+			}
+			require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
+			assert.Equal(t, 2, adds)
+			assert.Contains(t, f.bulkMembers["TABLES"], "parallel_1")
+		})
+	}
 }
 
 // TestDatashareMembershipReadWarnsAboutIncludeNew keeps the membership but warns while INCLUDENEW shares future objects implicitly.

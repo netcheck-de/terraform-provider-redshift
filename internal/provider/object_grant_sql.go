@@ -270,6 +270,7 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 	}
 	checks = append(checks, extra...)
 	target := privilegeTarget{database: database, checks: append([]catalogCheck{check}, checks...), allowed: allowed, grant: grantSpec{object: object, grantee: grantee}}
+	target.scopeWide = strings.HasPrefix(kind, "ALL ")
 	if showGrants {
 		target.query = catalogCheck{sql: sqlclient.Stmt("SHOW GRANTS").Append(object).String()}
 		target.filter = func(row sqlclient.Row) bool {

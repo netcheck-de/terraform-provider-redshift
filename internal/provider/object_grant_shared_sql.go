@@ -154,9 +154,10 @@ func sharedObjectGrantTarget(data types.Object) (privilegeTarget, error) {
 	}
 	target := privilegeTarget{
 		checks: append([]catalogCheck{principalCheck}, checks...), allowed: allowed,
-		grant:    grantSpec{object: object, grantee: grantee},
-		query:    catalogCheck{sql: sqlclient.Stmt("SHOW GRANTS").Append(object).String()},
-		snapshot: snapshot,
+		grant:     grantSpec{object: object, grantee: grantee},
+		query:     catalogCheck{sql: sqlclient.Stmt("SHOW GRANTS").Append(object).String()},
+		snapshot:  snapshot,
+		scopeWide: snapshot != nil,
 		filter: func(row sqlclient.Row) bool {
 			return row["identity_name"] == objectString(data, "grantee") && strings.EqualFold(row["identity_type"], objectString(data, "grantee_type")) && row["privilege_scope"] == scope && (snapshot == nil || privilegeAllowed(allowed, normalizePrivilege(row["privilege_type"])))
 		},
