@@ -295,7 +295,7 @@ func TestTableConditionalReplacement(t *testing.T) {
 			"varbyte to varchar", withColumns(id, label, tableTestColumn("blob", "varbyte(16)", tableEncoded("LZO"), tableNullable(true))),
 			withColumns(id, label, tableTestColumn("blob", "varchar(32)", tableEncoded("LZO"), tableNullable(true))), "column", true,
 		},
-		{"narrow varchar", withNote, withColumns(id, label, tableTestColumn("note", "varchar(16)", tableEncoded("LZO"), tableNullable(true))), "column", true},
+		{"narrow varchar", withNote, withColumns(id, label, tableTestColumn("note", "varchar(16)", tableEncoded("LZO"), tableNullable(true))), "column", false},
 		{"change type", withNote, withColumns(id, label, tableTestColumn("note", "integer", tableEncoded("LZO"), tableNullable(true))), "column", true},
 		{"widen column with default", base, withColumns(id, tableTestColumn("label", "varchar(128)", tableEncoded("LZO"), tableNullable(true), tableDefault("'none'"))), "column", true},
 		{

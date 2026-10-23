@@ -1,1 +1,1 @@
--- error: the change requires replacing the table: column: Redshift can only widen VARCHAR and VARBYTE columns in place, not change "note" from CHARACTER VARYING(32) to CHARACTER VARYING(16)
+ALTER TABLE "serving"."events" ALTER COLUMN "note" TYPE CHARACTER VARYING(16);

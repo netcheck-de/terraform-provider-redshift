@@ -7,14 +7,13 @@ import (
 	"testing"
 
 	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/stretchr/testify/assert"
 )
 
 // TestContractTablePlans runs real plans against the fake: derived defaults plan no drift, a column inserted between
-// others and reordered columns update in place without inconsistent results, widened columns update in place, and
-// a narrowed column replaces the table.
+// others and reordered columns update in place without inconsistent results, and widened and narrowed columns update
+// in place.
 func TestContractTablePlans(t *testing.T) {
 	t.Parallel()
 	c := fullCatalog()
@@ -60,13 +59,12 @@ func TestContractTablePlans(t *testing.T) {
 			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(128)"), `
   owner = "analyst"`), ConfigPlanChecks: tableExpectUpdate(), Check: testresource.TestCheckResourceAttr("redshift_table.events", "owner", "analyst")},
 			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(16)"), `
-  owner = "analyst"`), PlanOnly: true, ExpectNonEmptyPlan: true, ConfigPlanChecks: testresource.ConfigPlanChecks{PostApplyPostRefresh: []plancheck.PlanCheck{
-				plancheck.ExpectResourceAction("redshift_table.events", plancheck.ResourceActionDestroyBeforeCreate),
-			}}},
+  owner = "analyst"`), ConfigPlanChecks: tableExpectUpdate()},
 		},
 	})
 	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ADD COLUMN "note" CHARACTER VARYING(32)`)
 	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ALTER COLUMN "note" TYPE CHARACTER VARYING(128)`)
+	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ALTER COLUMN "note" TYPE CHARACTER VARYING(16)`)
 }
 
 // TestContractTableAutoLayoutPlans runs plans of a table that leaves its layout to Redshift: a distribution changed outside

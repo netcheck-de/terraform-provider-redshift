@@ -281,7 +281,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 					"In place, a new column is added with `ALTER TABLE ADD COLUMN` wherever its block appears (not an identity column, and a NOT NULL column only with a default), " +
 					"although Redshift stores it after the existing ones; a removed column is dropped with `DROP COLUMN`, never `CASCADE`; " +
 					"`ALTER COLUMN ... ENCODE` re-encodes a column (not with an interleaved sort key), and VARCHAR or VARBYTE columns without a default, " +
-					"constraint, or `BYTEDICT`/`RUNLENGTH`/`TEXT255`/`TEXT32K` encoding can be widened with `ALTER COLUMN ... TYPE`. Set `renamed_from` to rename a column without losing its data; without that hint, changing a name drops the old column and adds the new one. New columns are added before removed ones are dropped, so the existing and new columns together must not exceed 1600.",
+					"constraint, or `BYTEDICT`/`RUNLENGTH`/`TEXT255`/`TEXT32K` encoding can be resized with `ALTER COLUMN ... TYPE`, which Redshift refuses when existing values are longer than a smaller new length. Set `renamed_from` to rename a column without losing its data; without that hint, changing a name drops the old column and adds the new one. New columns are added before removed ones are dropped, so the existing and new columns together must not exceed 1600.",
 				Validators:    []validator.List{listvalidator.IsRequired(), listvalidator.SizeBetween(1, tableMaxColumns)},
 				PlanModifiers: []planmodifier.List{tableColumnDefaults{}, replaceList("column")},
 				NestedObject: schema.NestedBlockObject{

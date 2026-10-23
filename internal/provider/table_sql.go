@@ -756,24 +756,25 @@ type tableColumnDiff struct {
 	dropped []string
 	// encoded are retained columns whose encoding changes.
 	encoded []tableColumnSpec
-	// widened are retained VARCHAR or VARBYTE columns whose length grows.
-	widened []tableColumnSpec
+	// resized are retained VARCHAR or VARBYTE columns whose length changes.
+	resized []tableColumnSpec
 	// replace explains a change ALTER TABLE cannot make; empty when every change is in place.
 	replace string
 }
 
-// tableResizableLength splits a canonical VARCHAR or VARBYTE type into its family and declared length; ALTER COLUMN
-// TYPE can only grow those. https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE_examples_basic.html
-func tableResizableLength(dataType sqlclient.Keyword) (string, int64, bool) {
+// tableResizableFamily returns the VARCHAR or VARBYTE family of a canonical type with a declared length; ALTER COLUMN
+// TYPE can only resize those, and refuses to shrink one below its longest value.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE_examples_basic.html
+func tableResizableFamily(dataType sqlclient.Keyword) (string, bool) {
 	text := string(dataType)
 	for _, family := range []string{tableVarcharPrefix, tableVarbytePrefix} {
 		if !strings.HasPrefix(text, family) || !strings.HasSuffix(text, ")") {
 			continue
 		}
-		length, err := strconv.ParseInt(text[len(family):len(text)-1], 10, 64)
-		return family, length, err == nil
+		_, err := strconv.ParseInt(text[len(family):len(text)-1], 10, 64)
+		return family, err == nil
 	}
-	return "", 0, false
+	return "", false
 }
 
 // tableIdentityEqual compares identity clauses, including their absence.
@@ -788,7 +789,8 @@ func tableIdentityEqual(a, b *tableIdentitySpec) bool {
 // configured order never matters: a new column is added wherever it is declared, because Redshift appends it
 // physically and the state keeps the configured order, but never as an identity column, and as NOT NULL only with a
 // default. Only VARCHAR and VARBYTE columns without defaults, constraints, or BYTEDICT, RUNLENGTH, TEXT255, or
-// TEXT32K encoding are widened, and encodings change only outside interleaved sort keys.
+// TEXT32K encoding are resized, and encodings change only outside interleaved sort keys. Shrinking runs in place too,
+// because Redshift refuses it when values are longer than the new length instead of truncating them.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html
 func tableColumnChanges(prev, plan tableSpec) tableColumnDiff {
 	var diff tableColumnDiff
@@ -813,7 +815,7 @@ func tableColumnChanges(prev, plan tableSpec) tableColumnDiff {
 			return diff
 		}
 		if before.dataType != column.dataType {
-			diff.widened = append(diff.widened, column)
+			diff.resized = append(diff.resized, column)
 		}
 		if before.encoding != "" && column.encoding != "" && before.encoding != column.encoding {
 			diff.encoded = append(diff.encoded, column)
@@ -858,11 +860,11 @@ func tableColumnChange(prev, plan tableSpec, before, after tableColumnSpec) stri
 	if before.dataType == after.dataType {
 		return ""
 	}
-	fromFamily, from, fromResizable := tableResizableLength(before.dataType)
-	toFamily, to, toResizable := tableResizableLength(after.dataType)
+	fromFamily, fromResizable := tableResizableFamily(before.dataType)
+	toFamily, toResizable := tableResizableFamily(after.dataType)
 	switch {
-	case !fromResizable || !toResizable || fromFamily != toFamily || to < from:
-		return fmt.Sprintf("Redshift can only widen VARCHAR and VARBYTE columns in place, not change %q from %s to %s", after.name, before.dataType, after.dataType)
+	case !fromResizable || !toResizable || fromFamily != toFamily:
+		return fmt.Sprintf("Redshift can only resize VARCHAR and VARBYTE columns in place, not change %q from %s to %s", after.name, before.dataType, after.dataType)
 	case before.defaultSQL != "":
 		return fmt.Sprintf("Redshift cannot resize column %q, which has a default", after.name)
 	case prev.constrained(after.name) || plan.constrained(after.name):
@@ -999,7 +1001,7 @@ const (
 	// tablePhaseKeys changes the sort key, then the distribution, so a table leaving an interleaved sort key
 	// can be redistributed.
 	tablePhaseKeys
-	// tablePhaseAlterColumns changes encodings and widens VARCHAR columns.
+	// tablePhaseAlterColumns changes encodings and resizes VARCHAR and VARBYTE columns.
 	tablePhaseAlterColumns
 	// tablePhaseDropColumns drops removed columns.
 	tablePhaseDropColumns
@@ -1189,7 +1191,7 @@ func tableAlterSteps(phase tableAlterPhase) []alterStep[tableAlterState] {
 			case tablePhaseKeys, tablePhaseRestoreKeys:
 				statements = tableKeyDetours(phase, prev, plan)
 			case tablePhaseAlterColumns:
-				for _, column := range diff.widened {
+				for _, column := range diff.resized {
 					statements = append(statements, alter.Kw("ALTER COLUMN").Ident(column.name).Kw("TYPE", column.dataType).String())
 				}
 				for _, column := range diff.encoded {
