@@ -230,7 +230,7 @@ func (r *externalTableResource) Schema(_ context.Context, _ resource.SchemaReque
 			},
 			"stored_as": schema.StringAttribute{
 				Optional: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(externalTableStoredAsReplace, "Changing stored_as replaces the table unless SET FILE FORMAT supports both formats and the columns fit the resulting mapping.", "Changing `stored_as` replaces the table unless `SET FILE FORMAT` supports both formats and the columns fit the resulting mapping.")},
-				MarkdownDescription: "File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; switching from name to position mapping also requires the `column` blocks to follow catalog order. Other changes replace the table.",
+				MarkdownDescription: "File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; switching from name to position mapping also requires the `column` blocks to follow catalog order.",
 			},
 			"input_format": schema.StringAttribute{
 				Optional: true, Computed: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIfConfigured()},
@@ -244,14 +244,14 @@ func (r *externalTableResource) Schema(_ context.Context, _ resource.SchemaReque
 			"table_properties": schema.MapAttribute{
 				ElementType: types.StringType, Optional: true,
 				PlanModifiers:       []planmodifier.Map{mapplanmodifier.RequiresReplaceIf(externalTablePropertiesReplace, "Removing a property, changing one SET TABLE PROPERTIES does not support, or switching to position mapping out of catalog column order replaces the table.", "Removing a property, changing one `SET TABLE PROPERTIES` does not support, or switching to position mapping out of catalog column order replaces the table.")},
-				MarkdownDescription: "`TABLE PROPERTIES` pairs; names are case-sensitive. Only the configured properties are managed. Adding or changing `numRows`, `skip.header.line.count`, or `orc.schema.resolution` runs `ALTER TABLE ... SET TABLE PROPERTIES`; removing a property, or adding or changing any other property, replaces the table. Switching an `ORC` table to position mapping also replaces it unless the `column` blocks follow the catalog order, to which `ADD COLUMN` appends.",
+				MarkdownDescription: "`TABLE PROPERTIES` pairs; names are case-sensitive. Only the configured properties are managed. Adding or changing `numRows`, `skip.header.line.count`, or `orc.schema.resolution` runs `ALTER TABLE ... SET TABLE PROPERTIES`.",
 			},
 		},
 		Blocks: map[string]schema.Block{
-			"column": externalTableColumnsBlock("At least one `column` block is required. Data columns in file order for positional formats. Dropping columns and appending them at the end run `ALTER TABLE ... DROP COLUMN` and `ADD COLUMN`; positional formats replace the table for reordering or inserting columns. `PARQUET` tables map columns by name, as do `ORC` tables unless their `orc.schema.resolution` table property, configured or in the catalog, is anything but `name`: they add and drop columns anywhere in place, and reordering their blocks runs no statement. Retyping a column replaces the table. Any column change of an `AVRO` table except a respelling replaces it.",
+			"column": externalTableColumnsBlock("At least one `column` block is required. Data columns in file order for positional formats. Dropping columns and appending them at the end run `ALTER TABLE ... DROP COLUMN` and `ADD COLUMN`. `PARQUET` tables map columns by name, as do `ORC` tables unless their `orc.schema.resolution` table property, configured or in the catalog, is anything but `name`: they add and drop columns anywhere in place, and reordering their blocks runs no statement.",
 				[]validator.List{listvalidator.IsRequired(), listvalidator.SizeAtLeast(1)},
 				listplanmodifier.RequiresReplaceIf(externalTableColumnsReplace, "Changing columns other than by adding or dropping them where the format allows replaces the table.", "Changing columns other than by adding or dropping them where the format allows replaces the table.")),
-			"partition_key": externalTableColumnsBlock("Ordered `PARTITIONED BY` columns; their names must differ from the data columns. Spelling a name in another case or a type with an alias stays in place; any other change replaces the table.", nil,
+			"partition_key": externalTableColumnsBlock("Ordered `PARTITIONED BY` columns; their names must differ from the data columns.", nil,
 				listplanmodifier.RequiresReplaceIf(externalTablePartitionKeysReplace, "Changing partition keys replaces the table.", "Changing partition keys replaces the table.")),
 		},
 	}

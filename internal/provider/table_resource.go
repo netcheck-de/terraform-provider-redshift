@@ -243,7 +243,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 			},
 			"backup": schema.StringAttribute{
 				Optional: true, Computed: true, Default: stringdefault.StaticString("YES"),
-				MarkdownDescription: "`YES` or `NO` (defaults to `YES`): whether snapshots include the table. RA3 and Serverless always back up tables. Redshift has no ALTER form, so a change replaces the table, except after import, when the value is only recorded; the setting is not read back from the catalog.",
+				MarkdownDescription: "`YES` or `NO` (defaults to `YES`): whether snapshots include the table. RA3 and Serverless always back up tables. The setting is not read back from the catalog.",
 				Validators:          []validator.String{stringvalidator.OneOf(tableKeywordStrings(tableBackupModes)...)},
 				PlanModifiers:       []planmodifier.String{replaceString("backup")},
 			},
@@ -280,7 +280,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 					"In place, a new column is added with `ALTER TABLE ADD COLUMN` wherever its block appears (not an identity column, and a NOT NULL column only with a default), " +
 					"although Redshift stores it after the existing ones; a removed column is dropped with `DROP COLUMN`, never `CASCADE`; " +
 					"`ALTER COLUMN ... ENCODE` re-encodes a column (not with an interleaved sort key), and VARCHAR or VARBYTE columns without a default, " +
-					"constraint, or `BYTEDICT`/`RUNLENGTH`/`TEXT255`/`TEXT32K` encoding can be widened with `ALTER COLUMN ... TYPE`. Set `renamed_from` to rename a column without losing its data; without that hint, changing a name drops the old column and adds the new one. Any other change to a column's type, nullability, default, or identity replaces the table. New columns are added before removed ones are dropped, so the existing and new columns together must not exceed 1600.",
+					"constraint, or `BYTEDICT`/`RUNLENGTH`/`TEXT255`/`TEXT32K` encoding can be widened with `ALTER COLUMN ... TYPE`. Set `renamed_from` to rename a column without losing its data; without that hint, changing a name drops the old column and adds the new one. New columns are added before removed ones are dropped, so the existing and new columns together must not exceed 1600.",
 				Validators:    []validator.List{listvalidator.IsRequired(), listvalidator.SizeBetween(1, tableMaxColumns)},
 				PlanModifiers: []planmodifier.List{tableColumnDefaults{}, replaceList("column")},
 				NestedObject: schema.NestedBlockObject{
@@ -306,7 +306,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 						},
 						"default": schema.StringAttribute{
 							Optional:            true,
-							MarkdownDescription: "DEFAULT expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default, and a change replaces the table.",
+							MarkdownDescription: "DEFAULT expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default.",
 							Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
 						},
 					},
@@ -327,7 +327,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"primary_key": schema.SingleNestedBlock{
-				MarkdownDescription: "Primary key. Redshift does not enforce it but uses it for planning. It is added and dropped with `ALTER TABLE ADD PRIMARY KEY` and `DROP CONSTRAINT`; a new primary key on an existing nullable column, or on a new column without a default, replaces the table.",
+				MarkdownDescription: "Primary key. Redshift does not enforce it but uses it for planning. It is added and dropped with `ALTER TABLE ADD PRIMARY KEY` and `DROP CONSTRAINT`.",
 				PlanModifiers:       []planmodifier.Object{replaceObject("primary_key")},
 				Validators:          requires("columns"),
 				Attributes: map[string]schema.Attribute{
@@ -360,7 +360,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"distribution": schema.SingleNestedBlock{
-				MarkdownDescription: "Declared distribution; omit the block for `AUTO`. Changes use `ALTER TABLE ALTER DISTSTYLE` or `ALTER DISTKEY`; with an interleaved sort key they replace the table. " +
+				MarkdownDescription: "Declared distribution; omit the block for `AUTO`. Changes use `ALTER TABLE ALTER DISTSTYLE` or `ALTER DISTKEY`. " +
 					"`ALTER DISTSTYLE AUTO` keeps the current key, so a move to `AUTO` that drops the key column, and dropping a key column Redshift chose itself, distribute `EVEN` until the column is dropped. " +
 					"Without the block, a distribution changed outside Terraform is reported here and planned back to `AUTO`.",
 				PlanModifiers: []planmodifier.Object{replaceObject("distribution")},
@@ -379,7 +379,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 			},
 			"sort_key": schema.SingleNestedBlock{
 				MarkdownDescription: "Declared sort key; omit the block for `AUTO`. Changes to `AUTO`, `NONE`, or a compound key use `ALTER TABLE ALTER SORTKEY`; a move to `AUTO` from an interleaved key or off a dropped column, and dropping a sort key column Redshift chose itself, first run `ALTER SORTKEY NONE`. " +
-					"Creating or changing an interleaved sort key replaces the table. Without the block, a sort key changed outside Terraform is reported here and planned back to `AUTO`.",
+					"Without the block, a sort key changed outside Terraform is reported here and planned back to `AUTO`.",
 				PlanModifiers: []planmodifier.Object{replaceObject("sort_key")},
 				Attributes: map[string]schema.Attribute{
 					"style": schema.StringAttribute{

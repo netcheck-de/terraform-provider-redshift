@@ -81,7 +81,7 @@ func databaseIntegrationBlock() schema.SingleNestedBlock {
 		MarkdownDescription: "Creates the database as the read-only destination of an active zero-ETL integration with " +
 			"`CREATE DATABASE ... FROM INTEGRATION`, which needs a superuser or a user with `CREATEDB` and `CREATEUSER`; " +
 			"replication runs with that user's permissions. The warehouse must set `enable_case_sensitive_identifier`. " +
-			"Conflicts with `datashare_arn` and `collation`. " + databaseIntegrationReplaceNote + " Refresh reads " +
+			"Conflicts with `datashare_arn` and `collation`. Refresh reads " +
 			"`SVV_INTEGRATION`, which only superusers can see. Create and Update wait up to one minute for readable settings to propagate to the catalog, bounded by any shorter operation timeout.",
 		PlanModifiers: []planmodifier.Object{objectplanmodifier.RequiresReplaceIf(databaseIntegrationReplacement, databaseIntegrationReplaceNote, databaseIntegrationReplaceNote)},
 		Attributes: map[string]schema.Attribute{

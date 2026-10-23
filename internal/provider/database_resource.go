@@ -143,7 +143,7 @@ func (r *databaseResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 			},
 			"with_permissions": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(true),
-				MarkdownDescription: "Require object-level grants for a shared database; defaults to `true`. Changing it replaces a shared database (`datashare_arn` set); ignored for local databases.",
+				MarkdownDescription: "Require object-level grants for a shared database; defaults to `true`; ignored for local databases.",
 				PlanModifiers: []planmodifier.Bool{boolplanmodifier.RequiresReplaceIf(
 					sharedDatabaseReplacement, "Replaces shared databases; ignored for local databases.", "Replaces shared databases; ignored for local databases.",
 				)},

@@ -123,7 +123,7 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Optional: true,
 				PlanModifiers: []planmodifier.String{externalSchemaReplaceUnlessAltered("iam_role_arn",
 					"Updated in place with ALTER EXTERNAL SCHEMA for DATA_CATALOG and MSK schemas; replaces the others.")},
-				MarkdownDescription: "IAM role attached to the namespace, or a comma-separated role chain, used to reach the source. Required by every form except `REDSHIFT`, which rejects it, and `MSK`, where it is optional unless `authentication` is `IAM`. Updated in place with `ALTER EXTERNAL SCHEMA ... IAM_ROLE` for `DATA_CATALOG` and `MSK`; changing it replaces other external schemas.",
+				MarkdownDescription: "IAM role attached to the namespace, or a comma-separated role chain, used to reach the source. Required by every form except `REDSHIFT`, which rejects it, and `MSK`, where it is optional unless `authentication` is `IAM`. Updated in place with `ALTER EXTERNAL SCHEMA ... IAM_ROLE` for `DATA_CATALOG` and `MSK`.",
 			},
 			"region": schema.StringAttribute{
 				// UseStateForUnknown keeps the computed region known during an in-place ALTER, where the framework
@@ -135,7 +135,7 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Optional: true,
 				PlanModifiers: []planmodifier.String{externalSchemaReplaceUnlessAltered("uri",
 					"Updated in place with ALTER EXTERNAL SCHEMA for MSK schemas; replaces the others.")},
-				MarkdownDescription: "Hive metastore URI or federated database hostname, without a protocol, or the Kafka bootstrap broker URI of an `MSK` schema. Required by `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, and `MSK`. Updated in place with `ALTER EXTERNAL SCHEMA ... URI` for `MSK`; changing it replaces other external schemas.",
+				MarkdownDescription: "Hive metastore URI or federated database hostname, without a protocol, or the Kafka bootstrap broker URI of an `MSK` schema. Required by `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, and `MSK`. Updated in place with `ALTER EXTERNAL SCHEMA ... URI` for `MSK`.",
 			},
 			"port": schema.Int64Attribute{
 				Optional: true, Computed: true,
@@ -147,7 +147,7 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Optional: true,
 				PlanModifiers: []planmodifier.String{externalSchemaReplaceUnlessAltered("secret_arn",
 					"Updated in place with ALTER EXTERNAL SCHEMA for MSK schemas; replaces the others.")},
-				MarkdownDescription: "AWS Secrets Manager secret ARN: the database credentials that `POSTGRES` and `MYSQL` require, or the mTLS certificate of an `MSK` schema as an alternative to `authentication_arn`. Updated in place for `MSK`; changing it replaces other external schemas.",
+				MarkdownDescription: "AWS Secrets Manager secret ARN: the database credentials that `POSTGRES` and `MYSQL` require, or the mTLS certificate of an `MSK` schema as an alternative to `authentication_arn`. Updated in place for `MSK`.",
 			},
 			"authentication": schema.StringAttribute{
 				Optional: true, Validators: []validator.String{stringvalidator.OneOfCaseInsensitive("NONE", "IAM", "MTLS")},

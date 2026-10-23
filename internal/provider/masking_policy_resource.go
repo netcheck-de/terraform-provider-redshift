@@ -74,7 +74,7 @@ func (r *maskingPolicyResource) Schema(_ context.Context, _ resource.SchemaReque
 		Blocks: map[string]schema.Block{
 			"input_column": schema.ListNestedBlock{
 				Validators:          []validator.List{listvalidator.IsRequired(), listvalidator.SizeAtLeast(1)},
-				MarkdownDescription: "At least one `input_column` block is required. Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached. Redshift cannot alter them, so changing a name or type replaces the policy; another spelling of the same type, such as `TEXT` for `VARCHAR(256)`, does not.",
+				MarkdownDescription: "At least one `input_column` block is required. Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached.",
 				PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplaceIf(maskingPolicyInputsReplacement,
 					"Replaces the policy when an input column's name or type changes.", "Replaces the policy when an input column's name or type changes.")},
 				NestedObject: schema.NestedBlockObject{Attributes: map[string]schema.Attribute{

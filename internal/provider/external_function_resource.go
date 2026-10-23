@@ -123,12 +123,12 @@ func (r *externalFunctionResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 			"arguments": schema.ListAttribute{
 				ElementType: types.StringType, Required: true,
-				MarkdownDescription: "Input argument data types in order, at most 32, from the types Lambda UDFs support: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL`, `REAL`, `DOUBLE PRECISION`, `CHAR`, `VARCHAR`, `BOOLEAN`, `DATE`, `TIMESTAMP`, and their aliases. Use `[]` for a function without arguments. With `name` they identify the overload. " + argumentsNote,
+				MarkdownDescription: "Input argument data types in order, at most 32, from the types Lambda UDFs support: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL`, `REAL`, `DOUBLE PRECISION`, `CHAR`, `VARCHAR`, `BOOLEAN`, `DATE`, `TIMESTAMP`, and their aliases. Use `[]` for a function without arguments. With `name` they identify the overload.",
 				PlanModifiers:       []planmodifier.List{listplanmodifier.RequiresReplaceIf(externalFunctionArgumentsChange, argumentsNote, argumentsNote)},
 				Validators:          []validator.List{listvalidator.SizeAtMost(externalFunctionMaxArguments)},
 			},
 			"return_type": schema.StringAttribute{
-				Required: true, MarkdownDescription: "Result data type, from the same types as `arguments`. " + returnNote,
+				Required: true, MarkdownDescription: "Result data type, from the same types as `arguments`.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(externalFunctionReturnChange, returnNote, returnNote)},
 			},
 			"volatility": schema.StringAttribute{

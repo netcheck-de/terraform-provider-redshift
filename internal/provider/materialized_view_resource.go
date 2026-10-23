@@ -117,7 +117,7 @@ func (r *materializedViewResource) Schema(ctx context.Context, _ resource.Schema
 				Required: true,
 				MarkdownDescription: "SELECT statement defining the materialized view, without a trailing `;`. Redshift cannot alter the definition. " +
 					"State keeps this text while the catalog definition is unchanged; a change made " +
-					"outside Terraform surfaces the catalog definition and plans a replacement. " + materializedViewAdoptionNote,
+					"outside Terraform surfaces the catalog definition. " + materializedViewAdoptionNote,
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 				PlanModifiers: []planmodifier.String{materializedViewReplaceString()},
 			},
