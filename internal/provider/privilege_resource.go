@@ -87,6 +87,9 @@ type privilegeTarget struct {
 	snapshot *privilegeSnapshot
 	// scopeWide marks a grant on a schema's current objects, which resources applied in parallel can add to between
 	// its write and its verification.
+	// implicitOptions revokes the grant option of every desired privilege configured without one, because the read
+	// cannot see an option held on only some snapshot members.
+	implicitOptions bool
 	scopeWide bool
 	// completeCatalog requires proof that metadata enumeration and absence checks cannot be privilege-filtered.
 	completeCatalog bool
@@ -405,6 +408,14 @@ func reconcileStatements(data, actual types.Object, target privilegeTarget) ([]s
 	held := knownStrings(current)
 	for _, privilege := range target.implicit {
 		// REVOKE of a privilege the grantee does not hold changes nothing, so revoking an unseen default is safe.
+	if target.implicitOptions {
+		for _, privilege := range desiredPrivileges {
+			if !slices.Contains(desiredOptions, privilege) && !slices.Contains(currentOptions, privilege) {
+				currentOptions = append(currentOptions, privilege)
+			}
+		}
+		sort.Strings(currentOptions)
+	}
 		if !slices.Contains(held, privilege) && !slices.Contains(desiredPrivileges, privilege) {
 			held = append(held, privilege)
 		}

@@ -219,7 +219,9 @@ exist when the statement runs; objects created later are not covered. Refresh re
 current object of the type holds, so a new object without them shows up as drift and the next apply grants them again.
 Tables include views. A schema without objects of the type, such as one that holds only procedures for
 `ALL FUNCTIONS`, has nothing to cover and is treated as a missing grant. A privilege carries the grant option only when
-every object holds it with the option.
+every object holds it with the option. Because refresh cannot see grants held on only some objects, every create,
+update, and destroy also revokes each privilege outside `privileges` and each grant option outside
+`grant_option_privileges` on all current objects, so destroy leaves no partial grant behind.
 For current and future objects, use [scoped grants](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/grant)
 or default privileges instead.
 
@@ -272,8 +274,9 @@ configuration with the statements above: a privilege or grant option granted out
 one is granted again. Other grantees, scoped permissions, and privileges inherited through roles or groups are ignored.
 A snapshot reports a privilege only when every current object of its type holds it: when configured, a privilege that a
 new object lacks is granted again on all of them, and when not configured, a privilege that only some objects hold is
-never revoked. A missing database, schema, object, routine overload, model, or grantee removes the grant from state, and
-so does a snapshot whose schema holds no objects of its type; the next plan creates it again.
+not reported as drift; the snapshot revokes it whenever it is created, updated, or destroyed. A missing database,
+schema, object, routine overload, model, or grantee removes the grant from state, and so does a snapshot whose schema
+holds no objects of its type; the next plan creates it again.
 
 ### Replacing Database Privileges
 

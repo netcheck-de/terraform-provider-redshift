@@ -167,7 +167,14 @@ func exercisePrivilege(t *testing.T, factory func() resource.Resource, fields ma
 	c := &privilegeCatalog{values: map[string]bool{privileges[0]: true}, grantee: fields["grantee"], kind: strings.ToLower(fields["grantee_type"]), scope: fields["object_type"]}
 	r.resourceClient = testResourceClient(c)
 	require.NoError(t, r.reconcile(context.Background(), data))
-	assert.Empty(t, c.writes, "already-converged grants must not mutate")
+	if strings.HasPrefix(fields["object_type"], "ALL ") {
+		// A snapshot cannot see privileges held on only some objects, so it revokes every undesired one regardless.
+		for _, write := range c.writes {
+			assert.True(t, strings.HasPrefix(write, "REVOKE "), "a converged snapshot only revokes: %s", write)
+		}
+	} else {
+		assert.Empty(t, c.writes, "already-converged grants must not mutate")
+	}
 	_, _, err := r.read(context.Background(), &data)
 	require.NoError(t, err)
 	for _, invalid := range []string{"admin", "catalog privilege", "desired privilege", "stuck", "binding", "configuration"} {

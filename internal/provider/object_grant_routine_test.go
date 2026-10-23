@@ -105,7 +105,27 @@ func TestObjectGrantSnapshotDeleteAfterParallelDrop(t *testing.T) {
 	data := privilegeObject(t, r, map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_type": "ALL TABLES", "grantee_type": "USER", "grantee": "analyst"}, "SELECT")
 	diagnostics := invoke(t, r, "delete", data)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
-	assert.Len(t, c.writes, 1)
+	assert.Contains(t, c.writes, `REVOKE SELECT ON ALL TABLES IN SCHEMA "serving" FROM "analyst"`)
+}
+
+// TestObjectGrantSnapshotRevokesPartialGrants revokes privileges and grant options that only some objects of the
+// schema hold, which the snapshot read cannot report, so destroy and downgrades leave no grant behind.
+func TestObjectGrantSnapshotRevokesPartialGrants(t *testing.T) {
+	fields := map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_type": "ALL TABLES", "grantee_type": "USER", "grantee": "analyst"}
+	r := newObjectGrantResource().(*privilegeResource)
+	// A table created after the grant lacks SELECT, so the read reports none although the others still hold it.
+	c := &privilegeCatalog{values: map[string]bool{}, grantee: "analyst", kind: "user", scope: "ALL TABLES"}
+	r.resourceClient = testResourceClient(c)
+	diagnostics := invoke(t, r, "delete", privilegeObject(t, r, fields, "SELECT"))
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	assert.Contains(t, c.writes, `REVOKE SELECT ON ALL TABLES IN SCHEMA "serving" FROM "analyst"`)
+
+	// Keeping SELECT without its option also revokes an option some tables still hold.
+	c = &privilegeCatalog{values: map[string]bool{"SELECT": true}, grantee: "analyst", kind: "user", scope: "ALL TABLES"}
+	r.resourceClient = testResourceClient(c)
+	require.NoError(t, r.reconcile(context.Background(), privilegeObject(t, r, fields, "SELECT")))
+	assert.Contains(t, c.writes, `REVOKE GRANT OPTION FOR SELECT ON ALL TABLES IN SCHEMA "serving" FROM "analyst"`)
+	assert.NotContains(t, c.writes, `REVOKE SELECT ON ALL TABLES IN SCHEMA "serving" FROM "analyst"`)
 }
 
 // TestObjectGrantRoutineLifecycle grants EXECUTE on one function overload with its grant option, revokes it, and

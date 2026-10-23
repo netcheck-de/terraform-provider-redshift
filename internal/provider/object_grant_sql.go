@@ -271,6 +271,11 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 	checks = append(checks, extra...)
 	target := privilegeTarget{database: database, checks: append([]catalogCheck{check}, checks...), allowed: allowed, grant: grantSpec{object: object, grantee: grantee}}
 	target.scopeWide = strings.HasPrefix(kind, "ALL ")
+	if target.scopeWide {
+		// The snapshot read reports only privileges every object holds, so privileges and grant options held on some
+		// objects stay invisible. Revoke every undesired one, so update and destroy cannot leave partial grants behind.
+		target.implicit, target.implicitOptions = privilegeNames(allowed), true
+	}
 	if showGrants {
 		target.query = catalogCheck{sql: sqlclient.Stmt("SHOW GRANTS").Append(object).String()}
 		target.filter = func(row sqlclient.Row) bool {
