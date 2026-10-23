@@ -20,6 +20,43 @@ func TestDefinitionFingerprint(t *testing.T) {
 	}
 }
 
+// TestDefinitionFingerprintKeepsQuotedText detects whitespace changes inside literals, quoted identifiers,
+// dollar-quoted text, and comments, which Redshift keeps as written, while layout around them stays ignored.
+func TestDefinitionFingerprintKeepsQuotedText(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"SELECT 'A B'", "SELECT 'A  B'"},
+		{`SELECT "a b" FROM t`, `SELECT "a  b" FROM t`},
+		{"SELECT $$a b$$", "SELECT $$a  b$$"},
+		{"SELECT $body$a b$body$", "SELECT $body$a\nb$body$"},
+		{"SELECT 1 /* a b */", "SELECT 1 /* a  b */"},
+		{"-- c\nSELECT 1", "-- c SELECT 1"},
+		{`SELECT 'it''s  a'`, `SELECT 'it''s a'`},
+		{`SELECT 'a\'  b'`, `SELECT 'a\' b'`},
+		{`SELECT "x""  y"`, `SELECT "x"" y"`},
+		{"SELECT 'open  ended", "SELECT 'open ended"},
+	} {
+		assert.NotEqual(t, definitionFingerprint(pair[0]), definitionFingerprint(pair[1]), "%q vs %q", pair[0], pair[1])
+	}
+	for _, pair := range [][2]string{
+		{"SELECT 'A  B'  FROM t", " SELECT\n'A  B'\tFROM t\n"},
+		{"SELECT $1 + 1", "SELECT  $1\n+ 1"},
+		{"-- c\nSELECT 1", "-- c\n\n  SELECT   1"},
+	} {
+		assert.Equal(t, definitionFingerprint(pair[0]), definitionFingerprint(pair[1]), "%q vs %q", pair[0], pair[1])
+	}
+}
+
+// TestReconcileDefinitionSurfacesQuotedWhitespaceChanges reports an outside change of whitespace inside a literal,
+// which Redshift keeps as written, and keeps the surfaced text on the next refresh.
+func TestReconcileDefinitionSurfacesQuotedWhitespaceChanges(t *testing.T) {
+	configured, stored := recordDefinition(types.StringValue("select 'a b' from t"), "SELECT 'a b'\nFROM t;")
+	changedText := "SELECT 'a  b'\nFROM t;"
+	definition, fingerprint := reconcileDefinition(configured, stored, changedText)
+	assert.Equal(t, types.StringValue(changedText), definition)
+	stable, _ := reconcileDefinition(definition, fingerprint, changedText)
+	assert.Equal(t, definition, stable)
+}
+
 // TestReconcileDefinition checks which text state keeps after apply, refresh, outside change, and import.
 func TestReconcileDefinition(t *testing.T) {
 	configured := types.StringValue("select a from t")
