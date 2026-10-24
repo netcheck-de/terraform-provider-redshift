@@ -38,6 +38,7 @@ func (f datashareAPIFunc) DescribeDataShares(ctx context.Context, input *redshif
 func TestDatashareDiscoveryMatchesProducerAcrossPages(t *testing.T) {
 	source, err := parseShare(shareARN)
 	require.NoError(t, err)
+
 	for _, value := range []string{
 		shareARN,
 		strings.Replace(shareARN, "eu-central-1", "us-west-2", 1),
@@ -47,9 +48,12 @@ func TestDatashareDiscoveryMatchesProducerAcrossPages(t *testing.T) {
 			calls := 0
 			api := datashareAPIFunc(func(_ context.Context, input *redshift.DescribeDataSharesInput) (*redshift.DescribeDataSharesOutput, error) {
 				calls++
+
 				assert.Nil(t, input.DataShareArn)
+
 				if calls == 1 {
 					assert.Nil(t, input.Marker)
+
 					return &redshift.DescribeDataSharesOutput{
 						Marker: aws.String("next"),
 						DataShares: []redshifttypes.DataShare{
@@ -61,7 +65,9 @@ func TestDatashareDiscoveryMatchesProducerAcrossPages(t *testing.T) {
 						},
 					}, nil
 				}
+
 				assert.Equal(t, "next", aws.ToString(input.Marker))
+
 				return &redshift.DescribeDataSharesOutput{DataShares: []redshifttypes.DataShare{{DataShareArn: aws.String(value)}, {DataShareArn: aws.String(value)}}}, nil
 			})
 			observed, err := findDatashareARN(context.Background(), api, source)
@@ -76,22 +82,26 @@ func TestDatashareDiscoveryMatchesProducerAcrossPages(t *testing.T) {
 func TestDatashareDiscoveryRejectsMissingAmbiguousAndFailedLookups(t *testing.T) {
 	source, err := parseShare(shareARN)
 	require.NoError(t, err)
+
 	for _, name := range []string{"missing", "ambiguous", "unavailable"} {
 		t.Run(name, func(t *testing.T) {
 			api := datashareAPIFunc(func(context.Context, *redshift.DescribeDataSharesInput) (*redshift.DescribeDataSharesOutput, error) {
 				if name == "unavailable" {
 					return nil, errors.New("access denied")
 				}
+
 				page := &redshift.DescribeDataSharesOutput{}
 				if name == "ambiguous" {
 					page.DataShares = []redshifttypes.DataShare{{DataShareArn: aws.String(shareARN)}, {DataShareArn: aws.String(strings.Replace(shareARN, "eu-central-1", "us-west-2", 1))}}
 				}
+
 				return page, nil
 			})
 			_, err := findDatashareARN(context.Background(), api, source)
 			require.Error(t, err)
 		})
 	}
+
 	for _, value := range []string{
 		"arn::redshift:eu-central-1:123456789012:datashare:namespace/source",
 		"arn:aws:redshift::123456789012:datashare:namespace/source",
@@ -113,22 +123,26 @@ func TestDatashareDiscoveryUsesProviderAWSConfiguration(t *testing.T) {
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "TESTSECRET")
 	t.Setenv("AWS_SESSION_TOKEN", "")
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		err := r.ParseForm()
 		if !assert.NoError(t, err) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
+
 		assert.Equal(t, "DescribeDataShares", r.Form.Get("Action"))
 		assert.Contains(t, r.Header.Get("Authorization"), "/eu-central-1/redshift/")
 		w.Header().Set("Content-Type", "text/xml")
 		_, _ = fmt.Fprintf(w, `<DescribeDataSharesResponse xmlns="http://redshift.amazonaws.com/doc/2012-12-01/"><DescribeDataSharesResult><DataShares><member><DataShareArn>%s</DataShareArn></member></DataShares></DescribeDataSharesResult></DescribeDataSharesResponse>`, shareARN)
 	}))
 	defer server.Close()
+
 	t.Setenv("AWS_ENDPOINT_URL_REDSHIFT", server.URL)
 	credentials := filepath.Join(t.TempDir(), "credentials")
 	require.NoError(t, os.WriteFile(credentials, []byte("[discovery]\naws_access_key_id = PROFILEKEY\naws_secret_access_key = PROFILESECRET\n"), 0o600))
 	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", credentials)
+
 	for _, profile := range []types.String{types.StringNull(), types.StringValue("discovery")} {
 		data := providerModel{Region: types.StringValue("eu-central-1"), Profile: profile}
 		observed, err := data.datashareARN(context.Background(), source)
@@ -157,6 +171,7 @@ func TestDataAPIRetriesUseProviderSettings(t *testing.T) {
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 	t.Setenv("AWS_MAX_ATTEMPTS", "")
 	t.Setenv("AWS_RETRY_MODE", "")
+
 	for _, retries := range []int64{0, 1} {
 		for _, mode := range []string{"standard", "adaptive"} {
 			for _, code := range []string{"ActiveStatementsExceededException", "ValidationException"} {
@@ -165,6 +180,7 @@ func TestDataAPIRetriesUseProviderSettings(t *testing.T) {
 						data := providerModel{Workgroup: types.StringValue("warehouse"), Database: types.StringValue("admin"), MaxRetries: types.Int64Value(retries), RetryMode: types.StringValue(mode)}
 						client, err := data.sqlClient(context.Background(), "test")
 						require.NoError(t, err)
+
 						adapter := client.(*dataapi.Client)
 						options := adapter.API.(*redshiftdata.Client).Options()
 						attempts := 0
@@ -172,14 +188,17 @@ func TestDataAPIRetriesUseProviderSettings(t *testing.T) {
 						adapter.API = redshiftdata.New(options, func(options *redshiftdata.Options) {
 							options.HTTPClient = dataAPIHTTPClientFunc(func(r *http.Request) (*http.Response, error) {
 								attempts++
+
 								var input struct {
 									StatementName   string `json:"StatementName"`
 									WaitTimeSeconds int32  `json:"WaitTimeSeconds"`
 								}
+
 								assert.Equal(t, "RedshiftData.ExecuteStatement", r.Header.Get("X-Amz-Target"))
 								require.NoError(t, json.NewDecoder(r.Body).Decode(&input))
 								assert.Equal(t, "terraform-provider-redshift/test", input.StatementName)
 								assert.Zero(t, input.WaitTimeSeconds)
+
 								return &http.Response{
 									StatusCode: http.StatusBadRequest,
 									Header: http.Header{
@@ -192,10 +211,12 @@ func TestDataAPIRetriesUseProviderSettings(t *testing.T) {
 						})
 						_, err = client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
 						require.ErrorContains(t, err, code)
+
 						wantAttempts := int(retries + 1)
 						if code == "ValidationException" {
 							wantAttempts = 1
 						}
+
 						assert.Equal(t, wantAttempts, attempts)
 						// A client shared by every resource must not exhaust retries under sustained errors.
 						for range 1000 {
@@ -218,6 +239,7 @@ func TestDatashareDiscoveryRejectsMissingRegionAndBrokenProfiles(t *testing.T) {
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
 	t.Setenv("AWS_CONFIG_FILE", filepath.Join(t.TempDir(), "absent"))
 	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", filepath.Join(t.TempDir(), "absent"))
+
 	for _, data := range []providerModel{{}, {Region: types.StringValue("eu-central-1"), Profile: types.StringValue("missing")}} {
 		_, err := data.datashareARN(context.Background(), shareSource{})
 		require.Error(t, err)

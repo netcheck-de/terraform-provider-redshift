@@ -19,6 +19,7 @@ func grantAcceptanceProvider(region, profile, workgroup, database string) string
 	if arn := os.Getenv("REDSHIFT_ACC_SECRET_ARN"); arn != "" {
 		secret = fmt.Sprintf("secret_arn = %q", arn)
 	}
+
 	return fmt.Sprintf(`provider "redshift" {
   region = %q
   profile = %q

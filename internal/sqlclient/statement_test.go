@@ -11,6 +11,7 @@ import (
 // TestStatementRendering covers every builder method, including skipped optional forms and hostile values.
 func TestStatementRendering(t *testing.T) {
 	limit, zero := int64(10), int64(0)
+
 	yes, no := true, false
 	for _, test := range []struct {
 		name      string
@@ -93,6 +94,7 @@ func TestStatementRendering(t *testing.T) {
 // TestStatementByteForByte reproduces statements that existing resources send, so migrated renderers stay identical.
 func TestStatementByteForByte(t *testing.T) {
 	recipient := Fragment().KwIdent("ROLE", "r")
+
 	externalSchema := func(region string) string {
 		return Stmt("CREATE EXTERNAL SCHEMA").Ident("spectrum").KwLit("FROM DATA CATALOG DATABASE", "glue_db").KwLit("IAM_ROLE", "arn:aws:iam::123456789012:role/spectrum").OptLit("REGION", region).String()
 	}
@@ -168,6 +170,7 @@ func TestStatementValueSemantics(t *testing.T) {
 	fragment := Fragment().KwIdent("ROLE", "r")
 	grant := Stmt("GRANT").Append(fragment)
 	_ = grant.Args(Lit("x"))
+
 	assert.Equal(t, `ROLE "r"`, fragment.String())
 	assert.Equal(t, `GRANT ROLE "r"`, grant.String())
 }
@@ -177,6 +180,7 @@ func TestStatementErrors(t *testing.T) {
 	broken := Fragment().JSON(func() {})
 	require.Error(t, broken.Err())
 	assert.Empty(t, broken.String())
+
 	for name, statement := range map[string]Statement{
 		"derived":   Stmt("CREATE").JSON(math.NaN()).Kw("X"),
 		"append":    Stmt("CREATE").Append(broken),
@@ -190,6 +194,7 @@ func TestStatementErrors(t *testing.T) {
 			require.ErrorContains(t, statement.Err(), "encode JSON option")
 		})
 	}
+
 	first := Stmt("CREATE").JSON(math.Inf(1)).JSON(func() {})
 	require.ErrorContains(t, first.Err(), "+Inf")
 }

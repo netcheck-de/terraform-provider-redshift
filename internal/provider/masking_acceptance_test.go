@@ -83,17 +83,20 @@ data "redshift_masking_policies" "local" {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// A failed run may leave the database; dropping it also removes its policies' attachments and fixture tables.
 	t.Cleanup(func() {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
 			_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)
 		}
 	})
+
 	initial := configuration("CASE WHEN email IN (SELECT email FROM public.fixture_exempt) THEN email ELSE '***'::VARCHAR(256) END", 10)
 	updated := configuration("SHA2(email, 256)::VARCHAR(256)", 20)
 	resource.Test(t, resource.TestCase{

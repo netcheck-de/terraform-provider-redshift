@@ -15,6 +15,7 @@ func TestGrantsSQL(t *testing.T) {
 			if filters.database == "" {
 				filters.database = "warehouse"
 			}
+
 			return readGrantsStatement(filters)
 		}
 	}
@@ -60,6 +61,7 @@ func TestGrantsItems(t *testing.T) {
 		{"database_name": "warehouse", "schema_name": "serving", "object_name": "events", "object_type": "TABLE", "privilege_type": "INSERT", "identity_name": "analyst", "identity_type": "user", "admin_option": "t", "privilege_scope": "TABLE"},
 		{"database_name": "warehouse", "schema_name": "other", "object_name": "t", "object_type": "TABLE", "privilege_type": "SELECT", "identity_name": "analyst", "identity_type": "user", "privilege_scope": "TABLE"},
 	}
+
 	all := grantsItems(grantsFilters{database: "warehouse", objectType: "DATABASE"}, rows)
 	if assert.Len(t, all, 4) {
 		first := all[0]
@@ -70,14 +72,17 @@ func TestGrantsItems(t *testing.T) {
 		assert.Equal(t, types.BoolValue(false), first["admin_option"])
 		assert.Equal(t, types.StringNull(), first["grantor"])
 	}
+
 	users := grantsItems(grantsFilters{database: "warehouse", grantee: "analyst", granteeType: "USER", schema: "serving"}, rows)
 	if assert.Len(t, users, 1) {
 		assert.Equal(t, types.StringValue("INSERT"), users[0]["privilege"])
 		assert.Equal(t, types.BoolValue(true), users[0]["admin_option"])
 	}
+
 	scoped := grantsItems(grantsFilters{database: "warehouse", objectType: "TABLE", schema: "other", object: "t", granteeType: "GROUP"}, rows)
 	if assert.Len(t, scoped, 1, "object listings filter only by grantee") {
 		assert.Equal(t, types.StringValue("admin"), scoped[0]["grantor"])
 	}
+
 	assert.Equal(t, types.BoolNull(), grantsAdminOption(""), "SHOW GRANTS FOR reports no admin_option")
 }

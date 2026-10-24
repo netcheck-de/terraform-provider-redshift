@@ -26,16 +26,19 @@ func TestAccDatashareMembership(t *testing.T) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	admin := sqlclient.Connection{Database: database}
 	producer := sqlclient.Connection{Database: name}
 	databases := sqlclient.Select("database_name").From("svv_redshift_databases").Where("database_name = :name", sqlclient.Bind("name", name))
 	shares := sqlclient.Select("share_name").From("svv_datashares").Where("share_type = 'OUTBOUND'").Where("share_name = :name", sqlclient.Bind("name", name))
+
 	query := func(connection sqlclient.Connection, statement sqlclient.Query) ([]sqlclient.Row, error) {
 		sql, parameters, err := statement.Build()
 		if err != nil {
 			return nil, err
 		}
+
 		return client.Query(ctx, connection, sql, parameters)
 	}
 	for _, statement := range []sqlclient.Query{databases, shares} {
@@ -43,15 +46,19 @@ func TestAccDatashareMembership(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, rows, "acceptance fixture name must not refer to pre-existing SQL objects")
 	}
+
 	t.Cleanup(func() {
 		rows, err := query(admin, shares)
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
 			_, err = client.Query(ctx, producer, sqlclient.Stmt("DROP DATASHARE").Ident(name).String(), nil)
 			require.NoError(t, err)
 		}
+
 		rows, err = query(admin, databases)
 		require.NoError(t, err)
+
 		if len(rows) == 0 {
 			return
 		}
@@ -61,6 +68,7 @@ func TestAccDatashareMembership(t *testing.T) {
 		_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 		require.NoError(t, err)
 	})
+
 	base := fmt.Sprintf(`
 provider "redshift" {
   region = %q
@@ -164,6 +172,7 @@ data "redshift_datashare_membership" "functions" {
 			if err != nil {
 				return err
 			}
+
 			counts := map[string]int{}
 			for _, row := range rows {
 				counts[row["object_type"]]++
@@ -171,9 +180,11 @@ data "redshift_datashare_membership" "functions" {
 					return fmt.Errorf("expected name-only overload catalog rows, got %q", row["object_name"])
 				}
 			}
+
 			if counts["table"] != tables || counts["function"] != functions || counts["schema"] != 1 {
 				return fmt.Errorf("expected %d tables, %d functions, and one schema; got %v", tables, functions, counts)
 			}
+
 			return nil
 		}
 	}
@@ -186,10 +197,12 @@ data "redshift_datashare_membership" "functions" {
 				if err != nil {
 					return err
 				}
+
 				if len(rows) != 0 {
 					return fmt.Errorf("owned acceptance SQL fixture remains: %v", rows)
 				}
 			}
+
 			return nil
 		},
 		Steps: []resource.TestStep{

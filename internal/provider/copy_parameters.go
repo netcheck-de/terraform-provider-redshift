@@ -115,22 +115,27 @@ func copyFormatKeywords() []sqlclient.Keyword {
 // copyFormatNames lists the format keywords for validators and descriptions.
 func copyFormatNames() []string {
 	keywords := copyFormatKeywords()
+
 	names := make([]string, len(keywords))
 	for i, keyword := range keywords {
 		names[i] = string(keyword)
 	}
+
 	return names
 }
 
 // copyParameterNames lists the parameter keywords one kind of object accepts, sorted.
 func copyParameterNames(job bool) []string {
 	var names []string
+
 	for name, parameter := range copyParameters {
 		if parameter.allowed(job) {
 			names = append(names, string(name))
 		}
 	}
+
 	slices.Sort(names)
+
 	return names
 }
 
@@ -146,15 +151,19 @@ func copyParameterKeyword(name string, job bool) (sqlclient.Keyword, copyParamet
 		if string(keyword) != name {
 			continue
 		}
+
 		if !parameter.allowed(job) {
 			kind := "a template"
 			if job {
 				kind = "a copy job"
 			}
+
 			return "", copyParameter{}, fmt.Errorf("COPY parameter %s is not allowed in %s", name, kind)
 		}
+
 		return keyword, parameter, nil
 	}
+
 	return "", copyParameter{}, fmt.Errorf("unsupported COPY parameter %q; use one of %s in UPPERCASE", name, strings.Join(copyParameterNames(job), ", "))
 }
 
@@ -171,14 +180,17 @@ func copyCanonicalValue(name string, parameter copyParameter, value string) (str
 		if err != nil || number < 0 {
 			return "", fmt.Errorf("COPY parameter %s needs a non-negative integer, got %q", name, value)
 		}
+
 		return strconv.FormatInt(number, 10), nil
 	case copyChoice:
 		choice, err := sqlclient.OneOf(value, parameter.choices...)
 		if err != nil {
 			return "", fmt.Errorf("COPY parameter %s: %w", name, err)
 		}
+
 		return string(choice), nil
 	}
+
 	return value, nil
 }
 
@@ -189,16 +201,23 @@ func copyLiteralValue(token sqlclient.Token) string {
 	if token.Raw == "" {
 		return token.Text
 	}
+
 	value := token.Raw[1 : len(token.Raw)-1]
+
 	var result strings.Builder
+
 	for i := 0; i < len(value); i++ {
 		if value[i] == '\'' && i+1 < len(value) && value[i+1] == '\'' {
 			result.WriteByte('\'')
+
 			i++
+
 			continue
 		}
+
 		if value[i] == '\\' && i+1 < len(value) {
 			var control byte
+
 			switch value[i+1] {
 			case '\\', '\'':
 				control = value[i+1]
@@ -215,14 +234,19 @@ func copyLiteralValue(token sqlclient.Token) string {
 			case 'v':
 				control = '\v'
 			}
+
 			if control != 0 {
 				result.WriteByte(control)
+
 				i++
+
 				continue
 			}
 		}
+
 		result.WriteByte(value[i])
 	}
+
 	return result.String()
 }
 
@@ -234,10 +258,12 @@ func copyCanonicalParameters(parameters map[string]string, job bool) (map[string
 		if err != nil {
 			return nil, err
 		}
+
 		if canonical[name], err = copyCanonicalValue(name, parameter, parameters[name]); err != nil {
 			return nil, err
 		}
 	}
+
 	return canonical, nil
 }
 
@@ -247,16 +273,20 @@ func copyCheckFormat(format, argument string) (sqlclient.Keyword, error) {
 		if argument != "" {
 			return "", fmt.Errorf("format_argument requires format")
 		}
+
 		return "", nil
 	}
+
 	keyword, err := sqlclient.OneOf(format, copyFormatKeywords()...)
 	if err != nil {
 		return "", fmt.Errorf("format: %w", err)
 	}
+
 	if keyword == "SHAPEFILE" {
 		_, err := copySimplify(argument)
 		return keyword, err
 	}
+
 	switch copyFormats[keyword] {
 	case copyText:
 		if argument == "" {
@@ -267,6 +297,7 @@ func copyCheckFormat(format, argument string) (sqlclient.Keyword, error) {
 			return "", fmt.Errorf("format %s takes no format_argument", keyword)
 		}
 	}
+
 	return keyword, nil
 }
 
@@ -276,36 +307,45 @@ func copyFormatFragment(format, argument string) (sqlclient.Statement, error) {
 	if err != nil || keyword == "" {
 		return sqlclient.Fragment(), err
 	}
+
 	fragment := sqlclient.Kw("FORMAT AS", keyword)
 	if keyword == "SHAPEFILE" {
 		simplify, err := copySimplify(argument)
 		return fragment.Append(simplify), err
 	}
+
 	if argument != "" {
 		fragment = fragment.Lit(argument)
 	}
+
 	return fragment, nil
 }
 
 // copySimplify models the documented SHAPEFILE subclause without accepting arbitrary SQL.
 func copySimplify(argument string) (sqlclient.Statement, error) {
 	fragment := sqlclient.Fragment()
+
 	fields := strings.Fields(argument)
 	if len(fields) == 0 {
 		return fragment, nil
 	}
+
 	if !strings.EqualFold(fields[0], "SIMPLIFY") {
 		return fragment, fmt.Errorf("SHAPEFILE format_argument must be SIMPLIFY [AUTO] [tolerance]")
 	}
+
 	fragment = fragment.Kw("SIMPLIFY")
+
 	fields = fields[1:]
 	if len(fields) > 0 && strings.EqualFold(fields[0], "AUTO") {
 		fragment = fragment.Kw("AUTO")
 		fields = fields[1:]
 	}
+
 	if len(fields) == 0 {
 		return fragment, nil
 	}
+
 	value, err := strconv.ParseFloat(fields[0], 64)
 	if len(fields) != 1 || err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
 		return fragment, fmt.Errorf("SHAPEFILE SIMPLIFY tolerance must be a finite non-negative number")
@@ -314,7 +354,9 @@ func copySimplify(argument string) (sqlclient.Statement, error) {
 	if value == 0 {
 		value = 0 // Normalize negative zero before emitting an unsigned decimal.
 	}
+
 	tolerance := sqlclient.Keyword(strconv.FormatFloat(value, 'f', -1, 64)) //sql:trusted ParseFloat checked a finite non-negative number; FormatFloat emits only decimal digits and a decimal point.
+
 	return fragment.Kw(tolerance), nil
 }
 
@@ -322,17 +364,21 @@ func copySimplify(argument string) (sqlclient.Statement, error) {
 func copyFormatArgumentValue(configured types.String, format, catalog string) types.String {
 	if strings.EqualFold(format, "SHAPEFILE") && !configured.IsUnknown() && !configured.IsNull() {
 		before, err := copySimplify(configured.ValueString())
+
 		after, otherErr := copySimplify(catalog)
 		if err == nil && otherErr == nil && before.String() == after.String() {
 			return configured
 		}
 	}
+
 	if catalog == "" {
 		if !configured.IsUnknown() && !configured.IsNull() && configured.ValueString() == "" {
 			return configured
 		}
+
 		return types.StringNull()
 	}
+
 	return types.StringValue(catalog)
 }
 
@@ -342,14 +388,17 @@ func copyParameterFragment(name, value string, job bool) (sqlclient.Statement, e
 	if err != nil {
 		return sqlclient.Statement{}, err
 	}
+
 	canonical, err := copyCanonicalValue(name, parameter, value)
 	if err != nil {
 		return sqlclient.Statement{}, err
 	}
+
 	fragment := sqlclient.Kw(keyword)
 	if parameter.spelling != "" {
 		fragment = sqlclient.Kw(parameter.spelling)
 	}
+
 	return copyArgumentFragment(fragment, parameter, canonical)
 }
 
@@ -362,6 +411,7 @@ func copyArgumentFragment(fragment sqlclient.Statement, parameter copyParameter,
 		if canonical == "" {
 			return fragment, nil
 		}
+
 		return fragment.Lit(canonical), nil
 	case copyInteger:
 		number, _ := strconv.ParseInt(canonical, 10, 64) // copyCanonicalValue parsed it.
@@ -370,6 +420,7 @@ func copyArgumentFragment(fragment sqlclient.Statement, parameter copyParameter,
 		choice, err := sqlclient.OneOf(canonical, parameter.choices...)
 		return fragment.Kw(choice), err
 	}
+
 	return fragment, nil
 }
 
@@ -381,8 +432,10 @@ func copyParameterFragments(parameters map[string]string, job bool) ([]sqlclient
 		if err != nil {
 			return nil, err
 		}
+
 		fragments = append(fragments, fragment)
 	}
+
 	return fragments, nil
 }
 
@@ -406,8 +459,10 @@ func parseCopyOptions(tokens []sqlclient.Token) (copyDefinition, error) {
 		if i < len(tokens) {
 			return tokens[i], true
 		}
+
 		return sqlclient.Token{}, false
 	}
+
 	isWord := func(i int, word string) bool {
 		token, ok := next(i)
 		return ok && token.Kind == sqlclient.TokenWord && strings.EqualFold(token.Text, word)
@@ -417,24 +472,31 @@ func parseCopyOptions(tokens []sqlclient.Token) (copyDefinition, error) {
 		if token.Kind == sqlclient.TokenSymbol && token.Text == "," {
 			continue
 		}
+
 		if token.Kind == sqlclient.TokenSymbol && token.Text == ";" && i == len(tokens)-1 {
 			break
 		}
+
 		if token.Kind != sqlclient.TokenWord {
 			return copyDefinition{}, fmt.Errorf("unexpected %q in COPY options", token.Text)
 		}
+
 		word := strings.ToUpper(token.Text)
 		if word == "SIMPLIFY" {
 			if simplify != "" {
 				return copyDefinition{}, fmt.Errorf("COPY options name SIMPLIFY twice")
 			}
+
 			simplify = "SIMPLIFY"
+
 			if isWord(i+1, "AUTO") {
 				i++
 				simplify += " AUTO"
 			}
+
 			if value, ok := next(i + 1); ok && (value.Kind == sqlclient.TokenString || value.Kind == sqlclient.TokenWord && len(value.Text) > 0 && value.Text[0] >= '0' && value.Text[0] <= '9') {
 				i++
+
 				var tolerance strings.Builder
 				tolerance.WriteString(value.Text)
 				// Unquoted decimal and exponent tolerances are split at punctuation by Tokens.
@@ -442,58 +504,76 @@ func parseCopyOptions(tokens []sqlclient.Token) (copyDefinition, error) {
 					tolerance.WriteString(tokens[i+1].Text + tokens[i+2].Text)
 					i += 2
 				}
+
 				simplify += " " + tolerance.String()
 			}
+
 			if _, err := copySimplify(simplify); err != nil {
 				return copyDefinition{}, err
 			}
+
 			continue
 		}
+
 		explicitFormat := word == "FORMAT"
 		if explicitFormat {
 			i++
 			if isWord(i, "AS") {
 				i++
 			}
+
 			following, ok := next(i)
 			if !ok || following.Kind != sqlclient.TokenWord {
 				return copyDefinition{}, fmt.Errorf("FORMAT without a data format in COPY options")
 			}
+
 			word = strings.ToUpper(following.Text)
 		}
+
 		if argument, ok := copyFormatArgument(word); ok {
 			if definition.format != "" {
 				return copyDefinition{}, fmt.Errorf("COPY options name two formats, %s and %s", definition.format, word)
 			}
+
 			definition.format = word
+
 			if argument == copyText {
 				if isWord(i+1, "AS") {
 					i++
 				}
+
 				value, ok := next(i + 1)
 				if !ok || value.Kind != sqlclient.TokenString {
 					return copyDefinition{}, fmt.Errorf("format %s without its argument in COPY options", word)
 				}
+
 				definition.formatArgument = copyLiteralValue(value)
 				i++
 			}
+
 			continue
 		}
+
 		if explicitFormat {
 			return copyDefinition{}, fmt.Errorf("unsupported COPY format %q", word)
 		}
+
 		parameter, ok := copyParameterByWord(word)
 		if !ok {
 			return copyDefinition{}, fmt.Errorf("unsupported COPY parameter %q", word)
 		}
+
 		if _, seen := definition.parameters[word]; seen {
 			return copyDefinition{}, fmt.Errorf("COPY parameter %s appears twice", word)
 		}
+
 		if parameter.argument != copyFlag && isWord(i+1, "AS") {
 			i++
 		}
+
 		value := ""
 		following, present := next(i + 1)
+
 		switch parameter.argument {
 		case copyText, copyOptionalText:
 			if present && following.Kind == sqlclient.TokenString {
@@ -506,21 +586,27 @@ func parseCopyOptions(tokens []sqlclient.Token) (copyDefinition, error) {
 			if !present || following.Kind != sqlclient.TokenWord {
 				return copyDefinition{}, fmt.Errorf("COPY parameter %s without its argument", word)
 			}
+
 			canonical, err := copyCanonicalValue(word, parameter, following.Text)
 			if err != nil {
 				return copyDefinition{}, err
 			}
+
 			value = canonical
 			i++
 		}
+
 		definition.parameters[word] = value
 	}
+
 	if simplify != "" {
 		if definition.format != "SHAPEFILE" {
 			return copyDefinition{}, fmt.Errorf("COPY SIMPLIFY requires SHAPEFILE format")
 		}
+
 		definition.formatArgument = simplify
 	}
+
 	return definition, nil
 }
 
@@ -531,6 +617,7 @@ func copyFormatArgument(word string) (copyArgument, bool) {
 			return argument, true
 		}
 	}
+
 	return 0, false
 }
 
@@ -542,6 +629,7 @@ func copyParameterByWord(word string) (copyParameter, bool) {
 			return parameter, true
 		}
 	}
+
 	return copyParameter{}, false
 }
 
@@ -555,11 +643,14 @@ func copyParametersValue(configured types.Map, catalog map[string]string, job bo
 		if configured.IsNull() {
 			return types.MapNull(types.StringType)
 		}
+
 		return configured
 	}
+
 	if len(catalog) == 0 {
 		return types.MapNull(types.StringType)
 	}
+
 	elements := make(map[string]attr.Value, len(catalog))
 	for name, value := range catalog {
 		elements[name] = types.StringValue(value)
@@ -571,6 +662,7 @@ func copyParametersValue(configured types.Map, catalog map[string]string, job bo
 			}
 		}
 	}
+
 	return types.MapValueMust(types.StringType, elements)
 }
 
@@ -587,21 +679,26 @@ func copyValidateKnown(format, argument types.String, parameters types.Map, job 
 			}
 		}
 	}
+
 	for name, value := range parameters.Elements() {
 		_, parameter, err := copyParameterKeyword(name, job)
 		if err != nil {
 			return err
 		}
+
 		if value.IsUnknown() {
 			continue
 		}
+
 		if value.IsNull() {
 			return fmt.Errorf("COPY parameter %s must not be null", name)
 		}
+
 		if _, err := copyCanonicalValue(name, parameter, value.(types.String).ValueString()); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -610,10 +707,12 @@ func copyOptionsKnown(format, argument types.String, parameters types.Map) bool 
 	if format.IsUnknown() || argument.IsUnknown() || parameters.IsUnknown() {
 		return false
 	}
+
 	for _, value := range parameters.Elements() {
 		if value.IsUnknown() {
 			return false
 		}
 	}
+
 	return true
 }

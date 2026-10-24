@@ -46,6 +46,7 @@ func TestTablesMaterializedFailure(t *testing.T) {
 		if strings.Contains(sql, "svv_mv_info") {
 			return nil, errors.New("STV state unavailable")
 		}
+
 		return []sqlclient.Row{{"schema_name": "serving", "table_name": "orders", "table_type": "VIEW"}}, nil
 	}))
 	require.True(t, diagnostics.HasError())
@@ -58,6 +59,7 @@ func TestTablesMaterializedHidden(t *testing.T) {
 		if strings.Contains(sql, "svv_mv_info") {
 			return nil, nil
 		}
+
 		return []sqlclient.Row{{"schema_name": "serving", "table_name": "order_totals", "table_type": "VIEW", "owner": "etl"}}, nil
 	})
 	items, _, diagnostics := discoveryRead(t, newTablesDataSource, nil, catalog)
@@ -74,6 +76,7 @@ func TestTablesListReportsDatabaseLookupFailure(t *testing.T) {
 		if strings.Contains(sql, "svv_all_tables") {
 			return []sqlclient.Row{{"schema_name": "public", "table_name": "view", "table_type": "VIEW"}}, nil
 		}
+
 		return nil, errors.New("database metadata unavailable")
 	}))
 	filters := types.ObjectValueMust(map[string]attr.Type{"database": types.StringType, "schema": types.StringType, "table_type": types.StringType}, map[string]attr.Value{"database": types.StringValue("other"), "schema": types.StringNull(), "table_type": types.StringNull()})

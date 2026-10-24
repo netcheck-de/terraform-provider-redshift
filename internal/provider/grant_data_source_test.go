@@ -37,11 +37,13 @@ func TestScopedGrantLookupIdentitySelectors(t *testing.T) {
 					assert.Equal(t, "analytics", target.Database)
 					return nil, nil
 				}
+
 				if parameters["share"] != "" {
 					assert.Equal(t, "analytics", target.Database)
 				} else {
 					assert.Equal(t, "admin", target.Database)
 				}
+
 				return []sqlclient.Row{{"database_type": "local"}}, nil
 			}))
 		})

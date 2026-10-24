@@ -26,10 +26,13 @@ func (r *testRegistry[T]) add(key string, value T) bool {
 	if r.entries == nil {
 		r.entries = map[string]T{}
 	}
+
 	if _, ok := r.entries[key]; ok {
 		r.duplicates = append(r.duplicates, key)
 	}
+
 	r.entries[key] = value
+
 	return true
 }
 
@@ -44,9 +47,11 @@ func registeredTypeNames() (resources, dataSources []string) {
 	for _, factory := range p.Resources(context.Background()) {
 		resources = append(resources, "redshift_"+registeredResourceName(factory))
 	}
+
 	for _, factory := range p.DataSources(context.Background()) {
 		dataSources = append(dataSources, "redshift_"+registeredDataSourceName(factory))
 	}
+
 	return resources, dataSources
 }
 
@@ -58,11 +63,14 @@ func TestRegistryIsSortedAndUnique(t *testing.T) {
 		assert.True(t, sort.StringsAreSorted(names), "%s types must be sorted: %v", kind, names)
 		assert.Len(t, names, len(slices.Compact(slices.Clone(names))), "%s types must be unique: %v", kind, names)
 	}
+
 	p := New("test")()
 	first := p.Resources(context.Background())
 	first[0] = func() resource.Resource { return nil }
+
 	assert.NotNil(t, p.Resources(context.Background())[0]())
 	sources := p.DataSources(context.Background())
 	sources[0] = func() datasource.DataSource { return nil }
+
 	assert.NotNil(t, p.DataSources(context.Background())[0]())
 }

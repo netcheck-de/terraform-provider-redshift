@@ -26,9 +26,11 @@ func TestTablePlanModifiers(t *testing.T) {
 		if source == "columns" {
 			block = "sort_key"
 		}
+
 		resp := planmodifier.StringResponse{PlanValue: types.StringUnknown()}
 		tableDerivedStyle{source: source}.PlanModifyString(ctx, planmodifier.StringRequest{Path: path.Root(block).AtName("style"), Config: configured, ConfigValue: types.StringNull()}, &resp)
 		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 		return resp.PlanValue
 	}
 	assert.Equal(t, types.StringValue("KEY"), style("key", config(func(*tableModel) {})))
@@ -41,6 +43,7 @@ func TestTablePlanModifiers(t *testing.T) {
 	assert.True(t, style("columns", config(func(m *tableModel) {
 		m.SortKey = types.ObjectValueMust(tableSortKeyAttributeTypes, map[string]attr.Value{"style": types.StringNull(), "columns": types.ListUnknown(types.StringType)})
 	})).IsUnknown())
+
 	configured := types.StringValue("EVEN")
 	resp := planmodifier.StringResponse{PlanValue: configured}
 	tableDerivedStyle{source: "key"}.PlanModifyString(ctx, planmodifier.StringRequest{ConfigValue: configured}, &resp)
@@ -90,20 +93,24 @@ func TestTablePlanModifiers(t *testing.T) {
 				m.Column = columns(unconfigured)
 				change(m)
 			})
+
 			plannedColumns := tableTestColumnsOf(t, configured.Column)
 			for i := range plannedColumns {
 				unset(&plannedColumns[i])
 			}
+
 			plan := tableTestColumns(plannedColumns...)
 			resp := planmodifier.ListResponse{PlanValue: plan}
 			tableColumnDefaults{}.PlanModifyList(ctx, planmodifier.ListRequest{
 				Config: tfsdk.Config(testState(t, r, configured)), State: testState(t, r, prior),
 				ConfigValue: configured.Column, PlanValue: plan, StateValue: prior.Column,
 			}, &resp)
+
 			var encodings []types.String
 			for _, column := range tableTestColumnsOf(t, resp.PlanValue) {
 				encodings = append(encodings, column.Encoding)
 			}
+
 			return encodings
 		}
 		assert.Equal(t, []types.String{types.StringValue("AZ64"), types.StringValue("LZO"), types.StringValue("LZO")}, encodings(prior, func(*tableModel) {}),
@@ -131,6 +138,7 @@ func TestTablePlanModifiers(t *testing.T) {
 // source block, instead of silently planning a style.
 func TestTableDerivedStyleReportsConfigurationErrors(t *testing.T) {
 	r := newTableResource()
+
 	config := tfsdk.Config(testState(t, r, tableMinimalModel()))
 	for _, source := range []string{"key", "columns"} {
 		t.Run(source, func(t *testing.T) {
@@ -152,6 +160,7 @@ func TestTableModifyPlanEffective(t *testing.T) {
 	auto := tableWith(withNote, tableAuto("note", "note", "id"))
 	unknownDistribution := types.ObjectUnknown(tableEffectiveDistributionAttributeTypes)
 	unknownSortKey := types.ObjectUnknown(tableEffectiveSortKeyAttributeTypes)
+
 	unknownStyles := func(m *tableModel) {
 		m.Distribution = types.ObjectValueMust(tableDistributionAttributeTypes, map[string]attr.Value{"style": types.StringUnknown(), "key": types.StringValue("id")})
 		m.SortKey = types.ObjectValueMust(tableSortKeyAttributeTypes, map[string]attr.Value{"style": types.StringUnknown(), "columns": tableStringListValue([]string{"id"})})
@@ -190,11 +199,14 @@ func TestTableModifyPlanEffective(t *testing.T) {
 		resp := resource.ModifyPlanResponse{Plan: tfsdk.Plan(planned)}
 		r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: tfsdk.Plan(planned), State: testState(t, r, prior)}, &resp)
 		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 		var result tableResourceModel
 		require.False(t, resp.Plan.Get(ctx, &result).HasError())
+
 		return result.tableModel
 	}
 	marked := func(m *tableModel) { m.EffectiveDistribution, m.EffectiveSortKey = unknownDistribution, unknownSortKey }
+
 	unrecorded := tableWith(auto, func(m *tableModel) {
 		m.EffectiveDistribution, m.EffectiveSortKey = types.ObjectNull(tableEffectiveDistributionAttributeTypes), types.ObjectNull(tableEffectiveSortKeyAttributeTypes)
 	})
@@ -220,11 +232,13 @@ func TestTableModifyPlanEffective(t *testing.T) {
 			assert.Equal(t, test.sortKey, planned.EffectiveSortKey)
 		})
 	}
+
 	t.Run("create", func(t *testing.T) {
 		planned := testState(t, r, tableWith(auto, marked))
 		resp := resource.ModifyPlanResponse{Plan: tfsdk.Plan(planned)}
 		r.ModifyPlan(ctx, resource.ModifyPlanRequest{Plan: tfsdk.Plan(planned), State: emptyState(t, r)}, &resp)
 		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 		var result tableResourceModel
 		require.False(t, resp.Plan.Get(ctx, &result).HasError())
 		assert.Equal(t, unknownDistribution, result.EffectiveDistribution)
@@ -260,6 +274,7 @@ func TestTableSortKeyBlock(t *testing.T) {
 			assert.Equal(t, test.columns, columns)
 		})
 	}
+
 	assert.Nil(t, tableEffectiveSortColumns(types.ObjectUnknown(tableEffectiveSortKeyAttributeTypes)))
 	assert.Nil(t, tableEffectiveSortColumns(types.ObjectValueMust(tableEffectiveSortKeyAttributeTypes, map[string]attr.Value{
 		"style": types.StringValue("COMPOUND"), "columns": types.ListUnknown(types.StringType), "auto": types.BoolValue(true),
@@ -283,6 +298,7 @@ func TestTableKnownState(t *testing.T) {
 	columns := tableTestColumnsOf(t, known.Column)
 	assert.True(t, columns[0].Encoding.IsNull())
 	assert.True(t, columns[0].Nullable.IsNull())
+
 	unknownColumns := tableWith(model, func(m *tableModel) { m.Column = types.ListUnknown(m.Column.ElementType(context.Background())) })
 	assert.True(t, tableKnownState(unknownColumns).Column.IsUnknown())
 }
@@ -291,6 +307,7 @@ func TestTableKnownState(t *testing.T) {
 func TestTablePlanningWithPartialColumns(t *testing.T) {
 	ctx := context.Background()
 	r := &tableResource{}
+
 	for _, test := range []struct {
 		name    string
 		columns types.List
@@ -310,8 +327,10 @@ func TestTablePlanningWithPartialColumns(t *testing.T) {
 			assert.Equal(t, test.want, names)
 		})
 	}
+
 	assert.True(t, tableStyleUnknown(types.ObjectUnknown(tableSortKeyAttributeTypes)))
 	assert.True(t, (&tableSpec{primaryKey: []string{"id"}}).constrained("id"))
+
 	model := tableMinimalModel()
 	model.Backup = types.StringUnknown()
 	observed, _, err := tableReconcile(model, tableCatalog{owner: "admin", distStyle: "AUTO", columns: []tableCatalogColumn{{name: "payload", dataType: "SUPER", encoding: "RAW"}}})
@@ -324,6 +343,7 @@ func TestTablePlanningWithPartialColumns(t *testing.T) {
 	stateModel.EffectiveSortKey = tableEffectiveSortKeyValue("COMPOUND", []string{"payload"}, true)
 	_, all := tableSortKeyMoves(ctx, tfsdk.Config(testState(t, r, model)), testState(t, r, stateModel))
 	assert.True(t, all)
+
 	model.Column = tableTestColumns(tableTestColumn("new", "integer", func(c *tableColumnModel) { c.RenamedFrom = types.StringValue("old") }))
 	stateModel.EffectiveSortKey = tableEffectiveSortKeyValue("COMPOUND", []string{"old", "dropped"}, true)
 	moved, all := tableSortKeyMoves(ctx, tfsdk.Config(testState(t, r, model)), testState(t, r, stateModel))

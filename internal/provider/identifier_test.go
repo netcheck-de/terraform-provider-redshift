@@ -56,15 +56,19 @@ var foldedNameExemptions = map[string][]string{
 func TestEveryIdentifierRejectsUppercase(t *testing.T) {
 	for _, factory := range registeredResources() {
 		r := factory()
+
 		var metadata resource.MetadataResponse
 		r.Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
+
 		var response resource.SchemaResponse
 		r.Schema(context.Background(), resource.SchemaRequest{}, &response)
+
 		for name, attribute := range response.Schema.Attributes {
 			text, ok := attribute.(schema.StringAttribute)
 			if !ok || !slices.Contains(identifierAttributes, name) || text.Computed && !text.Optional {
 				continue
 			}
+
 			folded := slices.ContainsFunc(text.Validators, func(v validator.String) bool { _, ok := v.(foldedNameValidator); return ok })
 			exempt := slices.Contains(foldedNameExemptions[metadata.TypeName], name)
 			assert.NotEqual(t, exempt, folded, "%s.%s: exempt=%v", metadata.TypeName, name, exempt)
@@ -75,6 +79,7 @@ func TestEveryIdentifierRejectsUppercase(t *testing.T) {
 // TestLookupRejectsUppercase applies the same check to lookup inputs, which copy the resource validators.
 func TestLookupRejectsUppercase(t *testing.T) {
 	d := newFunctionDataSource()
+
 	var response datasource.SchemaResponse
 	d.Schema(context.Background(), datasource.SchemaRequest{}, &response)
 	attribute, ok := response.Schema.Attributes["name"].(interface{ StringValidators() []validator.String })

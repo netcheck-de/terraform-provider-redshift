@@ -27,6 +27,7 @@ func grantUserModel(privileges, options []string) grantModel {
 // as the shared lifecycle harness does for the role tuple, and checks missing parents.
 func TestGrantUserFailures(t *testing.T) {
 	model := grantUserModel([]string{"SELECT"}, []string{"SELECT"})
+
 	for _, operation := range []string{"create", "read", "update", "delete"} {
 		t.Run(operation, func(t *testing.T) {
 			queries := 0
@@ -37,6 +38,7 @@ func TestGrantUserFailures(t *testing.T) {
 					family := c.family("grant_user").(*grantUserFamily)
 					family.privileges, family.options = map[string]bool{"INSERT": true}, map[string]bool{}
 				}
+
 				calls := 0
 				r := newGrantResource()
 				configureTestResource(t, r, queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
@@ -44,16 +46,20 @@ func TestGrantUserFailures(t *testing.T) {
 					if calls == failAt {
 						return nil, fmt.Errorf("injected API failure")
 					}
+
 					return c.Query(ctx, connection, sql, parameters)
 				}))
+
 				diagnostics := invoke(t, r, operation, model)
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 					queries = calls
 				} else {
 					require.True(t, diagnostics.HasError(), "query %d failure must be reported", failAt)
 				}
 			}
+
 			r := newGrantResource()
 			configureTestResource(t, r, &catalog{database: true})
 			diagnostics := invoke(t, r, operation, model)
@@ -68,10 +74,12 @@ func TestGrantUserTranscripts(t *testing.T) {
 	catalogWithUser := func(privileges, options []string) func() sqlclient.Client {
 		return catalogWith(func(c *catalog) {
 			family := c.family("grant_user").(*grantUserFamily)
+
 			family.privileges, family.options = map[string]bool{}, map[string]bool{}
 			for _, privilege := range privileges {
 				family.privileges[privilege] = true
 			}
+
 			for _, option := range options {
 				family.options[option] = true
 			}
@@ -102,6 +110,7 @@ func TestGrantUserReadsOptionsPerTuple(t *testing.T) {
 			}
 			schemaRow := row("analyst", "user", "TABLES", "TRUNCATE", "f")
 			schemaRow["schema_name"] = "serving"
+
 			return []sqlclient.Row{
 				row("analyst", "user", "TABLES", "SELECT", "false"),
 				row("analyst", "user", "TABLES", "SELECT", "t"),
@@ -151,13 +160,17 @@ func TestGrantValidation(t *testing.T) {
 			r := &grantResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 				return nil, fmt.Errorf("unexpected SQL %q", sql)
 			}))}
+
 			var validated resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, data))}, &validated)
+
 			if test.err == "" {
 				require.NoError(t, data.validate())
 				assert.False(t, validated.Diagnostics.HasError(), "%v", validated.Diagnostics)
+
 				return
 			}
+
 			require.ErrorContains(t, data.validate(), test.err)
 			assert.True(t, validated.Diagnostics.HasError(), "invalid tuples must be reported during planning")
 			state, diagnostics := applyOperation(t, r, "create", nil, data, nil)
@@ -177,11 +190,14 @@ func TestGrantUserImport(t *testing.T) {
 	} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
+
 		if user == "" {
 			assert.True(t, resp.Diagnostics.HasError(), "an identity without a recipient must be rejected")
 			continue
 		}
+
 		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 		var imported grantModel
 		require.False(t, resp.State.Get(context.Background(), &imported).HasError())
 		assert.Equal(t, user, imported.User.ValueString())
@@ -197,6 +213,7 @@ func TestGrantUserRejectsUnconvergedOptions(t *testing.T) {
 		if strings.HasPrefix(sql, "REVOKE GRANT OPTION") {
 			return nil, nil
 		}
+
 		return c.Query(ctx, connection, sql, parameters)
 	}))}
 	require.ErrorContains(t, r.reconcile(context.Background(), grantUserModel([]string{"SELECT"}, nil)), "did not converge")

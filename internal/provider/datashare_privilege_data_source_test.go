@@ -25,6 +25,7 @@ func TestDatasharePrivilegeLookupReportsGrantOptions(t *testing.T) {
 	source := newDatasharePrivilegeDataSource()
 	state, diagnostics := readSource(t, source, catalogLookupObject(t, source, datashareFullFields), c)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	assert.Equal(t, types.SetValueMust(types.StringType, []attr.Value{types.StringValue("ALTER")}), observed.Attributes()["privileges"])

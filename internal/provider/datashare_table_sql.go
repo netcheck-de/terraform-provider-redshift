@@ -12,6 +12,7 @@ func datashareTableObject(data datashareTableModel) (sqlclient.Statement, error)
 	if data.Schema.ValueString() == "" || data.Table.ValueString() == "" {
 		return sqlclient.Statement{}, fmt.Errorf("datashare table requires a nonempty schema and table")
 	}
+
 	return sqlclient.Fragment().Qualified(data.Schema.ValueString(), data.Table.ValueString()), nil
 }
 
@@ -21,6 +22,7 @@ func createDatashareTableStatement(data datashareTableModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return sqlclient.Stmt("ALTER DATASHARE").Ident(data.Datashare.ValueString()).Kw("ADD TABLE").Append(object).String(), nil
 }
 
@@ -30,6 +32,7 @@ func dropDatashareTableStatement(data datashareTableModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return sqlclient.Stmt("ALTER DATASHARE").Ident(data.Datashare.ValueString()).Kw("REMOVE TABLE").Append(object).String(), nil
 }
 

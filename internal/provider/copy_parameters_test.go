@@ -28,12 +28,15 @@ func TestCopySHOWControlEscapes(t *testing.T) {
 		require.NoError(t, err)
 		definition, err := parseCopyOptions(tokens)
 		require.NoError(t, err)
+
 		for _, value := range definition.parameters {
 			assert.Equal(t, expected, value, text)
 		}
 	}
+
 	configured := templateTestModel("", "", "", map[string]string{"DELIMITER": "\t"}).Parameters
 	assert.True(t, copyParametersValue(configured, map[string]string{"DELIMITER": "\t"}, false).Equal(configured))
+
 	for _, value := range []string{"\t", "\n", `\t`, `\n`, `\\t`, `\\n`, `\`, `O'Reilly\tail`} {
 		_, parameter, err := copyParameterKeyword("NULL", false)
 		require.NoError(t, err)
@@ -56,13 +59,17 @@ func TestCopyParameterScopes(t *testing.T) {
 		assert.Contains(t, templates, name)
 		assert.NotContains(t, jobs, name)
 	}
+
 	assert.Contains(t, jobs, "REGION")
 	assert.NotContains(t, templates, "REGION")
+
 	for _, excluded := range []string{"MANIFEST", "IAM_ROLE", "CREDENTIALS", "ACCESS_KEY_ID", "FORMAT", "CSV", "JSON"} {
 		assert.NotContains(t, templates, excluded)
 		assert.NotContains(t, jobs, excluded)
 	}
+
 	assert.Equal(t, []string{"AVRO", "CSV", "FIXEDWIDTH", "JSON", "ORC", "PARQUET", "SHAPEFILE"}, copyFormatNames())
+
 	for keyword, parameter := range copyParameters {
 		assert.Equal(t, parameter.argument == copyChoice, len(parameter.choices) > 0, keyword)
 	}
@@ -107,6 +114,7 @@ func TestCopyCanonicalValue(t *testing.T) {
 		require.NoError(t, err)
 		canonical, err := copyCanonicalValue(test.name, parameter, test.value)
 		assert.Equal(t, test.valid, err == nil, "%s=%q", test.name, test.value)
+
 		if test.valid {
 			assert.Equal(t, test.canonical, canonical, "%s=%q", test.name, test.value)
 		}
@@ -117,30 +125,37 @@ func TestCopyCanonicalValue(t *testing.T) {
 func TestCopyParameterEdges(t *testing.T) {
 	assert.Equal(t, "decoded", copyLiteralValue(sqlclient.Token{Text: "decoded"}))
 	assert.Equal(t, "\b\f\v", copyLiteralValue(sqlclient.Token{Raw: `'\b\f\v'`}))
+
 	for _, parameters := range []map[string]string{{"MANIFEST": ""}, {"IGNOREHEADER": "bad"}} {
 		_, err := copyCanonicalParameters(parameters, false)
 		require.Error(t, err)
 		_, err = copyParameterFragments(parameters, false)
 		require.Error(t, err)
 	}
+
 	for _, argument := range []string{"", "SIMPLIFY -0"} {
 		fragment, err := copySimplify(argument)
 		require.NoError(t, err)
 		assert.NotContains(t, fragment.String(), "-0")
 	}
+
 	assert.Equal(t, types.StringValue(""), copyFormatArgumentValue(types.StringValue(""), "CSV", ""))
+
 	fragment, err := copyParameterFragment("ACCEPTINVCHARS", "", false)
 	require.NoError(t, err)
 	assert.Equal(t, "ACCEPTINVCHARS", fragment.String())
+
 	for _, text := range []string{"SHAPEFILE SIMPLIFY SIMPLIFY", "SHAPEFILE SIMPLIFY 'bad'", "CSV SIMPLIFY"} {
 		tokens, err := sqlclient.Tokens(text)
 		require.NoError(t, err)
 		_, err = parseCopyOptions(tokens)
 		require.Error(t, err)
 	}
+
 	require.Error(t, copyValidateKnown(types.StringValue("bad"), types.StringUnknown(), types.MapNull(types.StringType), false))
 	nullParameter := types.MapValueMust(types.StringType, map[string]attr.Value{"DELIMITER": types.StringNull()})
 	require.Error(t, copyValidateKnown(types.StringNull(), types.StringNull(), nullParameter, false))
+
 	unknownParameter := types.MapValueMust(types.StringType, map[string]attr.Value{"DELIMITER": types.StringUnknown()})
 	assert.False(t, copyOptionsKnown(types.StringNull(), types.StringNull(), unknownParameter))
 }

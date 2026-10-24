@@ -16,6 +16,7 @@ func tableSecurityAlter(data tableSecurityModel) (sqlclient.Statement, error) {
 	if data.Schema.ValueString() == "" || data.Relation.ValueString() == "" {
 		return sqlclient.Statement{}, fmt.Errorf("table security requires a nonempty schema and relation")
 	}
+
 	return sqlclient.Stmt("ALTER TABLE").Qualified(data.Schema.ValueString(), data.Relation.ValueString()).Kw("ROW LEVEL SECURITY"), nil
 }
 
@@ -27,10 +28,12 @@ func tableSecurityStatusStatement(data tableSecurityModel) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("conjunction_type: %w", err)
 	}
+
 	alter, err := tableSecurityAlter(data)
 	if err != nil {
 		return "", err
 	}
+
 	return alter.Toggle(data.RowLevelSecurity.ValueBool(), "ON", "OFF").
 		When(conjunction != "", func(s sqlclient.Statement) sqlclient.Statement { return s.Kw("CONJUNCTION TYPE").Kw(conjunction) }).
 		String(), nil
@@ -43,6 +46,7 @@ func tableSecurityDatashareStatement(data tableSecurityModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return alter.Toggle(data.DatashareRowLevelSecurity.ValueBool(), "ON", "OFF").Kw("FOR DATASHARES").String(), nil
 }
 
@@ -53,14 +57,18 @@ func createTableSecurityStatements(data tableSecurityModel) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	statements := []string{status}
+
 	if knownBool(data.DatashareRowLevelSecurity) != nil {
 		datashare, err := tableSecurityDatashareStatement(data)
 		if err != nil {
 			return nil, err
 		}
+
 		statements = append(statements, datashare)
 	}
+
 	return statements, nil
 }
 
@@ -86,6 +94,7 @@ var tableSecurityAlterSteps = []alterStep[tableSecurityModel]{
 			if !prev.RowLevelSecurity.Equal(plan.RowLevelSecurity) {
 				return nil
 			}
+
 			return tableSecurityMust(tableSecurityStatusStatement(plan))
 		},
 	},
@@ -103,6 +112,7 @@ func alterTableSecurityStatements(prev, plan tableSecurityModel) ([]string, erro
 	if _, err := createTableSecurityStatements(plan); err != nil {
 		return nil, err
 	}
+
 	return alterStatements(prev, plan, tableSecurityAlterSteps), nil
 }
 
@@ -114,6 +124,7 @@ func deleteTableSecurityStatement(data tableSecurityModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return alter.Kw("OFF").String(), nil
 }
 

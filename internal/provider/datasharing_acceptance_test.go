@@ -27,11 +27,13 @@ func TestAccDatasharing(t *testing.T) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	execute := func(target, sql string) error {
 		_, err := client.Query(ctx, sqlclient.Connection{Database: target}, sql, nil)
 		return err
 	}
+
 	t.Cleanup(func() {
 		// Terraform destroys the objects; these statements only remove leftovers of a failed run.
 		for _, cleanup := range []struct{ database, sql string }{
@@ -44,6 +46,7 @@ func TestAccDatasharing(t *testing.T) {
 			}
 		}
 	})
+
 	lakeFormation := ""
 	if account := os.Getenv("REDSHIFT_ACC_LAKE_FORMATION_ACCOUNT"); account != "" {
 		lakeFormation = fmt.Sprintf(`
@@ -54,6 +57,7 @@ resource "redshift_datashare_grant" "lake_formation" {
   via_data_catalog = true
 }`, account)
 	}
+
 	configuration := fmt.Sprintf(`
 provider "redshift" {
   region = %q

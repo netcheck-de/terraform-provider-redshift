@@ -17,10 +17,12 @@ var _ = registerDataSource(newProcedureDataSource)
 // because only the IN and INOUT types form its signature.
 func procedureLookupArguments(selector types.List) types.List {
 	inputs := routineStrings(selector)
+
 	arguments := make([]procedureArgumentModel, len(inputs))
 	for i, input := range inputs {
 		arguments[i] = procedureArgumentModel{Name: types.StringNull(), Mode: types.StringNull(), Type: types.StringValue(input)}
 	}
+
 	return procedureArgumentList(arguments)
 }
 
@@ -30,6 +32,7 @@ func procedureObservedArguments(arguments []procedureArgumentModel) types.List {
 	if len(arguments) == 0 {
 		return types.ListValueMust(types.ObjectType{AttrTypes: procedureArgumentTypes}, []attr.Value{})
 	}
+
 	return procedureArgumentList(arguments)
 }
 
@@ -55,17 +58,21 @@ func newProcedureDataSource() datasource.DataSource {
 				DefinitionFingerprint: types.StringNull(), Security: types.StringNull(), Nonatomic: types.BoolNull(), Configuration: types.MapNull(types.StringType),
 			}
 			r := &procedureResource{*client}
+
 			row, found, err := r.observe(ctx, model)
 			if err != nil || !found {
 				return found, err
 			}
+
 			row.apply(&model, false)
+
 			for name, value := range map[string]attr.Value{
 				"argument": procedureObservedArguments(row.arguments), "signature": model.Signature, "body": model.Body,
 				"definition_fingerprint": model.DefinitionFingerprint, "security": model.Security, "owner": model.Owner,
 			} {
 				lookupValue(data, name, value)
 			}
+
 			return true, nil
 		},
 	}), map[string]string{

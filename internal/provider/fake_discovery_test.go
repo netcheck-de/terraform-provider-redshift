@@ -55,6 +55,7 @@ type discoveryFamily struct {
 // discoveryLike translates a SQL LIKE pattern into an anchored regular expression.
 func discoveryLike(pattern string) *regexp.Regexp {
 	var expression strings.Builder
+
 	for _, char := range pattern {
 		switch char {
 		case '%':
@@ -65,6 +66,7 @@ func discoveryLike(pattern string) *regexp.Regexp {
 			expression.WriteString(regexp.QuoteMeta(string(char)))
 		}
 	}
+
 	return regexp.MustCompile("^" + expression.String() + "$")
 }
 
@@ -77,34 +79,43 @@ func (f *discoveryFamily) query(_ *catalog, connection sqlclient.Connection, sql
 				if row["database_type"] == "local" {
 					return []sqlclient.Row{{"database_name": row["database_name"]}}, true, nil
 				}
+
 				return nil, true, nil
 			}
 		}
 	}
+
 	for _, listing := range discoveryListings {
 		if !strings.HasPrefix(sql, "SELECT "+listing.selects) || !strings.Contains(sql, " FROM "+listing.source+" ") {
 			continue
 		}
+
 		var matched []sqlclient.Row
+
 	rows:
 		for _, row := range f.rows[listing.name] {
 			if listing.connected && row["database_name"] != connection.Database {
 				continue
 			}
+
 			for parameter, column := range listing.equal {
 				if value, ok := parameters[parameter]; ok && row[column] != value {
 					continue rows
 				}
 			}
+
 			for parameter, column := range listing.like {
 				if pattern, ok := parameters[parameter]; ok && !discoveryLike(pattern).MatchString(row[column]) {
 					continue rows
 				}
 			}
+
 			matched = append(matched, maps.Clone(row))
 		}
+
 		return matched, true, nil
 	}
+
 	return nil, false, nil
 }
 
@@ -149,31 +160,39 @@ func (f *discoveryFamily) populate() {
 // discoveryRead reads a listing with string filters and returns its items and identity.
 func discoveryRead(t *testing.T, factory func() datasource.DataSource, filters map[string]string, client sqlclient.Client) ([]map[string]attr.Value, map[string]string, diag.Diagnostics) {
 	t.Helper()
+
 	source := factory()
+
 	state, diagnostics := readSource(t, source, collectionConfig(t, source, filters), client)
 	if diagnostics.HasError() {
 		return nil, nil, diagnostics
 	}
+
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
+
 	var identity map[string]string
 	require.NoError(t, json.Unmarshal([]byte(observed.Attributes()["id"].(types.String).ValueString()), &identity))
 	list := collectionResult(source, observed)
 	require.False(t, list.IsNull(), "a listing is never null")
+
 	var items []map[string]attr.Value
 	for _, element := range list.Elements() {
 		items = append(items, element.(types.Object).Attributes())
 	}
+
 	return items, identity, diagnostics
 }
 
 // discoveryTranscript reads a listing against the populated fake and pins the SQL conversation in group.
 func discoveryTranscript(t *testing.T, group, name string, factory func() datasource.DataSource, filters map[string]string) []map[string]attr.Value {
 	t.Helper()
+
 	recorder := &recordingClient{client: fullCatalog()}
 	items, _, diagnostics := discoveryRead(t, factory, filters, recorder)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	checkTranscript(t, group, name, recorder.take())
+
 	return items
 }
 
@@ -183,6 +202,7 @@ func discoveryNames(items []map[string]attr.Value, attribute string) []string {
 	for _, item := range items {
 		names = append(names, item[attribute].(types.String).ValueString())
 	}
+
 	return names
 }
 
@@ -202,6 +222,7 @@ func discoveryFailures(t *testing.T, factory func() datasource.DataSource, filte
 		return nil, errors.New("catalog unavailable")
 	}))
 	require.True(t, diagnostics.HasError(), "catalog failures are errors")
+
 	for _, row := range malformed {
 		_, _, diagnostics = discoveryRead(t, factory, filters, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return []sqlclient.Row{row}, nil

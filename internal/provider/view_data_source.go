@@ -18,6 +18,7 @@ func newViewDataSource() datasource.DataSource {
 	return lookupDescriptions(newCatalogDataSource(catalogSpec{name: "view", factory: newViewResource, computed: []string{"query"}, identityFields: []string{"schema", "name"}, identityDatabase: "database", lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
 		attributes := data.Attributes()
 		model := viewModel{ID: types.StringNull(), Database: attributes["database"].(types.String), Schema: attributes["schema"].(types.String), Name: attributes["name"].(types.String)}
+
 		entry, found, err := (&viewResource{*client}).read(ctx, model)
 		if err == nil && found {
 			lookupValue(data, "query", types.StringValue(entry.definition))
@@ -25,6 +26,7 @@ func newViewDataSource() datasource.DataSource {
 			lookupValue(data, "owner", types.StringValue(entry.owner))
 			lookupValue(data, "definition_fingerprint", types.StringValue(definitionFingerprint(entry.definition)))
 		}
+
 		return found, err
 	}}), map[string]string{
 		"query":                  "Catalog definition from `pg_views`, as Redshift prints it.",

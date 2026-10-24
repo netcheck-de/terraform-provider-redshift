@@ -28,10 +28,12 @@ func TestAccTableColumnRename(t *testing.T) {
 		id, label, idHint, labelHint := "id", "label", "", ""
 		if renamed {
 			id, label = "event_id", "description"
+
 			if hint {
 				idHint, labelHint = `renamed_from = "id"`, `renamed_from = "label"`
 			}
 		}
+
 		return fmt.Sprintf(`
 provider "redshift" {
   region         = %q
@@ -86,16 +88,19 @@ resource "redshift_table" "events" {
 			rows, err := client.Query(context.Background(), connection, statement.String(), nil)
 			require.NoError(t, err)
 			assert.Equal(t, []sqlclient.Row{{"id": "1", "parent_id": "1", "label": "keep me"}}, rows)
+
 			return nil
 		}
 	}
 	mutations := func() []string {
 		var writes []string
+
 		for _, entry := range recorded.take() {
 			if !fakeRead(entry.sql) {
 				writes = append(writes, entry.sql)
 			}
 		}
+
 		return writes
 	}
 	update := resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction("redshift_table.events", plancheck.ResourceActionUpdate)}}
@@ -109,6 +114,7 @@ resource "redshift_table" "events" {
 				_, err := client.Query(context.Background(), connection, statement.String(), nil)
 				require.NoError(t, err)
 				recorded.take()
+
 				return checkRows("id", "label")(state)
 			}},
 			{Config: configuration(true, true), ConfigPlanChecks: update, Check: resource.ComposeTestCheckFunc(
@@ -118,6 +124,7 @@ resource "redshift_table" "events" {
 						sqlclient.Stmt("ALTER TABLE").Qualified(schemaName, "events").Kw("RENAME COLUMN").Ident("id").KwIdent("TO", "event_id").String(),
 						sqlclient.Stmt("ALTER TABLE").Qualified(schemaName, "events").Kw("RENAME COLUMN").Ident("label").KwIdent("TO", "description").String(),
 					}, mutations(), "keys and constraints must not be rebuilt")
+
 					return nil
 				},
 			)},

@@ -53,6 +53,7 @@ func grantTestModel(data grantModel) grantModel {
 			*set = types.SetValueMust(types.StringType, nil)
 		}
 	}
+
 	return data
 }
 
@@ -69,6 +70,7 @@ func TestGrantObservesExactPrivileges(t *testing.T) {
 	assert.True(t, found)
 	assert.Len(t, data.Privileges.Elements(), 2)
 	delete(c.privileges, "INSERT")
+
 	_, found, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
 	assert.True(t, found)
@@ -80,8 +82,10 @@ func TestGrantConnectionContext(t *testing.T) {
 	for _, databaseType := range []string{"local", "shared"} {
 		t.Run(databaseType, func(t *testing.T) {
 			var connections []string
+
 			r := &grantResource{testResourceClient(queryFunc(func(_ context.Context, target sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 				connections = append(connections, target.Database)
+
 				switch {
 				case strings.HasPrefix(sql, "SELECT database_type"):
 					return []sqlclient.Row{{"database_type": databaseType}}, nil
@@ -97,10 +101,12 @@ func TestGrantConnectionContext(t *testing.T) {
 			}))}
 			data := grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("readers"), Scope: types.StringValue("TABLES")}
 			_, found, err := r.read(context.Background(), &data)
+
 			last := "admin"
 			if databaseType == "local" {
 				last = "analytics"
 			}
+
 			require.NoError(t, err)
 			assert.True(t, found)
 			assert.Equal(t, []string{"admin", "admin", last}, connections)
@@ -138,9 +144,11 @@ func TestGrantRejectsUnsupportedTargets(t *testing.T) {
 				return []sqlclient.Row{{"database_type": "external"}}, nil
 			}))}
 			data := grantModel{DatabaseName: types.StringValue("analytics")}
+
 			if name == "unknown connection" {
 				r.warehouse.value = types.StringUnknown()
 			}
+
 			_, _, err := r.read(context.Background(), &data)
 			require.Error(t, err)
 		})
@@ -152,7 +160,9 @@ func TestSchemaGrantsUseSchemaObjectAndScope(t *testing.T) {
 	for scope, privilege := range map[string]string{"SCHEMA": "USAGE", "TABLES": "SELECT"} {
 		t.Run(scope, func(t *testing.T) {
 			granted := false
+
 			var mutations []string
+
 			r := &grantResource{testResourceClient(queryFunc(func(_ context.Context, target sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 				switch {
 				case strings.HasPrefix(sql, "SELECT database_type"):
@@ -163,13 +173,16 @@ func TestSchemaGrantsUseSchemaObjectAndScope(t *testing.T) {
 					return []sqlclient.Row{{"schema_name": "serving"}}, nil
 				case strings.HasPrefix(sql, "SHOW GRANTS"):
 					assert.Equal(t, "analytics", target.Database)
+
 					if granted {
 						return []sqlclient.Row{{"database_name": "analytics", "schema_name": "serving", "object_type": "SCHEMA", "privilege_scope": scope, "identity_name": "example:readers", "privilege_type": privilege}}, nil
 					}
+
 					return nil, nil
 				case strings.HasPrefix(sql, "GRANT "):
 					mutations = append(mutations, sql)
 					granted = true
+
 					return nil, nil
 				default:
 					return nil, fmt.Errorf("unexpected SQL %q", sql)
@@ -177,9 +190,12 @@ func TestSchemaGrantsUseSchemaObjectAndScope(t *testing.T) {
 			}))}
 			data := grantTestModel(grantModel{DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Role: types.StringValue("example:readers"), Scope: types.StringValue(scope), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue(privilege)})})
 			require.NoError(t, r.reconcile(context.Background(), data))
+
 			granted = false
+
 			require.False(t, invoke(t, r, "create", data).HasError())
 			require.Len(t, mutations, 2)
+
 			if scope == "SCHEMA" {
 				assert.Contains(t, mutations[0], `ON SCHEMA "analytics"."serving"`)
 			} else {
@@ -199,10 +215,12 @@ func TestSchemaGrantRequiresConsistentScope(t *testing.T) {
 		_, _, err := r.read(context.Background(), &data)
 		require.ErrorContains(t, err, "schema_name")
 	}
+
 	empty := grantTestModel(grantModel{ID: types.StringNull(), DatabaseName: types.StringNull(), SchemaName: types.StringNull(), Role: types.StringNull(), Scope: types.StringNull(), Privileges: types.SetNull(types.StringType)})
 	resp := resource.ImportStateResponse{State: testState(t, r, empty)}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","role":"readers","scope":"SCHEMA","schema_name":"serving"}`}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 	var imported grantModel
 	require.False(t, resp.State.Get(context.Background(), &imported).HasError())
 	assert.Equal(t, "serving", imported.SchemaName.ValueString())
@@ -237,6 +255,7 @@ func TestDatashareScopedGrantLifecycle(t *testing.T) {
 			if scope == "TABLES" {
 				privilege, object = "SELECT", `FOR TABLES IN SCHEMA "serving"`
 			}
+
 			granted := false
 			r := &grantResource{testResourceClient(queryFunc(func(_ context.Context, target sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 				switch {
@@ -249,10 +268,12 @@ func TestDatashareScopedGrantLifecycle(t *testing.T) {
 					return []sqlclient.Row{{"schema_name": "serving"}}, nil
 				case strings.HasPrefix(sql, "SHOW GRANTS"):
 					assert.Equal(t, `SHOW GRANTS ON SCHEMA "serving"`, sql)
+
 					rows := []sqlclient.Row{{"database_name": "analytics", "schema_name": "serving", "object_type": "SCHEMA", "identity_name": "other", "privilege_scope": scope, "privilege_type": privilege}}
 					if granted {
 						rows = append(rows, sqlclient.Row{"database_name": "analytics", "schema_name": "serving", "object_type": "SCHEMA", "identity_name": "ds:share", "privilege_scope": scope, "privilege_type": privilege})
 					}
+
 					return rows, nil
 				case sql == "GRANT "+privilege+" "+object+` TO DATASHARE "share"`:
 					granted = true
@@ -272,6 +293,7 @@ func TestDatashareScopedGrantLifecycle(t *testing.T) {
 			resp := resource.ImportStateResponse{State: testState(t, r, data)}
 			r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","datashare":"share","scope":"` + scope + `","schema_name":"serving"}`}, &resp)
 			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 			var imported grantModel
 			require.False(t, resp.State.Get(context.Background(), &imported).HasError())
 			assert.Equal(t, "share", imported.Datashare.ValueString())
@@ -285,10 +307,13 @@ func TestDatashareScopedGrantRejectsInvalidTuples(t *testing.T) {
 		if strings.HasPrefix(sql, "SELECT database_type") {
 			return []sqlclient.Row{{"database_type": "local"}}, nil
 		}
+
 		return []sqlclient.Row{{"share_name": "share"}}, nil
 	}))}
+
 	for _, mode := range []string{"role", "scope", "schema", "privilege", "empty recipient"} {
 		data := grantModel{DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Datashare: types.StringValue("share"), Scope: types.StringValue("SCHEMA"), Privileges: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("USAGE")})}
+
 		switch mode {
 		case "role":
 			data.Role = types.StringValue("readers")
@@ -301,6 +326,7 @@ func TestDatashareScopedGrantRejectsInvalidTuples(t *testing.T) {
 		case "empty recipient":
 			data.Datashare = types.StringNull()
 		}
+
 		require.Error(t, r.reconcile(context.Background(), data), mode)
 	}
 }
@@ -364,10 +390,12 @@ func TestScopedGrantRejectsUnsupportedDatabases(t *testing.T) {
 			if databaseType == "" {
 				client.warehouse.value = types.StringUnknown()
 			}
+
 			data := grantModel{DatabaseName: types.StringValue("analytics"), Role: types.StringValue("readers"), Scope: types.StringValue("DATABASE")}
 			if databaseType == "shared" {
 				data = grantModel{DatabaseName: types.StringValue("analytics"), SchemaName: types.StringValue("serving"), Datashare: types.StringValue("share"), Scope: types.StringValue("SCHEMA")}
 			}
+
 			_, _, err := (&grantResource{client}).read(context.Background(), &data)
 			require.Error(t, err)
 		})

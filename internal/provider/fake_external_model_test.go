@@ -88,13 +88,16 @@ func (m *fakeExternalModel) show(hideSettings bool) []sqlclient.Row {
 	if hideSettings {
 		return rows
 	}
+
 	for _, key := range slices.Sorted(maps.Keys(m.settings)) {
 		value := m.settings[key]
 		if key == "IAM Role" {
 			value = "'" + value + "'"
 		}
+
 		rows = append(rows, sqlclient.Row{"Key": key, "Value": value})
 	}
+
 	return rows
 }
 
@@ -106,33 +109,40 @@ func (f *externalModelFamily) query(_ *catalog, _ sqlclient.Connection, sql stri
 		for _, key := range slices.Sorted(maps.Keys(f.models)) {
 			rows = append(rows, sqlclient.Row{"Schema Name": f.models[key].schema, "Model Name": f.models[key].name})
 		}
+
 		return rows, true, nil
 	case strings.HasPrefix(sql, "SHOW MODEL "):
 		schema, name, tail, err := fakeViewTarget(strings.TrimPrefix(sql, "SHOW MODEL "))
 		if err != nil || tail != "" {
 			return nil, true, fmt.Errorf("fake model catalog cannot parse %q", sql)
 		}
+
 		model := f.models[fakeViewKey(schema, name)]
 		if model == nil {
 			return nil, true, fmt.Errorf("model %q does not exist", name)
 		}
+
 		return model.show(f.hideSettings), true, nil
 	case strings.HasPrefix(sql, "CREATE EXTERNAL MODEL "):
 		match := fakeExternalModelPattern.FindStringSubmatch(sql)
 		if match == nil {
 			return nil, true, fmt.Errorf("fake model catalog cannot parse %q", sql)
 		}
+
 		schema, name, _, err := fakeViewTarget(match[1])
 		if err != nil {
 			return nil, true, err
 		}
+
 		if f.models[fakeViewKey(schema, name)] != nil {
 			return nil, true, fmt.Errorf("model %q already exists", name)
 		}
+
 		role := strings.ReplaceAll(strings.Trim(match[3], "'"), "''", "'")
 		if role == "DEFAULT" {
 			role = fakeModelDefaultRole
 		}
+
 		settings := map[string]string{"Model Type": "bedrock", "Function Name": strings.ReplaceAll(match[2], `""`, `"`), "IAM Role": role}
 		for _, setting := range fakeExternalModelSetting.FindAllStringSubmatch(match[4], -1) {
 			if setting[1] != "" {
@@ -141,18 +151,24 @@ func (f *externalModelFamily) query(_ *catalog, _ sqlclient.Connection, sql stri
 				settings[fakeExternalModelSettingKeys[setting[3]]] = strings.ToLower(setting[4])
 			}
 		}
+
 		f.models[fakeViewKey(schema, name)] = &fakeExternalModel{schema: schema, name: name, owner: "admin", settings: settings}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "DROP MODEL "):
 		schema, name, _, err := fakeViewTarget(strings.TrimPrefix(sql, "DROP MODEL "))
 		if err != nil {
 			return nil, true, err
 		}
+
 		if f.models[fakeViewKey(schema, name)] == nil {
 			return nil, true, fmt.Errorf("model %q does not exist", name)
 		}
+
 		delete(f.models, fakeViewKey(schema, name))
+
 		return nil, true, nil
 	}
+
 	return nil, false, nil
 }

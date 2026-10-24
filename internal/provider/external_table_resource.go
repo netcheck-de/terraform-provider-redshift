@@ -116,11 +116,14 @@ func externalTableStoredAsReplace(ctx context.Context, req planmodifier.StringRe
 	if resp.RequiresReplace {
 		return
 	}
+
 	var prior, plan externalTableModel
+
 	_ = req.State.Get(ctx, &prior)
 	_ = req.Plan.Get(ctx, &plan)
 	prior.StoredAs, plan.StoredAs = req.StateValue, req.PlanValue
 	_, priorKnown := externalTableColumns(prior.Columns)
+
 	_, planKnown := externalTableColumns(plan.Columns)
 	if priorKnown && planKnown {
 		resp.RequiresReplace = !externalTableColumnsAlterable(prior, plan, externalTableRecordedLayout(ctx, req.Private))
@@ -141,10 +144,12 @@ type externalTablePrivateState interface {
 // direct unit calls, has none.
 func externalTableRecordedLayout(ctx context.Context, private externalTablePrivateState) *externalTableLayout {
 	raw, diagnostics := private.GetKey(ctx, externalTableLayoutKey)
+
 	layout := &externalTableLayout{}
 	if diagnostics.HasError() || len(raw) == 0 || json.Unmarshal(raw, layout) != nil {
 		return nil
 	}
+
 	return layout
 }
 
@@ -154,6 +159,7 @@ func (c *externalTableCatalog) layout() *externalTableLayout {
 	for i, column := range c.columns {
 		layout.Columns[i] = column.name
 	}
+
 	return layout
 }
 
@@ -162,7 +168,9 @@ func recordExternalTableLayout(ctx context.Context, private externalTablePrivate
 	if catalog == nil {
 		return nil
 	}
+
 	raw, _ := json.Marshal(catalog.layout()) // String maps and slices are always JSON-serializable.
+
 	return private.SetKey(ctx, externalTableLayoutKey, raw)
 }
 
@@ -173,12 +181,15 @@ func externalTablePriorProperties(state, plan types.Map, catalog map[string]stri
 	if !state.IsNull() {
 		return knownMap(state)
 	}
+
 	prior := map[string]string{}
+
 	for key := range knownMap(plan) {
 		if value, ok := catalog[key]; ok {
 			prior[key] = value
 		}
 	}
+
 	return prior
 }
 
@@ -191,6 +202,7 @@ func externalTablePropertiesReplace(ctx context.Context, req planmodifier.MapReq
 		resp.RequiresReplace = true
 		return
 	}
+
 	for key, value := range req.PlanValue.Elements() {
 		// A value known only after apply is a change, which only the settable properties allow in place.
 		if value.IsUnknown() && !slices.Contains(externalTableSettableProperties, key) {
@@ -198,8 +210,10 @@ func externalTablePropertiesReplace(ctx context.Context, req planmodifier.MapReq
 			return
 		}
 	}
+
 	layout := externalTableRecordedLayout(ctx, req.Private)
 	_, err := externalTablePropertyChanges(externalTablePriorProperties(req.StateValue, req.PlanValue, layout.parameters()), knownMap(req.PlanValue))
+
 	var prior, plan externalTableModel
 	// Unknown siblings stay unknown and count as unset; diagnostics are irrelevant to a replacement decision.
 	_ = req.State.Get(ctx, &prior)
@@ -265,24 +279,31 @@ func validateExternalTableKnownColumns(kind string, list types.List, seen map[st
 	if list.IsUnknown() {
 		return diagnostics
 	}
+
 	if kind == "column" && len(list.Elements()) == 0 {
 		diagnostics.AddAttributeError(path.Root(kind), "Invalid external table", "external table requires at least one column block")
 	}
+
 	for i, element := range list.Elements() {
 		columnPath := path.Root(kind).AtListIndex(i)
+
 		object, ok := element.(types.Object)
 		if !ok || object.IsNull() {
 			diagnostics.AddAttributeError(columnPath, "Invalid external table", fmt.Sprintf("%s blocks must not be null", kind))
 			continue
 		}
+
 		if object.IsUnknown() {
 			continue
 		}
+
 		attributes := object.Attributes()
 		name := attributes["name"].(types.String)
 		dataType := attributes["type"].(types.String)
+
 		if !name.IsUnknown() {
 			value := name.ValueString()
+
 			key := strings.ToLower(value)
 			switch {
 			case strings.TrimSpace(value) == "":
@@ -293,15 +314,18 @@ func validateExternalTableKnownColumns(kind string, list types.List, seen map[st
 				if previous, ok := seen[key]; ok {
 					diagnostics.AddAttributeError(columnPath.AtName("name"), "Invalid external table", fmt.Sprintf("%s name %q repeats %s", kind, value, previous))
 				}
+
 				seen[key] = fmt.Sprintf("%q", value)
 			}
 		}
+
 		if !dataType.IsUnknown() {
 			if _, err := parseExternalTableType(dataType.ValueString()); err != nil {
 				diagnostics.AddAttributeError(columnPath.AtName("type"), "Invalid external table", fmt.Sprintf("%s type: %v", kind, err))
 			}
 		}
 	}
+
 	return diagnostics
 }
 
@@ -309,9 +333,11 @@ func validateExternalTableKnownColumns(kind string, list types.List, seen map[st
 func (r *externalTableResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data externalTableModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if !req.Config.Raw.IsFullyKnown() {
 		seen := map[string]string{}
 		for _, columns := range []struct {
@@ -320,9 +346,11 @@ func (r *externalTableResource) ValidateConfig(ctx context.Context, req resource
 		}{{"column", data.Columns}, {"partition_key", data.PartitionKeys}} {
 			resp.Diagnostics.Append(validateExternalTableKnownColumns(columns.name, columns.value, seen)...)
 		}
+
 		if knownString(data.StoredAs) != "" && (knownString(data.InputFormat) != "" || knownString(data.OutputFormat) != "") {
 			resp.Diagnostics.AddError("Invalid external table", "stored_as conflicts with input_format and output_format")
 		}
+
 		if knownString(data.Serde) != "" && (knownString(data.FieldDelimiter) != "" || knownString(data.LineDelimiter) != "") {
 			resp.Diagnostics.AddError("Invalid external table", "serde conflicts with field_delimiter and line_delimiter: ROW FORMAT is either DELIMITED or SERDE")
 		}
@@ -337,21 +365,26 @@ func (r *externalTableResource) ValidateConfig(ctx context.Context, req resource
 				}
 			}
 		}
+
 		if !data.SerdeProperties.IsUnknown() && len(data.SerdeProperties.Elements()) > 0 && !data.Serde.IsUnknown() && knownString(data.Serde) == "" {
 			resp.Diagnostics.AddAttributeError(path.Root("serde_properties"), "Invalid external table", "serde_properties require serde")
 		}
+
 		for name, value := range map[string]types.String{"field_delimiter": data.FieldDelimiter, "line_delimiter": data.LineDelimiter} {
 			if err := externalTableDelimiter(name, knownString(value)); err != nil {
 				resp.Diagnostics.AddError("Invalid external table", err.Error())
 			}
 		}
+
 		if !data.Location.IsUnknown() && !data.Location.IsNull() {
 			if err := externalLocation(data.Location.ValueString()); err != nil {
 				resp.Diagnostics.AddError("Invalid external table", err.Error())
 			}
 		}
+
 		return
 	}
+
 	if err := validateExternalTableConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid external table", err.Error())
 	}
@@ -376,33 +409,43 @@ func (r *externalTableResource) fetch(ctx context.Context, data externalTableMod
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return nil, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return nil, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readExternalTableQuery(data))
 	if err != nil || len(rows) == 0 {
 		return nil, err
 	}
+
 	if len(rows) != 1 {
 		return nil, fmt.Errorf("external table %q is ambiguous in the catalog", data.Name.ValueString())
 	}
+
 	catalog := &externalTableCatalog{table: rows[0]}
+
 	columnRows, err := r.selectRows(ctx, data.Database.ValueString(), readExternalTableColumnsQuery(data.Database.ValueString(), data.Schema.ValueString(), data.Name.ValueString()))
 	if err != nil {
 		return nil, err
 	}
+
 	if catalog.columns, catalog.partitionKeys, err = externalTableCatalogColumns(columnRows); err != nil {
 		return nil, err
 	}
+
 	if len(catalog.columns) == 0 {
 		return nil, fmt.Errorf("external table %q has no columns in the catalog", data.Name.ValueString())
 	}
+
 	if catalog.serdeParameters, err = externalTableCatalogMap("SerDe parameters", rows[0]["serde_parameters"]); err != nil {
 		return nil, err
 	}
+
 	if catalog.parameters, err = externalTableCatalogMap("parameters", rows[0]["parameters"]); err != nil {
 		return nil, err
 	}
+
 	return catalog, nil
 }
 
@@ -423,6 +466,7 @@ const (
 // accident of history that must not show up as a reordering.
 func externalTableColumnsInOrder(prior []externalTableColumnValue, catalog []externalTableCatalogColumn) []externalTableCatalogColumn {
 	ordered := make([]externalTableCatalogColumn, 0, len(catalog))
+
 	placed := make([]bool, len(catalog))
 	for _, known := range prior {
 		for i, column := range catalog {
@@ -432,11 +476,13 @@ func externalTableColumnsInOrder(prior []externalTableColumnValue, catalog []ext
 			}
 		}
 	}
+
 	for i, column := range catalog {
 		if !placed[i] {
 			ordered = append(ordered, column)
 		}
 	}
+
 	return ordered
 }
 
@@ -447,6 +493,7 @@ func observeExternalTableColumns(prior types.List, catalog []externalTableCatalo
 	if byName {
 		catalog = externalTableColumnsInOrder(previous, catalog)
 	}
+
 	columns := make([]externalTableColumnValue, len(catalog))
 	for i, column := range catalog {
 		columns[i] = externalTableColumnValue{Name: types.StringValue(column.name), Type: types.StringValue(column.dataType)}
@@ -459,6 +506,7 @@ func observeExternalTableColumns(prior types.List, catalog []externalTableCatalo
 			}
 		}
 	}
+
 	return externalTableColumnList(columns)
 }
 
@@ -469,6 +517,7 @@ func observeExternalTableOption(prior types.String, catalog string, reported boo
 	if prior.IsNull() || prior.IsUnknown() || !reported || catalog == prior.ValueString() {
 		return prior
 	}
+
 	return types.StringValue(catalog)
 }
 
@@ -477,6 +526,7 @@ func observeExternalTableProperties(prior types.Map, catalog map[string]string) 
 	if prior.IsNull() || prior.IsUnknown() {
 		return prior
 	}
+
 	observed := map[string]attr.Value{}
 	for key, value := range prior.Elements() {
 		observed[key] = value
@@ -484,6 +534,7 @@ func observeExternalTableProperties(prior types.Map, catalog map[string]string) 
 			observed[key] = types.StringValue(text)
 		}
 	}
+
 	return types.MapValueMust(types.StringType, observed)
 }
 
@@ -492,10 +543,12 @@ func externalTableStringMap(values map[string]string) types.Map {
 	if len(values) == 0 {
 		return types.MapNull(types.StringType)
 	}
+
 	elements := map[string]attr.Value{}
 	for key, value := range values {
 		elements[key] = types.StringValue(value)
 	}
+
 	return types.MapValueMust(types.StringType, elements)
 }
 
@@ -506,6 +559,7 @@ func externalTableFormat(inputFormat string) sqlclient.Keyword {
 			return format
 		}
 	}
+
 	return ""
 }
 
@@ -514,12 +568,14 @@ func nullableString(value string) types.String {
 	if value == "" {
 		return types.StringNull()
 	}
+
 	return types.StringValue(value)
 }
 
 // observeExternalTable derives the state from the catalog, starting from prior for identity and spellings.
 func observeExternalTable(catalog *externalTableCatalog, prior externalTableModel, mode externalTableObservation) externalTableModel {
 	data := prior
+
 	row := catalog.table
 	if !strings.EqualFold(prior.Name.ValueString(), row["tablename"]) {
 		data.Name = types.StringValue(row["tablename"])
@@ -532,38 +588,47 @@ func observeExternalTable(catalog *externalTableCatalog, prior externalTableMode
 	if len(catalog.partitionKeys) == 0 && (prior.PartitionKeys.IsNull() || prior.PartitionKeys.IsUnknown()) {
 		data.PartitionKeys = types.ListNull(externalTableColumnType)
 	}
+
 	data.Location = types.StringValue(row["location"])
 	if location := knownString(prior.Location); location != "" && externalLocationsMatch(location, row["location"]) {
 		data.Location = prior.Location
 	}
+
 	data.InputFormat, data.OutputFormat = nullableString(row["input_format"]), nullableString(row["output_format"])
 	format := externalTableFormat(row["input_format"])
 	library := row["serialization_lib"]
 	fieldDelimiter, hasFieldDelimiter := catalog.serdeParameters["field.delim"]
 	lineDelimiter, hasLineDelimiter := catalog.serdeParameters["line.delim"]
 	fieldDelimiter, lineDelimiter = externalTableCatalogDelimiter(fieldDelimiter), externalTableCatalogDelimiter(lineDelimiter)
+
 	if mode == externalTableRefresh {
 		if storedAs := knownString(prior.StoredAs); storedAs != "" && format != "" && !strings.EqualFold(storedAs, string(format)) {
 			data.StoredAs = types.StringValue(string(format))
 		}
+
 		data.Serde = observeExternalTableOption(prior.Serde, library, library != "")
 		data.FieldDelimiter = observeExternalTableOption(prior.FieldDelimiter, fieldDelimiter, hasFieldDelimiter)
 		data.LineDelimiter = observeExternalTableOption(prior.LineDelimiter, lineDelimiter, hasLineDelimiter)
 		data.SerdeProperties = observeExternalTableProperties(prior.SerdeProperties, catalog.serdeParameters)
 		data.TableProperties = observeExternalTableProperties(prior.TableProperties, catalog.parameters)
+
 		return data
 	}
+
 	data.StoredAs = nullableString(string(format))
+
 	data.Serde = types.StringNull()
 	if library != "" && (format == "" || library != externalTableImpliedSerdes[format]) {
 		data.Serde = types.StringValue(library)
 	}
+
 	data.FieldDelimiter, data.LineDelimiter, data.SerdeProperties = types.StringNull(), types.StringNull(), types.MapNull(types.StringType)
 	if data.Serde.IsNull() {
 		// Hive's defaults, \u0001 and newline, are what a table without ROW FORMAT records.
 		if hasFieldDelimiter && fieldDelimiter != "\u0001" {
 			data.FieldDelimiter = types.StringValue(fieldDelimiter)
 		}
+
 		if hasLineDelimiter && lineDelimiter != "\n" {
 			data.LineDelimiter = types.StringValue(lineDelimiter)
 		}
@@ -573,16 +638,19 @@ func observeExternalTable(catalog *externalTableCatalog, prior externalTableMode
 		delete(properties, "serialization.format")
 		data.SerdeProperties = externalTableStringMap(properties)
 	}
+
 	data.TableProperties = types.MapNull(types.StringType)
 	if mode == externalTableLookup {
 		data.TableProperties = externalTableStringMap(catalog.parameters)
 	}
+
 	return data
 }
 
 // externalTableDivergence names the planned attributes the catalog does not reflect after an apply.
 func externalTableDivergence(plan, observed externalTableModel) []string {
 	var differing []string
+
 	for name, values := range map[string][2]attr.Value{
 		"column":           {plan.Columns, observed.Columns},
 		"partition_key":    {plan.PartitionKeys, observed.PartitionKeys},
@@ -606,7 +674,9 @@ func externalTableDivergence(plan, observed externalTableModel) []string {
 			}
 		}
 	}
+
 	slices.Sort(differing)
+
 	return differing
 }
 
@@ -616,13 +686,16 @@ func (r *externalTableResource) verify(ctx context.Context, plan externalTableMo
 	if err != nil {
 		return plan, nil, err
 	}
+
 	if catalog == nil {
 		return plan, nil, fmt.Errorf("the external table is absent after the change")
 	}
+
 	observed := observeExternalTable(catalog, plan, externalTableRefresh)
 	if differing := externalTableDivergence(plan, observed); len(differing) > 0 {
 		return observed, catalog, fmt.Errorf("the catalog does not reflect the planned %s", strings.Join(differing, ", "))
 	}
+
 	return observed, catalog, nil
 }
 
@@ -630,39 +703,50 @@ func (r *externalTableResource) verify(ctx context.Context, plan externalTableMo
 func (r *externalTableResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data externalTableModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	err := validateExternalTableConfig(data)
+
 	var statement string
 	if err == nil {
 		statement, err = createExternalTableStatement(data)
 	}
+
 	if err == nil {
 		err = r.exec(ctx, data.Database.ValueString(), statement)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Create external table", err.Error())
 		return
 	}
+
 	data.ID = r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
 	planned := data
 	// Failed verification must still record the created table with known values.
 	if data.InputFormat.IsUnknown() {
 		data.InputFormat = types.StringNull()
 	}
+
 	if data.OutputFormat.IsUnknown() {
 		data.OutputFormat = types.StringNull()
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	observed, verified, err := r.verify(ctx, planned)
 	if resp.Private != nil {
 		resp.Diagnostics.Append(recordExternalTableLayout(ctx, resp.Private, verified)...)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Verify external table", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &observed)...)
 }
 
@@ -670,9 +754,11 @@ func (r *externalTableResource) Create(ctx context.Context, req resource.CreateR
 func (r *externalTableResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data externalTableModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	catalog, err := r.fetch(ctx, data)
 	switch {
 	case err != nil:
@@ -685,6 +771,7 @@ func (r *externalTableResource) Read(ctx context.Context, req resource.ReadReque
 			// Import restores only the identity, so the definition comes from the catalog.
 			mode = externalTableAdopt
 		}
+
 		observed := observeExternalTable(catalog, data, mode)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &observed)...)
 		// The framework always provides private state; direct unit calls do not.
@@ -699,39 +786,48 @@ func (r *externalTableResource) Update(ctx context.Context, req resource.UpdateR
 	var plan, prior externalTableModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	catalog, err := r.fetch(ctx, prior)
 	if err != nil {
 		resp.Diagnostics.AddError("Read external table", err.Error())
 		return
 	}
+
 	if catalog == nil {
 		resp.Diagnostics.AddError("Update external table", "The external table disappeared; refresh the plan.")
 		return
 	}
+
 	if prior.TableProperties.IsNull() {
 		// Comparing with the current catalog rather than the recorded layout keeps a plan made without refresh from
 		// repeating properties that are already set.
 		prior.TableProperties = externalTableStringMap(externalTablePriorProperties(prior.TableProperties, plan.TableProperties, catalog.parameters))
 	}
+
 	statements, err := alterExternalTableStatements(prior, plan, catalog.layout())
 	if err == nil {
 		err = r.exec(ctx, plan.Database.ValueString(), statements...)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Update external table", err.Error())
 		return
 	}
+
 	observed, verified, err := r.verify(ctx, plan)
 	if resp.Private != nil {
 		resp.Diagnostics.Append(recordExternalTableLayout(ctx, resp.Private, verified)...)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Verify external table", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &observed)...)
 }
 
@@ -739,13 +835,16 @@ func (r *externalTableResource) Update(ctx context.Context, req resource.UpdateR
 func (r *externalTableResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data externalTableModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	catalog, err := r.fetch(ctx, data)
 	if err == nil && catalog != nil {
 		err = r.exec(ctx, data.Database.ValueString(), dropExternalTableStatement(data))
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete external table", err.Error())
 	}

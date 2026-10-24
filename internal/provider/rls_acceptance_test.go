@@ -64,6 +64,7 @@ data "redshift_rls_policies" "local" { database = redshift_database.local.name }
 		if !protected {
 			return base
 		}
+
 		return base + fmt.Sprintf(`
 resource "redshift_table_security" "fixture" {
   database = redshift_rls_policy_attachment.reader.database
@@ -107,23 +108,28 @@ data "redshift_rls_policy" "own_region" {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// A failed run may leave the protected fixture behind; dropping the database removes it with its policies.
 	t.Cleanup(func() {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
 			_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)
 		}
 	})
+
 	rlsOn := func() (bool, error) {
 		data := tableSecurityModel{Database: types.StringValue(name), Schema: types.StringValue("public"), Relation: types.StringValue("fixture")}
 		r := &tableSecurityResource{resourceClient{client: client, warehouse: warehouseBinding{field: "workgroup_name", value: types.StringValue(workgroup)}, database: types.StringValue(database)}}
 		found, err := r.read(ctx, &data)
+
 		return found && data.RowLevelSecurity.ValueBool(), err
 	}
+
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
@@ -184,6 +190,7 @@ resource "redshift_database" "local" { name = "` + name + `" }`},
 					if err == nil && on {
 						err = fmt.Errorf("row-level security is still on after destroying redshift_table_security")
 					}
+
 					return err
 				},
 			},

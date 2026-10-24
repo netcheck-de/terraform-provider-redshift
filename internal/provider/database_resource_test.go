@@ -31,6 +31,7 @@ var _ = registerLifecycleCase(lifecycleCase{
 		if operation == "create" && strings.HasPrefix(sql, "SELECT consumer_database") {
 			return []sqlclient.Row{{"consumer_database": ""}}
 		}
+
 		return nil
 	},
 })
@@ -56,6 +57,7 @@ func localDatabaseClient(show queryFunc) queryFunc {
 		case strings.HasPrefix(sql, "SELECT db_collation()"):
 			return []sqlclient.Row{{"collation": "case_sensitive"}}, nil
 		}
+
 		return show(ctx, target, sql, parameters)
 	}
 }
@@ -66,9 +68,11 @@ func TestSharedDatabaseMetadataUsesCompleteJSON(t *testing.T) {
 		t.Run(fmt.Sprint(enabled), func(t *testing.T) {
 			options := fmt.Sprintf(`{"datashare_name":"source","datashare_producer_account":"123456789012","datashare_producer_namespace":"11111111-2222-3333-4444-555555555555","datashare_producer_region":"eu-central-1","permissions":%t}`, enabled)
 			require.Greater(t, strings.Index(options, `"permissions"`), 128)
+
 			r := testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				assert.Equal(t, `SHOW DATABASES LIKE 'analytics'`, sql)
 				assert.Nil(t, parameters)
+
 				return []sqlclient.Row{{"database_name": "analytics", "database_type": "shared", "parameters": options}}, nil
 			}))
 			data, found, err := r.databaseMetadata(context.Background(), "analytics")
@@ -95,6 +99,7 @@ func TestDatabaseMetadataRejectsAmbiguousAndIncompleteRows(t *testing.T) {
 		_, _, err := r.databaseMetadata(context.Background(), "analytics")
 		require.Error(t, err)
 	}
+
 	r := testResourceClient(localDatabaseClient(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return []sqlclient.Row{{"database_name": "analyticsXtest", "database_type": "local"}, {"database_name": "analytics_test", "database_type": "local", "database_isolation_level": "Serializable"}}, nil
 	}))
@@ -118,9 +123,11 @@ func TestDatabaseCreationErrorsRetainKnownMetadata(t *testing.T) {
 					if mode == "read error" {
 						return nil, fmt.Errorf("catalog unavailable")
 					}
+
 					if mode == "not visible" {
 						return nil, nil
 					}
+
 					return []sqlclient.Row{{"database_name": "analytics", "database_type": "shared", "parameters": `{"datashare_name":"source","datashare_producer_account":"123456789012","datashare_producer_namespace":"11111111-2222-3333-4444-555555555555","permissions":false}`}}, nil
 				}
 			}))}
@@ -130,6 +137,7 @@ func TestDatabaseCreationErrorsRetainKnownMetadata(t *testing.T) {
 			r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state)}, &response)
 			require.True(t, response.Diagnostics.HasError())
 			assert.True(t, response.State.Raw.IsFullyKnown(), "%v", response.State.Raw)
+
 			var observed databaseResourceModel
 			require.False(t, response.State.Get(context.Background(), &observed).HasError())
 			assert.Equal(t, "SHARED", observed.DatabaseType.ValueString())
@@ -148,6 +156,7 @@ func TestDatabaseObservesPermissionMode(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, found)
 	assert.False(t, data.WithPermissions.ValueBool())
+
 	c.permissions = true
 	found, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
@@ -161,20 +170,24 @@ func TestDatabaseRejectsIncompatibleBinding(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			row := sqlclient.Row{"database_name": "analytics", "database_type": "shared"}
 			options := map[string]any{"datashare_name": "source", "datashare_producer_account": "123456789012", "datashare_producer_namespace": "11111111-2222-3333-4444-555555555555", "permissions": true}
+
 			if change == "type" {
 				row["database_type"] = "different"
 			} else {
 				field := map[string]string{"account": "datashare_producer_account", "namespace": "datashare_producer_namespace", "share": "datashare_name"}[change]
 				options[field] = "different"
 			}
+
 			encoded, err := json.Marshal(options)
 			require.NoError(t, err)
+
 			row["parameters"] = string(encoded)
 			writes := 0
 			r := &databaseResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 				if !strings.HasPrefix(sql, "SHOW") {
 					writes++
 				}
+
 				return []sqlclient.Row{row}, nil
 			}))}
 			data := databaseModel{Name: types.StringValue("analytics"), DatashareARN: types.StringValue(shareARN), WithPermissions: types.BoolValue(true)}
@@ -184,6 +197,7 @@ func TestDatabaseRejectsIncompatibleBinding(t *testing.T) {
 			assert.Zero(t, writes, "incompatible database must not be dropped")
 		})
 	}
+
 	for _, value := range []string{"invalid", "arn:aws:s3:eu-central-1:123456789012:bucket", "arn:aws:redshift:eu-central-1:123456789012:datashare:namespace"} {
 		_, err := parseShare(value)
 		assert.Error(t, err, "invalid share %q", value)
@@ -197,8 +211,10 @@ func TestDatabaseCreationConditions(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
+
 				c := &catalog{}
 				data := databaseModel{Name: types.StringValue("analytics"), DatashareARN: types.StringValue(shareARN), WithPermissions: types.BoolValue(true)}
+
 				switch name {
 				case "invalid ARN":
 					data.DatashareARN = types.StringValue("invalid")
@@ -212,6 +228,7 @@ func TestDatabaseCreationConditions(t *testing.T) {
 				case "without permissions":
 					data.WithPermissions = types.BoolValue(false)
 				}
+
 				polls := 0
 				client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 					if strings.HasPrefix(sql, "SELECT consumer_database") {
@@ -220,27 +237,34 @@ func TestDatabaseCreationConditions(t *testing.T) {
 							return nil, nil
 						}
 					}
+
 					return c.Query(ctx, target, sql, parameters)
 				})
+
 				r := &databaseResource{testResourceClient(client)}
 				if name == "unknown target" {
 					r.warehouse.value = types.StringUnknown()
 				}
+
 				state := testState(t, r, data)
 				resp := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
 				started := time.Now()
+
 				r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan(state)}, &resp)
 				assert.Equal(t, name != "propagation" && name != "without permissions", resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 				if name == "propagation" {
 					assert.Equal(t, 2, polls)
 					assert.Equal(t, time.Second, time.Since(started))
 				}
+
 				if name == "without permissions" {
 					assert.False(t, c.permissions)
 				}
 			})
 		})
 	}
+
 	c := &catalog{database: true, permissions: true}
 	r := &databaseResource{testResourceClient(c)}
 	data := databaseModel{Name: types.StringValue("analytics"), DatashareARN: types.StringValue("invalid")}
@@ -258,35 +282,46 @@ func TestLocalDatabaseLifecycle(t *testing.T) {
 					if caseName == "read error" && present {
 						return nil, fmt.Errorf("catalog unavailable")
 					}
+
 					if !present {
 						return nil, nil
 					}
+
 					typ := "local"
 					if caseName == "already shared" {
 						typ = "shared"
 					}
+
 					return []sqlclient.Row{{"database_name": "warehouse", "database_type": typ, "database_isolation_level": "Snapshot Isolation", "parameters": `{"datashare_name":"source","datashare_producer_account":"123456789012","datashare_producer_namespace":"11111111-2222-3333-4444-555555555555","permissions":true}`}}, nil
 				}
+
 				if sql == `CREATE DATABASE "warehouse"` {
 					if caseName == "create error" {
 						return nil, fmt.Errorf("creation failed")
 					}
+
 					present = caseName != "missing after create"
+
 					return nil, nil
 				}
+
 				return nil, fmt.Errorf("unexpected SQL %q", sql)
 			})
 			r := &databaseResource{testResourceClient(client)}
+
 			data := databaseModel{Name: types.StringValue("warehouse"), DatashareARN: types.StringNull(), WithPermissions: types.BoolValue(true)}
 			if caseName == "already shared" {
 				_, err := r.read(context.Background(), &data)
 				require.ErrorContains(t, err, "not a local database")
+
 				return
 			}
+
 			state := testState(t, r, data)
 			resp := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
 			r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state)}, &resp)
 			assert.Equal(t, caseName != "create", resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 			if caseName == "create" {
 				assert.True(t, present)
 			}
@@ -301,6 +336,7 @@ func TestDatabaseImportAllowsLocalDatabase(t *testing.T) {
 	resp := resource.ImportStateResponse{State: testState(t, r, empty)}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","name":"warehouse"}`}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 	var data databaseResourceModel
 	require.False(t, resp.State.Get(context.Background(), &data).HasError())
 	assert.True(t, data.DatashareARN.IsNull())
@@ -334,6 +370,7 @@ func TestWithPermissionsReplacesOnlySharedDatabases(t *testing.T) {
 				DatabaseType: types.StringNull(), ShareName: types.StringNull(), ProducerAccount: types.StringNull(), ProducerNamespace: types.StringNull(),
 			})
 			request := planmodifier.BoolRequest{State: state, StateValue: types.BoolValue(true), PlanValue: types.BoolValue(false), ConfigValue: types.BoolValue(false)}
+
 			var response boolplanmodifier.RequiresReplaceIfFuncResponse
 			sharedDatabaseReplacement(context.Background(), request, &response)
 			assert.Equal(t, !arn.IsNull(), response.RequiresReplace)
@@ -348,8 +385,11 @@ func TestDatabaseMetadataFindsWildcardNames(t *testing.T) {
 	r := testResourceClient(localDatabaseClient(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		quoted, found := strings.CutPrefix(sql, "SHOW DATABASES LIKE ")
 		require.True(t, found, sql)
+
 		value := strings.NewReplacer(`''`, `'`, `\\`, `\`).Replace(strings.Trim(quoted, "'"))
+
 		var expression strings.Builder
+
 		for i := 0; i < len(value); i++ {
 			switch {
 			case value[i] == '\\' && i+1 < len(value):
@@ -363,15 +403,20 @@ func TestDatabaseMetadataFindsWildcardNames(t *testing.T) {
 				expression.WriteString(regexp.QuoteMeta(value[i : i+1]))
 			}
 		}
+
 		pattern := regexp.MustCompile("^" + expression.String() + "$")
+
 		var rows []sqlclient.Row
+
 		for _, name := range databases {
 			if pattern.MatchString(name) {
 				rows = append(rows, sqlclient.Row{"database_name": name, "database_type": "local", "database_isolation_level": "Serializable"})
 			}
 		}
+
 		return rows, nil
 	}))
+
 	for _, name := range databases {
 		t.Run(name, func(t *testing.T) {
 			_, found, err := r.databaseMetadata(context.Background(), name)
@@ -390,6 +435,7 @@ func TestDatabaseIntegrationReadEdges(t *testing.T) {
 	_, found, err := client.databaseIntegration(ctx, "replica")
 	require.ErrorContains(t, err, "2 integrations")
 	assert.False(t, found)
+
 	observed := integrationState()
 	observed.DatabaseType = types.StringValue(databaseTypeShared)
 	require.ErrorContains(t, client.databaseReadIntegration(ctx, observed.Integration, &observed), "shared database")
@@ -406,6 +452,7 @@ func TestDatabaseIntegrationWaitFailures(t *testing.T) {
 					if missing {
 						return nil, nil
 					}
+
 					return nil, failure
 				})
 				r := &databaseResource{testResourceClient(client)}
@@ -414,15 +461,19 @@ func TestDatabaseIntegrationWaitFailures(t *testing.T) {
 				integration := *observed.Integration
 				observed.Integration = &integration
 				observed.Integration.RefreshInterval = types.Int64Value(1)
+
 				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 				defer cancel()
+
 				started := time.Now()
+
 				err := r.waitDatabaseIntegration(ctx, expected, &observed)
 				if missing {
 					require.ErrorIs(t, err, errDatabaseVanished)
 				} else {
 					require.ErrorIs(t, err, failure)
 				}
+
 				assert.Equal(t, time.Second, time.Since(started))
 			})
 		})
@@ -441,14 +492,17 @@ func TestDatabaseUnreadableCollation(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.True(t, data.Collation.IsNull())
+
 	r = &databaseResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		if strings.Contains(strings.ToUpper(sql), "DB_COLLATION()") {
 			return nil, errors.New("connection limit")
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	}))}
 	data.Collation = types.StringUnknown()
 	data.DatabaseType = types.StringValue(databaseTypeLocal)
+
 	var diagnostics diag.Diagnostics
 	r.databaseReadCollation(context.Background(), &data, &diagnostics)
 	assert.True(t, data.Collation.IsNull())
@@ -464,6 +518,7 @@ func TestDatabaseUpdateReportsDisappearance(t *testing.T) {
 		if strings.HasPrefix(sql, "ALTER DATABASE") {
 			c.localDB = false
 		}
+
 		return rows, err
 	}))}
 	prior := databaseLocalOptionsModel("admin", -1, "CASE_SENSITIVE", "SNAPSHOT")

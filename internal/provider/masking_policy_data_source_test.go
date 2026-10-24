@@ -35,20 +35,24 @@ func TestMaskingPolicyLookup(t *testing.T) {
 func TestMaskingPolicyAttachmentLookup(t *testing.T) {
 	model := maskingTestAttachment(nil)
 	model.Priority, model.InputColumns = types.Int64Null(), types.ListNull(types.StringType)
+
 	for _, attached := range []bool{true, false} {
 		c := fullCatalog()
 		fakeState[*maskingFake](c, maskingFakeFamily).attached = attached
 		source := newMaskingPolicyAttachmentDataSource()
 		state, diagnostics := readSource(t, source, maskingAttachmentLookupConfig(t, model), c)
 		require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 		var data types.Object
 		require.False(t, state.Get(context.Background(), &data).HasError())
 		assert.Equal(t, types.BoolValue(attached), data.Attributes()["exists"])
 		assert.Empty(t, c.writes, "lookups never mutate")
+
 		if !attached {
 			assert.True(t, data.Attributes()["id"].IsNull())
 			continue
 		}
+
 		client := testResourceClient(nil)
 		assert.Equal(t, client.identity("admin", maskingAttachmentIdentity(model)), data.Attributes()["id"])
 		assert.Equal(t, types.Int64Value(10), data.Attributes()["priority"])
@@ -59,12 +63,14 @@ func TestMaskingPolicyAttachmentLookup(t *testing.T) {
 // maskingAttachmentLookupConfig renders the lookup configuration of model with null computed values.
 func maskingAttachmentLookupConfig(t *testing.T, model maskingPolicyAttachmentModel) types.Object {
 	t.Helper()
+
 	source := newMaskingPolicyAttachmentDataSource()
 	data := catalogLookupObject(t, source, map[string]string{
 		"database": model.Database.ValueString(), "policy": model.Policy.ValueString(), "schema": model.Schema.ValueString(),
 		"relation": model.Relation.ValueString(), "grantee": model.Grantee.ValueString(), "grantee_type": model.GranteeType.ValueString(),
 	})
 	lookupValue(&data, "columns", model.Columns)
+
 	return data
 }
 
@@ -74,6 +80,7 @@ func TestMaskingPoliciesListing(t *testing.T) {
 		source := newMaskingPoliciesDataSource()
 		state, diagnostics := readSource(t, source, collectionConfig(t, source, filters), fullCatalog())
 		require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 		var data types.Object
 		require.False(t, state.Get(context.Background(), &data).HasError())
 		items := collectionResult(source, data).Elements()
@@ -81,17 +88,21 @@ func TestMaskingPoliciesListing(t *testing.T) {
 		item := items[0].(types.Object)
 		assert.Equal(t, "mask_email", objectString(item, "name"))
 		assert.Equal(t, "CAST('***' AS TEXT)", objectString(item, "expression"))
+
 		database := "admin"
 		if selected, ok := filters["database"]; ok {
 			database = selected
 		}
+
 		assert.Equal(t, database, objectString(item, "database"))
 	}
+
 	empty := fullCatalog()
 	fakeState[*maskingFake](empty, maskingFakeFamily).policy = false
 	source := newMaskingPoliciesDataSource()
 	state, diagnostics := readSource(t, source, collectionConfig(t, source, nil), empty)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var data types.Object
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.Empty(t, collectionResult(source, data).Elements())
@@ -121,10 +132,12 @@ func TestMaskingPolicyOutputsDescribeCatalogSpelling(t *testing.T) {
 	inputs := func(source datasource.DataSource, collection string) schema.ListNestedAttribute {
 		var response datasource.SchemaResponse
 		source.Schema(context.Background(), datasource.SchemaRequest{}, &response)
+
 		attributes := response.Schema.Attributes
 		if collection != "" {
 			attributes = attributes[collection].(schema.ListNestedAttribute).NestedObject.Attributes
 		}
+
 		return attributes["input_column"].(schema.ListNestedAttribute)
 	}
 	for name, column := range map[string]schema.ListNestedAttribute{

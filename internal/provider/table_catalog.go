@@ -80,6 +80,7 @@ func tableCatalogBool(value string) bool {
 	case "true", "t", "1", "yes":
 		return true
 	}
+
 	return false
 }
 
@@ -96,6 +97,7 @@ func tableEncodingName(value string) string {
 	if encoding == "NONE" || encoding == "" {
 		return "RAW"
 	}
+
 	return encoding
 }
 
@@ -105,11 +107,14 @@ func tableParseIdentity(defaultText string) *tableIdentitySpec {
 	if match == nil {
 		return nil
 	}
+
 	seed, seedErr := strconv.ParseInt(match[2], 10, 64)
+
 	step, stepErr := strconv.ParseInt(match[3], 10, 64)
 	if seedErr != nil || stepErr != nil {
 		return nil
 	}
+
 	return &tableIdentitySpec{seed: seed, step: step, generatedByDefault: match[1] == "default_identity"}
 }
 
@@ -120,31 +125,39 @@ func tableCatalogFrom(table sqlclient.Row, attributes, columns, constraints, sor
 	if catalog.owner == "" {
 		return catalog, fmt.Errorf("the catalog reports no owner")
 	}
+
 	style, ok := tableDistStyleNames[strings.TrimSpace(table["diststyle"])]
 	if !ok {
 		return catalog, fmt.Errorf("unsupported distribution style %q", table["diststyle"])
 	}
+
 	catalog.distStyle = style
+
 	catalog.effectiveDistStyle = tableEffectiveDistStyleNames[strings.TrimSpace(table["effective_diststyle"])]
 	if len(sortKeys) > 0 {
 		catalog.sortKeyListed, catalog.sortKey1 = true, strings.TrimSpace(sortKeys[0]["sortkey1"])
 	}
+
 	details := map[string]sqlclient.Row{}
 	for _, row := range columns {
 		details[row["column_name"]] = row
 	}
+
 	if len(attributes) == 0 || len(details) != len(attributes) {
 		return catalog, fmt.Errorf("pg_attribute and svv_redshift_columns report different columns")
 	}
+
 	for _, row := range attributes {
 		detail, ok := details[row["column_name"]]
 		if !ok {
 			return catalog, fmt.Errorf("svv_redshift_columns does not report column %q", row["column_name"])
 		}
+
 		sortKey, err := strconv.Atoi(strings.TrimSpace(detail["sortkey"]))
 		if err != nil {
 			return catalog, fmt.Errorf("column %q has an invalid sort key position %q", row["column_name"], detail["sortkey"])
 		}
+
 		column := tableCatalogColumn{
 			name: row["column_name"], dataType: sqlclient.CatalogType(row["data_type"]), notNull: tableCatalogBool(row["not_null"]),
 			defaultText: strings.TrimSpace(detail["column_default"]), encoding: tableEncodingName(detail["encoding"]),
@@ -153,20 +166,27 @@ func tableCatalogFrom(table sqlclient.Row, attributes, columns, constraints, sor
 		if column.identity = tableParseIdentity(column.defaultText); column.identity != nil {
 			column.defaultText = ""
 		}
+
 		catalog.columns = append(catalog.columns, column)
 	}
+
 	for _, row := range constraints {
 		constraint := tableCatalogConstraint{name: row["constraint_name"], kind: strings.TrimSpace(row["constraint_type"]), refSchema: row["referenced_schema"], refTable: row["referenced_table"]}
+
 		var err error
+
 		constraint.columns, constraint.refColumns, err = tableParseConstraintDefinition(row["definition"], constraint.kind == "f")
 		if err != nil {
 			return catalog, fmt.Errorf("constraint %q: %w", constraint.name, err)
 		}
+
 		if constraint.kind == "f" && (constraint.refSchema == "" || constraint.refTable == "") {
 			return catalog, fmt.Errorf("constraint %q references a table the catalog does not report", constraint.name)
 		}
+
 		catalog.constraints = append(catalog.constraints, constraint)
 	}
+
 	return catalog, nil
 }
 
@@ -176,14 +196,20 @@ func tableIdentifierList(text string, start int) ([]string, int, error) {
 	if start >= len(text) || text[start] != '(' {
 		return nil, 0, fmt.Errorf("expected a column list in %q", text)
 	}
-	var names []string
-	var current strings.Builder
+
+	var (
+		names   []string
+		current strings.Builder
+	)
+
 	quoted, pending := false, false
+
 	for i := start + 1; i < len(text); i++ {
 		char := text[i]
 		switch {
 		case quoted && char == '"' && i+1 < len(text) && text[i+1] == '"':
 			current.WriteByte('"')
+
 			i++
 		case char == '"':
 			quoted, pending = !quoted, true
@@ -193,18 +219,23 @@ func tableIdentifierList(text string, start int) ([]string, int, error) {
 			if !pending && current.Len() == 0 {
 				return nil, 0, fmt.Errorf("empty column name in %q", text)
 			}
+
 			names = append(names, current.String())
 			current.Reset()
+
 			pending = false
+
 			if char == ')' {
 				return names, i + 1, nil
 			}
 		case char == ' ':
 		default:
 			current.WriteByte(char)
+
 			pending = true
 		}
 	}
+
 	return nil, 0, fmt.Errorf("unterminated column list in %q", text)
 }
 
@@ -216,16 +247,21 @@ func tableParseConstraintDefinition(definition string, foreign bool) ([]string, 
 	if open < 0 {
 		return nil, nil, fmt.Errorf("unexpected definition %q", definition)
 	}
+
 	columns, end, err := tableIdentifierList(definition, open)
 	if err != nil || !foreign {
 		return columns, nil, err
 	}
+
 	rest := definition[end:]
+
 	marker := strings.Index(rest, "REFERENCES ")
 	if marker < 0 {
 		return nil, nil, fmt.Errorf("foreign key definition %q has no REFERENCES clause", definition)
 	}
+
 	quoted := false
+
 	for i := end + marker + len("REFERENCES "); i < len(definition); i++ {
 		switch char := definition[i]; {
 		case char == '"':
@@ -235,6 +271,7 @@ func tableParseConstraintDefinition(definition string, foreign bool) ([]string, 
 			return columns, refColumns, err
 		}
 	}
+
 	return nil, nil, fmt.Errorf("foreign key definition %q has no referenced columns", definition)
 }
 
@@ -244,6 +281,7 @@ func tableStringListValue(values []string) types.List {
 	for i, value := range values {
 		elements[i] = types.StringValue(value)
 	}
+
 	return types.ListValueMust(types.StringType, elements)
 }
 
@@ -266,14 +304,17 @@ func tableEffectiveSortColumns(value types.Object) []string {
 	if value.IsNull() || value.IsUnknown() {
 		return nil
 	}
+
 	list, ok := value.Attributes()["columns"].(types.List)
 	if !ok {
 		return nil
 	}
+
 	columns, err := tableStringList(list, "effective_sort_key.columns")
 	if err != nil {
 		return nil
 	}
+
 	return columns
 }
 
@@ -283,6 +324,7 @@ func tableKeepEmpty(prior, null types.Set) types.Set {
 	if !prior.IsNull() && !prior.IsUnknown() && len(prior.Elements()) == 0 {
 		return prior
 	}
+
 	return null
 }
 
@@ -294,7 +336,9 @@ func tableColumnOrder(prior, physical []string) []string {
 	for _, name := range physical {
 		present[name] = true
 	}
+
 	ordered := make([]string, 0, len(physical))
+
 	seen := map[string]bool{}
 	for _, name := range append(slices.Clone(prior), physical...) {
 		if present[name] && !seen[name] {
@@ -302,6 +346,7 @@ func tableColumnOrder(prior, physical []string) []string {
 			seen[name] = true
 		}
 	}
+
 	return ordered
 }
 
@@ -311,10 +356,12 @@ func tablePriorSortStyle(prior tableModel) string {
 	if prior.Column.IsNull() || prior.Column.IsUnknown() {
 		return ""
 	}
+
 	style, _, known := tableSortKeyBlock(prior.SortKey)
 	if !known {
 		return ""
 	}
+
 	return style
 }
 
@@ -336,6 +383,7 @@ func tableDeclaredSortStyle(catalog tableCatalog, columns []string, interleaved 
 	case !catalog.sortKeyListed && prior == "AUTO":
 		return "AUTO"
 	}
+
 	return "COMPOUND"
 }
 
@@ -350,7 +398,9 @@ func tableReconcile(prior tableModel, catalog tableCatalog) (tableModel, map[str
 	observed := prior
 	observed.Owner = types.StringValue(catalog.owner)
 	priorColumns := map[string]tableColumnModel{}
+
 	var priorOrder []string
+
 	if !prior.Column.IsNull() && !prior.Column.IsUnknown() {
 		var columns []tableColumnModel
 		if diagnostics := prior.Column.ElementsAs(ctx, &columns, false); !diagnostics.HasError() {
@@ -360,17 +410,24 @@ func tableReconcile(prior tableModel, catalog tableCatalog) (tableModel, map[str
 			}
 		}
 	}
+
 	models := map[string]tableColumnModel{}
+
 	var physical, sortKey []string
+
 	interleaved := false
 	distKey := ""
+
 	type position struct {
 		order int
 		name  string
 	}
+
 	var sortPositions []position
+
 	for _, column := range catalog.columns {
 		before, known := priorColumns[column.name]
+
 		model := tableColumnModel{
 			Name: types.StringValue(column.name), Type: types.StringValue(column.dataType),
 			RenamedFrom: types.StringNull(),
@@ -380,62 +437,78 @@ func tableReconcile(prior tableModel, catalog tableCatalog) (tableModel, map[str
 		if known {
 			model.RenamedFrom = before.RenamedFrom
 		}
+
 		if known && !before.Type.IsNull() && !before.Type.IsUnknown() {
 			if canonical, err := sqlclient.ColumnType(before.Type.ValueString()); err == nil && string(canonical) == column.dataType {
 				model.Type = before.Type
 			}
 		}
+
 		if column.defaultText != "" {
 			model.Default = types.StringValue(column.defaultText)
 			if known && !before.Default.IsNull() && !before.Default.IsUnknown() {
 				model.Default = before.Default
 			}
 		}
+
 		if identity := column.identity; identity != nil {
 			model.Identity = types.ObjectValueMust(tableIdentityAttributeTypes, map[string]attr.Value{
 				"seed": types.Int64Value(identity.seed), "step": types.Int64Value(identity.step), "generated_by_default": types.BoolValue(identity.generatedByDefault),
 			})
 		}
+
 		models[column.name] = model
+
 		physical = append(physical, column.name)
 		if column.distKey {
 			distKey = column.name
 		}
+
 		if column.sortKey != 0 {
 			order := column.sortKey
 			if order < 0 {
 				order, interleaved = -order, true
 			}
+
 			sortPositions = append(sortPositions, position{order: order, name: column.name})
 		}
 	}
+
 	slices.SortFunc(sortPositions, func(a, b position) int { return a.order - b.order })
+
 	for _, entry := range sortPositions {
 		sortKey = append(sortKey, entry.name)
 	}
+
 	columns := make([]tableColumnModel, 0, len(physical))
 	for _, name := range tableColumnOrder(priorOrder, physical) {
 		columns = append(columns, models[name])
 	}
+
 	list, diagnostics := types.ListValueFrom(ctx, types.ObjectType{AttrTypes: tableColumnAttributeTypes}, columns)
 	if diagnostics.HasError() {
 		return observed, nil, fmt.Errorf("convert columns: %v", diagnostics)
 	}
+
 	observed.Column = list
 
 	declaredKey := ""
+
 	if catalog.distStyle == "KEY" {
 		if distKey == "" {
 			return observed, nil, fmt.Errorf("the catalog reports DISTSTYLE KEY without a distribution key column")
 		}
+
 		declaredKey = distKey
 	}
+
 	observed.Distribution = types.ObjectNull(tableDistributionAttributeTypes)
 	if !prior.Distribution.IsNull() || catalog.distStyle != "AUTO" {
 		observed.Distribution = types.ObjectValueMust(tableDistributionAttributeTypes, map[string]attr.Value{
 			"style": types.StringValue(catalog.distStyle), "key": optionalString(declaredKey),
 		})
 	}
+
 	effectiveStyle := catalog.distStyle
 	if effectiveStyle == "AUTO" {
 		effectiveStyle = catalog.effectiveDistStyle
@@ -443,38 +516,50 @@ func tableReconcile(prior tableModel, catalog tableCatalog) (tableModel, map[str
 			effectiveStyle = "KEY"
 		}
 	}
+
 	effectiveKey := ""
 	if effectiveStyle == "KEY" {
 		effectiveKey = distKey
 	}
+
 	observed.EffectiveDistribution = tableEffectiveDistributionValue(effectiveStyle, effectiveKey, catalog.distStyle == "AUTO")
 
 	declared := tableDeclaredSortStyle(catalog, sortKey, interleaved, tablePriorSortStyle(prior))
+
 	observed.SortKey = types.ObjectNull(tableSortKeyAttributeTypes)
 	if !prior.SortKey.IsNull() || declared != "AUTO" {
 		declaredColumns := types.ListNull(types.StringType)
 		if declared == "COMPOUND" || declared == "INTERLEAVED" {
 			declaredColumns = tableStringListValue(sortKey)
 		}
+
 		observed.SortKey = types.ObjectValueMust(tableSortKeyAttributeTypes, map[string]attr.Value{
 			"style": types.StringValue(declared), "columns": declaredColumns,
 		})
 	}
+
 	physicalSort := "NONE"
+
 	switch {
 	case interleaved:
 		physicalSort = "INTERLEAVED"
 	case len(sortKey) > 0:
 		physicalSort = "COMPOUND"
 	}
+
 	observed.EffectiveSortKey = tableEffectiveSortKeyValue(physicalSort, sortKey, declared == "AUTO")
 
 	names := map[string]string{}
 	observed.PrimaryKey = types.ObjectNull(tableKeyAttributeTypes)
-	var unique []attr.Value
-	var foreignKeys []attr.Value
+
+	var (
+		unique      []attr.Value
+		foreignKeys []attr.Value
+	)
+
 	keyType := types.ObjectType{AttrTypes: tableKeyAttributeTypes}
 	foreignKeyType := types.ObjectType{AttrTypes: tableForeignKeyAttributeTypes}
+
 	for _, constraint := range catalog.constraints {
 		columns := map[string]attr.Value{"columns": tableStringListValue(constraint.columns)}
 		switch constraint.kind {
@@ -494,17 +579,21 @@ func tableReconcile(prior tableModel, catalog tableCatalog) (tableModel, map[str
 			names[tableForeignKeyKey(tableForeignKeySpec{columns: constraint.columns, refSchema: constraint.refSchema, refTable: constraint.refTable, refColumns: constraint.refColumns})] = constraint.name
 		}
 	}
+
 	observed.Unique = tableKeepEmpty(prior.Unique, types.SetNull(keyType))
 	if len(unique) > 0 {
 		observed.Unique = types.SetValueMust(keyType, unique)
 	}
+
 	observed.ForeignKey = tableKeepEmpty(prior.ForeignKey, types.SetNull(foreignKeyType))
 	if len(foreignKeys) > 0 {
 		observed.ForeignKey = types.SetValueMust(foreignKeyType, foreignKeys)
 	}
+
 	if observed.Backup.IsUnknown() {
 		observed.Backup = types.StringNull()
 	}
+
 	return observed, names, nil
 }
 
@@ -514,6 +603,7 @@ func tableConverged(plan, observed tableSpec) error {
 	if len(plan.columns) != len(observed.columns) {
 		return fmt.Errorf("the table has %d columns instead of %d", len(observed.columns), len(plan.columns))
 	}
+
 	for _, want := range plan.columns {
 		got, found := observed.column(want.name)
 		switch {
@@ -531,6 +621,7 @@ func tableConverged(plan, observed tableSpec) error {
 			return fmt.Errorf("column %q has the wrong identity", want.name)
 		}
 	}
+
 	switch {
 	case !slices.Equal(plan.primaryKey, observed.primaryKey):
 		return fmt.Errorf("the primary key is %v instead of %v", observed.primaryKey, plan.primaryKey)
@@ -545,5 +636,6 @@ func tableConverged(plan, observed tableSpec) error {
 	case plan.owner != "" && plan.owner != observed.owner:
 		return fmt.Errorf("the owner is %q instead of %q", observed.owner, plan.owner)
 	}
+
 	return nil
 }

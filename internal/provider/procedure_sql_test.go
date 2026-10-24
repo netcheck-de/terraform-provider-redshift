@@ -15,9 +15,11 @@ func procedureTestArgument(name, mode, dataType string) procedureArgumentModel {
 	if name != "" {
 		argument.Name = types.StringValue(name)
 	}
+
 	if mode != "" {
 		argument.Mode = types.StringValue(mode)
 	}
+
 	return argument
 }
 
@@ -43,6 +45,7 @@ func procedureTestCreate(data procedureModel, replace bool) func() (string, erro
 		if err != nil {
 			return "", err
 		}
+
 		return createProcedureStatement(spec, replace), nil
 	}
 }
@@ -51,6 +54,7 @@ func procedureTestCreate(data procedureModel, replace bool) func() (string, erro
 func procedureTestChange(change func(*procedureModel)) procedureModel {
 	data := procedureTestDefault()
 	change(&data)
+
 	return data
 }
 
@@ -60,6 +64,7 @@ func procedureTestSettings(settings map[string]string) types.Map {
 	for key, value := range settings {
 		values[key] = types.StringValue(value)
 	}
+
 	return types.MapValueMust(types.StringType, values)
 }
 
@@ -85,10 +90,12 @@ func TestProcedureSQL(t *testing.T) {
 	searchPath := procedureTestChange(func(data *procedureModel) {
 		data.Configuration = procedureTestSettings(map[string]string{"search_path": ` $user, Analytics ,O'Re\illy`})
 	})
+
 	tooMany := make([]procedureArgumentModel, routineMaxArguments+1)
 	for i := range tooMany {
 		tooMany[i] = procedureTestArgument("", "INOUT", "integer")
 	}
+
 	checkSQL(t, "procedure", []sqlCase{
 		{"create", procedureTestCreate(procedureTestDefault(), false)},
 		{"create_quoted", procedureTestCreate(quoted, false)},
@@ -107,6 +114,7 @@ func TestProcedureSQL(t *testing.T) {
 		{"alter_owner_quoted_signature", func() ([]string, error) {
 			after := quoted
 			after.Owner = types.StringValue("etl")
+
 			return alterProcedureStatements(quoted, after)
 		}},
 		{"alter_argument_spelling", func() ([]string, error) { return alterProcedureStatements(procedureTestDefault(), spelled) }},
@@ -170,6 +178,7 @@ func TestProcedureArgumentsEquivalent(t *testing.T) {
 	assert.True(t, procedureArgumentsEquivalent(imported, []procedureArgumentModel{procedureTestArgument("label", "OUT", "varchar(64)")}))
 	assert.False(t, procedureArgumentsEquivalent([]procedureArgumentModel{procedureTestArgument("label", "OUT", "varchar(32)")},
 		[]procedureArgumentModel{procedureTestArgument("label", "OUT", "varchar(64)")}), "a different modifier")
+
 	for name, changed := range map[string][]procedureArgumentModel{
 		"type":     {procedureTestArgument("min_id", "", "bigint"), procedureTestArgument("total", "OUT", "bigint")},
 		"modifier": {procedureTestArgument("min_id", "", "integer"), procedureTestArgument("total", "OUT", "numeric(10,2)")},

@@ -56,42 +56,52 @@ func (f *fakeDatashares) query(c *catalog, connection sqlclient.Connection, sql 
 		if strings.Contains(sql, "pg_proc_info") {
 			kind = "FUNCTIONS"
 		}
+
 		var rows []sqlclient.Row
 		for _, name := range f.bulkCandidates[kind] {
 			rows = append(rows, sqlclient.Row{"member_name": name})
 		}
+
 		return rows, true, nil
 	case strings.HasPrefix(sql, "SELECT object_name FROM svv_datashare_objects") && parameters["object"] == "":
 		kind := "TABLES"
 		if strings.Contains(sql, "object_type = 'function'") {
 			kind = "FUNCTIONS"
 		}
+
 		var rows []sqlclient.Row
+
 		if c.share && c.shareSchema {
 			for _, name := range f.bulkMembers[kind] {
 				rows = append(rows, sqlclient.Row{"object_name": "serving." + name})
 			}
+
 			for _, row := range f.bulkOtherMembers[kind] {
 				rows = append(rows, maps.Clone(row))
 			}
 		}
+
 		return rows, true, nil
 	case strings.Contains(sql, " ADD ALL TABLES IN SCHEMA "), strings.Contains(sql, " ADD ALL FUNCTIONS IN SCHEMA "), strings.Contains(sql, " REMOVE ALL TABLES IN SCHEMA "), strings.Contains(sql, " REMOVE ALL FUNCTIONS IN SCHEMA "):
 		kind := "TABLES"
 		if strings.Contains(sql, "FUNCTIONS") {
 			kind = "FUNCTIONS"
 		}
+
 		if f.bulkMembers == nil {
 			f.bulkMembers = map[string][]string{}
 		}
+
 		if strings.Contains(sql, " ADD ALL ") {
 			f.bulkMembers[kind] = slices.Clone(f.bulkCandidates[kind])
 		} else {
 			f.bulkMembers[kind] = nil
 		}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT share_name, object_name, object_type, include_new FROM svv_datashare_objects"):
 		var rows []sqlclient.Row
+
 		if c.share && (parameters["share"] == "" || parameters["share"] == "producer") {
 			for _, row := range f.objects {
 				if parameters["object_type"] == "" || parameters["object_type"] == row["object_type"] {
@@ -101,12 +111,15 @@ func (f *fakeDatashares) query(c *catalog, connection sqlclient.Connection, sql 
 				}
 			}
 		}
+
 		slices.SortFunc(rows, func(a, b sqlclient.Row) int {
 			if order := strings.Compare(a["object_type"], b["object_type"]); order != 0 {
 				return order
 			}
+
 			return strings.Compare(a["object_name"], b["object_name"])
 		})
+
 		return rows, true, nil
 	case strings.HasPrefix(sql, "SELECT d.share_name") && strings.Contains(sql, "FROM svv_datashares d"):
 		return f.shares(c, connection, sql, parameters), true, nil
@@ -114,40 +127,51 @@ func (f *fakeDatashares) query(c *catalog, connection sqlclient.Connection, sql 
 		if c.share && parameters["share"] == "producer" {
 			return []sqlclient.Row{{"share_name": "producer"}}, true, nil
 		}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT privilege_type, admin_option FROM svv_datashare_privileges"):
 		key := "public"
 		if parameters["type"] != "" {
 			key = parameters["type"] + ":" + parameters["grantee"]
 		}
+
 		var rows []sqlclient.Row
+
 		if c.share && parameters["share"] == "producer" {
 			for _, privilege := range slices.Sorted(maps.Keys(f.privileges[key])) {
 				rows = append(rows, sqlclient.Row{"privilege_type": privilege, "admin_option": fmt.Sprint(f.adminOption)})
 			}
 		}
+
 		return rows, true, nil
 	case datashareFakePermission(sql, "GRANT"):
 		key, privilege, err := datashareFakeTuple(sql, " TO ")
 		if err != nil {
 			return nil, true, err
 		}
+
 		if !c.share {
 			return nil, true, fmt.Errorf("datashare does not exist: %q", sql)
 		}
+
 		if f.privileges[key] == nil {
 			f.privileges[key] = map[string]bool{}
 		}
+
 		f.privileges[key][privilege] = true
+
 		return nil, true, nil
 	case datashareFakePermission(sql, "REVOKE"):
 		key, privilege, err := datashareFakeTuple(sql, " FROM ")
 		if err != nil {
 			return nil, true, err
 		}
+
 		delete(f.privileges[key], privilege)
+
 		return nil, true, nil
 	}
+
 	return nil, false, nil
 }
 
@@ -162,18 +186,22 @@ func (f *fakeDatashares) shares(c *catalog, connection sqlclient.Connection, sql
 			"producer_account": "123456789012", "producer_namespace": "11111111-2222-3333-4444-555555555555", "created_at": "2026-01-02 03:04:05",
 		})
 	}
+
 	if c.database {
 		consumer := c.databaseName
 		if consumer == "" {
 			consumer = "analytics"
 		}
+
 		rows = append(rows, sqlclient.Row{
 			"share_name": "source", "share_type": "INBOUND", "source_database": "", "consumer_database": consumer,
 			"is_publicaccessible": "false", "managed_by": "", "share_id": "200", "owner": "",
 			"producer_account": "123456789012", "producer_namespace": "11111111-2222-3333-4444-555555555555", "created_at": "",
 		})
 	}
+
 	outboundOnly := strings.Contains(sql, "d.share_type = 'OUTBOUND'")
+
 	return slices.DeleteFunc(rows, func(row sqlclient.Row) bool {
 		return (outboundOnly && row["share_type"] != "OUTBOUND") ||
 			(parameters["share_type"] != "" && row["share_type"] != parameters["share_type"]) ||
@@ -193,7 +221,9 @@ func datashareFakeTuple(sql, separator string) (string, string, error) {
 	if !found {
 		return "", "", fmt.Errorf("fake datashare permission without grantee: %q", sql)
 	}
+
 	unquote := func(name string) string { return strings.ReplaceAll(strings.Trim(name, `"`), `""`, `"`) }
+
 	key := "user:" + unquote(grantee)
 	switch {
 	case grantee == "PUBLIC":
@@ -203,5 +233,6 @@ func datashareFakeTuple(sql, separator string) (string, string, error) {
 	case strings.HasPrefix(grantee, "GROUP "):
 		key = "group:" + unquote(strings.TrimPrefix(grantee, "GROUP "))
 	}
+
 	return key, strings.Fields(sql)[1], nil
 }

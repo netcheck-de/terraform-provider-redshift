@@ -29,11 +29,13 @@ type fakeRoutine struct {
 // signature returns the bare input types, as oidvectortypes reports them.
 func (r *fakeRoutine) signature() string {
 	var inputs []string
+
 	for _, argument := range r.arguments {
 		if argument.mode != "OUT" {
 			inputs = append(inputs, argument.dataType)
 		}
 	}
+
 	return strings.Join(inputs, ", ")
 }
 
@@ -61,6 +63,7 @@ func (f *routineFamily) populate() {
 		f.routines[fakeRoutineKey("public", "f_example", "integer")] = &fakeRoutine{arguments: []fakeRoutineArgument{{mode: "IN", dataType: "integer"}}, returnType: "integer", volatility: "i", body: "SELECT $1 + 1", owner: "admin"}
 		return
 	}
+
 	f.routines[fakeRoutineKey("public", "sp_example", "integer")] = &fakeRoutine{
 		arguments: []fakeRoutineArgument{{name: "min_id", mode: "IN", dataType: "integer"}, {name: "total", mode: "OUT", dataType: "bigint"}},
 		body:      "BEGIN total := min_id * 2; END;", owner: "admin",
@@ -72,10 +75,12 @@ func (f *routineFamily) query(_ *catalog, _ sqlclient.Connection, sql string, pa
 	switch {
 	case strings.HasPrefix(sql, "SELECT p.proname AS "+strings.ToLower(f.kind)+"_name"):
 		signature := parameters["arguments"]
+
 		routine, ok := f.routines[fakeRoutineKey(parameters["schema"], parameters["name"], signature)]
 		if !ok {
 			return nil, true, nil
 		}
+
 		return []sqlclient.Row{{
 			"owner": routine.owner, "language": strings.ToLower(map[string]string{"FUNCTION": "sql", "PROCEDURE": "plpgsql"}[f.kind]), "volatility": routine.volatility,
 			"return_type": routine.returnType, "arguments": routine.signature(), "body": routine.body, "security_definer": strconv.FormatBool(routine.definer),
@@ -85,21 +90,26 @@ func (f *routineFamily) query(_ *catalog, _ sqlclient.Connection, sql string, pa
 		if err != nil {
 			return nil, true, err
 		}
+
 		routine, ok := f.routines[key]
 		if !ok {
 			return nil, true, fmt.Errorf("procedure %s does not exist", key)
 		}
+
 		rows := []sqlclient.Row{}
 		for i, argument := range routine.arguments {
 			rows = append(rows, sqlclient.Row{"parameter_name": argument.name, "ordinal_position": strconv.Itoa(i + 1), "parameter_type": argument.mode, "data_type": argument.dataType})
 		}
+
 		return rows, true, nil
 	case strings.HasPrefix(sql, "CREATE "+f.kind+" "), strings.HasPrefix(sql, "CREATE OR REPLACE "+f.kind+" "):
 		replace := strings.HasPrefix(sql, "CREATE OR REPLACE ")
+
 		key, routine, err := fakeRoutineDefinition(strings.TrimPrefix(strings.TrimPrefix(sql, "CREATE OR REPLACE "+f.kind+" "), "CREATE "+f.kind+" "))
 		if err != nil {
 			return nil, true, err
 		}
+
 		existing, ok := f.routines[key]
 		switch {
 		case ok && !replace:
@@ -109,30 +119,39 @@ func (f *routineFamily) query(_ *catalog, _ sqlclient.Connection, sql string, pa
 		default:
 			routine.owner = "admin"
 		}
+
 		f.routines[key] = routine
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "ALTER "+f.kind+" "):
 		key, rest, err := fakeRoutineTarget(strings.TrimPrefix(sql, "ALTER "+f.kind+" "))
 		if err != nil {
 			return nil, true, err
 		}
+
 		routine, ok := f.routines[key]
 		if !ok || !strings.HasPrefix(rest, " OWNER TO ") {
 			return nil, true, fmt.Errorf("unexpected ALTER %s: %s", f.kind, sql)
 		}
+
 		routine.owner = fakeUnquote(strings.TrimPrefix(rest, " OWNER TO "))
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "DROP "+f.kind+" "):
 		key, rest, err := fakeRoutineTarget(strings.TrimPrefix(sql, "DROP "+f.kind+" "))
 		if err != nil {
 			return nil, true, err
 		}
+
 		if _, ok := f.routines[key]; !ok || rest != "" {
 			return nil, true, fmt.Errorf("cannot drop %s %s", strings.ToLower(f.kind), key)
 		}
+
 		delete(f.routines, key)
+
 		return nil, true, nil
 	}
+
 	return nil, false, nil
 }
 
@@ -146,16 +165,20 @@ func fakeQuotedName(text string) (name, rest string, err error) {
 	if !strings.HasPrefix(text, `"`) {
 		return "", "", fmt.Errorf("fake catalog expected a quoted name in %q", text)
 	}
+
 	for end := 1; end < len(text); end++ {
 		if text[end] != '"' {
 			continue
 		}
+
 		if end+1 < len(text) && text[end+1] == '"' {
 			end++
 			continue
 		}
+
 		return fakeUnquote(text[:end+1]), text[end+1:], nil
 	}
+
 	return "", "", fmt.Errorf("fake catalog found an unterminated name in %q", text)
 }
 
@@ -165,6 +188,7 @@ func fakeQualifiedName(text string) (schema, name, rest string, err error) {
 	if err == nil {
 		name, rest, err = fakeQuotedName(strings.TrimPrefix(rest, "."))
 	}
+
 	return schema, name, rest, err
 }
 
@@ -173,7 +197,9 @@ func fakeArgumentList(text string) (items []string, rest string, err error) {
 	if !strings.HasPrefix(text, "(") {
 		return nil, "", fmt.Errorf("fake catalog expected an argument list in %q", text)
 	}
+
 	depth, quoted, start := 0, false, 1
+
 	for i := range len(text) {
 		switch char := text[i]; {
 		case char == '"':
@@ -190,10 +216,12 @@ func fakeArgumentList(text string) (items []string, rest string, err error) {
 				if last := strings.TrimSpace(text[start:i]); last != "" || len(items) > 0 {
 					items = append(items, last)
 				}
+
 				return items, text[i+1:], nil
 			}
 		}
 	}
+
 	return nil, "", errors.New("fake catalog found an unterminated argument list")
 }
 
@@ -202,19 +230,23 @@ func fakeRoutineArguments(items []string) ([]fakeRoutineArgument, error) {
 	arguments := make([]fakeRoutineArgument, len(items))
 	for i, item := range items {
 		argument := fakeRoutineArgument{mode: "IN"}
+
 		if strings.HasPrefix(item, `"`) {
 			name, rest, err := fakeQuotedName(item)
 			if err != nil {
 				return nil, err
 			}
+
 			argument.name, item = name, strings.TrimSpace(rest)
 		}
+
 		for _, mode := range []string{"INOUT", "OUT", "IN"} {
 			if after, ok := strings.CutPrefix(item, mode+" "); ok {
 				argument.mode, item = mode, after
 				break
 			}
 		}
+
 		dataType, err := routineType(item)
 		if err != nil {
 			return nil, err
@@ -223,6 +255,7 @@ func fakeRoutineArguments(items []string) ([]fakeRoutineArgument, error) {
 		argument.dataType = strings.ToLower(string(routineBaseType(dataType)))
 		arguments[i] = argument
 	}
+
 	return arguments, nil
 }
 
@@ -232,15 +265,19 @@ func fakeRoutineTarget(text string) (key, rest string, err error) {
 	if err != nil {
 		return "", "", err
 	}
+
 	items, rest, err := fakeArgumentList(rest)
 	if err != nil {
 		return "", "", err
 	}
+
 	arguments, err := fakeRoutineArguments(items)
 	if err != nil {
 		return "", "", err
 	}
+
 	routine := fakeRoutine{arguments: arguments}
+
 	return fakeRoutineKey(schema, name, routine.signature()), rest, nil
 }
 
@@ -250,29 +287,38 @@ func fakeRoutineDefinition(text string) (string, *fakeRoutine, error) {
 	if err != nil {
 		return "", nil, err
 	}
+
 	items, rest, err := fakeArgumentList(rest)
 	if err != nil {
 		return "", nil, err
 	}
+
 	arguments, err := fakeRoutineArguments(items)
 	if err != nil {
 		return "", nil, err
 	}
+
 	routine := &fakeRoutine{arguments: arguments}
+
 	head, after, found := strings.Cut(rest, " AS $")
 	if !found {
 		return "", nil, fmt.Errorf("fake catalog expected a dollar-quoted body in %q", text)
 	}
+
 	tagEnd := strings.IndexByte(after, '$')
 	if tagEnd < 0 {
 		return "", nil, errors.New("fake catalog found an unterminated dollar-quote tag")
 	}
+
 	tag := "$" + after[:tagEnd+1]
+
 	body, tail, found := strings.Cut(after[tagEnd+1:], tag)
 	if !found {
 		return "", nil, errors.New("fake catalog found an unterminated body")
 	}
+
 	routine.body, routine.definer = body, strings.Contains(tail, " SECURITY DEFINER")
+
 	if returns, ok := strings.CutPrefix(head, " RETURNS "); ok {
 		for code, keyword := range map[string]string{"v": " VOLATILE", "s": " STABLE", "i": " IMMUTABLE"} {
 			if dataType, found := strings.CutSuffix(returns, keyword); found {
@@ -280,9 +326,11 @@ func fakeRoutineDefinition(text string) (string, *fakeRoutine, error) {
 				if err != nil {
 					return "", nil, err
 				}
+
 				routine.returnType, routine.volatility = strings.ToLower(string(routineBaseType(canonical))), code
 			}
 		}
 	}
+
 	return fakeRoutineKey(schema, name, routine.signature()), routine, nil
 }

@@ -63,21 +63,27 @@ func (r *datashareSchemaResource) read(ctx context.Context, data *datashareSchem
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readDatashareSchemaQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
+
 	if len(rows) != 1 {
 		return false, fmt.Errorf("datashare schema %q has ambiguous catalog rows", data.Schema.ValueString())
 	}
+
 	includeNew, err := strconv.ParseBool(rows[0]["include_new"])
 	if err != nil {
 		return false, fmt.Errorf("decode datashare include_new: %w", err)
 	}
+
 	data.IncludeNew = types.BoolValue(includeNew)
+
 	return true, nil
 }
 
@@ -85,14 +91,17 @@ func (r *datashareSchemaResource) read(ctx context.Context, data *datashareSchem
 func (r *datashareSchemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data datashareSchemaModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statements := createDatashareSchemaStatements(data)
 	if err := r.exec(ctx, data.Database.ValueString(), statements[0]); err != nil {
 		resp.Diagnostics.AddError("Add schema to datashare", err.Error())
 		return
 	}
+
 	data.ID = r.identity(data.Database.ValueString(), map[string]string{"datashare": data.Datashare.ValueString(), "schema": data.Schema.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	// The membership is recorded before include_new is set, so a failure here still leaves it removable.
@@ -100,7 +109,9 @@ func (r *datashareSchemaResource) Create(ctx context.Context, req resource.Creat
 		resp.Diagnostics.AddError("Enable future datashare objects", err.Error())
 		return
 	}
+
 	expected := data.IncludeNew
+
 	found, err := r.read(ctx, &data)
 	switch {
 	case err != nil:
@@ -116,9 +127,11 @@ func (r *datashareSchemaResource) Create(ctx context.Context, req resource.Creat
 func (r *datashareSchemaResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data datashareSchemaModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	switch {
 	case err != nil:
@@ -134,18 +147,23 @@ func (r *datashareSchemaResource) Read(ctx context.Context, req resource.ReadReq
 func (r *datashareSchemaResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data datashareSchemaModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update datashare schema", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), alterDatashareSchemaStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Update datashare schema", err.Error())
 		return
 	}
+
 	expected := data.IncludeNew
+
 	found, err := r.read(ctx, &data)
 	switch {
 	case err != nil:
@@ -161,9 +179,11 @@ func (r *datashareSchemaResource) Update(ctx context.Context, req resource.Updat
 func (r *datashareSchemaResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data datashareSchemaModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropDatashareSchemaStatement(data))
@@ -174,6 +194,7 @@ func (r *datashareSchemaResource) Delete(ctx context.Context, req resource.Delet
 			}
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Remove datashare schema", err.Error())
 	}

@@ -32,11 +32,14 @@ func TestPrivilegePartialKnownValidation(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			r := newObjectGrantResource().(*privilegeResource)
+
 			data := privilegeObject(t, r, map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_name": "events", "object_type": "TABLE", "grantee": "reader", "grantee_type": "USER"}, "SELECT")
 			for key, value := range test.changes {
 				lookupValue(&data, key, value)
 			}
+
 			state := testState(t, r, data)
+
 			var response resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(state)}, &response)
 			assert.Equal(t, test.invalid, response.Diagnostics.HasError(), "%v", response.Diagnostics)
@@ -74,9 +77,11 @@ func TestDebugGrantPartialKnownValidation(t *testing.T) {
 	r := newDebugGrantResource().(*debugGrantResource)
 	data := debugGrantModel{Database: types.StringUnknown(), Grantee: types.StringValue("local_user"), GranteeType: types.StringValue("USER")}
 	state := testState(t, r, data)
+
 	var response resource.ValidateConfigResponse
 	r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(state)}, &response)
 	assert.True(t, response.Diagnostics.HasError())
+
 	data.Grantee = types.StringUnknown()
 	state = testState(t, r, data)
 	response = resource.ValidateConfigResponse{}

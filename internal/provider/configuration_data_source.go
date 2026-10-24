@@ -55,25 +55,31 @@ func (d *configurationDataSource) Schema(_ context.Context, _ datasource.SchemaR
 func (d *configurationDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data configurationModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	name := data.Name.ValueString()
+
 	statement, err := readConfigurationStatement(name)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid configuration parameter", err.Error())
 		return
 	}
+
 	rows, err := d.query(ctx, statement, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Read configuration", err.Error())
 		return
 	}
+
 	value, err := configurationValue(name, rows)
 	if err != nil {
 		resp.Diagnostics.AddError("Read configuration", err.Error())
 		return
 	}
+
 	data.Value = types.StringValue(value)
 	data.ID = d.identity(d.database.ValueString(), map[string]string{"name": name})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

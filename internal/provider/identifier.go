@@ -28,6 +28,7 @@ func (foldedNameValidator) ValidateString(_ context.Context, req validator.Strin
 	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() || strings.Contains(req.ConfigValue.ValueString(), ":") {
 		return
 	}
+
 	if err := tableFolded(req.Path.String(), req.ConfigValue.ValueString()); err != nil {
 		resp.Diagnostics.AddAttributeError(req.Path, "Invalid name", err.Error())
 	}

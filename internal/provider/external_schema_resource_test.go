@@ -43,6 +43,7 @@ func TestExternalSchemaRegionRoundTrips(t *testing.T) {
 					assert.Contains(t, sql, " REGION 'eu-central-1'")
 					return nil, nil
 				}
+
 				return []sqlclient.Row{{"schemaname": "example_external", "eskind": "1", "databasename": "glue", "esoptions": `{"IAM_ROLE":"role","` + key + `":"eu-central-1"}`, "owner": "admin"}}, nil
 			}))}
 			data := externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("example_external"), GlueDatabase: types.StringValue("glue"), IAMRoleARN: types.StringValue("role"), Region: types.StringValue("eu-central-1")}
@@ -95,10 +96,12 @@ func TestExternalSchemaCreationErrorsRetainKnownState(t *testing.T) {
 				resp := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
 				r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state)}, &resp)
 				require.True(t, resp.Diagnostics.HasError())
+
 				var observed externalSchemaModel
 				require.False(t, resp.State.Get(context.Background(), &observed).HasError())
 				assert.False(t, observed.ID.IsNull())
 				assert.True(t, resp.State.Raw.IsFullyKnown())
+
 				if !region.IsUnknown() {
 					assert.Equal(t, region, observed.Region)
 				}

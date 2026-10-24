@@ -27,6 +27,7 @@ func TestDatashareMembershipRestrictedLookupIsObservational(t *testing.T) {
 	f := fakeState[*fakeDatashares](c, "datashare")
 	f.restricted = true
 	f.bulkCandidates["TABLES"], f.bulkMembers["TABLES"] = nil, nil
+
 	exerciseCatalogLookup(t, newDatashareMembershipDataSource, map[string]string{"database": "admin", "datashare": "producer", "schema": "serving", "kind": "TABLES"}, map[string]attr.Value{"exists": types.BoolValue(true), "all": types.BoolValue(true)}, c)
 }
 

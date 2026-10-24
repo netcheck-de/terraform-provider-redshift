@@ -25,6 +25,7 @@ func TestAccTableLifecycle(t *testing.T) {
 	region, profile, workgroup, database := testAccWorkgroup(t)
 	name := "acc_table_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	client := testAccRolesClient(t, region, profile, workgroup)
+
 	const (
 		idColumn = `
   column {
@@ -49,6 +50,7 @@ func TestAccTableLifecycle(t *testing.T) {
     default = "'n/a'"
   }`
 	)
+
 	note := func(dataType, encoding string) string {
 		text := fmt.Sprintf(`
   column {
@@ -58,6 +60,7 @@ func TestAccTableLifecycle(t *testing.T) {
 			text += fmt.Sprintf(`
     encoding = %q`, encoding)
 		}
+
 		return text + `
   }`
 	}
@@ -177,6 +180,7 @@ data "redshift_table" "events" {
 					if err == nil && (len(rows) != 1 || rows[0]["note"] != "abcdefghij") {
 						err = fmt.Errorf("narrowing must keep the stored row, got %v", rows)
 					}
+
 					return err
 				},
 			},

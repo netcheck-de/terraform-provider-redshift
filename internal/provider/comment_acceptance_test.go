@@ -42,6 +42,7 @@ resource "redshift_schema" "local" {
 		if !enabled {
 			return base
 		}
+
 		for _, kind := range []string{"DATABASE", "SCHEMA", "TABLE", "VIEW", "COLUMN"} {
 			base += fmt.Sprintf(`
 resource "redshift_comment" %q {
@@ -60,22 +61,26 @@ data "redshift_comment" %[1]q {
   column_name = redshift_comment.%[1]s.column_name
 }`, strings.ToLower(kind), kind, text)
 		}
+
 		return base
 	}
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// A failed test may leave manual fixtures that block restrictive schema deletion.
 	t.Cleanup(func() {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
 			_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)
 		}
 	})
+
 	steps := []resource.TestStep{
 		{Config: configuration("", false)},
 		{Config: configuration("O'Reilly initial", true), PreConfig: func() {
@@ -89,6 +94,7 @@ data "redshift_comment" %[1]q {
 	for _, kind := range []string{"DATABASE", "SCHEMA", "TABLE", "VIEW", "COLUMN"} {
 		steps = append(steps, resource.TestStep{ResourceName: "redshift_comment." + strings.ToLower(kind), ImportState: true, ImportStateVerify: true})
 	}
+
 	steps = append(steps,
 		resource.TestStep{Config: configuration("updated", true), Check: resource.TestCheckResourceAttr("redshift_comment.column", "text", "updated")},
 		resource.TestStep{Config: configuration("updated", true), PlanOnly: true, ExpectNonEmptyPlan: true, PreConfig: func() {
@@ -107,12 +113,15 @@ data "redshift_comment" %[1]q {
 				default:
 					data.SchemaName = types.StringValue("serving")
 				}
+
 				if kind == "VIEW" {
 					data.ObjectName = types.StringValue("fixture_view")
 				}
+
 				if kind == "COLUMN" {
 					data.ColumnName = types.StringValue("id")
 				}
+
 				query, err := readCommentQuery(data)
 				require.NoError(t, err)
 				sql, parameters, err := query.Build()
@@ -122,9 +131,11 @@ data "redshift_comment" %[1]q {
 				require.Len(t, rows, 1, "target object must survive comment deletion")
 				assert.Empty(t, rows[0]["text"])
 			}
+
 			_, err := client.Query(ctx, target, `DROP VIEW serving.fixture_view`, nil)
 			require.NoError(t, err)
 			_, err = client.Query(ctx, target, `DROP TABLE serving.fixture_table`, nil)
+
 			return err
 		}},
 	)

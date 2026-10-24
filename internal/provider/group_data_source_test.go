@@ -21,6 +21,7 @@ func TestGroupDataSourceLooksUpExistingGroup(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			state, diagnostics := readSource(t, newGroupDataSource(), groupData{Name: types.StringValue("readers")}, &catalog{group: true, groupMember: test.member})
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 			var data groupData
 			require.False(t, state.Get(context.Background(), &data).HasError())
 			assert.Equal(t, "readers", data.Name.ValueString())

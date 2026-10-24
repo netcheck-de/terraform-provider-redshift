@@ -25,14 +25,18 @@ func TestAccDatashareScopedGrants(t *testing.T) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	connection := sqlclient.Connection{Database: name}
+
 	t.Cleanup(func() {
 		rows, err := client.Query(ctx, sqlclient.Connection{Database: database}, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) == 0 {
 			return
 		}
+
 		_, err = client.Query(ctx, connection, "DROP SCHEMA IF EXISTS serving CASCADE", nil)
 		require.NoError(t, err)
 		_, err = client.Query(ctx, connection, sqlclient.Stmt("DROP DATASHARE").Ident(name).String(), nil)
@@ -40,9 +44,11 @@ func TestAccDatashareScopedGrants(t *testing.T) {
 		if err != nil {
 			t.Logf("fixture datashare cleanup: %v", err)
 		}
+
 		_, err = client.Query(ctx, sqlclient.Connection{Database: database}, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 		require.NoError(t, err)
 	})
+
 	base := fmt.Sprintf(`
 provider "redshift" {
   region = %q
@@ -85,6 +91,7 @@ data "redshift_grant" "tables" {
 		_, err := client.Query(ctx, connection, sql, nil)
 		require.NoError(t, err)
 	}
+
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
@@ -97,9 +104,11 @@ data "redshift_grant" "tables" {
 				execute("CREATE VIEW serving.replaced AS SELECT id FROM serving.existing WITH NO SCHEMA BINDING")
 				execute("DROP VIEW serving.replaced")
 				execute("CREATE VIEW serving.replaced AS SELECT id FROM serving.future WITH NO SCHEMA BINDING")
+
 				rows, err := client.Query(ctx, connection, "SELECT object_name, object_type FROM svv_datashare_objects WHERE share_name = :share AND object_name <> 'serving'", map[string]string{"share": name})
 				require.NoError(t, err)
 				require.Len(t, rows, 3, "%v", rows)
+
 				return nil
 			}},
 			{ResourceName: "redshift_grant.schema", ImportState: true, ImportStateVerify: true},

@@ -19,10 +19,12 @@ var templateGrantFields = map[string]string{"database_name": "admin", "schema_na
 func templateGrantCatalog(changes ...func(*catalog)) func() *catalog {
 	return func() *catalog {
 		c := fullCatalog()
+
 		c.localDB = true
 		for _, change := range changes {
 			change(c)
 		}
+
 		return c
 	}
 }
@@ -33,6 +35,7 @@ func TestObjectGrantTemplateSQL(t *testing.T) {
 	render := func(changes map[string]string, privilege sqlclient.Keyword) func() ([]string, error) {
 		fields := maps.Clone(templateGrantFields)
 		maps.Copy(fields, changes)
+
 		return privilegeTargetCase(t, newObjectGrantResource, fields, privilege)
 	}
 	checkSQL(t, "object_grant_template", []sqlCase{
@@ -55,11 +58,13 @@ func TestObjectGrantTemplateTranscripts(t *testing.T) {
 		if len(options) > 0 {
 			fields["grantee_type"], fields["grantee"] = "USER", templateFakeUser
 		}
+
 		return withGrantOptions(privilegeObject(t, r, fields, privileges...), options)
 	}
 	held := templateGrantCatalog(templateFakeChange(func(f *templateFake) {
 		f.grants["USAGE"] = templateFakeGrant{identity: "loaders", kind: "role"}
 	}))
+
 	runTranscripts(t, "object_grant_template/flows", newObjectGrantResource, []transcriptCase{
 		{name: "create", operation: "create", catalog: func() sqlclient.Client { return templateGrantCatalog()() }, planned: model([]string{"USAGE", "ALTER"})},
 		{name: "update", operation: "update", catalog: func() sqlclient.Client { return held() }, prior: model([]string{"USAGE"}), planned: model([]string{"DROP"})},
@@ -82,10 +87,12 @@ func TestObjectGrantTemplateTranscripts(t *testing.T) {
 	assert.False(t, state.Raw.IsNull())
 
 	stuck := templateGrantCatalog()()
+
 	configureTestResource(t, r, queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		if strings.HasPrefix(sql, "GRANT ") {
 			return nil, nil
 		}
+
 		return stuck.Query(ctx, connection, sql, parameters)
 	}))
 	_, diagnostics = applyOperation(t, r, "create", nil, model([]string{"USAGE"}), nil)

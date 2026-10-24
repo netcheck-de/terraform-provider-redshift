@@ -14,26 +14,33 @@ func TestDatashareGrantSQL(t *testing.T) {
 		if len(via) > 0 {
 			data.ViaDataCatalog = types.BoolValue(via[0])
 		}
+
 		if account != "" {
 			data.AccountID = types.StringValue(account)
 		}
+
 		if namespace != "" {
 			data.NamespaceID = types.StringValue(namespace)
 		}
+
 		return func() ([]string, error) {
 			query, err := readDatashareGrantQuery(data)
 			if err != nil {
 				return nil, err
 			}
+
 			read, _, err := query.Build()
 			if err != nil {
 				return nil, err
 			}
+
 			create, err := createDatashareGrantStatement(data)
 			if err != nil {
 				return nil, err
 			}
+
 			drop, err := dropDatashareGrantStatement(data)
+
 			return []string{read, create, drop}, err
 		}
 	}

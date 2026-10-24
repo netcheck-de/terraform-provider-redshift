@@ -36,6 +36,7 @@ func newRoutineParametersDataSource() datasource.DataSource {
 		"mode":             schema.StringAttribute{Computed: true, MarkdownDescription: "`IN`, `OUT`, `INOUT`, or `RETURN` for a function's result."},
 		"data_type":        schema.StringAttribute{Computed: true, MarkdownDescription: "Parameter data type, as `SHOW PARAMETERS` reports it but in uppercase, such as `CHARACTER VARYING`."},
 	}
+
 	return newCollectionDataSource(collectionSpec{
 		name:        "routine_parameters",
 		description: "Lists the parameters of user-defined functions and stored procedures in one database, one item per parameter and overload, without managing them. Narrow the listing with `schema` and `routine_name`, because each matching overload costs one `SHOW PARAMETERS` call.",
@@ -46,25 +47,31 @@ func newRoutineParametersDataSource() datasource.DataSource {
 			if err != nil {
 				return nil, err
 			}
+
 			var items []map[string]attr.Value
+
 			for _, routine := range routines {
 				kind, ok := routineListingKinds[routine["kind"]]
 				if !ok {
 					return nil, fmt.Errorf("routine %s.%s has unknown kind %q", routine["schema_name"], routine["routine_name"], routine["kind"])
 				}
+
 				statement, err := showRoutineParametersStatement(database, routine["schema_name"], routine["routine_name"], string(kind), routine["arguments"])
 				if err != nil {
 					return nil, fmt.Errorf("routine %s.%s: %w", routine["schema_name"], routine["routine_name"], err)
 				}
+
 				parameters, err := client.queryDatabase(ctx, database, statement, nil)
 				if err != nil {
 					return nil, err
 				}
+
 				for _, parameter := range parameters {
 					position, err := routineListingInt(parameter, "ordinal_position")
 					if err != nil {
 						return nil, err
 					}
+
 					items = append(items, map[string]attr.Value{
 						"database":         types.StringValue(database),
 						"schema":           types.StringValue(routine["schema_name"]),
@@ -78,6 +85,7 @@ func newRoutineParametersDataSource() datasource.DataSource {
 					})
 				}
 			}
+
 			return items, nil
 		},
 	})

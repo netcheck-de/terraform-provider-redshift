@@ -34,12 +34,14 @@ var _ = registerValidateConfigCase("external_partition", validateConfigCase{
 	invalid: func() externalPartitionModel {
 		model := externalPartitionTestModel()
 		model.Values = externalTableTestMap("event_date", "a", "Event_Date", "b")
+
 		return model
 	}(),
 	unknown: func() externalPartitionModel {
 		model := externalPartitionTestModel()
 		model.Location = types.StringUnknown()
 		model.Values = types.MapUnknown(types.StringType)
+
 		return model
 	}(),
 })
@@ -47,16 +49,20 @@ var _ = registerValidateConfigCase("external_partition", validateConfigCase{
 // externalPartitionState runs one lifecycle operation and decodes the resulting state.
 func externalPartitionState(t *testing.T, client sqlclient.Client, operation string, prior, planned externalPartitionModel) (externalPartitionModel, error) {
 	t.Helper()
+
 	r := &externalPartitionResource{}
 	configureTestResource(t, r, client)
 	state, diagnostics := applyOperation(t, r, operation, prior, planned, nil)
+
 	var observed externalPartitionModel
 	if !state.Raw.IsNull() {
 		require.False(t, state.Get(context.Background(), &observed).HasError())
 	}
+
 	if diagnostics.HasError() {
 		return observed, errors.New(diagnostics.Errors()[0].Summary() + ": " + diagnostics.Errors()[0].Detail())
 	}
+
 	return observed, nil
 }
 
@@ -89,13 +95,16 @@ func TestExternalPartitionLifecycle(t *testing.T) {
 func TestExternalPartitionImport(t *testing.T) {
 	r := &externalPartitionResource{}
 	configureTestResource(t, r, fullCatalog())
+
 	id := `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events","values":"{\"event_date\":\"2024-01-01\"}"}`
 	require.False(t, importAndRead(t, r, id).HasError())
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &imported)
+
 	var data externalPartitionModel
 	require.False(t, imported.State.Get(context.Background(), &data).HasError())
 	assert.Equal(t, externalTableTestMap("event_date", "2024-01-01"), data.Values)
+
 	for _, invalid := range []string{
 		`{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events"}`,
 		`{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events","values":"[1]"}`,
@@ -111,6 +120,7 @@ func TestExternalPartitionImport(t *testing.T) {
 // TestExternalPartitionFailurePaths covers catalog checks before ADD PARTITION, malformed rows, and drift.
 func TestExternalPartitionFailurePaths(t *testing.T) {
 	model := externalPartitionTestModel()
+
 	t.Run("values must match the partition keys", func(t *testing.T) {
 		c := fullCatalog()
 		wrong := model
@@ -139,6 +149,7 @@ func TestExternalPartitionFailurePaths(t *testing.T) {
 			if strings.Contains(sql, "svv_external_columns") {
 				return []sqlclient.Row{{"columnname": "event_date", "external_type": "date", "columnnum": "1", "part_key": "1"}}, nil
 			}
+
 			return []sqlclient.Row{{"values": "not json", "location": "s3://x"}}, nil
 		})
 		_, err := externalPartitionState(t, client, "read", model, model)
@@ -150,9 +161,11 @@ func TestExternalPartitionFailurePaths(t *testing.T) {
 			if strings.Contains(sql, "svv_external_columns") {
 				return []sqlclient.Row{{"columnname": "event_date", "external_type": "date", "columnnum": "1", "part_key": "1"}}, nil
 			}
+
 			return rows, nil
 		})
 	}
+
 	t.Run("schema configured with uppercase letters", func(t *testing.T) {
 		folded := model
 		folded.Schema = types.StringValue("Example_External")
@@ -197,6 +210,7 @@ func TestExternalPartitionFailurePaths(t *testing.T) {
 			if strings.Contains(sql, " SET LOCATION ") {
 				return nil, nil
 			}
+
 			return c.Query(ctx, target, sql, parameters)
 		})
 		moved := model
@@ -233,6 +247,7 @@ func TestExternalPartitionValidation(t *testing.T) {
 	require.ErrorContains(t, validateExternalPartitionKnownConfig(model), "nonempty schema")
 	_, err := externalPartitionSpecFrom(model, []string{"event_date"})
 	require.ErrorContains(t, err, "nonempty schema")
+
 	model = externalPartitionTestModel()
 	model.Values = types.MapNull(types.StringType)
 	require.ErrorContains(t, validateExternalPartitionConfig(model), "at least one")
@@ -253,25 +268,32 @@ func TestExternalPartitionVerification(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			c := fullCatalog()
 			model := externalPartitionTestModel()
+
 			if test.operation == "create" {
 				externalTableFakeOf(c).partitions = nil
 			}
+
 			client := queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if strings.Contains(sql, " ADD PARTITION ") || strings.Contains(sql, " SET LOCATION ") {
 					if test.absent {
 						externalTableFakeOf(c).partitions = nil
 						return nil, nil
 					}
+
 					rows, err := c.Query(ctx, connection, sql, parameters)
 					externalTableFakeOf(c).partitions[0].location = "s3://bucket/wrong"
+
 					return rows, err
 				}
+
 				return c.Query(ctx, connection, sql, parameters)
 			})
+
 			plan := model
 			if test.operation == "update" {
 				plan.Location = types.StringValue("s3://bucket/moved")
 			}
+
 			_, err := externalPartitionState(t, client, test.operation, model, plan)
 			require.ErrorContains(t, err, test.want)
 		})

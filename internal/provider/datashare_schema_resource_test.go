@@ -29,6 +29,7 @@ func TestDatashareSchemaMembership(t *testing.T) {
 	found, err := r.read(context.Background(), &data)
 	require.NoError(t, err)
 	assert.True(t, found)
+
 	c.shareSchema = false
 	found, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
@@ -57,6 +58,7 @@ func TestDatashareSchemaReportsIncludeNewFailure(t *testing.T) {
 		if c.shareSchema && strings.HasPrefix(sql, "ALTER DATASHARE") && strings.Contains(sql, " SET INCLUDENEW ") {
 			return nil, errors.New("cannot enable include_new")
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	}))}
 	data := datashareSchemaModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), Schema: types.StringValue("serving"), IncludeNew: types.BoolValue(true)}

@@ -32,6 +32,7 @@ func TestDatashareObservesAccessibility(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, found)
 	assert.False(t, data.PublicAccessible.ValueBool())
+
 	c.public = true
 	found, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
@@ -53,6 +54,7 @@ func TestDatashareObservesCatalogMetadata(t *testing.T) {
 	assert.Equal(t, types.StringValue("123456789012"), data.ProducerAccount)
 	assert.Equal(t, types.StringValue("11111111-2222-3333-4444-555555555555"), data.ProducerNamespace)
 	assert.Equal(t, types.StringValue("2026-01-02 03:04:05"), data.CreatedAt)
+
 	fakeState[*fakeDatashares](c, "datashare").owner = ""
 	found, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
@@ -67,8 +69,10 @@ func TestDatashareCreateFailureLeavesKnownState(t *testing.T) {
 		if strings.HasPrefix(sql, "SELECT") {
 			return nil, errors.New("catalog unavailable")
 		}
+
 		return nil, nil
 	}))}
+
 	var schema resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &schema)
 	plan := testState(t, r, datashareModel{Database: types.StringValue("admin"), Name: types.StringValue("producer"), PublicAccessible: types.BoolValue(false), Owner: types.StringUnknown(), ShareID: types.Int64Unknown(), ProducerAccount: types.StringUnknown(), ProducerNamespace: types.StringUnknown(), CreatedAt: types.StringUnknown()})
@@ -76,6 +80,7 @@ func TestDatashareCreateFailureLeavesKnownState(t *testing.T) {
 	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(plan)}, &resp)
 	require.True(t, resp.Diagnostics.HasError())
 	assert.True(t, resp.State.Raw.IsFullyKnown(), "state after a failed verification must be fully known")
+
 	var data datashareModel
 	require.False(t, resp.State.Get(context.Background(), &data).HasError())
 	assert.True(t, data.Owner.IsNull())
@@ -92,6 +97,7 @@ func TestDatashareRejectsDifferentOwnerAndInvalidCatalog(t *testing.T) {
 	} {
 		row := sqlclient.Row{"share_name": "producer", "source_database": "admin", "managed_by": "", "is_publicaccessible": "false"}
 		maps.Copy(row, changed)
+
 		r := &datashareResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return []sqlclient.Row{row}, nil
 		}))}

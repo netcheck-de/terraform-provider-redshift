@@ -17,6 +17,7 @@ func roleFakeIdentifiers(sql string) []string {
 	for _, match := range roleFakeIdentifier.FindAllStringSubmatch(sql, -1) {
 		names = append(names, strings.ReplaceAll(match[1], `""`, `"`))
 	}
+
 	return names
 }
 
@@ -39,18 +40,22 @@ func (f *roleFakeFamily) query(c *catalog, _ sqlclient.Connection, sql string, _
 		if !c.role {
 			return nil, true, nil
 		}
+
 		name, owner := c.roleName, f.owner
 		if name == "" {
 			name = "example:readers"
 		}
+
 		if owner == "" {
 			owner = "admin"
 		}
+
 		return []sqlclient.Row{{"role_id": "100", "role_name": name, "role_owner": owner, "external_id": f.externalID}}, true, nil
 	case strings.HasPrefix(sql, "CREATE ROLE"):
 		if c.role || !c.identity || len(names) == 0 {
 			return nil, true, errors.New("role exists or identity provider is absent")
 		}
+
 		c.role, c.roleName, f.owner, f.externalID = true, names[0], "", ""
 		if len(names) > 1 {
 			f.externalID = names[1]
@@ -59,6 +64,7 @@ func (f *roleFakeFamily) query(c *catalog, _ sqlclient.Connection, sql string, _
 		if !c.role || len(names) != 2 {
 			return nil, true, errors.New("role is absent or the statement has no target")
 		}
+
 		switch {
 		case strings.Contains(sql, " OWNER TO "):
 			f.owner = names[1]
@@ -70,6 +76,7 @@ func (f *roleFakeFamily) query(c *catalog, _ sqlclient.Connection, sql string, _
 	default:
 		return nil, false, nil
 	}
+
 	return nil, true, nil
 }
 

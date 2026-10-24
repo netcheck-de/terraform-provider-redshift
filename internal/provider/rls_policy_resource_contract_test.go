@@ -17,6 +17,7 @@ import (
 // replace_triggered_by detached its attachment, since DROP RLS POLICY is RESTRICT.
 func TestContractRlsPolicyReplacementDetachesAttachments(t *testing.T) {
 	t.Parallel()
+
 	c := &catalog{identity: true, privileges: map[string]bool{}}
 	// The policy exists before Terraform imports it, with the catalog spelling of its WITH clause.
 	existing := rlsFakeOf(c)
@@ -82,6 +83,7 @@ resource "redshift_rls_policy_attachment" "everyone" {
 					if f := rlsFakeOf(c); !f.policy || !f.attached || !strings.Contains(f.columns, `"id"`) {
 						return fmt.Errorf("the replaced policy is not attached with the new WITH clause: %+v", *f)
 					}
+
 					return nil
 				},
 			},
@@ -94,6 +96,7 @@ resource "redshift_rls_policy_attachment" "everyone" {
 // adding or removing the blocks replaces the policy.
 func TestContractRlsPolicyColumnBlocksConverge(t *testing.T) {
 	t.Parallel()
+
 	c := &catalog{identity: true, privileges: map[string]bool{}}
 	configuration := func(columns string) string {
 		return fmt.Sprintf(`
@@ -132,6 +135,7 @@ resource "redshift_rls_policy" "auditor" {
 						if f := rlsFakeOf(c); !strings.Contains(f.columns, `"tenant_id"`) {
 							return fmt.Errorf("the catalog lacks the configured WITH columns: %+v", *f)
 						}
+
 						return nil
 					},
 				),

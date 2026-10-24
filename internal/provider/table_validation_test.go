@@ -22,6 +22,7 @@ func TestTableValidatePartiallyKnownNestedBlocks(t *testing.T) {
 		for i := range names {
 			elements[i] = names[i]
 		}
+
 		return types.ListValueMust(types.StringType, elements)
 	}
 	identity := func(seed, step types.Int64) types.Object {
@@ -32,11 +33,13 @@ func TestTableValidatePartiallyKnownNestedBlocks(t *testing.T) {
 	withColumn := func(column tableColumnModel) tableModel {
 		model := tableMinimalModel()
 		model.Column = tableTestColumns(column)
+
 		return model
 	}
 	withKey := func(columns types.List) tableModel {
 		model := withColumn(tableTestColumn("id", "int", func(c *tableColumnModel) { c.Encoding = types.StringUnknown() }))
 		model.PrimaryKey = types.ObjectValueMust(tableKeyAttributeTypes, map[string]attr.Value{"columns": columns})
+
 		return model
 	}
 	withForeign := func(columns types.List, schema, table types.String, referenced types.List) tableModel {
@@ -44,6 +47,7 @@ func TestTableValidatePartiallyKnownNestedBlocks(t *testing.T) {
 		model.ForeignKey = tableTestForeignKeys(types.ObjectValueMust(tableForeignKeyAttributeTypes, map[string]attr.Value{
 			"columns": columns, "references": tableTestReferences(schema, table, referenced),
 		}))
+
 		return model
 	}
 	unknownColumn := types.ObjectUnknown(tableColumnAttributeTypes)
@@ -51,6 +55,7 @@ func TestTableValidatePartiallyKnownNestedBlocks(t *testing.T) {
 		model.Column = types.ListValueMust(types.ObjectType{AttrTypes: tableColumnAttributeTypes}, append(model.Column.Elements(), unknownColumn))
 		return model
 	}
+
 	tests := map[string]struct {
 		model tableModel
 		error string
@@ -187,8 +192,10 @@ func TestTableValidatePartiallyKnownNestedBlocks(t *testing.T) {
 			r := newTableResource().(*tableResource)
 			config := tfsdk.Config(testState(t, r, test.model))
 			require.False(t, config.Raw.IsFullyKnown(), "this must exercise partial validation")
+
 			var response resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: config}, &response)
+
 			if test.error == "" {
 				assert.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
 			} else {
@@ -221,6 +228,7 @@ func TestTableColumnValidationAgreesWithSQLDefinition(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			knownErr := tableValidateKnownColumn(test.column)
+
 			_, specErr := tableColumnSpecOf(test.column)
 			if test.want == "" {
 				require.NoError(t, knownErr)
@@ -264,6 +272,7 @@ func TestTableKeyAndRenameValidationAgreesWithSQLDefinition(t *testing.T) {
 			test.change(&model)
 			knownErr := tableValidateKnown(model)
 			_, specErr := tableSpecOf(model)
+
 			if test.want == "" {
 				require.NoError(t, knownErr)
 				require.NoError(t, specErr)
@@ -322,6 +331,7 @@ func TestTableRejectsKnownInvalidConfiguration(t *testing.T) {
 			for i := range names {
 				names[i] = fmt.Sprintf("c%d", i)
 			}
+
 			m.SortKey = tableTestSortKey("COMPOUND", names...)
 		}, "at most"},
 		{"column empty", func(m *tableModel) { m.Column = tableTestColumns(tableTestColumn("", "int")) }, "nonempty"},
@@ -336,6 +346,7 @@ func TestTableRejectsKnownInvalidConfiguration(t *testing.T) {
 			require.ErrorContains(t, tableValidateKnown(model), test.want)
 		})
 	}
+
 	t.Run("unknown nested constraints defer", func(t *testing.T) {
 		model := tableMinimalModel()
 		model.Unique = types.SetValueMust(types.ObjectType{AttrTypes: tableKeyAttributeTypes}, []attr.Value{types.ObjectUnknown(tableKeyAttributeTypes)})

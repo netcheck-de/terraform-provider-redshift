@@ -18,9 +18,11 @@ func restoreGrantDefault(data types.Object, eligible bool, privilege string) ([]
 	if !ok || !value.ValueBool() {
 		return nil, nil
 	}
+
 	if !eligible {
 		return nil, fmt.Errorf("restore_default_on_destroy requires a PUBLIC language grant or database-wide PUBLIC FUNCTIONS default privileges")
 	}
+
 	return []string{privilege}, nil
 }
 

@@ -17,34 +17,44 @@ import (
 // grants on a shared database whose name needs quoting.
 func TestObjectGrantSharedSQL(t *testing.T) {
 	r := newObjectGrantResource().(*privilegeResource)
+
 	var cases []sqlCase
+
 	for _, kind := range []string{"DATABASE", "SCHEMA", "TABLE"} {
 		fields := map[string]string{"database_name": `shared"db`, "database_type": "shared", "object_type": kind, "grantee": "reader", "grantee_type": "USER"}
 		if kind != "DATABASE" {
 			fields["schema_name"] = "serving"
 		}
+
 		if kind == "TABLE" {
 			fields["object_name"] = "events"
 		}
+
 		cases = append(cases, sqlCase{name: map[string]string{"DATABASE": "database", "SCHEMA": "schema", "TABLE": "table"}[kind], render: func() ([]string, error) {
 			target, err := r.prepare(privilegeObject(t, r, fields))
 			if err != nil {
 				return nil, err
 			}
+
 			var statements []string
+
 			for _, check := range target.checks {
 				if check.sql != "" {
 					statements = append(statements, check.sql)
 				}
 			}
+
 			statements = append(statements, target.query.sql)
+
 			var privilege sqlclient.Keyword = "USAGE"
 			if kind == "TABLE" {
 				privilege = "SELECT"
 			}
+
 			return append(statements, target.grant.statement(true, privilege), target.grant.statement(false, privilege)), nil
 		}})
 	}
+
 	checkSQL(t, "object_grant_shared", cases)
 }
 
@@ -58,12 +68,15 @@ func TestObjectGrantSharedLifecycle(t *testing.T) {
 		assert.Equal(t, "admin", connection.Database, "never connect to a shared database")
 		return c.Query(ctx, connection, sql, parameters)
 	}))
+
 	data := privilegeObject(t, r, fields, "SELECT")
 	for _, operation := range []string{"create", "read", "update", "delete"} {
 		diagnostics := invoke(t, r, operation, data)
 		require.False(t, diagnostics.HasError(), "%s: %v", operation, diagnostics)
 	}
+
 	assert.Equal(t, []string{`GRANT SELECT ON TABLE "shared_db"."serving"."events" TO "reader"`, `REVOKE SELECT ON TABLE "shared_db"."serving"."events" FROM "reader"`}, c.writes)
+
 	target, err := r.target(data)
 	require.NoError(t, err)
 	assert.False(t, target.filter(sqlclient.Row{"identity_name": "reader", "identity_type": "user", "privilege_scope": "TABLES"}), "scoped permissions are independent")
@@ -85,12 +98,15 @@ func TestObjectGrantSharedReadErrorsKeepState(t *testing.T) {
 	data := privilegeObject(t, r, fields, "SELECT")
 	target, err := r.target(data)
 	require.NoError(t, err)
+
 	var statements []string
+
 	for _, check := range target.checks {
 		if check.sql != "" {
 			statements = append(statements, check.sql)
 		}
 	}
+
 	statements = append(statements, target.query.sql)
 	for _, failedSQL := range statements {
 		t.Run(failedSQL, func(t *testing.T) {
@@ -99,6 +115,7 @@ func TestObjectGrantSharedReadErrorsKeepState(t *testing.T) {
 				if sql == failedSQL {
 					return nil, errors.New("permission denied while reading shared metadata")
 				}
+
 				return catalog.Query(ctx, connection, sql, parameters)
 			}))
 			state := testState(t, r, data)
@@ -116,6 +133,7 @@ func TestObjectGrantSharedReadErrorsKeepState(t *testing.T) {
 func TestObjectGrantSelectors(t *testing.T) {
 	r := newObjectGrantResource().(*privilegeResource)
 	base := map[string]string{"database_name": "shared_db", "database_type": "shared", "object_type": "TABLE", "schema_name": "serving", "object_name": "orders", "grantee_type": "USER", "grantee": "reader"}
+
 	for _, test := range []struct {
 		name    string
 		fields  map[string]string
@@ -131,27 +149,33 @@ func TestObjectGrantSelectors(t *testing.T) {
 			fields := maps.Clone(base)
 			maps.Copy(fields, test.fields)
 			data := privilegeObject(t, r, fields)
+
 			_, err := objectGrantConfigAllowed(data)
 			if test.name != "invalid principal" {
 				require.ErrorContains(t, err, test.message)
 			} else {
 				require.NoError(t, err)
 			}
+
 			_, err = sharedObjectGrantTarget(data)
 			require.ErrorContains(t, err, test.message)
 		})
 	}
+
 	for _, kind := range []string{"DATABASE", "SCHEMA"} {
 		t.Run(kind, func(t *testing.T) {
 			fields := maps.Clone(base)
+
 			fields["object_type"], fields["object_name"] = kind, ""
 			if kind == "DATABASE" {
 				fields["schema_name"] = ""
 			}
+
 			data := privilegeObject(t, r, fields, "USAGE")
 			allowed, err := objectGrantConfigAllowed(data)
 			require.NoError(t, err)
 			assert.Equal(t, []sqlclient.Keyword{"USAGE"}, allowed)
+
 			_, err = sharedObjectGrantTarget(withGrantOptions(data, []string{"USAGE"}))
 			require.ErrorContains(t, err, "do not support grant options")
 		})

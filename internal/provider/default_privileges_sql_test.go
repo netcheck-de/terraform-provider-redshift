@@ -14,6 +14,7 @@ func TestDefaultPrivilegesSQL(t *testing.T) {
 	render := func(changes map[string]string, privilege sqlclient.Keyword) func() ([]string, error) {
 		fields := maps.Clone(tables)
 		maps.Copy(fields, changes)
+
 		return privilegeTargetCase(t, newDefaultPrivilegesResource, fields, privilege)
 	}
 	checkSQL(t, "default_privileges", []sqlCase{
@@ -34,10 +35,12 @@ func TestDefaultPrivilegesSQL(t *testing.T) {
 		{"option_user", func() ([]string, error) {
 			r := newDefaultPrivilegesResource().(*privilegeResource)
 			fields := map[string]string{"database_name": "warehouse", "owner": `Odd"Owner`, "schema_name": "serving", "object_type": "TABLES", "grantee_type": "USER", "grantee": `Odd"User`}
+
 			target, err := r.prepare(privilegeObject(t, r, fields))
 			if err != nil {
 				return nil, err
 			}
+
 			return privilegeOptionStatements(target.grant, target.allowed, privilegeSets{privileges: []string{"SELECT"}, options: []string{"SELECT"}}, privilegeSets{privileges: []string{"INSERT", "SELECT"}, options: []string{"INSERT"}})
 		}},
 	})

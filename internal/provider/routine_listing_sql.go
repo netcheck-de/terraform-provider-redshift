@@ -25,6 +25,7 @@ var routineListingKinds = map[string]sqlclient.Keyword{"f": "FUNCTION", "p": "PR
 // swamp the listing.
 func routineListingQuery(kind sqlclient.Keyword, schema, name string) sqlclient.Query {
 	columns := append(slices.Clone(externalFunctionColumns), "p.prokind AS kind")
+
 	return sqlclient.Select(columns...).From("pg_proc_info p JOIN "+externalFunctionSource).
 		Where(kind).
 		Where("n.nspname !~ '^pg_'").
@@ -42,10 +43,13 @@ func showRoutineParametersStatement(database, schema, name, kind, argumentTypes 
 	if err != nil {
 		return "", err
 	}
+
 	signature, err := sqlclient.Signature(externalFunctionSignatureTypes(argumentTypes)...)
 	if err != nil {
 		return "", err
 	}
+
 	statement := sqlclient.Stmt("SHOW PARAMETERS OF").Kw(routineKind).Qualified(database, schema, name).Args(sqlclient.Kw(signature))
+
 	return statement.String(), statement.Err()
 }

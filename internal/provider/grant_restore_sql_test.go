@@ -25,16 +25,20 @@ func TestGrantRestoreSQL(t *testing.T) {
 			r := test.factory().(*privilegeResource)
 			data := privilegeObject(t, r, test.fields)
 			lookupValue(&data, "restore_default_on_destroy", types.BoolValue(true))
+
 			desired, err := r.destroyPrivileges(data)
 			if err != nil {
 				return nil, err
 			}
+
 			target, err := r.target(data)
 			if err != nil {
 				return nil, err
 			}
+
 			return privilegeOptionStatements(target.grant, target.allowed, privilegeSets{}, privilegeSets{privileges: desired})
 		}})
 	}
+
 	checkSQL(t, "grant_restore", cases)
 }

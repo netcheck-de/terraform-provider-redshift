@@ -29,10 +29,12 @@ func TestAccClusterDatabaseCollationLifecycle(t *testing.T) {
 func testAccDatabaseCollation(t *testing.T, cluster bool) {
 	t.Helper()
 	region, profile, workgroup, database := testAccWorkgroup(t)
+
 	target := fmt.Sprintf("workgroup_name = %q", workgroup)
 	if cluster {
 		target = fmt.Sprintf("cluster_identifier = %q", os.Getenv("REDSHIFT_ACC_CLUSTER"))
 	}
+
 	name := "acc_collation_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(collation string) string {
 		return fmt.Sprintf(`
@@ -63,6 +65,7 @@ data "redshift_database" "probe" {
 		if update {
 			result.ConfigPlanChecks.PreApply = []plancheck.PlanCheck{plancheck.ExpectResourceAction("redshift_database.probe", plancheck.ResourceActionUpdate)}
 		}
+
 		return result
 	}
 	resource.Test(t, resource.TestCase{

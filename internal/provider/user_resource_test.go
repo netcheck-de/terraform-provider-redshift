@@ -51,37 +51,46 @@ func grafanaUser() userModel {
 	data.PasswordVersion, data.PasswordDisabled = types.Int64Value(0), types.BoolValue(false)
 	data.ValidUntil = types.StringValue(userValidUntilInfinity)
 	data.Superuser, data.CreateDB = types.BoolValue(false), types.BoolValue(false)
+
 	return data
 }
 
 // runUser invokes user lifecycle operations with a separate write-only configuration secret.
 func runUser(t *testing.T, r *userResource, operation string, plan, previous userModel, secret string) diag.Diagnostics {
 	t.Helper()
+
 	ctx := context.Background()
 	planState := testState(t, r, plan)
 	priorState := testState(t, r, previous)
 	config := plan
+
 	config.Password = types.StringNull()
 	if secret != "" {
 		config.Password = types.StringValue(secret)
 	}
+
 	configured := testState(t, r, config)
+
 	switch operation {
 	case "create":
 		resp := resource.CreateResponse{State: tfsdk.State{Schema: planState.Schema}}
 		r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan(planState), Config: tfsdk.Config(configured)}, &resp)
+
 		return resp.Diagnostics
 	case "update":
 		resp := resource.UpdateResponse{State: priorState}
 		r.Update(ctx, resource.UpdateRequest{Plan: tfsdk.Plan(planState), State: priorState, Config: tfsdk.Config(configured)}, &resp)
+
 		return resp.Diagnostics
 	case "read":
 		resp := resource.ReadResponse{State: priorState}
 		r.Read(ctx, resource.ReadRequest{State: priorState}, &resp)
+
 		return resp.Diagnostics
 	default:
 		resp := resource.DeleteResponse{State: priorState}
 		r.Delete(ctx, resource.DeleteRequest{State: priorState}, &resp)
+
 		return resp.Diagnostics
 	}
 }
@@ -94,16 +103,19 @@ func TestUserCreatesAndRotatesPassword(t *testing.T) {
 	require.False(t, runUser(t, r, "create", data, data, "InitialPass123").HasError())
 	assert.True(t, c.user)
 	assert.Contains(t, c.writes[0], "PASSWORD 'InitialPass123'")
+
 	data.ID = r.identity("admin", map[string]string{"name": "grafana"})
 	previous := data
 	data.PasswordVersion = types.Int64Value(1)
 	require.False(t, runUser(t, r, "update", data, previous, "RotatedPass456").HasError())
 	assert.Contains(t, c.writes, `ALTER USER "grafana" PASSWORD 'RotatedPass456'`)
+
 	previous = data
 	data.Superuser, data.CreateDB = types.BoolValue(true), types.BoolValue(true)
 	require.False(t, runUser(t, r, "update", data, previous, "").HasError())
 	assert.True(t, c.superuser)
 	assert.True(t, c.createDB)
+
 	previous = data
 	data.Superuser, data.CreateDB = types.BoolValue(false), types.BoolValue(false)
 	require.False(t, runUser(t, r, "update", data, previous, "").HasError())
@@ -134,6 +146,7 @@ func TestUserRejectsMissingPassword(t *testing.T) {
 	r := &userResource{testResourceClient(&catalog{})}
 	data := grafanaUser()
 	assert.True(t, runUser(t, r, "create", data, data, "").HasError())
+
 	c := &catalog{user: true}
 	r = &userResource{testResourceClient(c)}
 	data.ID = r.identity("admin", map[string]string{"name": "grafana"})
@@ -193,17 +206,21 @@ func TestUserOperationsReportCatalogErrors(t *testing.T) {
 					if current == failAt {
 						return nil, errors.New("injected API error")
 					}
+
 					return c.Query(ctx, target, sql, parameters)
 				})
 				r := &userResource{testResourceClient(client)}
+
 				data := grafanaUser()
 				if operation != "create" {
 					data.ID = r.identity("admin", map[string]string{"name": "grafana"})
 				}
+
 				planned, prior := data, data
 				if operation == "update" {
 					planned.PasswordVersion = types.Int64Value(1)
 				}
+
 				diagnostics := runUser(t, r, operation, planned, prior, "NextPass123")
 				assert.Equal(t, current >= failAt, diagnostics.HasError(), "failure at query %d", failAt)
 			}
@@ -219,6 +236,7 @@ func TestUserUpdateDetectsMismatchedBindingAndPrivileges(t *testing.T) {
 	data.ID = types.StringValue(`{"workgroup_name":"other","database":"admin","name":"grafana"}`)
 	assert.True(t, runUser(t, r, "update", data, data, "").HasError())
 	assert.Empty(t, c.writes)
+
 	data.ID = r.identity("admin", map[string]string{"name": "grafana"})
 	previous := data
 	data.Superuser = types.BoolValue(true)
@@ -226,6 +244,7 @@ func TestUserUpdateDetectsMismatchedBindingAndPrivileges(t *testing.T) {
 		if strings.HasPrefix(sql, "ALTER USER") {
 			return nil, nil
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	})
 	r.client = client
@@ -240,6 +259,7 @@ func TestUserLifecycleErrorPaths(t *testing.T) {
 		data.ID = r.identity("admin", map[string]string{"name": "grafana"})
 		assert.False(t, runUser(t, r, operation, data, data, "").HasError())
 	}
+
 	for _, stage := range []string{"create", "create verification", "create missing", "create mismatch"} {
 		t.Run(stage, func(t *testing.T) {
 			c := &catalog{}
@@ -247,22 +267,28 @@ func TestUserLifecycleErrorPaths(t *testing.T) {
 				if stage == "create" && strings.HasPrefix(sql, "CREATE USER") {
 					return nil, errors.New("create denied")
 				}
+
 				if stage == "create verification" && c.user && strings.HasPrefix(sql, "SELECT usename") {
 					return nil, errors.New("catalog unavailable")
 				}
+
 				if stage == "create missing" && strings.HasPrefix(sql, "SELECT usename") {
 					return nil, nil
 				}
+
 				if stage == "create mismatch" && strings.HasPrefix(sql, "SELECT usename") {
 					return []sqlclient.Row{{"usename": "grafana", "usesuper": "false", "usecreatedb": "false"}}, nil
 				}
+
 				return c.Query(ctx, target, sql, params)
 			})
 			r := &userResource{testResourceClient(client)}
+
 			data := grafanaUser()
 			if stage == "create mismatch" {
 				data.Superuser = types.BoolValue(true)
 			}
+
 			assert.True(t, runUser(t, r, "create", data, data, "InitialPass123").HasError())
 		})
 	}
@@ -275,6 +301,7 @@ func TestUserUpdateFailures(t *testing.T) {
 		"rotation": "Rotate Redshift password", "privilege": "Update Redshift user", "catalog": "Verify Redshift user",
 		"missing": "Verify Redshift user", "mismatch": "Verify Redshift user",
 	}
+
 	for _, stage := range []string{"rotation", "privilege", "catalog", "missing", "mismatch", "invalid config"} {
 		t.Run(stage, func(t *testing.T) {
 			c := &catalog{user: true}
@@ -282,29 +309,36 @@ func TestUserUpdateFailures(t *testing.T) {
 				if stage == "rotation" && strings.Contains(sql, " PASSWORD ") {
 					return nil, errors.New("rotation denied")
 				}
+
 				if stage == "privilege" && strings.HasSuffix(sql, " CREATEUSER") {
 					return nil, errors.New("ALTER denied")
 				}
+
 				if stage == "catalog" && strings.HasPrefix(sql, "SELECT usename") {
 					return nil, errors.New("catalog unavailable")
 				}
+
 				if stage == "missing" && strings.HasPrefix(sql, "SELECT usename") {
 					return nil, nil
 				}
+
 				if stage == "mismatch" && strings.HasPrefix(sql, "ALTER USER") {
 					return nil, nil
 				}
+
 				return c.Query(ctx, target, sql, params)
 			})
 			r := &userResource{testResourceClient(client)}
 			previous := grafanaUser()
 			previous.ID = r.identity("admin", map[string]string{"name": "grafana"})
+
 			planned := previous
 			if stage == "rotation" || stage == "invalid config" {
 				planned.PasswordVersion = types.Int64Value(1)
 			} else {
 				planned.Superuser = types.BoolValue(true)
 			}
+
 			if stage == "invalid config" {
 				// A secret of the wrong type makes reading it fail, which a rotation must report rather than
 				// mistake for a missing secret.
@@ -320,8 +354,10 @@ func TestUserUpdateFailures(t *testing.T) {
 				require.True(t, resp.Diagnostics.HasError())
 				assert.NotEqual(t, "Rotate Redshift password", resp.Diagnostics.Errors()[0].Summary())
 				assert.Empty(t, c.writes)
+
 				return
 			}
+
 			diagnostics := runUser(t, r, "update", planned, previous, "RotatedPass123")
 			require.True(t, diagnostics.HasError())
 			assert.Equal(t, summaries[stage], diagnostics.Errors()[0].Summary())
@@ -339,6 +375,7 @@ func TestUserAlterSkipsUnknownAndResetsRemovedSettings(t *testing.T) {
 	statements, err := userSessionDefaultStatements(before, after)
 	require.NoError(t, err)
 	assert.Empty(t, statements)
+
 	before.SyslogAccess, before.ValidUntil = types.StringValue("UNRESTRICTED"), types.StringValue("2030-01-01")
 	before.ConnectionLimit, before.SessionTimeout = types.Int64Value(10), types.Int64Value(60)
 	after = before
@@ -348,6 +385,7 @@ func TestUserAlterSkipsUnknownAndResetsRemovedSettings(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, statements, 1)
 	assert.Contains(t, statements[0], "VALID UNTIL 'infinity'")
+
 	after.SyslogAccess = types.StringValue("INVALID")
 	_, err = alterUserBatches(before, after)
 	require.ErrorContains(t, err, "syslog_access")

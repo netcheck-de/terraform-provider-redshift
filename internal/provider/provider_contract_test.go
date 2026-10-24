@@ -139,13 +139,16 @@ data "redshift_external_schema" "glue" {
 // checkAttributes compares selected Terraform state attributes using Testify assertions.
 func checkAttributes(t *testing.T, name string, expected map[string]string) resource.TestCheckFunc {
 	t.Helper()
+
 	return func(state *terraform.State) error {
 		data := state.RootModule().Resources[name]
 		require.NotNil(t, data, "resource %s", name)
 		require.NotNil(t, data.Primary, "resource %s", name)
+
 		for key, value := range expected {
 			assert.Equal(t, value, data.Primary.Attributes[key], "%s.%s", name, key)
 		}
+
 		return nil
 	}
 }
@@ -153,6 +156,7 @@ func checkAttributes(t *testing.T, name string, expected map[string]string) reso
 // TestContractProviderLifecycle exercises creation, imports, drift repair, replacement, and dependency-ordered cleanup.
 func TestContractProviderLifecycle(t *testing.T) {
 	t.Parallel()
+
 	c := &catalog{privileges: map[string]bool{}}
 	factories := map[string]func() (tfprotov6.ProviderServer, error){
 		"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c, datashareARN: testDatashareARN}),
@@ -165,6 +169,7 @@ func TestContractProviderLifecycle(t *testing.T) {
 		CheckDestroy: func(*terraform.State) error {
 			c.mu.Lock()
 			defer c.mu.Unlock()
+
 			assert.False(t, c.role)
 			assert.False(t, c.membership)
 			assert.False(t, c.userGrant)
@@ -179,6 +184,7 @@ func TestContractProviderLifecycle(t *testing.T) {
 			assert.False(t, c.shareGrant)
 			assert.False(t, c.identity)
 			assert.Empty(t, c.privileges)
+
 			return nil
 		},
 		Steps: []resource.TestStep{
@@ -215,6 +221,7 @@ func TestContractProviderLifecycle(t *testing.T) {
 				PreConfig: func() {
 					c.mu.Lock()
 					defer c.mu.Unlock()
+
 					c.privileges["INSERT"] = true
 					c.enabled = false
 					c.writes = nil
@@ -225,14 +232,17 @@ func TestContractProviderLifecycle(t *testing.T) {
 				PreConfig: func() {
 					c.mu.Lock()
 					defer c.mu.Unlock()
+
 					require.Empty(t, c.writes, "plan must not perform SQL mutations")
 				},
 				Check: func(*terraform.State) error {
 					c.mu.Lock()
 					defer c.mu.Unlock()
+
 					assert.True(t, c.enabled)
 					assert.Equal(t, map[string]bool{"SELECT": true}, c.privileges)
 					assert.Contains(t, c.writes, `REVOKE INSERT FOR TABLES IN DATABASE "analytics" FROM ROLE "example:readers"`)
+
 					return nil
 				},
 			},
@@ -248,6 +258,7 @@ func TestContractProviderLifecycle(t *testing.T) {
 				PreConfig: func() {
 					c.mu.Lock()
 					defer c.mu.Unlock()
+
 					c.role, c.membership = false, false
 					clear(c.privileges)
 				},
@@ -267,6 +278,7 @@ func TestContractProviderLifecycle(t *testing.T) {
 // TestContractFreshWorkgroupProviderConfiguration checks a warehouse that is unknown until apply.
 func TestContractFreshWorkgroupProviderConfiguration(t *testing.T) {
 	t.Parallel()
+
 	c := &catalog{identity: true, enabled: true, iamRole: "role-one"}
 	config := `
 resource "terraform_data" "workgroup" {}

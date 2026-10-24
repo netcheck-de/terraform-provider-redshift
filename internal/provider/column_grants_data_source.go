@@ -28,10 +28,12 @@ func newColumnGrantsDataSource() datasource.DataSource {
 		},
 		list: func(ctx context.Context, client *resourceClient, data types.Object) ([]map[string]attr.Value, error) {
 			filters := grantsFiltersFrom(data, client.database.ValueString())
+
 			rows, err := client.selectRows(ctx, filters.database, readColumnGrantsQuery(filters))
 			if err != nil {
 				return nil, err
 			}
+
 			return columnGrantsItems(filters.database, rows), nil
 		},
 	})

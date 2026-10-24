@@ -39,11 +39,13 @@ var _ = registerValidateConfigCase("materialized view", validateConfigCase{
 	invalid: func() materializedViewModel {
 		data := testMaterializedViewModel()
 		data.Distribution = materializedViewDistributionBlock("ALL", "label")
+
 		return data
 	}(),
 	unknown: func() materializedViewModel {
 		data := testMaterializedViewModel()
 		data.Distribution = types.ObjectValueMust(materializedViewDistributionTypes, map[string]attr.Value{"style": types.StringValue("KEY"), "key": types.StringUnknown()})
+
 		return data
 	}(),
 })
@@ -51,8 +53,10 @@ var _ = registerValidateConfigCase("materialized view", validateConfigCase{
 // decodeMaterializedViewState reads a materialized view model from Terraform state.
 func decodeMaterializedViewState(t *testing.T, state tfsdk.State) materializedViewModel {
 	t.Helper()
+
 	var data materializedViewResourceModel
 	require.False(t, state.Get(context.Background(), &data).HasError())
+
 	return data.materializedViewModel
 }
 
@@ -61,8 +65,10 @@ func decodeMaterializedViewState(t *testing.T, state tfsdk.State) materializedVi
 func TestMaterializedViewDefinitionDrift(t *testing.T) {
 	c, views := viewFake()
 	views.remove(fakeMaterializedViewName)
+
 	r := newMaterializedViewResource()
 	configureTestResource(t, r, c)
+
 	planned := testMaterializedViewModel()
 	planned.DefinitionFingerprint = types.StringUnknown()
 	state, diagnostics := applyOperation(t, r, "create", nil, planned, nil)
@@ -147,6 +153,7 @@ func materializedViewHiddenRefresh(c *catalog) queryFunc {
 		if strings.Contains(sql, "svv_mv_info") {
 			return nil, nil
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	}
 }
@@ -160,18 +167,22 @@ func TestMaterializedViewRejectsOrdinaryViewAndBadRefreshRows(t *testing.T) {
 	ordinary.Name = types.StringValue(fakeViewName)
 	_, _, err := r.read(context.Background(), ordinary)
 	require.ErrorContains(t, err, "redshift_view")
+
 	ambiguous := &materializedViewResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		if strings.Contains(sql, "svv_mv_info") {
 			return []sqlclient.Row{{"autorefresh": "t"}, {"autorefresh": "f"}}, nil
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	}))}
 	_, _, err = ambiguous.read(context.Background(), testMaterializedViewModel())
 	require.ErrorContains(t, err, "ambiguous")
+
 	malformed := &materializedViewResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		if strings.Contains(sql, "svv_mv_info") {
 			return []sqlclient.Row{{"autorefresh": "u"}}, nil
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	}))}
 	_, _, err = malformed.read(context.Background(), testMaterializedViewModel())
@@ -184,8 +195,10 @@ func TestMaterializedViewRejectsOrdinaryViewAndBadRefreshRows(t *testing.T) {
 func TestMaterializedViewHiddenRefreshSetting(t *testing.T) {
 	c, views := viewFake()
 	views.remove(fakeMaterializedViewName)
+
 	r := newMaterializedViewResource()
 	configureTestResource(t, r, materializedViewHiddenRefresh(c))
+
 	planned := testMaterializedViewModel()
 	planned.Owner, planned.DefinitionFingerprint = types.StringValue("reporter"), types.StringUnknown()
 	state, diagnostics := applyOperation(t, r, "create", nil, planned, nil)
@@ -216,16 +229,19 @@ func TestMaterializedViewConvergenceFailures(t *testing.T) {
 				if strings.HasPrefix(sql, ignore) {
 					return nil, nil // An acknowledged statement without effect.
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			})
 			r := newMaterializedViewResource()
 			configureTestResource(t, r, client)
+
 			planned := testMaterializedViewModel()
 			if name == "owner" {
 				planned.Owner = types.StringValue("reporter")
 			} else {
 				planned.AutoRefresh = types.BoolValue(false)
 			}
+
 			_, diagnostics := applyOperation(t, r, "update", testMaterializedViewModel(), planned, nil)
 			require.True(t, diagnostics.HasError())
 		})
@@ -239,11 +255,13 @@ func TestMaterializedViewRejectsInvalidConfigurationBeforeSQL(t *testing.T) {
 	configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		return nil, errors.New("unexpected SQL " + sql)
 	}))
+
 	invalid := testMaterializedViewModel()
 	invalid.Distribution = materializedViewDistributionBlock("KEY", "")
 	state, diagnostics := applyOperation(t, r, "create", nil, invalid, nil)
 	require.True(t, diagnostics.HasError())
 	assert.True(t, state.Raw.IsNull(), "a rejected view must not be recorded in state")
+
 	unnamed := testMaterializedViewModel()
 	unnamed.Schema = types.StringValue("")
 	_, diagnostics = applyOperation(t, r, "update", testMaterializedViewModel(), unnamed, nil)
@@ -259,8 +277,10 @@ func TestMaterializedViewUpdateFailures(t *testing.T) {
 		if strings.HasPrefix(sql, "ALTER MATERIALIZED VIEW") {
 			return nil, refusal
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	}))
+
 	planned := testMaterializedViewModel()
 	planned.AutoRefresh = types.BoolValue(false)
 	_, diagnostics := applyOperation(t, r, "update", testMaterializedViewModel(), planned, nil)
@@ -268,6 +288,7 @@ func TestMaterializedViewUpdateFailures(t *testing.T) {
 	assert.Contains(t, diagnostics.Errors()[0].Detail(), refusal.Error())
 	assert.True(t, views.get(fakeMaterializedViewName).autoRefresh)
 	views.remove(fakeMaterializedViewName)
+
 	_, diagnostics = applyOperation(t, r, "update", testMaterializedViewModel(), planned, nil)
 	require.True(t, diagnostics.HasError())
 	assert.Contains(t, diagnostics.Errors()[0].Detail(), "disappeared")
@@ -279,6 +300,7 @@ func TestMaterializedViewTranscripts(t *testing.T) {
 	with := func(change func(*materializedViewModel)) materializedViewModel {
 		data := testMaterializedViewModel()
 		change(&data)
+
 		return data
 	}
 	runTranscripts(t, "materialized_view_transcript", newMaterializedViewResource, []transcriptCase{

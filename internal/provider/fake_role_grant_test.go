@@ -24,6 +24,7 @@ func (f *roleGrantFakeFamily) query(c *catalog, _ sqlclient.Connection, sql stri
 		if c.user && c.userGrant {
 			return []sqlclient.Row{{"role_name": parameters["role"], "admin_option": fmt.Sprint(f.admin)}}, true, nil
 		}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "GRANT ROLE") && !strings.Contains(sql, " TO ROLE "):
 		// Granting again without the option keeps an option the user already holds, as in Redshift.
@@ -34,10 +35,12 @@ func (f *roleGrantFakeFamily) query(c *catalog, _ sqlclient.Connection, sql stri
 		if !c.userGrant {
 			return nil, true, errors.New("the user does not hold the role")
 		}
+
 		f.admin = false
 	default:
 		return nil, false, nil
 	}
+
 	return nil, true, nil
 }
 

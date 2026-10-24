@@ -55,9 +55,11 @@ func TestDroppedParentDatabaseIsNotFound(t *testing.T) {
 		if target.Database == "admin" && strings.HasPrefix(sql, "SELECT database_name FROM svv_redshift_databases") {
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("database %q does not exist", target.Database)
 	}))
 	database := types.StringValue("analytics")
+
 	reads := map[string]func() (bool, error){
 		"schema": func() (bool, error) {
 			return (&schemaResource{client}).read(context.Background(), &schemaModel{Database: database, Name: types.StringValue("serving")})
@@ -93,6 +95,7 @@ func creationOnlyClient(unavailable bool) resourceClient {
 		if unavailable && !strings.HasPrefix(sql, "CREATE ") {
 			return nil, fmt.Errorf("catalog unavailable")
 		}
+
 		return nil, nil
 	}))
 }
@@ -106,6 +109,7 @@ func TestSchemaCreationErrorsRetainKnownState(t *testing.T) {
 			resp := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
 			r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state)}, &resp)
 			require.True(t, resp.Diagnostics.HasError())
+
 			var observed schemaModel
 			require.False(t, resp.State.Get(context.Background(), &observed).HasError())
 			assert.False(t, observed.ID.IsNull())
@@ -131,6 +135,7 @@ func TestSchemaQuotaRejectsMalformedSession(t *testing.T) {
 			if calls == 1 {
 				return nil, nil
 			}
+
 			return test.rows, nil
 		}))}
 		_, visible, err := r.schemaQuota(context.Background(), schemaModel{Database: types.StringValue("admin"), Name: types.StringValue("serving")}, "owner")
@@ -149,10 +154,15 @@ func TestSchemaUpdateReportsDisappearance(t *testing.T) {
 			if strings.HasPrefix(query, "ALTER SCHEMA ") || strings.HasPrefix(query, "ALTER EXTERNAL SCHEMA ") {
 				c.schema, c.external = false, false
 			}
+
 			return rows, err
 		})
-		var r resource.Resource
-		var before, after any
+
+		var (
+			r             resource.Resource
+			before, after any
+		)
+
 		if external {
 			r = newExternalSchemaResource()
 			model := externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("example_external"), GlueDatabase: types.StringValue("example_glue"), IAMRoleARN: types.StringValue("arn:aws:iam::123456789012:role/spectrum"), RefreshRevision: types.StringNull(), Owner: types.StringValue("admin")}
@@ -166,6 +176,7 @@ func TestSchemaUpdateReportsDisappearance(t *testing.T) {
 			model.Owner = types.StringValue("replacement_owner")
 			after = model
 		}
+
 		configureTestResource(t, r, client)
 		_, diagnostics := applyOperation(t, r, "update", before, after, nil)
 		require.True(t, diagnostics.HasError(), "%v", diagnostics)

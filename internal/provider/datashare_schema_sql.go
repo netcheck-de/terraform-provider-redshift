@@ -6,10 +6,12 @@ import "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 // include_new starts out false, so only enabling it needs a second statement.
 func createDatashareSchemaStatements(data datashareSchemaModel) []string {
 	share := sqlclient.Stmt("ALTER DATASHARE").Ident(data.Datashare.ValueString())
+
 	statements := []string{share.KwIdent("ADD SCHEMA", data.Schema.ValueString()).String()}
 	if data.IncludeNew.ValueBool() {
 		statements = append(statements, share.KwIdent("SET INCLUDENEW TRUE FOR SCHEMA", data.Schema.ValueString()).String())
 	}
+
 	return statements
 }
 

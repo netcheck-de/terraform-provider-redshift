@@ -43,7 +43,9 @@ func testAccSpectrumExternalTableLifecycle(t *testing.T, format string) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+
 	t.Cleanup(func() {
 		// A failed run may leave the table in the shared Glue database, which restrictive DROP SCHEMA cannot remove.
 		for _, table := range []string{"events", "metrics"} {
@@ -53,6 +55,7 @@ func testAccSpectrumExternalTableLifecycle(t *testing.T, format string) {
 			}
 		}
 	})
+
 	configuration := func(tableLocation, partitionLocation, extraColumn, numRows, mappedColumns string) string {
 		return fmt.Sprintf(`
 provider "redshift" {

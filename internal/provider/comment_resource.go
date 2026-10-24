@@ -67,56 +67,71 @@ func (r *commentResource) read(ctx context.Context, data *commentModel) (bool, e
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
+
 	query, err := readCommentQuery(*data)
 	if err != nil {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, r.database.ValueString(), commentDatabaseQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
+
 	rows, err = r.selectRows(ctx, data.DatabaseName.ValueString(), query)
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
+
 	if len(rows) != 1 {
 		return false, fmt.Errorf("comment target catalog identity is ambiguous")
 	}
+
 	data.Text = types.StringValue(rows[0]["text"])
+
 	return true, nil
 }
 
 // reconcile changes only annotation text and verifies its catalog value, including removal.
 func (r *commentResource) reconcile(ctx context.Context, data commentModel, deleting bool) error {
 	actual := data
+
 	found, err := r.read(ctx, &actual)
 	if err != nil {
 		return err
 	}
+
 	if !found {
 		if deleting {
 			return nil
 		}
+
 		return fmt.Errorf("comment target does not exist")
 	}
+
 	desired := data.Text.ValueString()
 	if deleting {
 		desired = ""
 	}
+
 	if actual.Text.ValueString() == desired {
 		return nil
 	}
+
 	statement, err := commentStatement(data, desired)
 	if err != nil {
 		return err
 	}
+
 	if err := r.exec(ctx, data.DatabaseName.ValueString(), statement); err != nil {
 		return err
 	}
+
 	found, err = r.read(ctx, &actual)
 	if err == nil && (!found || actual.Text.ValueString() != desired) {
 		return fmt.Errorf("comment did not converge")
 	}
+
 	return err
 }
 
@@ -124,6 +139,7 @@ func (r *commentResource) reconcile(ctx context.Context, data commentModel, dele
 func (r *commentResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data commentModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -132,18 +148,23 @@ func (r *commentResource) Create(ctx context.Context, req resource.CreateRequest
 		resp.Diagnostics.AddError("Create comment", err.Error())
 		return
 	}
+
 	fields := map[string]string{"database_name": data.DatabaseName.ValueString(), "object_type": data.ObjectType.ValueString(), "object_name": data.ObjectName.ValueString()}
 	if !data.SchemaName.IsNull() {
 		fields["schema_name"] = data.SchemaName.ValueString()
 	}
+
 	if !data.ColumnName.IsNull() {
 		fields["column_name"] = data.ColumnName.ValueString()
 	}
+
 	if !data.ConstraintName.IsNull() {
 		fields["constraint_name"] = data.ConstraintName.ValueString()
 	}
+
 	data.ID = r.identity(r.database.ValueString(), fields)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if err := r.reconcile(ctx, data, false); err != nil {
 		resp.Diagnostics.AddError("Create comment", err.Error())
 	}
@@ -153,9 +174,11 @@ func (r *commentResource) Create(ctx context.Context, req resource.CreateRequest
 func (r *commentResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data commentModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := commentKnownTarget(data); err != nil {
 		resp.Diagnostics.AddError("Invalid comment target", err.Error())
 	}
@@ -165,18 +188,22 @@ func (r *commentResource) ValidateConfig(ctx context.Context, req resource.Valid
 func (r *commentResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data commentModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read comment", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -184,13 +211,16 @@ func (r *commentResource) Read(ctx context.Context, req resource.ReadRequest, re
 func (r *commentResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data commentModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.reconcile(ctx, data, false); err != nil {
 		resp.Diagnostics.AddError("Update comment", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -198,9 +228,11 @@ func (r *commentResource) Update(ctx context.Context, req resource.UpdateRequest
 func (r *commentResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data commentModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.reconcile(ctx, data, true); err != nil {
 		resp.Diagnostics.AddError("Delete comment", err.Error())
 	}
@@ -209,10 +241,13 @@ func (r *commentResource) Delete(ctx context.Context, req resource.DeleteRequest
 // ImportState restores comment target identity; refresh retrieves the current text.
 func (r *commentResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importIdentity(ctx, req, resp, "database_name", "object_type", "object_name")
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	var values map[string]string
+
 	_ = json.Unmarshal([]byte(req.ID), &values)
 	for _, field := range []string{"schema_name", "column_name", "constraint_name"} {
 		if values[field] != "" {

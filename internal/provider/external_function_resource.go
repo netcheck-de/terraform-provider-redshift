@@ -78,12 +78,14 @@ func externalFunctionArgumentsChange(_ context.Context, req planmodifier.ListReq
 		resp.RequiresReplace = true
 		return
 	}
+
 	for _, element := range req.PlanValue.Elements() {
 		if element.IsUnknown() {
 			resp.RequiresReplace = true
 			return
 		}
 	}
+
 	before, errBefore := externalFunctionSignature(externalFunctionTypeList(req.StateValue))
 	after, errAfter := externalFunctionSignature(externalFunctionTypeList(req.PlanValue))
 	resp.RequiresReplace = errBefore != nil || errAfter != nil || before != after
@@ -177,6 +179,7 @@ func externalFunctionKnownConfig(data externalFunctionModel) error {
 		if len(data.Arguments.Elements()) > externalFunctionMaxArguments {
 			return fmt.Errorf("a function accepts at most %d arguments", externalFunctionMaxArguments)
 		}
+
 		for _, element := range data.Arguments.Elements() {
 			value := element.(types.String)
 			if !value.IsUnknown() {
@@ -186,39 +189,50 @@ func externalFunctionKnownConfig(data externalFunctionModel) error {
 			}
 		}
 	}
+
 	if !data.ReturnType.IsUnknown() {
 		if _, err := externalFunctionType(data.ReturnType.ValueString()); err != nil {
 			return err
 		}
 	}
+
 	if _, err := optOneOf(data.Volatility, externalFunctionVolatilities...); err != nil {
 		return err
 	}
+
 	if !data.LambdaFunction.IsUnknown() && data.LambdaFunction.ValueString() == "" {
 		return fmt.Errorf("lambda_function must not be empty")
 	}
+
 	if !data.IAMRole.IsUnknown() {
 		if _, err := externalFunctionIAMRole(data.IAMRole.ValueString()); err != nil {
 			return err
 		}
 	}
+
 	if timeout := knownInt64(data.RetryTimeout); timeout != nil && *timeout < 0 {
 		return fmt.Errorf("retry_timeout must be at least 0 milliseconds")
 	}
+
 	if rows := knownInt64(data.MaxBatchRows); rows != nil && (*rows < 1 || *rows > externalFunctionMaxBatchRows) {
 		return fmt.Errorf("max_batch_rows must be between 1 and %d", externalFunctionMaxBatchRows)
 	}
+
 	if _, err := optOneOf(data.MaxBatchSizeUnit, externalFunctionBatchUnits...); err != nil {
 		return err
 	}
+
 	if data.MaxBatchSize.IsUnknown() {
 		return nil
 	}
+
 	if data.MaxBatchSizeUnit.IsUnknown() {
 		// KB has the widest numeric range; a size outside it cannot become valid with either unit.
 		data.MaxBatchSizeUnit = types.StringNull()
 	}
+
 	_, err := externalFunctionBatchSize(data)
+
 	return err
 }
 
@@ -226,9 +240,11 @@ func externalFunctionKnownConfig(data externalFunctionModel) error {
 func (r *externalFunctionResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data externalFunctionModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := externalFunctionKnownConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid external function", err.Error())
 	}
@@ -241,6 +257,7 @@ func (r *externalFunctionResource) identityOf(data externalFunctionModel) (types
 	if err != nil {
 		return types.StringNull(), err
 	}
+
 	return r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString(), "arguments": string(signature)}), nil
 }
 
@@ -251,25 +268,31 @@ func (r *externalFunctionResource) read(ctx context.Context, data *externalFunct
 	if err := r.bound(data.ID, database); err != nil {
 		return false, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, database); err != nil || !exists {
 		return false, err
 	}
+
 	query, err := readExternalFunctionQuery(*data)
 	if err != nil {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, database, query)
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
+
 	row := rows[0]
 	if len(rows) != 1 || row["owner"] == "" || row["return_type"] == "" {
 		return false, fmt.Errorf("external function %s.%s has incomplete or ambiguous catalog metadata", data.Schema.ValueString(), data.Name.ValueString())
 	}
+
 	if !strings.EqualFold(row["language"], "EXFUNC") {
 		return false, fmt.Errorf("function %s.%s(%s) exists but is a %s function, not an external function", data.Schema.ValueString(), data.Name.ValueString(),
 			routineCatalogSignature(row["arguments"]), strings.ToUpper(row["language"]))
 	}
+
 	volatility, err := externalFunctionVolatility(row["volatility"])
 	if err != nil {
 		return false, err
@@ -279,7 +302,9 @@ func (r *externalFunctionResource) read(ctx context.Context, data *externalFunct
 	if configured, err := externalFunctionType(data.ReturnType.ValueString()); err != nil || externalFunctionBaseType(configured) != returnType {
 		data.ReturnType = types.StringValue(returnType)
 	}
+
 	data.Volatility, data.Owner = types.StringValue(volatility), types.StringValue(row["owner"])
+
 	return true, nil
 }
 
@@ -298,6 +323,7 @@ func (r *externalFunctionResource) converge(ctx context.Context, data *externalF
 	case knownString(planned.Owner) != "" && data.Owner.ValueString() != planned.Owner.ValueString():
 		return fmt.Errorf("the catalog reports owner %q instead of %q", data.Owner.ValueString(), planned.Owner.ValueString())
 	}
+
 	return nil
 }
 
@@ -305,6 +331,7 @@ func (r *externalFunctionResource) converge(ctx context.Context, data *externalF
 func (r *externalFunctionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data externalFunctionModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -314,34 +341,42 @@ func (r *externalFunctionResource) Create(ctx context.Context, req resource.Crea
 		resp.Diagnostics.AddError("Create external function", err.Error())
 		return
 	}
+
 	id, err := r.identityOf(data)
 	if err != nil {
 		resp.Diagnostics.AddError("Create external function", err.Error())
 		return
 	}
+
 	database := data.Database.ValueString()
 	if err := r.exec(ctx, database, statements[0]); err != nil {
 		resp.Diagnostics.AddError("Create external function", err.Error())
 		return
 	}
+
 	planned := data
 	data.ID = id
 	// A failed owner change or verification must still return serializable state for the created function.
 	if data.Owner.IsUnknown() {
 		data.Owner = types.StringNull()
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.exec(ctx, database, statements[1:]...); err != nil {
 		resp.Diagnostics.AddError("Set external function owner", err.Error())
 		return
 	}
+
 	if err := r.converge(ctx, &data, planned); err != nil {
 		resp.Diagnostics.AddError("Verify external function", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -349,18 +384,22 @@ func (r *externalFunctionResource) Create(ctx context.Context, req resource.Crea
 func (r *externalFunctionResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data externalFunctionModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read external function", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -369,27 +408,33 @@ func (r *externalFunctionResource) Update(ctx context.Context, req resource.Upda
 	var plan, state externalFunctionModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.bound(state.ID, state.Database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update external function", err.Error())
 		return
 	}
+
 	statements, err := alterExternalFunctionStatements(state, plan)
 	if err != nil {
 		resp.Diagnostics.AddError("Update external function", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, plan.Database.ValueString(), statements...); err != nil {
 		resp.Diagnostics.AddError("Update external function", err.Error())
 		return
 	}
+
 	planned := plan
 	if err := r.converge(ctx, &plan, planned); err != nil {
 		resp.Diagnostics.AddError("Verify external function", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -397,9 +442,11 @@ func (r *externalFunctionResource) Update(ctx context.Context, req resource.Upda
 func (r *externalFunctionResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data externalFunctionModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		var statement string
@@ -407,6 +454,7 @@ func (r *externalFunctionResource) Delete(ctx context.Context, req resource.Dele
 			err = r.exec(ctx, data.Database.ValueString(), statement)
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete external function", err.Error())
 	}
@@ -416,20 +464,26 @@ func (r *externalFunctionResource) Delete(ctx context.Context, req resource.Dele
 // canonical signature and may be empty for a function without arguments.
 func (r *externalFunctionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importIdentity(ctx, req, resp, "database", "schema", "name")
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	var fields map[string]any
+
 	_ = json.Unmarshal([]byte(req.ID), &fields) // importIdentity already parsed the same JSON.
+
 	signature, ok := fields["arguments"].(string)
 	if !ok {
 		resp.Diagnostics.AddError("Invalid import identity", "Missing string field arguments; use \"\" for a function without arguments.")
 		return
 	}
+
 	argumentTypes := externalFunctionSignatureTypes(signature)
 	if canonical, err := externalFunctionSignature(argumentTypes); err != nil || string(canonical) != signature {
 		resp.Diagnostics.AddError("Invalid import identity", fmt.Sprintf("arguments must be the canonical signature that Create records, such as \"INTEGER, CHARACTER VARYING\"; got %q.", signature))
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("arguments"), externalFunctionTypeValues(argumentTypes))...)
 }

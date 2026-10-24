@@ -39,6 +39,7 @@ func TestObjectGrantSnapshotsCoverParallelObjects(t *testing.T) {
 			if test.kind == "ALL FUNCTIONS" {
 				privilege = "EXECUTE"
 			}
+
 			c := &privilegeCatalog{values: map[string]bool{}, grantee: "analyst", kind: "user", scope: test.kind}
 			grants := 0
 			r := newObjectGrantResource().(*privilegeResource)
@@ -50,18 +51,22 @@ func TestObjectGrantSnapshotsCoverParallelObjects(t *testing.T) {
 						delete(c.values, privilege)
 					}
 				}
+
 				return rows, err
 			}))
+
 			fields := map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_type": test.kind, "grantee_type": "USER", "grantee": "analyst"}
 			if test.name != "" {
 				fields["object_name"] = test.name
 			}
+
 			err := r.reconcile(context.Background(), privilegeObject(t, r, fields, privilege))
 			if test.converges {
 				require.NoError(t, err)
 			} else {
 				require.ErrorContains(t, err, "did not converge")
 			}
+
 			assert.Equal(t, test.writes, grants)
 		})
 	}
@@ -78,16 +83,20 @@ func TestObjectGrantSharedSnapshotCoversParallelMembers(t *testing.T) {
 			c.members = append(c.members, "late")
 			c.privileges["late"], c.options["late"] = map[string]bool{}, map[string]bool{}
 		}
+
 		return rows, err
 	}))
 	data := privilegeObject(t, r, map[string]string{"database_name": "shared_db", "database_type": "shared", "schema_name": "serving", "object_type": "ALL TABLES", "grantee": "reader", "grantee_type": "USER"}, "SELECT")
 	require.NoError(t, r.reconcile(context.Background(), data))
+
 	var grants []string
+
 	for _, write := range c.writes {
 		if strings.HasPrefix(write, "GRANT ") {
 			grants = append(grants, write)
 		}
 	}
+
 	assert.Len(t, grants, 2)
 	assert.True(t, c.privileges["late"]["SELECT"])
 }
@@ -101,6 +110,7 @@ func TestObjectGrantSnapshotDeleteAfterParallelDrop(t *testing.T) {
 		if strings.HasPrefix(sql, "REVOKE ") {
 			c.missing = true
 		}
+
 		return rows, err
 	}))
 	data := privilegeObject(t, r, map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_type": "ALL TABLES", "grantee_type": "USER", "grantee": "analyst"}, "SELECT")
@@ -145,6 +155,7 @@ func TestObjectGrantRoutineLifecycle(t *testing.T) {
 	resp := resource.ImportStateResponse{State: testState(t, r, privilegeObject(t, r, fields))}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: r.identity("admin", fields).ValueString()}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 	var arguments types.String
 	require.False(t, resp.State.GetAttribute(context.Background(), path.Root("arguments"), &arguments).HasError())
 	assert.Equal(t, "int, varchar(10)", arguments.ValueString())
@@ -165,13 +176,16 @@ func TestObjectGrantRoutineValidation(t *testing.T) {
 			r := newObjectGrantResource().(*privilegeResource)
 			base := map[string]string{"database_name": "warehouse", "schema_name": "serving", "grantee_type": "USER", "grantee": "analyst"}
 			maps.Copy(base, fields)
+
 			var privileges, options []string
 			if fields["privilege"] != "" {
 				privileges = []string{fields["privilege"]}
 			}
+
 			if fields["option"] != "" {
 				options = []string{fields["option"]}
 			}
+
 			data := withGrantOptions(privilegeObject(t, r, base, privileges...), options)
 			require.Error(t, r.validate(data))
 			state, diagnostics := applyOperation(t, r, "create", nil, data, nil)
@@ -192,6 +206,7 @@ func TestObjectGrantRoutineSnapshotKind(t *testing.T) {
 		matches := test.procedures == (test.kind == "ALL PROCEDURES")
 		t.Run(test.kind+map[bool]string{true: " over matching routines", false: " over the other kind"}[matches], func(t *testing.T) {
 			var writes []string
+
 			r := newObjectGrantResource().(*privilegeResource)
 			r.resourceClient = testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 				switch {
@@ -203,10 +218,12 @@ func TestObjectGrantRoutineSnapshotKind(t *testing.T) {
 					if strings.Contains(sql, "NOT ILIKE '%PROCEDURE%'") == test.procedures {
 						return nil, nil
 					}
+
 					return []sqlclient.Row{{"schema_name": "serving"}}, nil
 				case strings.HasPrefix(sql, "SELECT privilege_type"):
 					return nil, nil
 				}
+
 				return []sqlclient.Row{{"name": "exists"}}, nil
 			}))
 			fields := map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_type": test.kind, "grantee_type": "ROLE", "grantee": "readers"}
@@ -217,9 +234,11 @@ func TestObjectGrantRoutineSnapshotKind(t *testing.T) {
 			r.Read(context.Background(), resource.ReadRequest{State: state}, &resp)
 			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 			assert.Equal(t, !matches, resp.State.Raw.IsNull(), "Read removes the snapshot only when the schema holds none of its kind")
+
 			if matches {
 				return
 			}
+
 			_, diagnostics := applyOperation(t, r, "create", nil, privilegeObject(t, r, fields, "EXECUTE"), nil)
 			require.True(t, diagnostics.HasError())
 			assert.Contains(t, diagnostics[0].Detail(), "does not exist")

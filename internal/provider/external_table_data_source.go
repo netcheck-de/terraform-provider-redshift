@@ -27,17 +27,23 @@ func newExternalTableDataSource() datasource.DataSource {
 			if diagnostics := data.As(ctx, &model, basetypes.ObjectAsOptions{}); diagnostics.HasError() {
 				return false, externalTableDiagnosticsError(diagnostics)
 			}
+
 			model.ID = types.StringNull()
+
 			catalog, err := (&externalTableResource{*client}).fetch(ctx, model)
 			if err != nil || catalog == nil {
 				return false, err
 			}
+
 			observed := observeExternalTable(catalog, model, externalTableLookup)
+
 			value, diagnostics := types.ObjectValueFrom(ctx, data.AttributeTypes(ctx), observed)
 			if diagnostics.HasError() {
 				return false, externalTableDiagnosticsError(diagnostics)
 			}
+
 			*data = value
+
 			return true, nil
 		},
 	}), map[string]string{

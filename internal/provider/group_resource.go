@@ -64,25 +64,32 @@ func (r *groupResource) read(ctx context.Context, data *groupModel) (bool, error
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, r.database.ValueString(), readGroupQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
+
 	id, err := strconv.ParseInt(rows[0]["grosysid"], 10, 64)
 	if err != nil {
 		return false, fmt.Errorf("decode group ID: %w", err)
 	}
+
 	members := []attr.Value{}
+
 	for _, row := range rows {
 		if row["groname"] != rows[0]["groname"] {
 			return false, fmt.Errorf("group %q is ambiguous in the catalog", data.Name.ValueString())
 		}
+
 		if user := row["usename"]; user != "" {
 			members = append(members, types.StringValue(user))
 		}
 	}
+
 	data.GroupID = types.Int64Value(id)
 	data.Members = types.SetValueMust(types.StringType, members)
+
 	return true, nil
 }
 
@@ -90,26 +97,32 @@ func (r *groupResource) read(ctx context.Context, data *groupModel) (bool, error
 func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data groupModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.exec(ctx, r.database.ValueString(), createGroupStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Create Redshift group", err.Error())
 		return
 	}
+
 	data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
 	// Verification can fail after CREATE succeeds; the saved identity must not carry unknown computed values.
 	data.GroupID, data.Members = types.Int64Null(), types.SetNull(types.StringType)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify Redshift group", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("Verify Redshift group", "The group is absent after creation.")
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -117,18 +130,22 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data groupModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read Redshift group", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -136,18 +153,22 @@ func (r *groupResource) Read(ctx context.Context, req resource.ReadRequest, resp
 func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data groupModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Update Redshift group", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("Update Redshift group", "The group disappeared; refresh the plan.")
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -155,13 +176,16 @@ func (r *groupResource) Update(ctx context.Context, req resource.UpdateRequest, 
 func (r *groupResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data groupModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, r.database.ValueString(), dropGroupStatement(data))
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete Redshift group", err.Error())
 	}

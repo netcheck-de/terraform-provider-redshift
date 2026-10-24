@@ -62,6 +62,7 @@ func databaseIntegrationObject(integration *databaseIntegrationModel) types.Obje
 	if integration == nil {
 		return types.ObjectNull(databaseIntegrationAttributeTypes)
 	}
+
 	return types.ObjectValueMust(databaseIntegrationAttributeTypes, map[string]attr.Value{
 		"integration_id": integration.IntegrationID, "source_database": integration.SourceDatabase,
 		"refresh_interval": integration.RefreshInterval, "history_mode": integration.HistoryMode,
@@ -131,6 +132,7 @@ func databaseIntegrationBlock() schema.SingleNestedBlock {
 // databaseIntegrationLookupAttribute observes the integration in the lookup, which never declares blocks.
 func databaseIntegrationLookupAttribute() datasourceschema.SingleNestedAttribute {
 	unread := "No supported catalog readback is used, so always null in the lookup."
+
 	return datasourceschema.SingleNestedAttribute{
 		Computed: true,
 		MarkdownDescription: "Zero-ETL integration of a destination database, from `SVV_INTEGRATION`, which only superusers can see; " +
@@ -157,26 +159,33 @@ func databaseIntegrationReplacement(_ context.Context, req planmodifier.ObjectRe
 		resp.RequiresReplace = true
 		return
 	}
+
 	if req.PlanValue.IsNull() || req.StateValue.IsUnknown() {
 		return
 	}
+
 	if req.PlanValue.IsUnknown() {
 		resp.RequiresReplace = true
 		return
 	}
+
 	planned, prior, configured := req.PlanValue.Attributes(), req.StateValue.Attributes(), req.ConfigValue.Attributes()
 	for _, name := range []string{"integration_id", "source_database"} {
 		value, ok := planned[name]
 		if !ok {
 			continue
 		}
+
 		if value.IsUnknown() {
 			if config, ok := configured[name]; ok && config.IsNull() {
 				continue
 			}
+
 			resp.RequiresReplace = true
+
 			return
 		}
+
 		if !value.Equal(prior[name]) {
 			resp.RequiresReplace = true
 			return
@@ -195,13 +204,16 @@ func databaseIntegrationRow(name string, row map[string]string) (databaseIntegra
 	if integration.IntegrationID.ValueString() == "" {
 		return databaseIntegrationModel{}, fmt.Errorf("SVV_INTEGRATION reports no integration_id for database %q", name)
 	}
+
 	if text := strings.TrimSpace(row["refresh_interval"]); text != "" {
 		interval, err := strconv.ParseInt(text, 10, 64)
 		if err != nil {
 			return databaseIntegrationModel{}, fmt.Errorf("database %q has unrecognized refresh_interval %q", name, row["refresh_interval"])
 		}
+
 		integration.RefreshInterval = types.Int64Value(interval)
 	}
+
 	for _, flag := range []struct {
 		column string
 		target *types.Bool
@@ -211,9 +223,11 @@ func databaseIntegrationRow(name string, row map[string]string) (databaseIntegra
 			if err != nil {
 				return databaseIntegrationModel{}, fmt.Errorf("database %q has unrecognized %s %q", name, flag.column, row[flag.column])
 			}
+
 			*flag.target = types.BoolValue(value)
 		}
 	}
+
 	return integration, nil
 }
 
@@ -224,10 +238,13 @@ func (r *resourceClient) databaseIntegration(ctx context.Context, name string) (
 	if err != nil || len(rows) == 0 {
 		return databaseIntegrationModel{}, false, err
 	}
+
 	if len(rows) != 1 {
 		return databaseIntegrationModel{}, false, fmt.Errorf("SVV_INTEGRATION reports %d integrations for database %q", len(rows), name)
 	}
+
 	integration, err := databaseIntegrationRow(name, rows[0])
+
 	return integration, err == nil, err
 }
 
@@ -240,20 +257,25 @@ func (r *resourceClient) databaseReadIntegration(ctx context.Context, state *dat
 	if observed.DatabaseType.ValueString() == databaseTypeShared {
 		return fmt.Errorf("database %q is a shared database, not a zero-ETL destination; migrate it explicitly", name)
 	}
+
 	integration, found, err := r.databaseIntegration(ctx, name)
 	if err != nil {
 		return err
 	}
+
 	if !found {
 		observed.Integration = nil
 		return nil
 	}
+
 	if configured := knownString(state.IntegrationID); configured != "" {
 		if !strings.EqualFold(configured, integration.IntegrationID.ValueString()) {
 			return fmt.Errorf("database %q receives integration %q, not %q; migrate it explicitly", name, integration.IntegrationID.ValueString(), configured)
 		}
+
 		integration.IntegrationID = state.IntegrationID
 	}
+
 	for _, kept := range []struct{ state, observed *types.Bool }{
 		{&state.QueryAllStates, &integration.QueryAllStates},
 		{&state.AcceptInvalidChars, &integration.AcceptInvalidChars},
@@ -263,7 +285,9 @@ func (r *resourceClient) databaseReadIntegration(ctx context.Context, state *dat
 			*kept.observed = *kept.state
 		}
 	}
+
 	observed.Integration = &integration
+
 	return nil
 }
 
@@ -273,12 +297,15 @@ func databaseIntegrationClearUnknown(integration *databaseIntegrationModel) {
 	if integration == nil {
 		return
 	}
+
 	if integration.SourceDatabase.IsUnknown() {
 		integration.SourceDatabase = types.StringNull()
 	}
+
 	if integration.RefreshInterval.IsUnknown() {
 		integration.RefreshInterval = types.Int64Null()
 	}
+
 	for _, value := range []*types.Bool{&integration.HistoryMode, &integration.AutoRemediation, &integration.QueryAllStates, &integration.AcceptInvalidChars, &integration.TruncateColumns} {
 		if value.IsUnknown() {
 			*value = types.BoolNull()
@@ -291,9 +318,11 @@ func databaseIntegrationConverged(expected, observed *databaseIntegrationModel) 
 	if expected == nil {
 		return nil
 	}
+
 	if observed == nil {
 		return fmt.Errorf("SVV_INTEGRATION shows no zero-ETL integration for the database; only superusers can see the view")
 	}
+
 	for _, option := range []struct {
 		name               string
 		expected, observed attr.Value
@@ -307,6 +336,7 @@ func databaseIntegrationConverged(expected, observed *databaseIntegrationModel) 
 			return fmt.Errorf("%s is %s in the catalog, not the planned %s", option.name, option.observed, option.expected)
 		}
 	}
+
 	return nil
 }
 
@@ -329,30 +359,37 @@ func (r *databaseResource) waitDatabaseIntegration(ctx context.Context, expected
 			observed.Integration = &binding
 		}
 	}()
+
 	waitCtx, cancel := context.WithTimeout(ctx, databaseIntegrationReadbackWait)
 	defer cancel()
+
 	for {
 		convergence := databaseIntegrationConverged(expected.Integration, observed.Integration)
 		if convergence == nil {
 			return nil
 		}
+
 		select {
 		case <-waitCtx.Done():
 			return fmt.Errorf("waiting for SVV_INTEGRATION catalog propagation: %w", convergence)
 		case <-time.After(time.Second):
 		}
+
 		candidate := *observed
 		if candidate.Integration == nil {
 			binding := *expected.Integration
 			candidate.Integration = &binding
 		}
+
 		found, err := r.read(waitCtx, &candidate)
 		if err != nil {
 			return err
 		}
+
 		if !found {
 			return errDatabaseVanished
 		}
+
 		*observed = candidate
 	}
 }
@@ -363,6 +400,7 @@ func validateDatabaseIntegration(data databaseModel) error {
 	if data.Integration == nil {
 		return nil
 	}
+
 	switch {
 	case !data.DatashareARN.IsNull() && !data.DatashareARN.IsUnknown():
 		return fmt.Errorf("the integration block conflicts with datashare_arn; remove one of them")
@@ -371,6 +409,7 @@ func validateDatabaseIntegration(data databaseModel) error {
 	case data.Integration.IntegrationID.IsNull():
 		return fmt.Errorf("the integration block requires integration_id")
 	}
+
 	return nil
 }
 

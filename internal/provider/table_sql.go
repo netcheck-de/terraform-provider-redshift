@@ -120,6 +120,7 @@ func (s *tableSpec) column(name string) (tableColumnSpec, bool) {
 			return column, true
 		}
 	}
+
 	return tableColumnSpec{}, false
 }
 
@@ -129,16 +130,19 @@ func (s *tableSpec) constrained(name string) bool {
 	if slices.Contains(s.primaryKey, name) {
 		return true
 	}
+
 	for _, unique := range s.unique {
 		if slices.Contains(unique, name) {
 			return true
 		}
 	}
+
 	for _, foreignKey := range s.foreignKeys {
 		if slices.Contains(foreignKey.columns, name) {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -147,6 +151,7 @@ func tableKnownString(value types.String, what string) (string, error) {
 	if value.IsUnknown() {
 		return "", fmt.Errorf("%s must be known", what)
 	}
+
 	return value.ValueString(), nil
 }
 
@@ -160,6 +165,7 @@ func tableFolded(what string, names ...string) error {
 			return fmt.Errorf("%s %q contains uppercase letters, which Redshift folds to lowercase; use the lowercase name", what, name)
 		}
 	}
+
 	return nil
 }
 
@@ -168,17 +174,22 @@ func tableStringList(value types.List, what string) ([]string, error) {
 	if value.IsNull() {
 		return nil, nil
 	}
+
 	if value.IsUnknown() {
 		return nil, fmt.Errorf("%s must be known", what)
 	}
+
 	var values []string
+
 	for _, element := range value.Elements() {
 		text, ok := element.(types.String)
 		if !ok || text.IsUnknown() || text.IsNull() {
 			return nil, fmt.Errorf("%s must contain known names", what)
 		}
+
 		values = append(values, text.ValueString())
 	}
+
 	return values, nil
 }
 
@@ -188,6 +199,7 @@ func tableKeyword(value types.String, what string, allowed ...sqlclient.Keyword)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", what, err)
 	}
+
 	return keyword, nil
 }
 
@@ -208,14 +220,19 @@ func tableObservedSpecOf(data tableModel) (tableSpec, error) {
 // which the catalog never reports.
 func tableDefinitionSpec(data tableModel, migrationHints bool) (tableSpec, error) {
 	ctx := context.Background()
-	var spec tableSpec
-	var err error
+
+	var (
+		spec tableSpec
+		err  error
+	)
 	if spec.schema, err = tableKnownString(data.Schema, "schema"); err != nil {
 		return spec, err
 	}
+
 	if spec.name, err = tableKnownString(data.Name, "name"); err != nil {
 		return spec, err
 	}
+
 	if spec.schema == "" || spec.name == "" {
 		return spec, fmt.Errorf("schema and name must be nonempty")
 	}
@@ -224,81 +241,104 @@ func tableDefinitionSpec(data tableModel, migrationHints bool) (tableSpec, error
 	if err := tableFolded("schema", spec.schema); err != nil {
 		return spec, err
 	}
+
 	if err := tableFolded("name", spec.name); err != nil {
 		return spec, err
 	}
+
 	if data.Column.IsUnknown() || data.Column.IsNull() {
 		return spec, fmt.Errorf("column must be known")
 	}
+
 	var columns []tableColumnModel
 	if diagnostics := data.Column.ElementsAs(ctx, &columns, false); diagnostics.HasError() {
 		return spec, fmt.Errorf("column must be known")
 	}
+
 	if len(columns) == 0 || len(columns) > tableMaxColumns {
 		return spec, fmt.Errorf("a table needs between 1 and %d columns", tableMaxColumns)
 	}
+
 	seenNames := make(map[string]struct{}, len(columns))
 	for index, model := range columns {
 		if !migrationHints {
 			model.RenamedFrom = types.StringNull()
 		}
+
 		column, err := tableColumnSpecOf(model)
 		if err != nil {
 			return spec, fmt.Errorf("column[%d]: %w", index, err)
 		}
+
 		if _, duplicate := seenNames[column.name]; duplicate {
 			return spec, fmt.Errorf("column %q is declared twice", column.name)
 		}
+
 		seenNames[column.name] = struct{}{}
 		spec.columns = append(spec.columns, column)
 	}
+
 	sources := map[string]bool{}
+
 	for _, column := range spec.columns {
 		if column.renamedFrom == "" {
 			continue
 		}
+
 		_, declared := spec.column(column.renamedFrom)
 		if err := tableRenameSource(column.renamedFrom, sources, declared); err != nil {
 			return spec, err
 		}
 	}
+
 	if spec.primaryKey, err = tablePrimaryKeyOf(data.PrimaryKey); err != nil {
 		return spec, err
 	}
+
 	if err := spec.checkColumns("primary_key.columns", spec.primaryKey); err != nil {
 		return spec, err
 	}
+
 	for _, name := range spec.primaryKey {
 		if column, _ := spec.column(name); column.nullable != nil && *column.nullable {
 			return spec, fmt.Errorf("primary key column %q cannot be nullable", name)
 		}
 	}
+
 	if spec.unique, err = tableUniqueOf(data.Unique); err != nil {
 		return spec, err
 	}
+
 	for _, unique := range spec.unique {
 		if err := spec.checkColumns("unique.columns", unique); err != nil {
 			return spec, err
 		}
 	}
+
 	if spec.foreignKeys, err = tableForeignKeysOf(data.ForeignKey); err != nil {
 		return spec, err
 	}
+
 	for _, foreignKey := range spec.foreignKeys {
 		if err := spec.checkColumns("foreign_key.columns", foreignKey.columns); err != nil {
 			return spec, err
 		}
 	}
+
 	if err := spec.resolveDistribution(data.Distribution); err != nil {
 		return spec, err
 	}
+
 	if err := spec.resolveSortKey(data.SortKey); err != nil {
 		return spec, err
 	}
+
 	if spec.backup, err = tableKeyword(data.Backup, "backup", tableBackupModes...); err != nil {
 		return spec, err
 	}
+
 	spec.resolveEffective(data)
+
 	return spec, nil
 }
 
@@ -315,6 +355,7 @@ func (s *tableSpec) resolveEffective(data tableModel) {
 			}
 		}
 	}
+
 	switch s.sortStyle {
 	case "COMPOUND", "INTERLEAVED":
 		s.effectiveSortKey = s.sortKey
@@ -325,55 +366,71 @@ func (s *tableSpec) resolveEffective(data tableModel) {
 
 // tableColumnSpecOf validates one column.
 func tableColumnSpecOf(model tableColumnModel) (tableColumnSpec, error) {
-	var column tableColumnSpec
-	var err error
+	var (
+		column tableColumnSpec
+		err    error
+	)
 	if column.name, err = tableKnownString(model.Name, "name"); err != nil {
 		return column, err
 	}
+
 	if err := tableNonemptyName("column name", column.name); err != nil {
 		return column, err
 	}
+
 	if column.renamedFrom, err = tableKnownString(model.RenamedFrom, "renamed_from"); err != nil {
 		return column, err
 	}
+
 	if !model.RenamedFrom.IsNull() {
 		if err := tableNonemptyName("renamed_from", column.renamedFrom); err != nil {
 			return column, err
 		}
 	}
+
 	text, err := tableKnownString(model.Type, "type")
 	if err != nil {
 		return column, err
 	}
+
 	if column.dataType, err = sqlclient.ColumnType(text); err != nil {
 		return column, fmt.Errorf("column %q: %w", column.name, err)
 	}
+
 	if column.encoding, err = tableKeyword(model.Encoding, "encoding", tableEncodings...); err != nil {
 		return column, fmt.Errorf("column %q: %w", column.name, err)
 	}
+
 	column.nullable = knownBool(model.Nullable)
 	if model.Default.IsUnknown() {
 		return column, fmt.Errorf("column %q: default must be known", column.name)
 	}
+
 	if !model.Default.IsNull() {
 		if column.defaultSQL, err = sqlclient.CheckUserSQL(model.Default.ValueString()); err != nil {
 			return column, fmt.Errorf("column %q default: %w", column.name, err)
 		}
 	}
+
 	if model.Identity.IsUnknown() {
 		return column, fmt.Errorf("column %q: identity must be known", column.name)
 	}
+
 	if model.Identity.IsNull() {
 		return column, nil
 	}
+
 	var identity tableIdentityModel
 	if diagnostics := model.Identity.As(context.Background(), &identity, basetypes.ObjectAsOptions{}); diagnostics.HasError() || identity.Seed.IsUnknown() || identity.Step.IsUnknown() || identity.GeneratedByDefault.IsUnknown() {
 		return column, fmt.Errorf("column %q: identity must be known", column.name)
 	}
+
 	if err := tableValidateIdentity(column.name, column.dataType, identity, column.defaultSQL != "", model.Nullable.ValueBool()); err != nil {
 		return column, err
 	}
+
 	column.identity = &tableIdentitySpec{seed: identity.Seed.ValueInt64(), step: identity.Step.ValueInt64(), generatedByDefault: identity.GeneratedByDefault.ValueBool()}
+
 	return column, nil
 }
 
@@ -385,13 +442,16 @@ func tablePrimaryKeyOf(value types.Object) ([]string, error) {
 	case value.IsUnknown():
 		return nil, fmt.Errorf("primary_key must be known")
 	}
+
 	var model tableKeyModel
 	if diagnostics := value.As(context.Background(), &model, basetypes.ObjectAsOptions{}); diagnostics.HasError() {
 		return nil, fmt.Errorf("primary_key must be known")
 	}
+
 	if model.Columns.IsNull() {
 		return nil, fmt.Errorf("a primary_key block needs columns")
 	}
+
 	return tableStringList(model.Columns, "primary_key.columns")
 }
 
@@ -400,25 +460,33 @@ func tableUniqueOf(value types.Set) ([][]string, error) {
 	if value.IsNull() {
 		return nil, nil
 	}
+
 	if value.IsUnknown() {
 		return nil, fmt.Errorf("unique must be known")
 	}
+
 	var models []tableKeyModel
 	if diagnostics := value.ElementsAs(context.Background(), &models, false); diagnostics.HasError() {
 		return nil, fmt.Errorf("unique must be known")
 	}
+
 	var unique [][]string
+
 	for _, model := range models {
 		columns, err := tableStringList(model.Columns, "unique.columns")
 		if err != nil {
 			return nil, err
 		}
+
 		if len(columns) == 0 {
 			return nil, fmt.Errorf("a unique constraint needs at least one column")
 		}
+
 		unique = append(unique, columns)
 	}
+
 	slices.SortFunc(unique, func(a, b []string) int { return strings.Compare(tableUniqueKey(a), tableUniqueKey(b)) })
+
 	return unique, nil
 }
 
@@ -427,56 +495,74 @@ func tableForeignKeysOf(value types.Set) ([]tableForeignKeySpec, error) {
 	if value.IsNull() {
 		return nil, nil
 	}
+
 	if value.IsUnknown() {
 		return nil, fmt.Errorf("foreign_key must be known")
 	}
+
 	var models []tableForeignKeyModel
 	if diagnostics := value.ElementsAs(context.Background(), &models, false); diagnostics.HasError() {
 		return nil, fmt.Errorf("foreign_key must be known")
 	}
+
 	var foreignKeys []tableForeignKeySpec
+
 	for _, model := range models {
-		var foreignKey tableForeignKeySpec
-		var err error
+		var (
+			foreignKey tableForeignKeySpec
+			err        error
+		)
 		if foreignKey.columns, err = tableStringList(model.Columns, "foreign_key.columns"); err != nil {
 			return nil, err
 		}
+
 		var references tableReferencesModel
+
 		switch {
 		case model.References.IsUnknown():
 			return nil, fmt.Errorf("foreign_key.references must be known")
 		case model.References.IsNull():
 			return nil, fmt.Errorf("a foreign key needs a references block")
 		}
+
 		if diagnostics := model.References.As(context.Background(), &references, basetypes.ObjectAsOptions{}); diagnostics.HasError() {
 			return nil, fmt.Errorf("foreign_key.references must be known")
 		}
+
 		if foreignKey.refColumns, err = tableStringList(references.Columns, "foreign_key.references.columns"); err != nil {
 			return nil, err
 		}
+
 		if foreignKey.refSchema, err = tableKnownString(references.Schema, "foreign_key.references.schema"); err != nil {
 			return nil, err
 		}
+
 		if foreignKey.refTable, err = tableKnownString(references.Table, "foreign_key.references.table"); err != nil {
 			return nil, err
 		}
+
 		switch {
 		case foreignKey.refSchema == "" || foreignKey.refTable == "":
 			return nil, fmt.Errorf("a foreign key needs a nonempty references schema and table")
 		case len(foreignKey.refColumns) != len(foreignKey.columns):
 			return nil, fmt.Errorf("a foreign key needs as many references columns as columns")
 		}
+
 		if err := tableDistinctNames("foreign_key.references.columns", foreignKey.refColumns); err != nil {
 			return nil, err
 		}
+
 		if err := tableFolded("foreign_key reference", append([]string{foreignKey.refSchema, foreignKey.refTable}, foreignKey.refColumns...)...); err != nil {
 			return nil, err
 		}
+
 		foreignKeys = append(foreignKeys, foreignKey)
 	}
+
 	slices.SortFunc(foreignKeys, func(a, b tableForeignKeySpec) int {
 		return strings.Compare(tableForeignKeyKey(a), tableForeignKeyKey(b))
 	})
+
 	return foreignKeys, nil
 }
 
@@ -487,8 +573,10 @@ func tableDistinctNames(what string, names []string) error {
 		if name == "" || seen[name] {
 			return fmt.Errorf("%s must list distinct nonempty names", what)
 		}
+
 		seen[name] = true
 	}
+
 	return nil
 }
 
@@ -497,11 +585,13 @@ func (s *tableSpec) checkColumns(what string, names []string) error {
 	if err := tableDistinctNames(what, names); err != nil {
 		return err
 	}
+
 	for _, name := range names {
 		if _, ok := s.column(name); !ok {
 			return fmt.Errorf("%s names column %q, which the table does not declare", what, name)
 		}
 	}
+
 	return nil
 }
 
@@ -511,31 +601,38 @@ func (s *tableSpec) resolveDistribution(value types.Object) error {
 	if value.IsUnknown() {
 		return fmt.Errorf("distribution must be known")
 	}
+
 	var model tableDistributionModel
 	if !value.IsNull() {
 		if diagnostics := value.As(context.Background(), &model, basetypes.ObjectAsOptions{}); diagnostics.HasError() {
 			return fmt.Errorf("distribution must be known")
 		}
 	}
+
 	var err error
 	if s.distStyle, err = tableKeyword(model.Style, "distribution.style", tableDistStyles...); err != nil {
 		return err
 	}
+
 	if s.distKey, err = tableKnownString(model.Key, "distribution.key"); err != nil {
 		return err
 	}
+
 	if s.distStyle == "" {
 		s.distStyle = "AUTO"
 		if s.distKey != "" {
 			s.distStyle = "KEY"
 		}
 	}
+
 	if err := tableDistributionKey(s.distStyle, s.distKey); err != nil {
 		return err
 	}
+
 	if s.distKey != "" {
 		return s.checkKeyColumns("distribution.key", []string{s.distKey})
 	}
+
 	return nil
 }
 
@@ -545,28 +642,34 @@ func (s *tableSpec) resolveSortKey(value types.Object) error {
 	if value.IsUnknown() {
 		return fmt.Errorf("sort_key must be known")
 	}
+
 	var model tableSortKeyModel
 	if !value.IsNull() {
 		if diagnostics := value.As(context.Background(), &model, basetypes.ObjectAsOptions{}); diagnostics.HasError() {
 			return fmt.Errorf("sort_key must be known")
 		}
 	}
+
 	var err error
 	if s.sortStyle, err = tableKeyword(model.Style, "sort_key.style", tableSortKeyStyles...); err != nil {
 		return err
 	}
+
 	if s.sortKey, err = tableStringList(model.Columns, "sort_key.columns"); err != nil {
 		return err
 	}
+
 	if s.sortStyle == "" {
 		s.sortStyle = "AUTO"
 		if len(s.sortKey) > 0 {
 			s.sortStyle = "COMPOUND"
 		}
 	}
+
 	if err := tableSortKeyCount(s.sortStyle, len(s.sortKey)); err != nil {
 		return err
 	}
+
 	return s.checkKeyColumns("sort_key.columns", s.sortKey)
 }
 
@@ -577,12 +680,14 @@ func (s *tableSpec) checkKeyColumns(what string, names []string) error {
 	if err := s.checkColumns(what, names); err != nil {
 		return err
 	}
+
 	for _, name := range names {
 		column, _ := s.column(name)
 		if err := tableKeyType(what, name, column.dataType); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -592,6 +697,7 @@ func tableKeyType(what, name string, dataType sqlclient.Keyword) error {
 	if dataType != "" && !slices.Contains(tableKeyTypes, base) {
 		return fmt.Errorf("%s column %q has type %s, which Redshift does not allow in a key", what, name, dataType)
 	}
+
 	return nil
 }
 
@@ -601,6 +707,7 @@ func tableNames(names []string) []sqlclient.Statement {
 	for i, name := range names {
 		items[i] = sqlclient.Ident(name)
 	}
+
 	return items
 }
 
@@ -614,8 +721,10 @@ func tableColumnDefinition(column tableColumnSpec) sqlclient.Statement {
 		if identity.generatedByDefault {
 			clause = "GENERATED BY DEFAULT AS IDENTITY"
 		}
+
 		definition = definition.Kw(clause).Args(sqlclient.Int(identity.seed), sqlclient.Int(identity.step))
 	}
+
 	return definition.When(column.encoding != "", func(s sqlclient.Statement) sqlclient.Statement { return s.Kw("ENCODE", column.encoding) }).
 		If(column.nullable != nil && !*column.nullable, "NOT NULL")
 }
@@ -631,6 +740,7 @@ func tableSortKeyClause(style sqlclient.Keyword, columns []string) sqlclient.Sta
 	if style == "AUTO" {
 		return sqlclient.Kw("SORTKEY AUTO")
 	}
+
 	return sqlclient.Kw(style, "SORTKEY").Paren(tableNames(columns)...)
 }
 
@@ -643,15 +753,19 @@ func createTableStatements(spec tableSpec) ([]string, error) {
 	for _, column := range spec.columns {
 		items = append(items, tableColumnDefinition(column))
 	}
+
 	if len(spec.primaryKey) > 0 {
 		items = append(items, sqlclient.Kw("PRIMARY KEY").Paren(tableNames(spec.primaryKey)...))
 	}
+
 	for _, unique := range spec.unique {
 		items = append(items, sqlclient.Kw("UNIQUE").Paren(tableNames(unique)...))
 	}
+
 	for _, foreignKey := range spec.foreignKeys {
 		items = append(items, tableForeignKeyClause(foreignKey))
 	}
+
 	create := sqlclient.Stmt("CREATE TABLE").Qualified(spec.schema, spec.name).Paren(items...).
 		When(spec.backup != "", func(s sqlclient.Statement) sqlclient.Statement { return s.Kw("BACKUP", spec.backup) }).
 		Kw("DISTSTYLE", spec.distStyle).
@@ -664,13 +778,16 @@ func createTableStatements(spec tableSpec) ([]string, error) {
 	if err := create.Err(); err != nil {
 		return nil, err
 	}
+
 	statements := []string{create.String()}
 	if spec.sortStyle == "NONE" {
 		statements = append(statements, tableAlter(spec).Kw("ALTER SORTKEY NONE").String())
 	}
+
 	if spec.owner != "" {
 		statements = append(statements, tableAlter(spec).KwIdent("OWNER TO", spec.owner).String())
 	}
+
 	return statements, nil
 }
 
@@ -702,12 +819,15 @@ const tablePrimaryKeyKey = "p"
 // ::character varying and changes spacing and case, which do not change the default.
 func tableDefaultCanonical(text string) string {
 	var out strings.Builder
+
 	quoted := false
+
 	for i := range len(text) {
 		char := text[i]
 		switch {
 		case char == '\'':
 			quoted = !quoted
+
 			out.WriteByte(char)
 		case quoted:
 			out.WriteByte(char)
@@ -716,16 +836,19 @@ func tableDefaultCanonical(text string) string {
 			out.WriteString(strings.ToLower(string(char)))
 		}
 	}
+
 	canonical := tableCastPattern.ReplaceAllString(out.String(), "")
 	for len(canonical) >= 2 && canonical[0] == '(' && canonical[len(canonical)-1] == ')' && tableBalanced(canonical[1:len(canonical)-1]) {
 		canonical = canonical[1 : len(canonical)-1]
 	}
+
 	return canonical
 }
 
 // tableBalanced reports whether parentheses outside literals stay balanced, so stripping an outer pair is safe.
 func tableBalanced(text string) bool {
 	depth, quoted := 0, false
+
 	for _, char := range text {
 		switch {
 		case char == '\'':
@@ -740,6 +863,7 @@ func tableBalanced(text string) bool {
 			}
 		}
 	}
+
 	return depth == 0
 }
 
@@ -771,9 +895,12 @@ func tableResizableFamily(dataType sqlclient.Keyword) (string, bool) {
 		if !strings.HasPrefix(text, family) || !strings.HasSuffix(text, ")") {
 			continue
 		}
+
 		_, err := strconv.ParseInt(text[len(family):len(text)-1], 10, 64)
+
 		return family, err == nil
 	}
+
 	return "", false
 }
 
@@ -782,6 +909,7 @@ func tableIdentityEqual(a, b *tableIdentitySpec) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
+
 	return *a == *b
 }
 
@@ -794,6 +922,7 @@ func tableIdentityEqual(a, b *tableIdentitySpec) bool {
 // https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html
 func tableColumnChanges(prev, plan tableSpec) tableColumnDiff {
 	var diff tableColumnDiff
+
 	for _, column := range plan.columns {
 		before, retained := prev.column(column.name)
 		if !retained {
@@ -807,16 +936,21 @@ func tableColumnChanges(prev, plan tableSpec) tableColumnDiff {
 				diff.replace = fmt.Sprintf("ALTER TABLE ADD COLUMN cannot add the NOT NULL column %q without a default", column.name)
 				return diff
 			}
+
 			diff.added = append(diff.added, column)
+
 			continue
 		}
+
 		if reason := tableColumnChange(prev, plan, before, column); reason != "" {
 			diff.replace = reason
 			return diff
 		}
+
 		if before.dataType != column.dataType {
 			diff.resized = append(diff.resized, column)
 		}
+
 		if before.encoding != "" && column.encoding != "" && before.encoding != column.encoding {
 			diff.encoded = append(diff.encoded, column)
 		}
@@ -826,11 +960,13 @@ func tableColumnChanges(prev, plan tableSpec) tableColumnDiff {
 		diff.replace = fmt.Sprintf("ALTER TABLE adds columns before it drops removed ones, so the table would hold %d columns, more than the %d Redshift allows", total, tableMaxColumns)
 		return diff
 	}
+
 	for _, column := range prev.columns {
 		if _, kept := plan.column(column.name); !kept {
 			diff.dropped = append(diff.dropped, column.name)
 		}
 	}
+
 	return diff
 }
 
@@ -842,6 +978,7 @@ func tableStaleDrops(prev, plan tableSpec, known map[string]bool) error {
 			return fmt.Errorf("column %q was added to the table after the plan was made, so the plan would drop it; refresh and plan again", name)
 		}
 	}
+
 	return nil
 }
 
@@ -857,10 +994,13 @@ func tableColumnChange(prev, plan tableSpec, before, after tableColumnSpec) stri
 	case before.encoding != "" && after.encoding != "" && before.encoding != after.encoding && plan.sortStyle == "INTERLEAVED":
 		return fmt.Sprintf("Redshift cannot change the encoding of column %q in a table with an interleaved sort key", after.name)
 	}
+
 	if before.dataType == after.dataType {
 		return ""
 	}
+
 	fromFamily, fromResizable := tableResizableFamily(before.dataType)
+
 	toFamily, toResizable := tableResizableFamily(after.dataType)
 	switch {
 	case !fromResizable || !toResizable || fromFamily != toFamily:
@@ -872,6 +1012,7 @@ func tableColumnChange(prev, plan tableSpec, before, after tableColumnSpec) stri
 	case slices.Contains(tableEncodingsBlockingResize, before.encoding):
 		return fmt.Sprintf("Redshift cannot resize column %q with %s encoding", after.name, before.encoding)
 	}
+
 	return ""
 }
 
@@ -879,12 +1020,16 @@ func tableColumnChange(prev, plan tableSpec, before, after tableColumnSpec) stri
 // Independent renames only are accepted, so no temporary names or destructive conflict resolution is needed.
 func tableRenameSpec(prev, plan tableSpec) (tableSpec, []string, error) {
 	renames := map[string]string{}
+
 	var statements []string
+
 	for _, column := range plan.columns {
 		if column.renamedFrom == "" {
 			continue
 		}
+
 		_, source := prev.column(column.renamedFrom)
+
 		_, destination := prev.column(column.name)
 		switch {
 		case source && destination:
@@ -896,10 +1041,12 @@ func tableRenameSpec(prev, plan tableSpec) (tableSpec, []string, error) {
 			statements = append(statements, tableAlter(plan).Kw("RENAME COLUMN").Ident(column.renamedFrom).KwIdent("TO", column.name).String())
 		}
 	}
+
 	name := func(value string) string {
 		if renamed, ok := renames[value]; ok {
 			return renamed
 		}
+
 		return value
 	}
 	names := func(values []string) []string {
@@ -907,29 +1054,37 @@ func tableRenameSpec(prev, plan tableSpec) (tableSpec, []string, error) {
 		for i := range result {
 			result[i] = name(result[i])
 		}
+
 		return result
 	}
+
 	prev.columns = slices.Clone(prev.columns)
 	for i := range prev.columns {
 		prev.columns[i].name = name(prev.columns[i].name)
 	}
+
 	prev.primaryKey = names(prev.primaryKey)
+
 	prev.unique = slices.Clone(prev.unique)
 	for i := range prev.unique {
 		prev.unique[i] = names(prev.unique[i])
 	}
+
 	prev.foreignKeys = slices.Clone(prev.foreignKeys)
 	for i := range prev.foreignKeys {
 		key := &prev.foreignKeys[i]
+
 		key.columns = names(key.columns)
 		if key.refSchema == prev.schema && key.refTable == prev.name {
 			key.refColumns = names(key.refColumns)
 		}
 	}
+
 	prev.distKey = name(prev.distKey)
 	prev.effectiveDistKey = name(prev.effectiveDistKey)
 	prev.sortKey = names(prev.sortKey)
 	prev.effectiveSortKey = names(prev.effectiveSortKey)
+
 	return prev, statements, nil
 }
 
@@ -941,10 +1096,12 @@ func tableReplacements(prev, plan tableSpec) map[string]string {
 	if err != nil {
 		return reasons
 	}
+
 	prev = normalized
 	if reason := tableColumnChanges(prev, plan).replace; reason != "" {
 		reasons["column"] = reason
 	}
+
 	if !slices.Equal(prev.primaryKey, plan.primaryKey) {
 		for _, name := range plan.primaryKey {
 			if column, existed := prev.column(name); existed && (column.nullable == nil || *column.nullable) {
@@ -959,6 +1116,7 @@ func tableReplacements(prev, plan tableSpec) map[string]string {
 		if tableDistributionChanged(prev, plan) {
 			reasons["distribution"] = interleaved
 		}
+
 		if tableSortKeyChanged(prev, plan) {
 			reasons["sort_key"] = interleaved
 		}
@@ -967,9 +1125,11 @@ func tableReplacements(prev, plan tableSpec) map[string]string {
 			reasons["column"] = "ALTER TABLE cannot move an automatic distribution key off a dropped column while the sort key is interleaved"
 		}
 	}
+
 	if prev.backup != "" && plan.backup != "" && prev.backup != plan.backup {
 		reasons["backup"] = "ALTER TABLE cannot change BACKUP"
 	}
+
 	return reasons
 }
 
@@ -1063,6 +1223,7 @@ func tableSortKeyStatements(phase tableAlterPhase, prev, plan tableAlterState) [
 	if !tableSortKeyChanged(prev.spec, plan.spec) && !detour {
 		return nil
 	}
+
 	alter := tableAlter(plan.spec)
 	switch {
 	case phase == tablePhaseRestoreKeys && detour:
@@ -1074,6 +1235,7 @@ func tableSortKeyStatements(phase tableAlterPhase, prev, plan tableAlterState) [
 	case plan.spec.sortStyle == "AUTO":
 		return []string{alter.Kw("ALTER SORTKEY AUTO").String()}
 	}
+
 	return []string{alter.Kw("ALTER COMPOUND SORTKEY").Paren(tableNames(plan.spec.sortKey)...).String()}
 }
 
@@ -1084,6 +1246,7 @@ func tableDistributionStatements(phase tableAlterPhase, prev, plan tableAlterSta
 	if !tableDistributionChanged(prev.spec, plan.spec) && !detour {
 		return nil
 	}
+
 	alter := tableAlter(plan.spec)
 	switch {
 	case phase == tablePhaseRestoreKeys && detour:
@@ -1108,9 +1271,11 @@ func tableKeyDetours(phase tableAlterPhase, prev, plan tableAlterState) []string
 	if !tableSortKeyChanged(prev.spec, plan.spec) {
 		statements = append(statements, tableSortKeyStatements(phase, prev, plan)...)
 	}
+
 	if !tableDistributionChanged(prev.spec, plan.spec) {
 		statements = append(statements, tableDistributionStatements(phase, prev, plan)...)
 	}
+
 	return statements
 }
 
@@ -1118,14 +1283,17 @@ func tableKeyDetours(phase tableAlterPhase, prev, plan tableAlterState) []string
 // drops look the catalog name up in prev's constraint names.
 func tableConstraintChanges(phase tableAlterPhase, prev, plan tableAlterState, before, after map[string]sqlclient.Statement) []string {
 	var statements []string
+
 	if phase == tablePhaseDropConstraints {
 		for _, key := range slices.Sorted(maps.Keys(before)) {
 			if _, kept := after[key]; !kept {
 				statements = append(statements, tableAlter(plan.spec).Kw("DROP CONSTRAINT").Ident(prev.constraints[tableConstraintKey(key)]).String())
 			}
 		}
+
 		return statements
 	}
+
 	if phase == tablePhaseAddConstraints {
 		for _, key := range slices.Sorted(maps.Keys(after)) {
 			if _, existed := before[key]; !existed {
@@ -1133,6 +1301,7 @@ func tableConstraintChanges(phase tableAlterPhase, prev, plan tableAlterState, b
 			}
 		}
 	}
+
 	return statements
 }
 
@@ -1143,6 +1312,7 @@ func tablePrimaryKeyClauses(spec tableSpec) map[string]sqlclient.Statement {
 		// The key includes the columns, so a changed primary key is dropped and added again.
 		clauses[tablePrimaryKeyKey+":"+strings.Join(spec.primaryKey, "\x00")] = sqlclient.Kw("PRIMARY KEY").Paren(tableNames(spec.primaryKey)...)
 	}
+
 	return clauses
 }
 
@@ -1152,6 +1322,7 @@ func tableUniqueClauses(spec tableSpec) map[string]sqlclient.Statement {
 	for _, unique := range spec.unique {
 		clauses[tableUniqueKey(unique)] = sqlclient.Kw("UNIQUE").Paren(tableNames(unique)...)
 	}
+
 	return clauses
 }
 
@@ -1161,6 +1332,7 @@ func tableForeignKeyClauses(spec tableSpec) map[string]sqlclient.Statement {
 	for _, foreignKey := range spec.foreignKeys {
 		clauses[tableForeignKeyKey(foreignKey)] = tableForeignKeyClause(foreignKey)
 	}
+
 	return clauses
 }
 
@@ -1170,6 +1342,7 @@ func tableConstraintKey(key string) string {
 	if strings.HasPrefix(key, tablePrimaryKeyKey+":") {
 		return tablePrimaryKeyKey
 	}
+
 	return key
 }
 
@@ -1182,7 +1355,9 @@ func tableAlterSteps(phase tableAlterPhase) []alterStep[tableAlterState] {
 		"column": {attribute: "column", value: func(s tableAlterState) attr.Value { return s.model.Column }, render: func(prev, plan tableAlterState) []string {
 			diff := tableColumnChanges(prev.spec, plan.spec)
 			alter := tableAlter(plan.spec)
+
 			var statements []string
+
 			switch phase {
 			case tablePhaseAddColumns:
 				for _, column := range diff.added {
@@ -1194,6 +1369,7 @@ func tableAlterSteps(phase tableAlterPhase) []alterStep[tableAlterState] {
 				for _, column := range diff.resized {
 					statements = append(statements, alter.Kw("ALTER COLUMN").Ident(column.name).Kw("TYPE", column.dataType).String())
 				}
+
 				for _, column := range diff.encoded {
 					statements = append(statements, alter.Kw("ALTER COLUMN").Ident(column.name).Kw("ENCODE", column.encoding).String())
 				}
@@ -1202,6 +1378,7 @@ func tableAlterSteps(phase tableAlterPhase) []alterStep[tableAlterState] {
 					statements = append(statements, alter.Kw("DROP COLUMN").Ident(name).String())
 				}
 			}
+
 			return statements
 		}},
 		"primary_key": {attribute: "primary_key", value: func(s tableAlterState) attr.Value { return s.model.PrimaryKey }, render: func(prev, plan tableAlterState) []string {
@@ -1219,32 +1396,38 @@ func tableAlterSteps(phase tableAlterPhase) []alterStep[tableAlterState] {
 			if !tableSortKeyChanged(prev.spec, plan.spec) {
 				return nil
 			}
+
 			return tableSortKeyStatements(phase, prev, plan)
 		}},
 		"distribution": {attribute: "distribution", value: func(s tableAlterState) attr.Value { return s.model.Distribution }, render: func(prev, plan tableAlterState) []string {
 			if !tableDistributionChanged(prev.spec, plan.spec) {
 				return nil
 			}
+
 			return tableDistributionStatements(phase, prev, plan)
 		}},
 		"owner": {attribute: "owner", value: func(s tableAlterState) attr.Value { return s.model.Owner }, render: func(_, plan tableAlterState) []string {
 			if phase != tablePhaseOwner || plan.spec.owner == "" {
 				return nil
 			}
+
 			return []string{tableAlter(plan.spec).KwIdent("OWNER TO", plan.spec.owner).String()}
 		}},
 		// BACKUP has no ALTER TABLE form; the attribute changes in place only when nothing was recorded before,
 		// as after import, and then nothing needs to run.
 		"backup": {attribute: "backup", value: func(s tableAlterState) attr.Value { return s.model.Backup }, render: func(_, _ tableAlterState) []string { return nil }},
 	}
+
 	order := []string{"foreign_key", "unique", "primary_key", "sort_key", "distribution", "column", "owner", "backup"}
 	if phase == tablePhaseAddConstraints {
 		order = []string{"primary_key", "unique", "foreign_key", "sort_key", "distribution", "column", "owner", "backup"}
 	}
+
 	ordered := make([]alterStep[tableAlterState], 0, len(order))
 	for _, name := range order {
 		ordered = append(ordered, steps[name])
 	}
+
 	return ordered
 }
 
@@ -1256,32 +1439,41 @@ func tableAlterStates(prev tableModel, constraints map[string]string, plan table
 	if err != nil {
 		return tableAlterState{}, tableAlterState{}, fmt.Errorf("current table definition: %w", err)
 	}
+
 	planSpec, err := tableSpecOf(plan)
 	if err != nil {
 		return tableAlterState{}, tableAlterState{}, err
 	}
+
 	original := prevSpec
+
 	prevSpec, renames, err := tableRenameSpec(prevSpec, planSpec)
 	if err != nil {
 		return tableAlterState{}, tableAlterState{}, err
 	}
 	// Catalog names remain stable when Redshift rewrites constraint column references.
 	names := map[string]string{}
+
 	names[tablePrimaryKeyKey] = constraints[tablePrimaryKeyKey]
 	for i, key := range original.unique {
 		names[tableUniqueKey(prevSpec.unique[i])] = constraints[tableUniqueKey(key)]
 	}
+
 	for i, key := range original.foreignKeys {
 		names[tableForeignKeyKey(prevSpec.foreignKeys[i])] = constraints[tableForeignKeyKey(key)]
 	}
+
 	constraints = names
+
 	if reasons := tableReplacements(prevSpec, planSpec); len(reasons) > 0 {
 		var messages []string
 		for _, attribute := range slices.Sorted(maps.Keys(reasons)) {
 			messages = append(messages, attribute+": "+reasons[attribute])
 		}
+
 		return tableAlterState{}, tableAlterState{}, fmt.Errorf("the change requires replacing the table: %s", strings.Join(messages, "; "))
 	}
+
 	for _, clauses := range []func(tableSpec) map[string]sqlclient.Statement{tablePrimaryKeyClauses, tableUniqueClauses, tableForeignKeyClauses} {
 		kept := clauses(planSpec)
 		for key := range clauses(prevSpec) {
@@ -1290,19 +1482,23 @@ func tableAlterStates(prev tableModel, constraints map[string]string, plan table
 			}
 		}
 	}
+
 	return tableAlterState{model: prev, spec: prevSpec, constraints: constraints, renames: renames}, tableAlterState{model: plan, spec: planSpec}, nil
 }
 
 // tableAlterPhaseStatements renders the statements of the given phases in order.
 func tableAlterPhaseStatements(before, after tableAlterState, phases ...tableAlterPhase) []string {
 	var statements []string
+
 	for _, phase := range phases {
 		if phase == tablePhaseRenameColumns {
 			statements = append(statements, before.renames...)
 			continue
 		}
+
 		statements = append(statements, alterStatements(before, after, tableAlterSteps(phase))...)
 	}
+
 	return statements
 }
 
@@ -1313,6 +1509,7 @@ func alterTableStatements(prev tableModel, constraints map[string]string, plan t
 	if err != nil {
 		return nil, err
 	}
+
 	return tableAlterPhaseStatements(before, after, tableAlterPhases...), nil
 }
 

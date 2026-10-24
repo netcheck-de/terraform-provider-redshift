@@ -46,6 +46,7 @@ var _ = registerValidateConfigCase("debug_grant", validateConfigCase{
 func debugGrantCatalog() *catalog {
 	c := fullCatalog()
 	debugGrantSetup(c)
+
 	return c
 }
 
@@ -62,6 +63,7 @@ func TestDebugGrantRecipients(t *testing.T) {
 			configureTestResource(t, r, c)
 			state, diagnostics := applyOperation(t, r, "create", nil, data, nil)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 			var id types.String
 			require.False(t, state.GetAttribute(context.Background(), path.Root("id"), &id).HasError())
 			assertLookupIdentity(t, id, data.Database.ValueString(), map[string]string{"grantee": data.Grantee.ValueString(), "grantee_type": strings.ToUpper(data.GranteeType.ValueString())})
@@ -102,6 +104,7 @@ func TestDebugGrantReadFailures(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var statements []string
+
 			client := queryFunc(func(_ context.Context, target sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 				statements = append(statements, target.Database+": "+sql)
 				switch {
@@ -113,16 +116,19 @@ func TestDebugGrantReadFailures(t *testing.T) {
 					// LIKE matches _ as a wildcard, so only the exact name counts.
 					return []sqlclient.Row{{"database_name": "salesXdb"}, {"database_name": "sales_db"}}, nil
 				}
+
 				return []sqlclient.Row{{"database_name": "salesXdb"}}, nil
 			})
 			r := &debugGrantResource{testResourceClient(client)}
 			found, err := r.read(context.Background(), debugGrantFixture("sales_db", "IAM:sales_auditor", "USER"))
 			assert.False(t, found)
+
 			if test.removed {
 				require.NoError(t, err)
 			} else {
 				require.EqualError(t, err, "database does not exist")
 			}
+
 			assert.Equal(t, []string{
 				`admin: SHOW GRANTS ON DATABASE "sales_db"`,
 				`admin: SHOW DATABASES LIKE 'sales_db'`,
@@ -136,6 +142,7 @@ func TestDebugGrantRejectsInvalidGranteeBeforeSQL(t *testing.T) {
 	c := debugGrantCatalog()
 	r := newDebugGrantResource()
 	configureTestResource(t, r, c)
+
 	invalid := debugGrantFixture(debugGrantTestDatabase, "alice", "USER")
 	_, diagnostics := applyOperation(t, r, "create", nil, invalid, nil)
 	require.True(t, diagnostics.HasError())
@@ -150,10 +157,12 @@ func TestDebugGrantUpdateRecordsKeywordCase(t *testing.T) {
 	c := debugGrantCatalog()
 	r := newDebugGrantResource()
 	configureTestResource(t, r, c)
+
 	prior := debugGrantFixture(debugGrantTestDatabase, "IAM:sales_auditor", "USER")
 	planned := debugGrantFixture(debugGrantTestDatabase, "IAM:sales_auditor", "user")
 	state, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var granteeType types.String
 	require.False(t, state.GetAttribute(context.Background(), path.Root("grantee_type"), &granteeType).HasError())
 	assert.Equal(t, types.StringValue("user"), granteeType)
@@ -184,6 +193,7 @@ func TestDebugGrantTranscripts(t *testing.T) {
 func TestDebugGrantDrift(t *testing.T) {
 	c := debugGrantCatalog()
 	fakeState[*debugGrantFakeFamily](c, "debug_grant").clear()
+
 	r := newDebugGrantResource()
 	configureTestResource(t, r, c)
 	state, diagnostics := applyOperation(t, r, "read", debugGrantFixture(debugGrantTestDatabase, "IAM:sales_auditor", "USER"), nil, nil)
@@ -197,7 +207,9 @@ func TestDebugGrantRemoteVisibilityError(t *testing.T) {
 		if strings.Contains(sql, "sys_connection_log") {
 			return []sqlclient.Row{{"auth_method": "IAM AssumeUser"}}, nil
 		}
+
 		assert.Contains(t, sql, "SHOW DATABASES")
+
 		return nil, errors.New("listing unavailable")
 	}))}
 	require.ErrorContains(t, r.remoteVisible(context.Background(), "db@catalog"), "cannot verify remote DEBUG database visibility")

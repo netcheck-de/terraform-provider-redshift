@@ -41,6 +41,7 @@ func (f *debugGrantFakeFamily) grant(database string, key debugGrantKey, granted
 	if f.grants[database] == nil {
 		f.grants[database] = map[debugGrantKey]bool{}
 	}
+
 	if granted {
 		f.grants[database][key] = true
 	} else {
@@ -60,48 +61,62 @@ func (f *debugGrantFakeFamily) query(_ *catalog, _ sqlclient.Connection, sql str
 	if sql == readDebugGrantAuthStatement() {
 		return []sqlclient.Row{{"auth_method": "IAM AssumeUser"}}, true, nil
 	}
+
 	if match := debugGrantForStatement.FindStringSubmatch(sql); match != nil {
 		name, principal := fakeUnquote(match[3]), fakeUnquote(match[2])
+
 		grants, found := f.grants[name]
 		if !found {
 			return nil, false, nil
 		}
+
 		identityType, sourceType := "user", "global_user"
 		if match[1] != "" {
 			identityType, sourceType = "role", "global_group"
 		}
+
 		var rows []sqlclient.Row
+
 		for key := range grants {
 			if key.identityType == sourceType && strings.EqualFold(key.name, principal) {
 				rows = append(rows, sqlclient.Row{"database_name": name, "object_type": "DATABASE", "privilege_scope": "DATABASE", "privilege_type": "DEBUG", "identity_name": key.name, "identity_type": identityType})
 			}
 		}
+
 		return rows, true, nil
 	}
+
 	if database, ok := strings.CutPrefix(sql, "SHOW GRANTS ON DATABASE "); ok && !strings.Contains(database, " FOR ") {
 		name := fakeUnquote(database)
+
 		grantees, found := f.grants[name]
 		if !found {
 			return nil, false, nil
 		}
+
 		if strings.Contains(name, "@") {
 			return nil, true, nil
 		}
 		// A database privilege of another identity shows that rows are matched by privilege and grantee.
 		rows := []sqlclient.Row{{"database_name": name, "privilege_type": "TEMP", "identity_id": "0", "identity_name": "public", "identity_type": "public", "admin_option": "f", "privilege_scope": "DATABASE", "grantor_name": "admin"}}
+
 		keys := slices.SortedFunc(maps.Keys(grantees), func(a, b debugGrantKey) int { return strings.Compare(a.identityType+a.name, b.identityType+b.name) })
 		for _, key := range keys {
 			rows = append(rows, sqlclient.Row{"database_name": name, "privilege_type": "DEBUG", "identity_id": "145", "identity_name": key.name, "identity_type": key.identityType, "admin_option": "f", "privilege_scope": "DATABASE", "grantor_name": "admin"})
 		}
+
 		return rows, true, nil
 	}
+
 	match := debugGrantStatement.FindStringSubmatch(sql)
 	if match == nil {
 		if strings.Contains(sql, " DEBUG ") && (strings.HasPrefix(sql, "GRANT ") || strings.HasPrefix(sql, "REVOKE ")) {
 			return nil, true, fmt.Errorf("fake catalog cannot parse %q", sql)
 		}
+
 		return nil, false, nil
 	}
+
 	key := debugGrantKey{identityType: "global_user", name: fakeUnquote(match[5])}
 	switch {
 	case match[3] != "":
@@ -109,7 +124,9 @@ func (f *debugGrantFakeFamily) query(_ *catalog, _ sqlclient.Connection, sql str
 	case match[4] != "":
 		key = debugGrantKey{identityType: "admins_of_account", name: match[4]}
 	}
+
 	f.grant(fakeUnquote(match[2]), key, match[1] == "GRANT")
+
 	return nil, true, nil
 }
 

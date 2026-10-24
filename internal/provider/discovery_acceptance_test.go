@@ -37,6 +37,7 @@ resource "redshift_database" "local" { name = %q }
 		if !enabled {
 			return base
 		}
+
 		return base + fmt.Sprintf(`
 data "redshift_databases" "acc" {
   name_like = redshift_database.local.name
@@ -91,6 +92,7 @@ data "redshift_comment" "key" {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// Quoted identifiers still fold unless the warehouse enables case-sensitive identifiers.
@@ -100,6 +102,7 @@ data "redshift_comment" "key" {
 	require.NoError(t, err)
 	caseSensitive, err := configurationValue("enable_case_sensitive_identifier", rows)
 	require.NoError(t, err)
+
 	regionColumn := "region"
 	if tableCatalogBool(caseSensitive) || strings.EqualFold(caseSensitive, "on") {
 		regionColumn = "Region"
@@ -108,17 +111,20 @@ data "redshift_comment" "key" {
 	t.Cleanup(func() {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
 			_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)
 		}
 	})
+
 	fixtures := []string{
 		`CREATE TABLE public.orders (id INTEGER NOT NULL, "Region" VARCHAR(16), label VARCHAR(64) DEFAULT 'none', PRIMARY KEY (id), UNIQUE (label, "Region"))`,
 		`CREATE TABLE public.order_lines (order_id INTEGER, line INTEGER, CONSTRAINT order_lines_order_fkey FOREIGN KEY (order_id) REFERENCES public.orders (id))`,
 		`CREATE VIEW public.order_labels AS SELECT id, label FROM public.orders`,
 		`CREATE MATERIALIZED VIEW public.order_totals AS SELECT COUNT(*) AS total FROM public.orders`,
 	}
+
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{

@@ -24,11 +24,13 @@ func (d *dataSourceClient) Configure(_ context.Context, req datasource.Configure
 	if req.ProviderData == nil {
 		return
 	}
+
 	data, ok := req.ProviderData.(providerData)
 	if !ok {
 		resp.Diagnostics.AddError("Unexpected provider client", fmt.Sprintf("Expected provider connection data, got %T.", req.ProviderData))
 		return
 	}
+
 	d.client, d.warehouse, d.database = data.client, data.warehouse, data.database
 	d.datashareARN = data.datashareARN
 }

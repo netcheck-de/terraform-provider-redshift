@@ -49,6 +49,7 @@ func (s *apiStub) ExecuteStatement(_ context.Context, input *redshiftdata.Execut
 	if s.execute != nil {
 		return s.execute(input)
 	}
+
 	return &redshiftdata.ExecuteStatementOutput{Id: aws.String("statement")}, nil
 }
 
@@ -58,12 +59,15 @@ func (s *apiStub) DescribeStatement(ctx context.Context, input *redshiftdata.Des
 	if s.cancels > 0 && s.afterCancelError != nil {
 		return nil, s.afterCancelError
 	}
+
 	if s.cancels > 0 {
 		return &redshiftdata.DescribeStatementOutput{Status: cmp.Or(s.afterCancel, types.StatusStringAborted)}, nil
 	}
+
 	if s.describe != nil {
 		return s.describe(ctx)
 	}
+
 	return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringFinished}, nil
 }
 
@@ -78,6 +82,7 @@ func (s *apiStub) CancelStatement(_ context.Context, _ *redshiftdata.CancelState
 	if s.cancelError != nil {
 		return nil, s.cancelError
 	}
+
 	return &redshiftdata.CancelStatementOutput{Status: aws.Bool(!s.cancelRefused)}, nil
 }
 
@@ -91,6 +96,7 @@ func TestQueryIAMAuthentication(t *testing.T) {
 		require.Len(t, input.Parameters, 2)
 		assert.Equal(t, "a", *input.Parameters[0].Name)
 		assert.Equal(t, "b", *input.Parameters[1].Name)
+
 		return &redshiftdata.ExecuteStatementOutput{Id: aws.String("statement")}, nil
 	}}
 	client := Client{API: s, Workgroup: "warehouse", Timeout: time.Second, Poll: time.Millisecond}
@@ -111,6 +117,7 @@ func TestQueryPollingAndPagination(t *testing.T) {
 				if polls == 1 {
 					return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringStarted}, nil
 				}
+
 				return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringFinished, HasResultSet: aws.Bool(true)}, nil
 			},
 			result: func(input *redshiftdata.GetStatementResultInput) (*redshiftdata.GetStatementResultOutput, error) {
@@ -121,7 +128,9 @@ func TestQueryPollingAndPagination(t *testing.T) {
 						NextToken:      aws.String("next"),
 					}, nil
 				}
+
 				assert.Equal(t, "next", *input.NextToken)
+
 				return &redshiftdata.GetStatementResultOutput{
 					ColumnMetadata: columns,
 					Records:        [][]types.Field{{&types.FieldMemberIsNull{Value: true}, &types.FieldMemberBooleanValue{Value: false}, &types.FieldMemberDoubleValue{Value: 1.5}}},
@@ -132,6 +141,7 @@ func TestQueryPollingAndPagination(t *testing.T) {
 		started := time.Now()
 		rows, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT values", nil)
 		want := []sqlclient.Row{{"text": "value", "enabled": "true", "number": "2"}, {"text": "", "enabled": "false", "number": "1.5"}}
+
 		require.NoError(t, err)
 		assert.Equal(t, want, rows)
 		assert.Equal(t, 2, polls)
@@ -151,6 +161,7 @@ func TestQueryFailures(t *testing.T) {
 			require.ErrorContains(t, err, "permission denied")
 		})
 	}
+
 	for _, operation := range []string{"execute", "describe", "results", "missing ID", "metadata", "unsupported field"} {
 		t.Run(operation, func(t *testing.T) {
 			s := &apiStub{}
@@ -160,6 +171,7 @@ func TestQueryFailures(t *testing.T) {
 			s.result = func(*redshiftdata.GetStatementResultInput) (*redshiftdata.GetStatementResultOutput, error) {
 				return nil, errors.New("result error")
 			}
+
 			switch operation {
 			case "execute":
 				s.execute = func(*redshiftdata.ExecuteStatementInput) (*redshiftdata.ExecuteStatementOutput, error) {
@@ -179,9 +191,11 @@ func TestQueryFailures(t *testing.T) {
 					if operation == "unsupported field" {
 						page.ColumnMetadata = []types.ColumnMetadata{{Name: aws.String("blob")}}
 					}
+
 					return page, nil
 				}
 			}
+
 			client := Client{API: s, Timeout: time.Second}
 			_, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
 			require.Error(t, err)
@@ -199,6 +213,7 @@ func TestQueryCancellation(t *testing.T) {
 						<-ctx.Done()
 						return nil, ctx.Err()
 					}
+
 					return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringStarted}, nil
 				}}
 				client := Client{API: s, Timeout: time.Minute, Poll: time.Hour}
@@ -219,9 +234,11 @@ func TestQueryWarehouseAuthentication(t *testing.T) {
 		if mode == "cluster secret" {
 			client.DBUser, client.SecretARN = "", "secret"
 		}
+
 		if mode == "serverless secret" {
 			client.Cluster, client.DBUser, client.Workgroup, client.SecretARN = "", "", "warehouse", "secret"
 		}
+
 		client.API = &apiStub{execute: func(input *redshiftdata.ExecuteStatementInput) (*redshiftdata.ExecuteStatementOutput, error) {
 			if client.Workgroup != "" {
 				assert.Nil(t, input.ClusterIdentifier)
@@ -230,6 +247,7 @@ func TestQueryWarehouseAuthentication(t *testing.T) {
 				assert.Nil(t, input.WorkgroupName)
 				assert.Equal(t, "cluster", aws.ToString(input.ClusterIdentifier))
 			}
+
 			if client.SecretARN != "" {
 				assert.Equal(t, "secret", aws.ToString(input.SecretArn))
 				assert.Nil(t, input.DbUser)
@@ -237,6 +255,7 @@ func TestQueryWarehouseAuthentication(t *testing.T) {
 				assert.Equal(t, "reader", aws.ToString(input.DbUser))
 				assert.Nil(t, input.SecretArn)
 			}
+
 			return &redshiftdata.ExecuteStatementOutput{Id: aws.String("statement")}, nil
 		}}
 		_, err := client.Query(context.Background(), sqlclient.Connection{Database: "analytics"}, "SELECT 1", nil)
@@ -248,14 +267,20 @@ func TestQueryWarehouseAuthentication(t *testing.T) {
 func TestWaitSecondsLeavesResponseMargin(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		assert.Equal(t, int32(30), aws.ToInt32(waitSeconds(context.Background())))
+
 		ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
 		defer cancel()
+
 		assert.Equal(t, int32(30), aws.ToInt32(waitSeconds(ctx)))
+
 		ctx, cancel = context.WithTimeout(context.Background(), 10500*time.Millisecond)
 		defer cancel()
+
 		assert.Equal(t, int32(9), aws.ToInt32(waitSeconds(ctx)))
+
 		ctx, cancel = context.WithTimeout(context.Background(), 1500*time.Millisecond)
 		defer cancel()
+
 		assert.Nil(t, waitSeconds(ctx))
 	})
 }
@@ -268,11 +293,13 @@ func TestQuerySubmitsWithoutLongPoll(t *testing.T) {
 			s := &apiStub{
 				execute: func(input *redshiftdata.ExecuteStatementInput) (*redshiftdata.ExecuteStatementOutput, error) {
 					assert.Nil(t, input.WaitTimeSeconds)
+
 					if name == "" {
 						assert.Nil(t, input.StatementName)
 					} else {
 						assert.Equal(t, name, aws.ToString(input.StatementName))
 					}
+
 					return &redshiftdata.ExecuteStatementOutput{Id: aws.String("statement")}, nil
 				},
 				describe: func(context.Context) (*redshiftdata.DescribeStatementOutput, error) {
@@ -296,12 +323,15 @@ func TestQueryInterruptedDuringSubmission(t *testing.T) {
 		t.Run(strconv.FormatBool(idReturned), func(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
+
 			s := &apiStub{
 				execute: func(*redshiftdata.ExecuteStatementInput) (*redshiftdata.ExecuteStatementOutput, error) {
 					cancel()
+
 					if idReturned {
 						return &redshiftdata.ExecuteStatementOutput{Id: aws.String("statement")}, nil
 					}
+
 					return nil, context.Canceled
 				},
 				describe: func(ctx context.Context) (*redshiftdata.DescribeStatementOutput, error) {
@@ -311,6 +341,7 @@ func TestQueryInterruptedDuringSubmission(t *testing.T) {
 			client := Client{API: s, Timeout: time.Minute}
 			_, err := client.Query(ctx, sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
 			require.ErrorIs(t, err, context.Canceled)
+
 			if idReturned {
 				assert.Equal(t, 1, s.cancels)
 				require.NotErrorIs(t, err, sqlclient.ErrUnsettled)
@@ -336,6 +367,7 @@ func TestQueryRetriesRefusedLongPolls(t *testing.T) {
 			case 2:
 				return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringStarted}, nil
 			}
+
 			return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringFinished}, nil
 		}}
 		client := Client{API: s, Timeout: time.Minute}
@@ -352,6 +384,7 @@ func TestQueryRetriesRefusedLongPolls(t *testing.T) {
 // cancellation together with the original error while the statement has not stopped.
 func TestQueryCancelsAfterStatusErrors(t *testing.T) {
 	describeError, cancelError := errors.New("access denied"), errors.New("cancel refused")
+
 	for _, cancelFails := range []bool{false, true} {
 		t.Run(strconv.FormatBool(cancelFails), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -361,6 +394,7 @@ func TestQueryCancelsAfterStatusErrors(t *testing.T) {
 				if cancelFails {
 					s.cancelError = cancelError
 				}
+
 				client := Client{API: s, Timeout: time.Minute}
 				_, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
 				require.ErrorIs(t, err, describeError)
@@ -376,6 +410,7 @@ func TestQueryCancelsAfterStatusErrors(t *testing.T) {
 // after an accepted cancellation, and keeps a refused or failed cancellation visible while it may still run.
 func TestQuerySettlesAbandonedStatements(t *testing.T) {
 	describeError, cancelError := errors.New("access denied"), errors.New("cancel throttled")
+
 	for _, cancel := range []string{"accepted", "refused", "failed"} {
 		for _, after := range []types.StatusString{types.StatusStringAborted, types.StatusStringFailed, types.StatusStringFinished, types.StatusStringStarted} {
 			t.Run(cancel+"/"+string(after), func(t *testing.T) {
@@ -386,18 +421,22 @@ func TestQuerySettlesAbandonedStatements(t *testing.T) {
 					if cancel == "failed" {
 						s.cancelError = cancelError
 					}
+
 					client := Client{API: s, Timeout: time.Minute}
 					started := time.Now()
 					_, err := client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "ALTER TABLE sales", nil)
 					require.ErrorIs(t, err, describeError)
 					assert.Equal(t, 1, s.cancels)
+
 					if after != types.StatusStringStarted {
 						require.NotErrorIs(t, err, sqlclient.ErrUnsettled)
 						require.NotErrorIs(t, err, cancelError)
 						assert.Equal(t, after == types.StatusStringFinished, strings.Contains(err.Error(), "finished before it could be cancelled"))
 						assert.Zero(t, time.Since(started))
+
 						return
 					}
+
 					require.ErrorIs(t, err, sqlclient.ErrUnsettled)
 					assert.Equal(t, cancel == "failed", errors.Is(err, cancelError))
 					assert.Equal(t, cancel == "refused", strings.Contains(err.Error(), "was not accepted"))
@@ -457,8 +496,10 @@ func TestQueryHonorsEarlierCallerDeadline(t *testing.T) {
 		s := &apiStub{describe: func(context.Context) (*redshiftdata.DescribeStatementOutput, error) {
 			return &redshiftdata.DescribeStatementOutput{Status: types.StatusStringStarted}, nil
 		}}
+
 		ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 		defer cancel()
+
 		client := Client{API: s, Timeout: time.Hour}
 		started := time.Now()
 		_, err := client.Query(ctx, sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
@@ -466,6 +507,7 @@ func TestQueryHonorsEarlierCallerDeadline(t *testing.T) {
 		assert.Equal(t, 1, s.cancels)
 		assert.Equal(t, 1500*time.Millisecond, time.Since(started))
 		require.Len(t, s.waits, 3, "two polls, then the settlement check after cancellation")
+
 		for _, wait := range s.waits[:2] {
 			assert.Nil(t, wait)
 		}

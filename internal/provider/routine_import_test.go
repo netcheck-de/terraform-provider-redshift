@@ -20,9 +20,11 @@ import (
 // created identity, as terraform import does, and returns the imported state.
 func routineImportState[M any](t *testing.T, r resource.Resource, configured M) M {
 	t.Helper()
+
 	ctx := context.Background()
 	created, diagnostics := applyOperation(t, r, "create", nil, configured, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var id types.String
 	require.False(t, created.GetAttribute(ctx, path.Root("id"), &id).HasError())
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
@@ -31,19 +33,23 @@ func routineImportState[M any](t *testing.T, r resource.Resource, configured M) 
 	read := resource.ReadResponse{State: imported.State}
 	r.Read(ctx, resource.ReadRequest{State: imported.State}, &read)
 	require.False(t, read.Diagnostics.HasError(), "%v", read.Diagnostics)
+
 	var data M
 	require.False(t, read.State.Get(ctx, &data).HasError())
+
 	return data
 }
 
 // routineStatements returns the recorded statements that start with prefix.
 func routineStatements(recorder *recordingClient, prefix string) []string {
 	var statements []string
+
 	for _, entry := range recorder.take() {
 		if strings.HasPrefix(entry.sql, prefix) {
 			statements = append(statements, entry.sql)
 		}
 	}
+
 	return statements
 }
 
@@ -64,6 +70,7 @@ func TestFunctionImportKeepsModifiedTypes(t *testing.T) {
 	var arguments listplanmodifier.RequiresReplaceIfFuncResponse
 	functionArgumentsChanged(context.Background(), planmodifier.ListRequest{StateValue: imported.Arguments, PlanValue: configured.Arguments}, &arguments)
 	assert.False(t, arguments.RequiresReplace, "arguments")
+
 	var returns stringplanmodifier.RequiresReplaceIfFuncResponse
 	functionReturnTypeChanged(context.Background(), planmodifier.StringRequest{StateValue: imported.ReturnType, PlanValue: configured.ReturnType}, &returns)
 	assert.False(t, returns.RequiresReplace, "return_type")
@@ -71,11 +78,14 @@ func TestFunctionImportKeepsModifiedTypes(t *testing.T) {
 	planned := configured
 	planned.ID, planned.Signature, planned.Owner = imported.ID, imported.Signature, imported.Owner
 	planned.DefinitionFingerprint = types.StringUnknown()
+
 	recorder.take()
+
 	updated, diagnostics := applyOperation(t, r, "update", imported, planned, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.Equal(t, []string{`CREATE OR REPLACE FUNCTION "public"."f_example"(INTEGER, CHARACTER VARYING(64)) RETURNS CHARACTER VARYING(128) IMMUTABLE AS $$SELECT $2 || '-' || $1::varchar$$ LANGUAGE SQL`},
 		routineStatements(recorder, "CREATE"))
+
 	var state functionModel
 	require.False(t, updated.Get(context.Background(), &state).HasError())
 	assert.Equal(t, []string{"int", "varchar(64)"}, routineStrings(state.Arguments))
@@ -102,12 +112,16 @@ func TestProcedureImportKeepsModifiedTypes(t *testing.T) {
 	planned := configured
 	planned.ID, planned.Signature, planned.Owner = imported.ID, imported.Signature, imported.Owner
 	planned.DefinitionFingerprint = types.StringUnknown()
+
 	recorder.take()
+
 	updated, diagnostics := applyOperation(t, r, "update", imported, planned, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	statements := routineStatements(recorder, "CREATE")
 	require.Len(t, statements, 1)
 	assert.Contains(t, statements[0], `("factor" IN INTEGER, "label" OUT CHARACTER VARYING(64))`)
+
 	var state procedureModel
 	require.False(t, updated.Get(context.Background(), &state).HasError())
 	assert.Equal(t, "varchar(64)", procedureArguments(state.Arguments)[1].Type.ValueString())
@@ -118,8 +132,10 @@ func TestRoutineTypesAndImportEdges(t *testing.T) {
 	assert.True(t, routineDeclaredTypes(true, "integer").IsUnknown())
 	assert.True(t, routineCatalogTypeMatches("FutureType", "futuretype"))
 	assert.False(t, routineCatalogTypeMatches("FutureType", "other"))
+
 	_, _, err := routineImportArguments("not JSON")
 	require.ErrorContains(t, err, "expected a JSON object")
+
 	step := routineOwnerStep(func(m functionModel) types.String { return m.Owner }, func(functionModel) sqlclient.Statement { return sqlclient.Stmt("ALTER FUNCTION").Ident("f") })
 	assert.Empty(t, step.render(functionModel{}, functionModel{Owner: types.StringUnknown()}))
 }

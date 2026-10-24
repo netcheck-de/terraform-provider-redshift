@@ -15,6 +15,7 @@ var _ = registerParity(parityCase{source: newSchemaDataSource, resource: newSche
 func TestSchemaLookup(t *testing.T) {
 	state, diagnostics := readSource(t, newSchemaDataSource(), schemaData{Database: types.StringValue("admin"), Name: types.StringValue("serving")}, &catalog{schema: true})
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var data schemaData
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.Equal(t, "admin", data.Owner.ValueString())

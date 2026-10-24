@@ -33,6 +33,7 @@ func TestAccCopyTemplateEscapeRoundtrip(t *testing.T) {
 		definition := f.templateDefinition(t, data)
 		assert.Equal(t, value, definition.parameters["NULL"], "configured %q must round-trip distinctly", value)
 	}
+
 	for i, value := range []string{"\t", `\t`, `\n`, `\\`} {
 		data := templateTestModel("delimiter_"+strconv.Itoa(i), "", "", map[string]string{"DELIMITER": value})
 		data.Schema = types.StringValue(f.schema)
@@ -75,10 +76,12 @@ func TestAccCopyTemplateVisibleListing(t *testing.T) {
 	f.exec(t, sqlclient.Stmt("ALTER TEMPLATE").Qualified(f.schema, "visible").KwIdent("OWNER TO", owner))
 	t.Cleanup(func() { f.exec(t, sqlclient.Stmt("DROP TEMPLATE").Qualified(f.schema, "visible")) })
 	f.templateDefinition(t, templateModel{Schema: types.StringValue(f.schema), Name: types.StringValue("visible")})
+
 	reader := f.directUser(t, owner, password)
 	for _, schema := range []string{"", f.schema} {
 		rows := reader.query(t, listTemplatesQuery(f.conn.Database, schema))
 		assert.Len(t, rows, 1)
+
 		if len(rows) == 1 {
 			assert.Equal(t, "visible", strings.TrimSpace(rows[0]["template_name"]))
 			assert.Equal(t, owner, strings.TrimSpace(rows[0]["template_owner"]))

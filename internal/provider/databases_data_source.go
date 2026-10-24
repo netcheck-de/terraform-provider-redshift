@@ -37,6 +37,7 @@ func databasesIsolationLevel(catalog string) types.String {
 	if level, err := databaseIsolationLevel(catalog); err == nil {
 		return types.StringValue(level)
 	}
+
 	return discoveryText(strings.ToUpper(catalog))
 }
 
@@ -47,11 +48,13 @@ func databasesList(ctx context.Context, client *resourceClient, filters types.Ob
 	if err != nil {
 		return nil, err
 	}
+
 	items := make([]map[string]attr.Value, 0, len(rows))
 	for _, row := range rows {
 		if row["database_name"] == "" {
 			return nil, fmt.Errorf("SVV_REDSHIFT_DATABASES returned a database without a name")
 		}
+
 		items = append(items, map[string]attr.Value{
 			"name":            types.StringValue(row["database_name"]),
 			"owner":           discoveryText(row["owner"]),
@@ -59,5 +62,6 @@ func databasesList(ctx context.Context, client *resourceClient, filters types.Ob
 			"isolation_level": databasesIsolationLevel(row["isolation_level"]),
 		})
 	}
+
 	return items, nil
 }

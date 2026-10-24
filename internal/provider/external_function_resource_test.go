@@ -55,10 +55,12 @@ var _ = registerValidateConfigCase("external_function", validateConfigCase{
 // externalFunctionPlanAttribute returns one attribute of the resource schema.
 func externalFunctionPlanAttribute(t *testing.T, name string) schema.Attribute {
 	t.Helper()
+
 	var response resource.SchemaResponse
 	newExternalFunctionResource().Schema(context.Background(), resource.SchemaRequest{}, &response)
 	attribute, ok := response.Schema.Attributes[name]
 	require.True(t, ok, name)
+
 	return attribute
 }
 
@@ -83,6 +85,7 @@ func TestExternalFunctionArgumentsReplacement(t *testing.T) {
 			assert.Equal(t, test.replace, externalFunctionReplaces(t, attribute, before, after))
 		})
 	}
+
 	unknown := types.ListValueMust(types.StringType, []attr.Value{types.StringUnknown()})
 	assert.True(t, externalFunctionReplaces(t, attribute, externalFunctionTypeValues([]string{"int"}), unknown), "an unknown element may change the signature")
 	assert.True(t, externalFunctionReplaces(t, attribute, externalFunctionTypeValues([]string{}), types.ListUnknown(types.StringType)), "an unknown list may resolve to a new signature")
@@ -135,6 +138,7 @@ func TestExternalFunctionReadRejectsUnexpectedMetadata(t *testing.T) {
 	row := func(change func(sqlclient.Row)) []sqlclient.Row {
 		value := (&externalFunctionFake{exists: true, owner: "admin", volatility: "v", language: "exfunc"}).functionRow()
 		change(value)
+
 		return []sqlclient.Row{value}
 	}
 	for name, rows := range map[string][]sqlclient.Row{
@@ -153,6 +157,7 @@ func TestExternalFunctionReadRejectsUnexpectedMetadata(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+
 	invalid := externalFunctionWith(func(data *externalFunctionModel) { data.Arguments = externalFunctionTypeValues([]string{"hstore"}) })
 	_, err := (&externalFunctionResource{testResourceClient(fullCatalog())}).read(context.Background(), &invalid)
 	require.Error(t, err, "state with an invalid signature cannot be read")
@@ -181,17 +186,21 @@ func TestExternalFunctionCreationErrorsRetainKnownState(t *testing.T) {
 				if strings.HasPrefix(sql, failing) {
 					return nil, errors.New("injected failure")
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			})
 			r := newExternalFunctionResource()
 			configureTestResource(t, r, client)
+
 			planned := externalFunctionWith(func(data *externalFunctionModel) { data.Owner = types.StringUnknown() })
 			if failing == "ALTER FUNCTION" {
 				planned.Owner = types.StringValue("etl")
 			}
+
 			state, diagnostics := applyOperation(t, r, "create", nil, planned, nil)
 			require.True(t, diagnostics.HasError())
 			require.True(t, state.Raw.IsFullyKnown())
+
 			var observed externalFunctionModel
 			require.False(t, state.Get(context.Background(), &observed).HasError())
 			assert.False(t, observed.ID.IsNull())
@@ -212,6 +221,7 @@ func TestExternalFunctionVerifiesConvergence(t *testing.T) {
 				if strings.HasPrefix(sql, "CREATE OR REPLACE") || strings.HasPrefix(sql, "ALTER FUNCTION") {
 					return nil, nil // Acknowledged without effect.
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			})
 			r := newExternalFunctionResource()
@@ -252,6 +262,7 @@ func TestExternalFunctionTranscripts(t *testing.T) {
 // TestExternalFunctionImport restores every identity field, including an empty signature.
 func TestExternalFunctionImport(t *testing.T) {
 	r := newExternalFunctionResource()
+
 	importID := func(signature string) string {
 		return fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"f_exfunc_upper","arguments":%q}`, signature)
 	}
@@ -259,10 +270,12 @@ func TestExternalFunctionImport(t *testing.T) {
 		response := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: importID(signature)}, &response)
 		require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
+
 		var argumentTypes types.List
 		require.False(t, response.State.GetAttribute(context.Background(), path.Root("arguments"), &argumentTypes).HasError())
 		assert.Equal(t, externalFunctionTypeValues(expected), argumentTypes)
 	}
+
 	for _, id := range []string{
 		`{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"f"}`,
 		importID("varchar"),
@@ -286,6 +299,7 @@ func TestExternalFunctionImportMatchesCreatedIdentity(t *testing.T) {
 		data.Arguments = externalFunctionTypeValues([]string{"varchar(32)"})
 	}), nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var id types.String
 	require.False(t, state.GetAttribute(context.Background(), path.Root("id"), &id).HasError())
 	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"f_exfunc_upper","arguments":"CHARACTER VARYING"}`, id.ValueString())
@@ -296,12 +310,14 @@ func TestExternalFunctionImportMatchesCreatedIdentity(t *testing.T) {
 // whether any requests replacement.
 func externalFunctionReplaces(t *testing.T, attribute schema.Attribute, before, after attr.Value) bool {
 	t.Helper()
+
 	ctx := context.Background()
 	single := schema.Schema{Attributes: map[string]schema.Attribute{"value": attribute}}
 	objectType := tftypes.Object{AttributeTypes: map[string]tftypes.Type{"value": attribute.GetType().TerraformType(ctx)}}
 	raw := func(value attr.Value) tftypes.Value {
 		converted, err := value.ToTerraformValue(ctx)
 		require.NoError(t, err)
+
 		return tftypes.NewValue(objectType, map[string]tftypes.Value{"value": converted})
 	}
 	plan := tfsdk.Plan{Schema: single, Raw: raw(after)}
@@ -309,6 +325,7 @@ func externalFunctionReplaces(t *testing.T, attribute schema.Attribute, before, 
 	config := tfsdk.Config{Schema: single, Raw: plan.Raw}
 	root := path.Root("value")
 	replace := false
+
 	switch attribute := attribute.(type) {
 	case schema.ListAttribute:
 		for _, modifier := range attribute.PlanModifiers {
@@ -329,6 +346,7 @@ func externalFunctionReplaces(t *testing.T, attribute schema.Attribute, before, 
 	default:
 		t.Fatalf("unsupported attribute %T", attribute)
 	}
+
 	return replace
 }
 
@@ -344,6 +362,7 @@ func TestExternalFunctionKnownConfig(t *testing.T) {
 			for i := range values {
 				values[i] = "int"
 			}
+
 			m.Arguments = externalFunctionTypeValues(values)
 		}, "at most"},
 		{"volatility", func(m *externalFunctionModel) { m.Volatility = types.StringValue("RANDOM") }, "RANDOM"},
@@ -358,6 +377,7 @@ func TestExternalFunctionKnownConfig(t *testing.T) {
 			require.ErrorContains(t, externalFunctionKnownConfig(data), test.message)
 		})
 	}
+
 	data := externalFunctionTestModel()
 	data.Arguments = externalFunctionTypeValues([]string{"money"})
 	r := &externalFunctionResource{}
@@ -367,6 +387,7 @@ func TestExternalFunctionKnownConfig(t *testing.T) {
 	require.Error(t, err)
 	_, err = dropExternalFunctionStatement(data)
 	require.Error(t, err)
+
 	data.Arguments = types.ListUnknown(types.StringType)
 	assert.Nil(t, externalFunctionTypeList(data.Arguments))
 	data = externalFunctionTestModel()
@@ -383,23 +404,28 @@ func TestExternalRoutineFailures(t *testing.T) {
 	configureTestResource(t, r, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return nil, errors.New("ALTER refused")
 	}))
+
 	before, after := externalFunctionTestModel(), externalFunctionTestModel()
 	after.LambdaFunction = types.StringValue("replacement_lambda")
 	_, diagnostics := applyOperation(t, r, "update", before, after, nil)
 	require.True(t, diagnostics.HasError())
 	assert.Contains(t, fmt.Sprint(diagnostics), "ALTER refused")
+
 	client := testResourceClient(nil)
 	_, found, err := readExternalModelCatalog(context.Background(), &client, "admin", "serving", "")
 	require.Error(t, err)
 	assert.False(t, found)
 	assert.False(t, externalModelUnread(context.Background(), nil, "iam_role"))
+
 	for _, change := range []func(*externalModelModel){
 		func(m *externalModelModel) { m.IAMRole = types.StringValue("invalid-role") },
 		func(m *externalModelModel) { m.Name = types.StringValue("") },
 	} {
 		model := testExternalModelModel()
 		change(&model)
+
 		modelResource := newExternalModelResource()
+
 		var response resource.ValidateConfigResponse
 		modelResource.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, modelResource, model))}, &response)
 		require.True(t, response.Diagnostics.HasError())

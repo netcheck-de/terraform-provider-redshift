@@ -76,15 +76,18 @@ func (f *columnGrantFake) query(_ *catalog, _ sqlclient.Connection, sql string, 
 		if parameters["database"] != columnGrantFixture.database || parameters["schema"] != columnGrantFixture.schema || parameters["name"] != columnGrantFixture.object {
 			return nil, false, nil
 		}
+
 		if f.relation {
 			return []sqlclient.Row{{"table_name": columnGrantFixture.object}}, true, nil
 		}
+
 		return nil, true, nil
 	case strings.Contains(sql, " FROM svv_column_privileges"):
 		var rows []sqlclient.Row
 		if !f.relation {
 			return rows, true, nil
 		}
+
 		for _, grantee := range slices.Sorted(maps.Keys(f.grants)) {
 			name, kind := columnGrantFakeIdentity(grantee)
 			for _, privilege := range slices.Sorted(maps.Keys(f.grants[grantee])) {
@@ -96,19 +99,24 @@ func (f *columnGrantFake) query(_ *catalog, _ sqlclient.Connection, sql string, 
 				}
 			}
 		}
+
 		return rows, true, nil
 	}
+
 	match := columnGrantStatement.FindStringSubmatch(sql)
 	if match == nil {
 		return nil, false, nil
 	}
+
 	grantee := match[5]
 	if f.grants[grantee] == nil {
 		f.grants[grantee] = map[string]map[string]bool{}
 	}
+
 	if f.grants[grantee][match[2]] == nil {
 		f.grants[grantee][match[2]] = map[string]bool{}
 	}
+
 	for column := range strings.SplitSeq(match[3], ", ") {
 		if match[1] == "GRANT" {
 			f.grants[grantee][match[2]][columnGrantFakeUnquote(column)] = true
@@ -116,6 +124,7 @@ func (f *columnGrantFake) query(_ *catalog, _ sqlclient.Connection, sql string, 
 			delete(f.grants[grantee][match[2]], columnGrantFakeUnquote(column))
 		}
 	}
+
 	return nil, true, nil
 }
 
@@ -126,6 +135,7 @@ func columnGrantFakeMatches(row sqlclient.Row, parameters map[string]string) boo
 			return false
 		}
 	}
+
 	return true
 }
 

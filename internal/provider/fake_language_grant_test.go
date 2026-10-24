@@ -41,12 +41,15 @@ func (f *languageGrantFake) query(_ *catalog, _ sqlclient.Connection, sql string
 		if !ok {
 			return nil, true, nil
 		}
+
 		return []sqlclient.Row{{"privilege_type": "USAGE", "admin_option": fmt.Sprint(option)}}, true, nil
 	}
+
 	match := languageGrantStatement.FindStringSubmatch(sql)
 	if match == nil {
 		return nil, false, nil
 	}
+
 	name, kind := columnGrantFakeIdentity(match[4])
 	// SVV_LANGUAGE_PRIVILEGES names languages in lowercase.
 	key := languageGrantFakeKey{strings.ToLower(match[3]), name, kind}
@@ -59,10 +62,12 @@ func (f *languageGrantFake) query(_ *catalog, _ sqlclient.Connection, sql string
 		}
 	default:
 		delete(f.usage, key)
+
 		if kind == "public" {
 			delete(f.defaults, key.language)
 		}
 	}
+
 	return nil, true, nil
 }
 

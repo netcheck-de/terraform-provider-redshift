@@ -37,6 +37,7 @@ func TestCommentLookupIdentitySelectors(t *testing.T) {
 				} else {
 					assert.Equal(t, "analytics", target.Database)
 				}
+
 				return []sqlclient.Row{{"text": ""}}, nil
 			}))
 		})

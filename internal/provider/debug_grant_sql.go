@@ -39,21 +39,25 @@ func debugRecipient(grantee, granteeType string) (sqlclient.Statement, string, e
 	if err != nil {
 		return sqlclient.Statement{}, "", fmt.Errorf("unsupported grantee_type: %w", err)
 	}
+
 	switch kind {
 	case "ACCOUNT":
 		if !datashareAccountPattern.MatchString(grantee) {
 			return sqlclient.Statement{}, "", fmt.Errorf("an ACCOUNT grantee must be a 12-digit AWS account ID")
 		}
+
 		return sqlclient.Kw("ADMINS OF ACCOUNT").Lit(grantee), debugGranteeTypes["ACCOUNT"], nil
 	case "ROLE":
 		if !debugGlobalIdentity.MatchString(grantee) {
 			return sqlclient.Statement{}, "", fmt.Errorf("a ROLE grantee must be an Identity Center group named <prefix>:<group>")
 		}
+
 		return sqlclient.Kw("ROLE").Ident(grantee), debugGranteeTypes["ROLE"], nil
 	default:
 		if !debugGlobalIdentity.MatchString(grantee) {
 			return sqlclient.Statement{}, "", fmt.Errorf("a USER grantee must be a global identity named <prefix>:<name>, such as IAM:auditor or IAMR:audit_role; DEBUG cannot be granted to local users, groups, or PUBLIC")
 		}
+
 		return sqlclient.Ident(grantee), debugGranteeTypes["USER"], nil
 	}
 }
@@ -63,13 +67,16 @@ func (data debugGrantModel) spec() (grantSpec, string, error) {
 	if data.Database.ValueString() == "" {
 		return grantSpec{}, "", fmt.Errorf("database must not be empty")
 	}
+
 	grantee, identityType, err := debugRecipient(data.Grantee.ValueString(), data.GranteeType.ValueString())
 	if err != nil {
 		return grantSpec{}, "", err
 	}
+
 	if err := data.validateRemote(); err != nil {
 		return grantSpec{}, "", err
 	}
+
 	return grantSpec{object: sqlclient.Kw("ON DATABASE").Ident(data.Database.ValueString()), grantee: grantee}, identityType, nil
 }
 
@@ -79,6 +86,7 @@ func (data debugGrantModel) validateRemote() error {
 	if strings.Contains(data.Database.ValueString(), "@") && strings.EqualFold(data.GranteeType.ValueString(), "ACCOUNT") {
 		return fmt.Errorf("cross-catalog ACCOUNT DEBUG grants have no reliable readback; configure a provider connected to the producer warehouse and use its local database name without @catalog")
 	}
+
 	return nil
 }
 
@@ -88,6 +96,7 @@ func readDebugGrantRemoteStatement(data debugGrantModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return sqlclient.Stmt("SHOW GRANTS FOR").Append(spec.grantee).KwIdent("FROM DATABASE", data.Database.ValueString()).String(), nil
 }
 
@@ -106,6 +115,7 @@ func debugGrantRemoteMatches(row sqlclient.Row, data debugGrantModel) bool {
 	if kind != "USER" && kind != "ROLE" {
 		return false
 	}
+
 	return row["database_name"] == data.Database.ValueString() && row["object_type"] == "DATABASE" && row["privilege_scope"] == "DATABASE" &&
 		strings.EqualFold(row["identity_type"], data.GranteeType.ValueString()) && debugGrantMatches(row, data.Grantee.ValueString(), row["identity_type"])
 }
@@ -117,6 +127,7 @@ func createDebugGrantStatement(data debugGrantModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return spec.statement(true, "DEBUG"), nil
 }
 
@@ -127,6 +138,7 @@ func dropDebugGrantStatement(data debugGrantModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return spec.statement(false, "DEBUG"), nil
 }
 

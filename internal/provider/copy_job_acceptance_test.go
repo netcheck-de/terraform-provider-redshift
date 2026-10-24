@@ -29,6 +29,7 @@ func copyJobAcceptanceClient(t *testing.T, region, profile, workgroup string) sq
 	t.Helper()
 	client := testAccRolesClient(t, region, profile, workgroup).(*dataapi.Client)
 	client.SecretARN = os.Getenv("REDSHIFT_ACC_SECRET_ARN")
+
 	return client
 }
 
@@ -39,14 +40,17 @@ func TestAccCopyJobDatabaseScope(t *testing.T) {
 	client := copyJobAcceptanceClient(t, region, profile, workgroup)
 	job, database, other := os.Getenv("REDSHIFT_ACC_COPY_JOB_NAME"), os.Getenv("REDSHIFT_ACC_COPY_JOB_DATABASE"), os.Getenv("REDSHIFT_ACC_COPY_JOB_OTHER_DATABASE")
 	require.NotEqual(t, database, other)
+
 	query, args, err := readCopyJobQuery(job).Build()
 	require.NoError(t, err)
 	rows, err := client.Query(context.Background(), sqlclient.Connection{Database: database}, query, args)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
+
 	model := copyJobModel{Database: types.StringValue(database), Name: types.StringValue(job), Parameters: types.MapNull(types.StringType)}
 	require.NoError(t, readCopyJobDefinition(&model, rows[0]["copy_query"]))
 	t.Logf("job %s definition is readable in %s", job, database)
+
 	rows, err = client.Query(context.Background(), sqlclient.Connection{Database: other}, query, args)
 	require.NoError(t, err)
 	require.Empty(t, rows, "SYS_COPY_JOB must be database-local; warehouse-wide rows would require a database filter")
@@ -59,14 +63,17 @@ func TestAccCopyJobNonOwnerVisibility(t *testing.T) {
 	database := os.Getenv("REDSHIFT_ACC_COPY_JOB_DATABASE")
 	client := copyJobAcceptanceClient(t, region, profile, workgroup).(*dataapi.Client)
 	name := "acc_copy_reader_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
+
 	_, err := client.Query(ctx, sqlclient.Connection{Database: database}, sqlclient.Stmt("CREATE USER").Ident(name).Kw("PASSWORD DISABLE").String(), nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_, err := client.Query(context.Background(), sqlclient.Connection{Database: database}, sqlclient.Stmt("DROP USER").Ident(name).String(), nil)
 		require.NoError(t, err)
 	})
+
 	run := func(statement string, session *string, keep int32) *redshiftdata.ExecuteStatementOutput {
 		input := &redshiftdata.ExecuteStatementInput{
 			Sql: aws.String(statement), SessionId: session, SessionKeepAliveSeconds: aws.Int32(keep), WaitTimeSeconds: aws.Int32(30),
@@ -76,26 +83,34 @@ func TestAccCopyJobNonOwnerVisibility(t *testing.T) {
 			input.WorkgroupName = aws.String(workgroup)
 			input.SecretArn = aws.String(client.SecretARN)
 		}
+
 		result, err := client.API.ExecuteStatement(ctx, input)
 		require.NoError(t, err)
+
 		status := result.Status
 		for status != redshifttypes.StatementStatusStringFinished {
 			described, err := client.API.DescribeStatement(ctx, &redshiftdata.DescribeStatementInput{Id: result.Id})
 			require.NoError(t, err)
 			require.NotEqual(t, redshifttypes.StatusStringFailed, described.Status, "%s", aws.ToString(described.Error))
 			require.NotEqual(t, redshifttypes.StatusStringAborted, described.Status)
+
 			if described.Status == redshifttypes.StatusStringFinished {
 				break
 			}
+
 			time.Sleep(time.Second)
 		}
+
 		return result
 	}
 	started := run(sqlclient.Stmt("SET SESSION AUTHORIZATION").Ident(name).String(), nil, 60)
+
 	require.NotNil(t, started.SessionId)
 	defer run("RESET SESSION AUTHORIZATION", started.SessionId, 0)
+
 	query, _, err := sqlclient.Select("job_name").From("sys_copy_job").Build()
 	require.NoError(t, err)
+
 	result := run(query, started.SessionId, 60)
 	rows, err := client.API.GetStatementResult(ctx, &redshiftdata.GetStatementResultInput{Id: result.Id})
 	require.NoError(t, err)
@@ -124,12 +139,14 @@ func TestAccCopyJobDefinition(t *testing.T) {
 		if arn := os.Getenv("REDSHIFT_ACC_SECRET_ARN"); arn != "" {
 			secret = fmt.Sprintf("secret_arn = %q", arn)
 		}
+
 		columns, options := "", ""
 		if csv {
 			columns = `columns = ["id"]`
 			options = `format = "CSV"
   parameters = { IGNOREHEADER = "1" }`
 		}
+
 		return fmt.Sprintf(`
 provider "redshift" {
   region = %q
@@ -176,26 +193,34 @@ data "redshift_copy_job" "copy" {
 		if other == "" || other == database {
 			return nil
 		}
+
 		client := copyJobAcceptanceClient(t, region, profile, workgroup)
+
 		query, args, err := readCopyJobQuery(name).Build()
 		if err != nil {
 			return err
 		}
+
 		rows, err := client.Query(context.Background(), sqlclient.Connection{Database: database}, query, args)
 		if err != nil {
 			return err
 		}
+
 		if len(rows) != 1 {
 			return fmt.Errorf("expected the created COPY job in %s, got %d rows", database, len(rows))
 		}
+
 		rows, err = client.Query(context.Background(), sqlclient.Connection{Database: other}, query, args)
 		if err != nil {
 			return err
 		}
+
 		if len(rows) != 0 {
 			return fmt.Errorf("SYS_COPY_JOB returned %d rows for a job in another database", len(rows))
 		}
+
 		t.Logf("SYS_COPY_JOB is database-local: %s is visible in %s but not %s", name, database, other)
+
 		return nil
 	}
 	resource.Test(t, resource.TestCase{

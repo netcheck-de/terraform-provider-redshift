@@ -71,9 +71,11 @@ func (templateIdentity) PlanModifyString(ctx context.Context, req planmodifier.S
 	if req.StateValue.IsNull() || !req.PlanValue.IsUnknown() {
 		return
 	}
+
 	var prior, planned types.String
 	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("name"), &prior)...)
 	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("name"), &planned)...)
+
 	if planned.Equal(prior) {
 		resp.PlanValue = req.StateValue
 	}
@@ -137,40 +139,50 @@ func readTemplateCatalog(ctx context.Context, client *resourceClient, data templ
 	if exists, err := client.localDatabaseExists(ctx, database); err != nil || !exists {
 		return templateCatalog{}, false, err
 	}
+
 	if rows, err := client.selectRows(ctx, database, privilegeSchemaQuery(database, schemaName)); err != nil || len(rows) == 0 {
 		return templateCatalog{}, false, err
 	}
+
 	rows, err := client.queryDatabase(ctx, database, showTemplatesStatement("", schemaName, name), nil)
 	if err != nil {
 		return templateCatalog{}, false, err
 	}
+
 	var matches []sqlclient.Row
+
 	for _, row := range rows {
 		if row["template_name"] == name {
 			matches = append(matches, row)
 		}
 	}
+
 	switch {
 	case len(matches) == 0:
 		return templateCatalog{}, false, nil
 	case len(matches) > 1:
 		return templateCatalog{}, false, fmt.Errorf("template %s.%s has ambiguous catalog metadata", schemaName, name)
 	}
+
 	definitions, err := client.queryDatabase(ctx, database, showTemplateStatement(data), nil)
 	if err != nil {
 		return templateCatalog{}, false, err
 	}
+
 	if len(definitions) != 1 {
 		return templateCatalog{}, false, fmt.Errorf("SHOW TEMPLATE returned %d rows for %s.%s", len(definitions), schemaName, name)
 	}
+
 	text, err := templateDefinitionText(definitions[0])
 	if err != nil {
 		return templateCatalog{}, false, err
 	}
+
 	definition, err := parseTemplateDefinition(text)
 	if err != nil {
 		return templateCatalog{}, false, err
 	}
+
 	return templateCatalog{owner: matches[0]["template_owner"], definition: definition}, true, nil
 }
 
@@ -178,10 +190,12 @@ func readTemplateCatalog(ctx context.Context, client *resourceClient, data templ
 func (entry templateCatalog) applyCatalog(data *templateModel) {
 	data.Owner = types.StringValue(entry.owner)
 	configured := data.Format
+
 	data.Format = types.StringNull()
 	if entry.definition.format != "" {
 		data.Format = keywordValue(configured, entry.definition.format)
 	}
+
 	data.FormatArgument = copyFormatArgumentValue(data.FormatArgument, entry.definition.format, entry.definition.formatArgument)
 	data.Parameters = copyParametersValue(data.Parameters, entry.definition.parameters, false)
 }
@@ -191,6 +205,7 @@ func (r *templateResource) read(ctx context.Context, data templateModel) (templa
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return templateCatalog{}, false, err
 	}
+
 	return readTemplateCatalog(ctx, &r.resourceClient, data)
 }
 
@@ -208,11 +223,14 @@ func (r *templateResource) converge(ctx context.Context, data *templateModel) er
 	case !strings.EqualFold(entry.definition.format, knownString(data.Format)) || !copyFormatArgumentValue(data.FormatArgument, entry.definition.format, entry.definition.formatArgument).Equal(data.FormatArgument):
 		return fmt.Errorf("the template's format is %q %q after apply, expected %q %q", entry.definition.format, entry.definition.formatArgument, knownString(data.Format), knownString(data.FormatArgument))
 	}
+
 	planned, _ := copyCanonicalParameters(knownMap(data.Parameters), false) // validated before apply.
 	if !maps.Equal(planned, entry.definition.parameters) {
 		return fmt.Errorf("the template's parameters differ from the configuration after apply: %v", entry.definition.parameters)
 	}
+
 	entry.applyCatalog(data)
+
 	return nil
 }
 
@@ -220,9 +238,11 @@ func (r *templateResource) converge(ctx context.Context, data *templateModel) er
 func (r *templateResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data templateModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := templateValidate(data); err != nil {
 		resp.Diagnostics.AddError("Invalid template", err.Error())
 	}
@@ -232,32 +252,40 @@ func (r *templateResource) ValidateConfig(ctx context.Context, req resource.Vali
 func (r *templateResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data templateModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statements, err := createTemplateStatements(data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid template", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), statements[0]); err != nil {
 		resp.Diagnostics.AddError("Create template", err.Error())
 		return
 	}
+
 	data.ID = r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
 	// A failed ownership change or verification must still record the created template in serializable state.
 	if data.Owner.IsUnknown() {
 		data.Owner = types.StringNull()
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if err := r.exec(ctx, data.Database.ValueString(), statements[1:]...); err != nil {
 		resp.Diagnostics.AddError("Set template owner", err.Error())
 		return
 	}
+
 	if err := r.converge(ctx, &data); err != nil {
 		resp.Diagnostics.AddError("Verify template", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -265,18 +293,22 @@ func (r *templateResource) Create(ctx context.Context, req resource.CreateReques
 func (r *templateResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data templateModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	entry, found, err := r.read(ctx, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read template", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	entry.applyCatalog(&data)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -286,9 +318,11 @@ func (r *templateResource) Update(ctx context.Context, req resource.UpdateReques
 	var data, previous templateModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &previous)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statements, err := alterTemplateStatements(previous, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid template", err.Error())
@@ -304,6 +338,7 @@ func (r *templateResource) Update(ctx context.Context, req resource.UpdateReques
 		resp.Diagnostics.AddError("Update template", "The template disappeared during the update; refresh the plan.")
 		return
 	}
+
 	data.ID = r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
 	if !previous.Name.Equal(data.Name) {
 		if err := r.exec(ctx, data.Database.ValueString(), statements[0]); err != nil {
@@ -315,16 +350,20 @@ func (r *templateResource) Update(ctx context.Context, req resource.UpdateReques
 		renamed := previous
 		renamed.ID, renamed.Name = data.ID, data.Name
 		resp.Diagnostics.Append(resp.State.Set(ctx, &renamed)...)
+
 		statements = statements[1:]
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), statements...); err != nil {
 		resp.Diagnostics.AddError("Update template", err.Error())
 		return
 	}
+
 	if err := r.converge(ctx, &data); err != nil {
 		resp.Diagnostics.AddError("Verify template", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -332,9 +371,11 @@ func (r *templateResource) Update(ctx context.Context, req resource.UpdateReques
 func (r *templateResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data templateModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	_, found, err := r.read(ctx, data)
 	if err == nil && found {
 		var statement string
@@ -342,6 +383,7 @@ func (r *templateResource) Delete(ctx context.Context, req resource.DeleteReques
 			err = r.exec(ctx, data.Database.ValueString(), statement)
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete template", err.Error())
 	}

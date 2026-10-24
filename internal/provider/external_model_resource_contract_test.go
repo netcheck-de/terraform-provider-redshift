@@ -17,6 +17,7 @@ import (
 // exemption active and incorrectly accept a later SUPER change without replacing the model.
 func TestContractExternalModelImportAdoptsDefaultResponse(t *testing.T) {
 	t.Parallel()
+
 	c, models := externalModelFake()
 	configuration := func(requestType, modelID string) string {
 		return fmt.Sprintf(`
@@ -77,8 +78,10 @@ resource "redshift_external_model" "summarizer" {
 // merely to adopt these values, but their next change must still replace it.
 func TestContractExternalModelImportAdoptsUnreadSettings(t *testing.T) {
 	t.Parallel()
+
 	c, models := externalModelFake()
 	delete(models.get(fakeModelName).settings, "IAM Role")
+
 	configuration := func(role string) string {
 		return fmt.Sprintf(`
 provider "redshift" {
@@ -129,6 +132,7 @@ resource "redshift_external_model" "summarizer" {
 // A future catalog that reports RESPONSE_TYPE must end the exemption on observation, without requiring an update.
 func TestContractExternalModelImportObservedResponseReplaces(t *testing.T) {
 	t.Parallel()
+
 	c, models := externalModelFake()
 	models.get(fakeModelName).settings["Response Type"] = "SUPER"
 	configuration := fmt.Sprintf(`

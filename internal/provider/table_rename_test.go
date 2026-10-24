@@ -21,6 +21,7 @@ func tableRenamedFrom(name string) func(*tableColumnModel) {
 // keys.
 func tableRenamedEvents(t *testing.T) tableModel {
 	t.Helper()
+
 	model := tableEventsModel()
 	columns := tableTestColumnsOf(t, model.Column)
 	columns[0].Name = types.StringValue("event_id")
@@ -29,6 +30,7 @@ func tableRenamedEvents(t *testing.T) tableModel {
 	model.PrimaryKey = tableTestKey("event_id")
 	model.Distribution = tableTestDistribution("KEY", "event_id")
 	model.SortKey = tableTestSortKey("COMPOUND", "event_id")
+
 	return model
 }
 
@@ -94,10 +96,12 @@ func TestTableRenameValidation(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+
 	for _, destination := range []bool{false, true} {
 		c := fullCatalog()
 		table := fakeState[*tableFake](c, "table").tables["serving.events"]
 		plan := tableRenamedEvents(t)
+
 		if destination {
 			table.columns = append(table.columns, tableFakeColumn{name: "event_id", dataType: "bigint", notNull: true, encoding: "az64"})
 		} else {
@@ -105,6 +109,7 @@ func TestTableRenameValidation(t *testing.T) {
 			columns[0].RenamedFrom = types.StringValue("missing")
 			plan.Column = tableTestColumns(columns...)
 		}
+
 		r := newTableResource()
 		configureTestResource(t, r, c)
 		_, diagnostics := applyOperation(t, r, "update", tableEventsModel(), plan, nil)
@@ -128,6 +133,7 @@ func TestTableRenameRetryAndRead(t *testing.T) {
 	_, diagnostics = applyOperation(t, r, "update", tableEventsModel(), plan, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.Len(t, c.writes, 1)
+
 	resource := r.(*tableResource)
 	found, _, err := resource.read(context.Background(), &plan)
 	require.NoError(t, err)
@@ -153,12 +159,14 @@ func TestTableRenamePartialFailure(t *testing.T) {
 		if fail && strings.Contains(sql, `RENAME COLUMN "label"`) {
 			return nil, errors.New("interrupted second rename")
 		}
+
 		return c.Query(ctx, connection, sql, parameters)
 	}))}
 	_, diagnostics := applyOperation(t, r, "update", tableEventsModel(), plan, nil)
 	require.True(t, diagnostics.HasError())
 	assert.Contains(t, diagnostics[0].Detail(), "interrupted second rename")
 	assert.Len(t, c.writes, 1)
+
 	fail = false
 	_, diagnostics = applyOperation(t, r, "update", tableEventsModel(), plan, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)

@@ -31,8 +31,10 @@ func materializedViewDistributionBlock(style, key string) types.Object {
 		if value == "" {
 			return types.StringNull()
 		}
+
 		return types.StringValue(value)
 	}
+
 	return types.ObjectValueMust(materializedViewDistributionTypes, map[string]attr.Value{"style": optional(style), "key": optional(key)})
 }
 
@@ -42,6 +44,7 @@ func materializedViewSortKeyBlock(columns ...string) types.Object {
 	for i, column := range columns {
 		elements[i] = types.StringValue(column)
 	}
+
 	return types.ObjectValueMust(materializedViewSortKeyTypes, map[string]attr.Value{"columns": types.ListValueMust(types.StringType, elements)})
 }
 
@@ -51,6 +54,7 @@ func TestMaterializedViewSQL(t *testing.T) {
 	with := func(change func(*materializedViewModel)) materializedViewModel {
 		data := testMaterializedViewModel()
 		change(&data)
+
 		return data
 	}
 	quoted := with(func(data *materializedViewModel) {
@@ -136,11 +140,13 @@ func TestMaterializedViewSQL(t *testing.T) {
 		{"read", func() (string, error) {
 			sql, parameters, err := readMaterializedViewQuery(quoted).Build()
 			assert.Equal(t, map[string]string{"schema": `Odd"Schema`, "name": `My"Summary`}, parameters)
+
 			return sql, err
 		}},
 		{"read_refresh", func() (string, error) {
 			sql, parameters, err := readMaterializedViewRefreshQuery(quoted).Build()
 			assert.Equal(t, map[string]string{"database": "admin", "schema": `Odd"Schema`, "name": `My"Summary`}, parameters)
+
 			return sql, err
 		}},
 	})
@@ -158,6 +164,7 @@ func TestMaterializedViewSortKeySkipsUnknownColumns(t *testing.T) {
 	assert.True(t, materializedViewSortKeyColumns(data).IsNull(), "an absent block has no columns")
 	data.SortKey = types.ObjectUnknown(materializedViewSortKeyTypes)
 	assert.True(t, materializedViewSortKeyColumns(data).IsUnknown(), "an unknown block has unknown columns")
+
 	columns, err := materializedViewSortKey(types.ListValueMust(types.StringType, []attr.Value{types.StringValue("z"), types.StringUnknown(), types.StringValue("a")}))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"z", "a"}, columns)
@@ -173,6 +180,7 @@ func TestMaterializedViewFlag(t *testing.T) {
 		require.NoError(t, err, value)
 		assert.Equal(t, expected, flag, value)
 	}
+
 	for _, value := range []string{"", "u", "yes"} {
 		_, err := materializedViewFlag(value)
 		assert.Error(t, err, value)

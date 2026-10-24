@@ -17,6 +17,7 @@ func discoveryFilter(description string, choices ...string) schema.StringAttribu
 	if len(choices) != 0 {
 		validators = append(validators, stringvalidator.OneOfCaseInsensitive(choices...))
 	}
+
 	return schema.StringAttribute{Optional: true, MarkdownDescription: description, Validators: validators}
 }
 
@@ -44,6 +45,7 @@ func discoveryDatabase(client *resourceClient, filters types.Object) string {
 	if database := objectString(filters, "database"); database != "" {
 		return database
 	}
+
 	return client.database.ValueString()
 }
 
@@ -53,6 +55,7 @@ func discoveryText(value string) types.String {
 	if value == "" {
 		return types.StringNull()
 	}
+
 	return types.StringValue(value)
 }
 
@@ -61,9 +64,11 @@ func discoveryInt64(column, value string) (types.Int64, error) {
 	if value == "" {
 		return types.Int64Null(), nil
 	}
+
 	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
 	if err != nil {
 		return types.Int64Null(), fmt.Errorf("catalog column %s has non-integer value %q", column, value)
 	}
+
 	return types.Int64Value(parsed), nil
 }

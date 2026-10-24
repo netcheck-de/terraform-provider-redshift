@@ -36,10 +36,12 @@ type Token struct {
 // because a statement the server printed never contains them.
 func Tokens(sql string) ([]Token, error) {
 	var tokens []Token
+
 	for _, item := range lex(sql, redshiftReading) {
 		if item.open && item.kind != lexLineComment {
 			return nil, fmt.Errorf("SQL text has an unterminated %s", lexemeNames[item.kind])
 		}
+
 		switch item.kind {
 		case lexString:
 			tokens = append(tokens, Token{Kind: TokenString, Text: decodeLiteral(item.text), Raw: item.text})
@@ -53,6 +55,7 @@ func Tokens(sql string) ([]Token, error) {
 			tokens = append(tokens, codeTokens(item.text)...)
 		}
 	}
+
 	return tokens, nil
 }
 
@@ -61,11 +64,14 @@ func Tokens(sql string) ([]Token, error) {
 // their meaning depends on the command that reads the value, such as a COPY DELIMITER '\t'.
 func decodeLiteral(text string) string {
 	body := text[1 : len(text)-1]
+
 	var value strings.Builder
+
 	for i := 0; i < len(body); i++ {
 		switch {
 		case body[i] == '\'' && i+1 < len(body) && body[i+1] == '\'':
 			value.WriteByte('\'')
+
 			i++
 		case body[i] == '\\' && i+1 < len(body) && (body[i+1] == '\\' || body[i+1] == '\''):
 			value.WriteByte(body[i+1])
@@ -74,6 +80,7 @@ func decodeLiteral(text string) string {
 			value.WriteByte(body[i])
 		}
 	}
+
 	return value.String()
 }
 
@@ -81,6 +88,7 @@ func decodeLiteral(text string) string {
 // continue a word, as they continue an unquoted Redshift name.
 func codeTokens(text string) []Token {
 	var tokens []Token
+
 	start := -1
 	flush := func(end int) {
 		if start >= 0 {
@@ -88,6 +96,7 @@ func codeTokens(text string) []Token {
 			start = -1
 		}
 	}
+
 	for i := range len(text) {
 		char := text[i]
 		switch {
@@ -99,9 +108,12 @@ func codeTokens(text string) []Token {
 			flush(i)
 		default:
 			flush(i)
+
 			tokens = append(tokens, Token{Kind: TokenSymbol, Text: string(char)})
 		}
 	}
+
 	flush(len(text))
+
 	return tokens
 }

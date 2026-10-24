@@ -58,23 +58,28 @@ func (data datashareGrantModel) consumer() (sqlclient.Keyword, string, string, e
 	if data.AccountID.IsUnknown() || data.NamespaceID.IsUnknown() || data.ViaDataCatalog.IsUnknown() {
 		return "", "", "", fmt.Errorf("consumer identity must be known before executing SQL")
 	}
+
 	account, namespace := data.AccountID.ValueString(), data.NamespaceID.ValueString()
 	if data.AccountID.IsNull() == data.NamespaceID.IsNull() {
 		return "", "", "", fmt.Errorf("specify exactly one of account_id and namespace_id")
 	}
+
 	if account != "" {
 		if !datashareAccountPattern.MatchString(account) {
 			return "", "", "", fmt.Errorf("account_id must contain exactly 12 digits")
 		}
+
 		return datashareGrantAccount, "account_id", account, nil
 	}
 	// r_GRANT documents VIA DATA CATALOG only after ACCOUNT, because a Lake Formation consumer is an account.
 	if data.ViaDataCatalog.ValueBool() {
 		return "", "", "", fmt.Errorf("via_data_catalog requires account_id")
 	}
+
 	if !datashareNamespacePattern.MatchString(namespace) {
 		return "", "", "", fmt.Errorf("namespace_id must be a UUID")
 	}
+
 	return datashareGrantNamespace, "namespace_id", namespace, nil
 }
 
@@ -124,9 +129,11 @@ func datashareGrantFormChanged(_ context.Context, req planmodifier.BoolRequest, 
 func (r *datashareGrantResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data datashareGrantModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
 		return
 	}
+
 	if _, _, _, err := data.consumer(); err != nil {
 		resp.Diagnostics.AddError("Invalid datashare consumer", err.Error())
 	}
@@ -139,6 +146,7 @@ func (data datashareGrantModel) identityFields(field, value string) map[string]s
 	if data.ViaDataCatalog.ValueBool() {
 		fields["via_data_catalog"] = "true"
 	}
+
 	return fields
 }
 
@@ -148,13 +156,17 @@ func (r *datashareGrantResource) read(ctx context.Context, data datashareGrantMo
 	if err != nil {
 		return false, err
 	}
+
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), query)
+
 	return len(rows) > 0, err
 }
 
@@ -162,25 +174,31 @@ func (r *datashareGrantResource) read(ctx context.Context, data datashareGrantMo
 func (r *datashareGrantResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data datashareGrantModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	_, field, value, err := data.consumer()
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid datashare consumer", err.Error())
 		return
 	}
+
 	sql, err := createDatashareGrantStatement(data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid datashare consumer", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), sql); err != nil {
 		resp.Diagnostics.AddError("Grant datashare usage", err.Error())
 		return
 	}
+
 	data.ID = r.identity(data.Database.ValueString(), data.identityFields(field, value))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	found, err := r.read(ctx, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify datashare grant", err.Error())
@@ -193,9 +211,11 @@ func (r *datashareGrantResource) Create(ctx context.Context, req resource.Create
 func (r *datashareGrantResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data datashareGrantModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, data)
 	switch {
 	case err != nil:
@@ -212,6 +232,7 @@ func (r *datashareGrantResource) Update(ctx context.Context, req resource.Update
 	var data, prior datashareGrantModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -221,6 +242,7 @@ func (r *datashareGrantResource) Update(ctx context.Context, req resource.Update
 		resp.Diagnostics.AddError("Update datashare grant", "Switching via_data_catalog requires replacing the grant.")
 		return
 	}
+
 	found, err := r.read(ctx, data)
 	switch {
 	case err != nil:
@@ -236,16 +258,20 @@ func (r *datashareGrantResource) Update(ctx context.Context, req resource.Update
 func (r *datashareGrantResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data datashareGrantModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, data)
 	if err == nil && found {
 		var sql string
+
 		sql, err = dropDatashareGrantStatement(data)
 		if err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), sql)
 		}
+
 		if err == nil {
 			found, err = r.read(ctx, data)
 			if err == nil && found {
@@ -253,6 +279,7 @@ func (r *datashareGrantResource) Delete(ctx context.Context, req resource.Delete
 			}
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Revoke datashare usage", err.Error())
 	}
@@ -265,26 +292,33 @@ func (r *datashareGrantResource) ImportState(ctx context.Context, req resource.I
 		resp.Diagnostics.AddError("Invalid import identity", err.Error())
 		return
 	}
+
 	data := datashareGrantModel{AccountID: types.StringNull(), NamespaceID: types.StringNull(), ViaDataCatalog: types.BoolValue(false)}
 	if value, ok := values["account_id"]; ok {
 		data.AccountID = types.StringValue(value)
 	}
+
 	if value, ok := values["namespace_id"]; ok {
 		data.NamespaceID = types.StringValue(value)
 	}
+
 	if value, ok := values["via_data_catalog"]; ok {
 		if value != "true" {
 			resp.Diagnostics.AddError("Invalid import identity", `via_data_catalog must be "true" when present.`)
 			return
 		}
+
 		data.ViaDataCatalog = types.BoolValue(true)
 	}
+
 	_, field, _, err := data.consumer()
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid import identity", err.Error())
 		return
 	}
+
 	importIdentity(ctx, req, resp, "database", "datashare", field)
+
 	if !resp.Diagnostics.HasError() {
 		// The identity omits the flag for the plain form, which the default records as false.
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("via_data_catalog"), data.ViaDataCatalog)...)

@@ -33,6 +33,7 @@ func TestCopyJobLookupDefaultText(t *testing.T) {
 	c := fullCatalog()
 	fake := fakeState[*copyJobFake](c, copyJobFakeFamily)
 	fake.definition = `COPY "serving"."events" FROM 's3://example-bucket/events/' IAM_ROLE '' JOB CREATE events_load AUTO OFF`
+
 	exerciseCatalogLookup(t, newCopyJobDataSource, map[string]string{"database": "admin", "name": "events_load"}, map[string]attr.Value{
 		"format": types.StringNull(), "format_argument": types.StringNull(), "parameters": types.MapNull(types.StringType),
 		"table": copyJobTableObject("serving", "events"),
@@ -45,6 +46,7 @@ func TestCopyJobsListing(t *testing.T) {
 		source := newCopyJobsDataSource()
 		state, diagnostics := readSource(t, source, collectionConfig(t, source, filters), fullCatalog())
 		require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 		var data types.Object
 		require.False(t, state.Get(context.Background(), &data).HasError())
 		items := collectionResult(source, data).Elements()
@@ -55,6 +57,7 @@ func TestCopyJobsListing(t *testing.T) {
 		assert.Equal(t, "admin", objectString(item, "database"))
 		assert.Equal(t, types.BoolValue(false), item.Attributes()["auto"])
 	}
+
 	for name, client := range map[string]sqlclient.Client{
 		"catalog error": queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return nil, errors.New("catalog unavailable")

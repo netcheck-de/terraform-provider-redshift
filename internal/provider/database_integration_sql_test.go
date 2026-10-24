@@ -34,6 +34,7 @@ func configuredIntegrationDatabase() databaseModel {
 	integration.HistoryMode, integration.AutoRemediation = types.BoolValue(true), types.BoolValue(true)
 	integration.QueryAllStates, integration.AcceptInvalidChars, integration.TruncateColumns = types.BoolValue(true), types.BoolValue(false), types.BoolValue(true)
 	data.Integration = &integration
+
 	return data
 }
 
@@ -51,6 +52,7 @@ func TestDatabaseIntegrationSQL(t *testing.T) {
 		integration := *data.Integration
 		data.Integration = &integration
 		change(&data)
+
 		return data
 	}
 	configured := configuredIntegrationDatabase()
@@ -88,6 +90,7 @@ func TestDatabaseIntegrationSQL(t *testing.T) {
 		{"read", func() (string, error) {
 			sql, parameters, err := readDatabaseIntegrationQuery(`it's"replica`).Build()
 			assert.Equal(t, map[string]string{"name": `it's"replica`}, parameters)
+
 			return sql, err
 		}},
 	})
@@ -98,16 +101,20 @@ func TestDatabaseIntegrationSQL(t *testing.T) {
 func TestDatabaseIntegrationSettingsCoverBlock(t *testing.T) {
 	var response resource.SchemaResponse
 	newDatabaseResource().Schema(context.Background(), resource.SchemaRequest{}, &response)
+
 	var fields []string
+
 	for name := range databaseIntegrationBlock().Attributes {
 		if name != "integration_id" && name != "source_database" {
 			fields = append(fields, name)
 		}
 	}
+
 	var settings []string
 	for _, setting := range databaseIntegrationSettings {
 		settings = append(settings, setting.attribute)
 	}
+
 	slices.Sort(fields)
 	slices.Sort(settings)
 	assert.Equal(t, fields, settings)

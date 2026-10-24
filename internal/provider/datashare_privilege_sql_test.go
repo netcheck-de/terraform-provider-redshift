@@ -18,6 +18,7 @@ func TestDatasharePrivilegeSQL(t *testing.T) {
 	render := func(changes map[string]string, privilege sqlclient.Keyword) func() ([]string, error) {
 		fields := maps.Clone(datasharePrivilegeFields)
 		maps.Copy(fields, changes)
+
 		return privilegeTargetCase(t, newDatasharePrivilegeResource, fields, privilege)
 	}
 	checkSQL(t, "datashare_privilege", []sqlCase{

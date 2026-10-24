@@ -24,12 +24,16 @@ func TestDebugGrantRemoteScopedLifecycle(t *testing.T) {
 			if kind == "ROLE" {
 				principal = "idc:audit_team"
 			}
+
 			data := debugGrantFixture("sales@catalog", principal, kind)
 			r := newDebugGrantResource().(*debugGrantResource)
 			held := false
+
 			var statements []string
+
 			r.resourceClient = testResourceClient(queryFunc(func(_ context.Context, connection sqlclient.Connection, statement string, _ map[string]string) ([]sqlclient.Row, error) {
 				assert.Equal(t, "admin", connection.Database)
+
 				statements = append(statements, statement)
 				switch {
 				case statement == readDebugGrantAuthStatement():
@@ -42,12 +46,14 @@ func TestDebugGrantRemoteScopedLifecycle(t *testing.T) {
 					if held {
 						return []sqlclient.Row{{"database_name": "sales@catalog", "object_type": "DATABASE", "privilege_scope": "DATABASE", "privilege_type": "DEBUG", "identity_name": principal, "identity_type": strings.ToLower(kind)}}, nil
 					}
+
 					return nil, nil
 				case strings.HasPrefix(statement, "GRANT DEBUG"):
 					held = true
 				case strings.HasPrefix(statement, "REVOKE DEBUG"):
 					held = false
 				}
+
 				return nil, nil
 			}))
 			state, diagnostics := applyOperation(t, r, "create", nil, data, nil)
@@ -59,9 +65,11 @@ func TestDebugGrantRemoteScopedLifecycle(t *testing.T) {
 			_, diagnostics = applyOperation(t, r, "delete", data, nil, nil)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			assert.False(t, held, "Delete must revoke the grant discovered through SHOW FOR")
+
 			revoke, err := dropDebugGrantStatement(data)
 			require.NoError(t, err)
 			assert.Contains(t, statements, revoke)
+
 			for _, statement := range statements {
 				assert.NotContains(t, statement, "SHOW GRANTS ON")
 			}
@@ -73,23 +81,29 @@ func TestDebugGrantRemoteScopedLifecycle(t *testing.T) {
 // DATABASES, keeping state and issuing no GRANT, REVOKE, or grant read.
 func TestDebugGrantRemoteInvisiblePreservesStateAndAvoidsMutation(t *testing.T) {
 	r := newDebugGrantResource().(*debugGrantResource)
+
 	var statements []string
+
 	r.resourceClient = testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, statement string, _ map[string]string) ([]sqlclient.Row, error) {
 		statements = append(statements, statement)
 		if statement == readDebugGrantAuthStatement() {
 			return []sqlclient.Row{{"auth_method": "IAM AssumeUser"}}, nil
 		}
+
 		return nil, nil
 	}))
+
 	data := debugGrantFixture("sales@catalog", "IAM:auditor", "USER")
 	for _, operation := range []string{"create", "read", "delete"} {
 		state, diagnostics := applyOperation(t, r, operation, data, data, nil)
 		require.True(t, diagnostics.HasError(), "%s", operation)
 		assert.Contains(t, diagnostics.Errors()[0].Detail(), "not visible")
+
 		if operation == "read" {
 			assert.False(t, state.Raw.IsNull())
 		}
 	}
+
 	for _, statement := range statements {
 		assert.True(t, statement == readDebugGrantAuthStatement() || strings.HasPrefix(statement, "SHOW DATABASES"), "invisible aliases must not lead to GRANT, REVOKE, or an untrustworthy empty grant read: %s", statement)
 	}
@@ -104,16 +118,20 @@ func TestDebugGrantRemoteAccountRefused(t *testing.T) {
 		calls++
 		return nil, nil
 	}))
+
 	data := debugGrantFixture("sales@catalog", "123456789012", "ACCOUNT")
 	for _, operation := range []string{"create", "read", "delete"} {
 		state, diagnostics := applyOperation(t, r, operation, data, data, nil)
 		require.True(t, diagnostics.HasError(), "%s", operation)
 		assert.Contains(t, diagnostics.Errors()[0].Detail(), "producer warehouse")
+
 		if operation == "read" {
 			assert.False(t, state.Raw.IsNull(), "legacy remote ACCOUNT ownership must not be silently forgotten")
 		}
 	}
+
 	state := testState(t, r, data)
+
 	var response resource.ValidateConfigResponse
 	r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(state)}, &response)
 	assert.True(t, response.Diagnostics.HasError())
@@ -126,11 +144,13 @@ func TestDebugGrantRemoteScopedMatches(t *testing.T) {
 	data := debugGrantFixture("sales@catalog", "IAM:auditor", "USER")
 	base := sqlclient.Row{"database_name": "sales@catalog", "object_type": "DATABASE", "privilege_scope": "DATABASE", "privilege_type": "DEBUG", "identity_name": "IAM:auditor", "identity_type": "user"}
 	assert.True(t, debugGrantRemoteMatches(base, data))
+
 	for key, value := range map[string]string{"database_name": "other@catalog", "object_type": "TABLE", "privilege_scope": "TABLES", "privilege_type": "SELECT", "identity_name": "IAM:someone_else", "identity_type": "global_user"} {
 		row := maps.Clone(base)
 		row[key] = value
 		assert.False(t, debugGrantRemoteMatches(row, data), "%s", key)
 	}
+
 	data.GranteeType = types.StringValue("ROLE")
 	assert.False(t, debugGrantRemoteMatches(base, data))
 }
@@ -144,24 +164,31 @@ func TestDebugGrantRemoteScopedReadFailurePreservesOwnership(t *testing.T) {
 		if statement == readDebugGrantAuthStatement() {
 			return []sqlclient.Row{{"auth_method": "IAM AssumeUser"}}, nil
 		}
+
 		if strings.HasPrefix(statement, "SHOW DATABASES") {
 			return []sqlclient.Row{{"database_name": "sales@catalog"}}, nil
 		}
+
 		if strings.HasPrefix(statement, "SHOW GRANTS FOR") {
 			return nil, errors.New("scoped catalog unavailable")
 		}
+
 		mutations++
+
 		return nil, nil
 	}))
+
 	data := debugGrantFixture("sales@catalog", "IAM:auditor", "USER")
 	for _, operation := range []string{"create", "read", "delete"} {
 		state, diagnostics := applyOperation(t, r, operation, data, data, nil)
 		require.True(t, diagnostics.HasError())
 		assert.Contains(t, diagnostics.Errors()[0].Detail(), "scoped catalog unavailable")
+
 		if operation == "read" {
 			assert.False(t, state.Raw.IsNull())
 		}
 	}
+
 	assert.Zero(t, mutations, "Create preflight and Delete must fail closed before SQL mutation")
 }
 
@@ -197,15 +224,18 @@ func TestDebugGrantRemoteAuthenticationMustBeVerified(t *testing.T) {
 				}
 			}))
 			data := debugGrantFixture("sales@catalog", "IAM:auditor", "USER")
+
 			data.ID = r.identity(data.Database.ValueString(), data.fields())
 			for _, operation := range []string{"create", "read", "delete"} {
 				state, diagnostics := applyOperation(t, r, operation, data, data, nil)
 				require.True(t, diagnostics.HasError(), "%s must fail closed", operation)
 				assert.Contains(t, diagnostics.Errors()[0].Detail(), "authentication context")
+
 				if operation != "create" {
 					assert.False(t, state.Raw.IsNull(), "existing grant ownership must survive unsupported authentication")
 				}
 			}
+
 			diagnostics := importAndRead(t, r, data.ID.ValueString())
 			require.True(t, diagnostics.HasError(), "import must not interpret an unverified empty read as no grant")
 			assert.Zero(t, mutations)

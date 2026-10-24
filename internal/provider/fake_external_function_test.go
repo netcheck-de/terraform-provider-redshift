@@ -54,19 +54,25 @@ func (f *externalFunctionFake) listing(sql string, parameters map[string]string)
 	if f.exists && (strings.Contains(sql, "p.prokind = 'f'") || strings.Contains(sql, "p.prokind IN")) {
 		rows = append(rows, f.functionRow())
 	}
+
 	if f.procedure && (strings.Contains(sql, "p.prokind = 'p'") || strings.Contains(sql, "p.prokind IN")) {
 		rows = append(rows, f.procedureRow())
 	}
+
 	var matching []sqlclient.Row
+
 	for _, row := range rows {
 		if schema, ok := parameters["schema"]; ok && schema != row["schema_name"] {
 			continue
 		}
+
 		if name, ok := parameters["name"]; ok && name != row["routine_name"] {
 			continue
 		}
+
 		matching = append(matching, row)
 	}
+
 	return matching
 }
 
@@ -80,6 +86,7 @@ func (f *externalFunctionFake) query(_ *catalog, _ sqlclient.Connection, sql str
 		if f.exists {
 			return []sqlclient.Row{f.functionRow()}, true, nil
 		}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SHOW PARAMETERS OF FUNCTION") && strings.HasSuffix(sql, `."`+fakeExternalFunctionName+`"(CHARACTER VARYING)`):
 		return []sqlclient.Row{
@@ -98,29 +105,37 @@ func (f *externalFunctionFake) query(_ *catalog, _ sqlclient.Connection, sql str
 		if f.exists && !replace {
 			return nil, true, errors.New("function already exists with same argument types")
 		}
+
 		if replace {
 			f.replaced++
 		} else {
 			f.owner = "admin"
 		}
+
 		f.exists, f.volatility = true, "v"
 		if strings.Contains(sql, " STABLE LAMBDA ") {
 			f.volatility = "s"
 		}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "ALTER FUNCTION") && strings.Contains(sql, ` OWNER TO "`):
 		if !f.exists {
 			return nil, true, errors.New("function does not exist")
 		}
+
 		_, owner, _ := strings.Cut(sql, ` OWNER TO "`)
 		f.owner = strings.ReplaceAll(strings.TrimSuffix(owner, `"`), `""`, `"`)
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "DROP FUNCTION"):
 		if !f.exists {
 			return nil, true, errors.New("function does not exist")
 		}
+
 		f.exists = false
+
 		return nil, true, nil
 	}
+
 	return nil, false, nil
 }

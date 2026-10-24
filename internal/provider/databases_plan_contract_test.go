@@ -42,6 +42,7 @@ func databasesPlanCase(t *testing.T, c *catalog, address, before, after string) 
 // region is left to the warehouse.
 func TestContractExternalSchemaInPlacePlans(t *testing.T) {
 	t.Parallel()
+
 	glue := func(role, owner string) string {
 		return fmt.Sprintf(`
 resource "redshift_external_schema" "example" {
@@ -62,6 +63,7 @@ resource "redshift_external_schema" "example" {
   uri            = %q
 }`, uri)
 	}
+
 	t.Run("glue role and owner", func(t *testing.T) {
 		t.Parallel()
 		databasesPlanCase(t, &catalog{}, "redshift_external_schema.example",
@@ -79,6 +81,7 @@ resource "redshift_external_schema" "example" {
 // TestContractDatabaseAndSchemaInPlacePlans keeps owner and option changes of databases and schemas in place.
 func TestContractDatabaseAndSchemaInPlacePlans(t *testing.T) {
 	t.Parallel()
+
 	database := func(owner string, limit int, isolation string) string {
 		return fmt.Sprintf(`
 resource "redshift_database" "warehouse" {
@@ -97,6 +100,7 @@ resource "redshift_schema" "serving" {
   quota    = %d
 }`, owner, quota)
 	}
+
 	t.Run("database", func(t *testing.T) {
 		t.Parallel()
 		databasesPlanCase(t, &catalog{}, "redshift_database.warehouse", database("admin", -1, "SNAPSHOT"), database("etl", 0, "SERIALIZABLE"))

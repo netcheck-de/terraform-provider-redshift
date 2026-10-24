@@ -42,6 +42,7 @@ func TestTokens(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []Token{{Kind: TokenString, Text: value, Raw: Literal(value)}}, tokens, value)
 	}
+
 	for _, text := range []string{"'open", `"open`, "/* open", "$$body", "x = :name"} {
 		_, err := Tokens(text)
 		require.Error(t, err, text)

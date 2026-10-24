@@ -43,6 +43,7 @@ var _ = registerValidateConfigCase("copy_job", validateConfigCase{
 	unknown: func() copyJobModel {
 		model := copyJobTestModel("events_load", nil)
 		model.Format, model.Parameters = types.StringNull(), types.MapUnknown(types.StringType)
+
 		return model
 	}(),
 })
@@ -69,6 +70,7 @@ func TestCopyJobReadReconciles(t *testing.T) {
 	configureTestResource(t, r, c)
 	state, diagnostics := applyOperation(t, r, "read", copyJobLifecycleModel, nil, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed copyJobModel
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	assert.True(t, observed.Auto.ValueBool())
@@ -85,6 +87,7 @@ func TestCopyJobReadReconciles(t *testing.T) {
 		if strings.Contains(sql, "sys_copy_job") {
 			return []sqlclient.Row{row, row}, nil
 		}
+
 		return nil, fmt.Errorf("unexpected SQL %q", sql)
 	})
 	configureTestResource(t, r, ambiguous)
@@ -102,10 +105,12 @@ func TestCopyJobConvergence(t *testing.T) {
 		if strings.HasPrefix(sql, "COPY JOB ALTER") {
 			return nil, nil
 		}
+
 		return c.Query(ctx, connection, sql, parameters)
 	})
 	r := newCopyJobResource()
 	configureTestResource(t, r, client)
+
 	automatic := copyJobLifecycleModel
 	automatic.Auto = types.BoolValue(true)
 	_, diagnostics := applyOperation(t, r, "update", copyJobLifecycleModel, automatic, nil)
@@ -118,6 +123,7 @@ func TestCopyJobConvergence(t *testing.T) {
 		if strings.HasPrefix(sql, "COPY ") {
 			fakeState[*copyJobFake](absent, copyJobFakeFamily).role = "arn:aws:iam::123456789012:role/other"
 		}
+
 		return rows, err
 	})
 	configureTestResource(t, r, created)
@@ -132,6 +138,7 @@ func TestCopyJobCreateRejectsInvalidBeforeState(t *testing.T) {
 	configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		return nil, fmt.Errorf("unexpected SQL %q", sql)
 	}))
+
 	model := copyJobTestModel("events_load", map[string]string{"IGNOREALLERRORS": ""})
 	resp := resource.CreateResponse{State: emptyState(t, r)}
 	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(testState(t, r, model))}, &resp)
@@ -140,6 +147,7 @@ func TestCopyJobCreateRejectsInvalidBeforeState(t *testing.T) {
 
 	model = copyJobLifecycleModel
 	model.Table = types.ObjectNull(copyJobTableType.AttrTypes)
+
 	var validated resource.ValidateConfigResponse
 	r.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, model))}, &validated)
 	assert.False(t, validated.Diagnostics.HasError(), "the schema reports an absent table block once: %v", validated.Diagnostics)
@@ -157,6 +165,7 @@ func TestCopyJobImportAdoptsDefinition(t *testing.T) {
 	refreshed := resource.ReadResponse{State: imported.State}
 	r.Read(ctx, resource.ReadRequest{State: imported.State}, &refreshed)
 	require.False(t, refreshed.Diagnostics.HasError(), "%v", refreshed.Diagnostics)
+
 	var state copyJobModel
 	require.False(t, refreshed.State.Get(ctx, &state).HasError())
 	assert.Equal(t, copyJobFakeRole, state.IAMRole.ValueString())
@@ -166,6 +175,7 @@ func TestCopyJobImportAdoptsDefinition(t *testing.T) {
 	var response resource.SchemaResponse
 	r.Schema(ctx, resource.SchemaRequest{}, &response)
 	plan := tfsdk.Plan(testState(t, r, copyJobLifecycleModel))
+
 	managed := testState(t, r, func() copyJobModel {
 		model := copyJobLifecycleModel
 		model.Source = types.StringValue("s3://example-bucket/old/")
@@ -173,50 +183,61 @@ func TestCopyJobImportAdoptsDefinition(t *testing.T) {
 		model.FormatArgument = types.StringValue("auto")
 		model.Table = copyJobTableObject("serving", "old_events")
 		model.Parameters = templateTestModel("", "", "", map[string]string{"GZIP": ""}).Parameters
+
 		return model
 	}())
 	for name, prior := range map[string]tfsdk.State{"imported": refreshed.State, "managed": managed} {
 		for _, attribute := range []string{"source", "format", "format_argument", "parameters", "table"} {
 			replace := false
+
 			var priorValue, planValue any
+
 			switch attribute {
 			case "parameters":
 				var before, after types.Map
 				require.False(t, prior.GetAttribute(ctx, path.Root(attribute), &before).HasError())
 				require.False(t, plan.GetAttribute(ctx, path.Root(attribute), &after).HasError())
+
 				for _, modifier := range response.Schema.Attributes[attribute].(schema.MapAttribute).PlanModifiers {
 					resp := planmodifier.MapResponse{PlanValue: after}
 					modifier.PlanModifyMap(ctx, planmodifier.MapRequest{Path: path.Root(attribute), State: prior, Plan: plan, StateValue: before, PlanValue: after, ConfigValue: after}, &resp)
 					replace = replace || resp.RequiresReplace
 				}
+
 				priorValue, planValue = before, after
 			case "table":
 				var before, after types.Object
 				require.False(t, prior.GetAttribute(ctx, path.Root(attribute), &before).HasError())
 				require.False(t, plan.GetAttribute(ctx, path.Root(attribute), &after).HasError())
+
 				for _, modifier := range response.Schema.Blocks[attribute].(schema.SingleNestedBlock).PlanModifiers {
 					resp := planmodifier.ObjectResponse{PlanValue: after}
 					modifier.PlanModifyObject(ctx, planmodifier.ObjectRequest{Path: path.Root(attribute), State: prior, Plan: plan, StateValue: before, PlanValue: after, ConfigValue: after}, &resp)
 					replace = replace || resp.RequiresReplace
 				}
+
 				priorValue, planValue = before, after
 			default:
 				var before, after types.String
 				require.False(t, prior.GetAttribute(ctx, path.Root(attribute), &before).HasError())
 				require.False(t, plan.GetAttribute(ctx, path.Root(attribute), &after).HasError())
+
 				for _, modifier := range response.Schema.Attributes[attribute].(schema.StringAttribute).PlanModifiers {
 					resp := planmodifier.StringResponse{PlanValue: after}
 					modifier.PlanModifyString(ctx, planmodifier.StringRequest{Path: path.Root(attribute), State: prior, Plan: plan, StateValue: before, PlanValue: after, ConfigValue: after}, &resp)
 					replace = replace || resp.RequiresReplace
 				}
+
 				priorValue, planValue = before, after
 			}
+
 			assert.Equal(t, name == "managed", replace, "%s %s: %v -> %v", name, attribute, priorValue, planValue)
 		}
 	}
 	// The format keyword compares without case, so another spelling records in place.
 	var format types.String
 	require.False(t, managed.GetAttribute(ctx, path.Root("format"), &format).HasError())
+
 	lower := types.StringValue("json")
 	for _, modifier := range response.Schema.Attributes["format"].(schema.StringAttribute).PlanModifiers {
 		resp := planmodifier.StringResponse{PlanValue: lower}
@@ -237,15 +258,18 @@ func TestCopyJobDefinitionRejectsMalformedText(t *testing.T) {
 			require.Error(t, readCopyJobDefinition(&data, text))
 		})
 	}
+
 	data := copyJobLifecycleModel
 	require.NoError(t, readCopyJobDefinition(&data, `COPY admin.serving.events FROM 's3://bucket/' IAM_ROLE '' JOB CREATE events_load`))
 	assert.Equal(t, "serving", copyJobTarget(data.Table).schema)
 	assert.Empty(t, copyJobTarget(types.ObjectNull(copyJobTableType.AttrTypes)))
+
 	data = copyJobLifecycleModel
 	attributes := data.Table.Attributes()
 	attributes["schema"] = types.StringValue("")
 	data.Table = types.ObjectValueMust(copyJobTableType.AttrTypes, attributes)
 	require.Error(t, copyJobValidate(data))
+
 	attributes["schema"] = types.StringUnknown()
 	data.Table = types.ObjectValueMust(copyJobTableType.AttrTypes, attributes)
 	_, err := createCopyJobStatement(data)
@@ -262,18 +286,22 @@ func TestCopyJobLifecycleEdges(t *testing.T) {
 	found, err := readCopyJob(ctx, &r.resourceClient, &data)
 	require.NoError(t, err)
 	assert.False(t, found)
+
 	fakeState[*copyJobFake](c, copyJobFakeFamily).exists = false
 	data = copyJobLifecycleModel
 	data.Auto = types.BoolUnknown()
 	state, diagnostics := applyOperation(t, r, "create", nil, data, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed copyJobModel
 	require.False(t, state.Get(ctx, &observed).HasError())
 	assert.True(t, observed.Auto.ValueBool())
+
 	r = &copyJobResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		if strings.HasPrefix(sql, "COPY JOB ALTER") {
 			return nil, errors.New("alter denied")
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	}))}
 	planned := copyJobLifecycleModel

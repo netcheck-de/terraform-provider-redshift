@@ -41,6 +41,7 @@ func newRegressionFixture(t *testing.T, prefix string, flags ...string) regressi
 	region, profile, workgroup, database := testAccWorkgroup(t, flags...)
 	cfg, err := config.LoadDefaultConfig(t.Context(), config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	name := prefix + strconv.FormatInt(time.Now().UnixNano(), 36)
 	f := regressionFixture{
 		client: &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second},
@@ -54,22 +55,27 @@ provider "redshift" {
 }
 `, region, profile, workgroup, database),
 	}
+
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
+
 		rows, err := f.client.Query(ctx, f.admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
 			_, err = f.client.Query(ctx, f.admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			assert.NoError(t, err, "clean up regression database")
 		}
 	})
+
 	return f
 }
 
 // exec runs fixture SQL in the disposable database and fails the test on error.
 func (f regressionFixture) exec(t *testing.T, statement string) {
 	t.Helper()
+
 	_, err := f.client.Query(context.Background(), f.target, statement, nil)
 	require.NoError(t, err, statement)
 }
@@ -126,6 +132,7 @@ resource "redshift_schema" "local" {
 }
 resource "redshift_role" "reader" { name = %q }
 `, f.name, f.name+"_reader")
+
 	var tables string
 	for i := range 4 {
 		tables += fmt.Sprintf(`
@@ -140,6 +147,7 @@ resource "redshift_table" "t%[1]d" {
 }
 `, i)
 	}
+
 	grant := `
 resource "redshift_object_grant" "all_tables" {
   database_name = redshift_schema.local.database
@@ -156,9 +164,11 @@ resource "redshift_object_grant" "all_tables" {
 			if err != nil {
 				return err
 			}
+
 			if len(rows) != want {
 				return fmt.Errorf("expected SELECT on %d tables, got %v", want, rows)
 			}
+
 			return nil
 		}
 	}
@@ -196,6 +206,7 @@ resource "redshift_user" "reader" {
 }
 `, f.name, timezone)
 	}
+
 	t.Cleanup(func() {
 		_, err := f.client.Query(context.Background(), f.admin, sqlclient.Stmt("DROP USER IF EXISTS").Ident(f.name).String(), nil)
 		assert.NoError(t, err, "clean up regression user")
@@ -219,6 +230,7 @@ func TestAccTemplateRenameKeepsStateOnFailure(t *testing.T) {
 		if owner != "" {
 			owned = fmt.Sprintf("owner = %q", owner)
 		}
+
 		return f.provider + fmt.Sprintf(`
 resource "redshift_database" "local" { name = %q }
 resource "redshift_schema" "local" {
@@ -267,6 +279,7 @@ resource "redshift_database" "shared" {
 						// Without WITH PERMISSIONS, a superuser reads shared objects without object-level grants.
 						statement := sqlclient.Stmt("SELECT COUNT(*) FROM").Qualified(f.name, os.Getenv("REDSHIFT_ACC_SHARED_SCHEMA"), os.Getenv("REDSHIFT_ACC_SHARED_TABLE"))
 						_, err := f.client.Query(context.Background(), f.admin, statement.String(), nil)
+
 						return err
 					},
 				),

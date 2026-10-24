@@ -18,11 +18,14 @@ func TestObjectGrantModelLifecycle(t *testing.T) {
 	fields := map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_name": "summarizer", "object_type": "MODEL", "grantee_type": "USER", "grantee": "analyst"}
 	r := newObjectGrantResource().(*privilegeResource)
 	c := &privilegeCatalog{values: map[string]bool{}, grantee: "analyst", kind: "user"}
+
 	var reads []string
+
 	r.resourceClient = testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		if strings.HasPrefix(sql, "SELECT privilege_type") {
 			reads = append(reads, target.Database)
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	}))
 	executeOnly := []string{"EXECUTE"}
@@ -32,6 +35,7 @@ func TestObjectGrantModelLifecycle(t *testing.T) {
 	require.Len(t, c.writes, 2)
 	assert.Equal(t, `REVOKE EXECUTE ON MODEL "serving"."summarizer" FROM "analyst"`, c.writes[1])
 	require.NotEmpty(t, reads)
+
 	for _, database := range reads {
 		assert.Equal(t, "warehouse", database, "SVV_ML_MODEL_PRIVILEGES has no database column")
 	}
@@ -44,6 +48,7 @@ func TestObjectGrantModelMissing(t *testing.T) {
 		if strings.Contains(sql, "FROM svv_ml_model_info") {
 			return nil, nil
 		}
+
 		return []sqlclient.Row{{"name": "exists"}}, nil
 	}))
 	fields := map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_name": "summarizer", "object_type": "MODEL", "grantee_type": "ROLE", "grantee": "readers"}

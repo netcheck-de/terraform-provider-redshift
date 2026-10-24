@@ -27,6 +27,7 @@ var (
 		if sql == "SELECT usesuper FROM pg_user WHERE usename = current_user" {
 			return []sqlclient.Row{{"usesuper": "true"}}
 		}
+
 		return nil
 	}})
 )
@@ -51,10 +52,12 @@ func TestDatashareMembershipRepairsCurrentCoverage(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, found)
 			assert.True(t, data.All.ValueBool())
+
 			otherKind := "FUNCTIONS"
 			if kind == "FUNCTIONS" {
 				otherKind = "TABLES"
 			}
+
 			otherMembers := append([]string(nil), f.bulkMembers[otherKind]...)
 			// New objects are not automatically shared. Refresh retains ownership and plans an in-place repair.
 			f.bulkCandidates[kind] = append(f.bulkCandidates[kind], "future")
@@ -108,6 +111,7 @@ func TestDatashareMembershipRejectsIncludeNewAndAmbiguousNames(t *testing.T) {
 		assert.True(t, diagnostics.HasError(), "%s: %v", operation, diagnostics)
 		assert.Empty(t, c.writes)
 	}
+
 	c := fullCatalog()
 	c.includeNew = false
 	fakeState[*fakeDatashares](c, "datashare").bulkCandidates["TABLES"] = []string{"ambiguous.name"}
@@ -115,8 +119,10 @@ func TestDatashareMembershipRejectsIncludeNewAndAmbiguousNames(t *testing.T) {
 	diagnostics := invoke(t, r, "create", datashareMembershipFixture("TABLES"))
 	assert.True(t, diagnostics.HasError())
 	assert.Empty(t, c.writes)
+
 	invalid := datashareMembershipFixture("TABLES")
 	invalid.Schema = types.StringValue("ambiguous.schema")
+
 	var response resource.ValidateConfigResponse
 	r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, invalid))}, &response)
 	assert.True(t, response.Diagnostics.HasError())
@@ -152,6 +158,7 @@ func TestDatashareMembershipPartialKnownValidation(t *testing.T) {
 			data := datashareMembershipFixture("TABLES")
 			data.Database = types.StringUnknown()
 			test.change(&data)
+
 			var response resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, data))}, &response)
 			assert.Equal(t, test.invalid, response.Diagnostics.HasError(), "%v", response.Diagnostics)
@@ -171,8 +178,10 @@ func TestDatashareMembershipRestrictedLifecycleRetainsState(t *testing.T) {
 	calls := 0
 	r := &datashareMembershipResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
 		calls++
+
 		assert.Equal(t, "admin", target.Database, "visibility is proved in the provider administration database")
 		assert.Equal(t, "SELECT usesuper FROM pg_user WHERE usename = current_user", sql, "restricted lifecycle must not read target catalogs")
+
 		return c.Query(ctx, target, sql, params)
 	}))}
 	data := datashareMembershipFixture("TABLES")
@@ -183,10 +192,12 @@ func TestDatashareMembershipRestrictedLifecycleRetainsState(t *testing.T) {
 	require.True(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
 	assert.Equal(t, state.Raw, response.State.Raw)
 	assert.Equal(t, 1, calls)
+
 	for _, operation := range []string{"create", "update", "delete"} {
 		diagnostics := invoke(t, r, operation, data)
 		assert.True(t, diagnostics.HasError(), "%s: %v", operation, diagnostics)
 	}
+
 	assert.Empty(t, c.writes)
 }
 
@@ -217,10 +228,13 @@ func TestDatashareMembershipVisibilityProofFailsClosed(t *testing.T) {
 func TestDatashareMembershipMissingProducerAfterVisibilityProof(t *testing.T) {
 	r := &datashareMembershipResource{testResourceClient(queryFunc(func(_ context.Context, target sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		assert.Equal(t, "admin", target.Database)
+
 		if sql == "SELECT usesuper FROM pg_user WHERE usename = current_user" {
 			return []sqlclient.Row{{"usesuper": "true"}}, nil
 		}
+
 		assert.Contains(t, sql, "svv_redshift_databases")
+
 		return nil, nil
 	}))}
 	data := datashareMembershipFixture("TABLES")
@@ -244,19 +258,23 @@ func TestDatashareMembershipVerificationFailureRemainsRemovable(t *testing.T) {
 		if mutated {
 			return nil, errors.New("verification unavailable")
 		}
+
 		rows, err := c.Query(ctx, target, sql, params)
 		if strings.Contains(sql, " ADD ALL TABLES IN SCHEMA ") {
 			mutated = true
 		}
+
 		return rows, err
 	}))}
 	plan := testState(t, r, datashareMembershipFixture("TABLES"))
 	response := resource.CreateResponse{State: tfsdk.State{Schema: plan.Schema}}
 	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(plan)}, &response)
 	require.True(t, response.Diagnostics.HasError())
+
 	var recorded datashareMembershipModel
 	require.False(t, response.State.Get(context.Background(), &recorded).HasError())
 	require.NotEmpty(t, recorded.ID.ValueString(), "successful mutation must retain removable ownership")
+
 	r.resourceClient = testResourceClient(c)
 	diagnostics := invoke(t, r, "delete", recorded)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
@@ -282,6 +300,7 @@ func TestDatashareMembershipPreservesOtherSchema(t *testing.T) {
 // TestDatashareMembershipValidateConfig rejects empty database, datashare, and schema names.
 func TestDatashareMembershipValidateConfig(t *testing.T) {
 	r := &datashareMembershipResource{}
+
 	for _, test := range []struct {
 		name    string
 		change  func(*datashareMembershipModel)
@@ -296,6 +315,7 @@ func TestDatashareMembershipValidateConfig(t *testing.T) {
 			data := datashareMembershipFixture("TABLES")
 			data.ID = types.StringValue("known")
 			test.change(&data)
+
 			var response resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, data))}, &response)
 			assert.Equal(t, test.invalid, response.Diagnostics.HasError(), "%v", response.Diagnostics)
@@ -320,21 +340,26 @@ func TestDatashareMembershipCoversParallelObjects(t *testing.T) {
 						f.bulkCandidates["TABLES"] = append(f.bulkCandidates["TABLES"], "parallel_"+strconv.Itoa(adds))
 					}
 				}
+
 				return rows, err
 			}))}
 			state := testState(t, r, datashareMembershipFixture("TABLES"))
 			response := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
 			r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state)}, &response)
+
 			var recorded datashareMembershipModel
 			require.False(t, response.State.Get(context.Background(), &recorded).HasError())
 			assert.True(t, recorded.All.ValueBool())
 			assert.False(t, recorded.ID.IsNull(), "ownership is recorded before verification")
+
 			if appearing == snapshotRounds {
 				require.True(t, response.Diagnostics.HasError())
 				assert.Contains(t, response.Diagnostics.Errors()[0].Detail(), "did not converge")
 				assert.Equal(t, snapshotRounds, adds)
+
 				return
 			}
+
 			require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
 			assert.Equal(t, 2, adds)
 			assert.Contains(t, f.bulkMembers["TABLES"], "parallel_1")

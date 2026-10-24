@@ -33,7 +33,9 @@ func TestDebugGrantImportUnreliableRemoteReadPreservesState(t *testing.T) {
 			t.Run(kind+"/"+failure.name, func(t *testing.T) {
 				ctx := context.Background()
 				r := newDebugGrantResource().(*debugGrantResource)
+
 				var statements []string
+
 				mutations := 0
 				r.resourceClient = testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, statement string, _ map[string]string) ([]sqlclient.Row, error) {
 					statements = append(statements, statement)
@@ -42,11 +44,13 @@ func TestDebugGrantImportUnreliableRemoteReadPreservesState(t *testing.T) {
 						if failure.authErr != nil || failure.authMethod == "" {
 							return nil, failure.authErr
 						}
+
 						return []sqlclient.Row{{"auth_method": failure.authMethod}}, nil
 					case strings.HasPrefix(statement, "SHOW DATABASES"):
 						if failure.visible {
 							return []sqlclient.Row{{"database_name": "sales@catalog"}}, nil
 						}
+
 						return nil, nil
 					case strings.HasPrefix(statement, "SHOW GRANTS FOR"):
 						return nil, errors.New("scoped catalog unavailable")
@@ -55,16 +59,19 @@ func TestDebugGrantImportUnreliableRemoteReadPreservesState(t *testing.T) {
 						return nil, errors.New("unexpected SQL: " + statement)
 					}
 				}))
+
 				principal := "IAM:auditor"
 				if kind == "ROLE" {
 					principal = "idc:audit_team"
 				}
+
 				data := debugGrantFixture("sales@catalog", principal, kind)
 				data.ID = r.identity(data.Database.ValueString(), data.fields())
 				imported := resource.ImportStateResponse{State: emptyState(t, r)}
 				r.ImportState(ctx, resource.ImportStateRequest{ID: data.ID.ValueString()}, &imported)
 				require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
 				assert.Empty(t, statements, "import only restores identity")
+
 				var restored debugGrantModel
 				require.False(t, imported.State.Get(ctx, &restored).HasError())
 				require.Equal(t, data, restored)

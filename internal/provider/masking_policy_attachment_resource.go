@@ -66,6 +66,7 @@ func maskingAttachmentString(description string, choices ...string) schema.Strin
 	if len(choices) != 0 {
 		validators = append(validators, stringvalidator.OneOf(choices...))
 	}
+
 	return schema.StringAttribute{
 		Required: true, MarkdownDescription: description, Validators: validators,
 		PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
@@ -109,21 +110,26 @@ func (r *maskingPolicyAttachmentResource) read(ctx context.Context, data *maskin
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readMaskingAttachmentQuery(*data))
 	if err != nil {
 		return false, err
 	}
+
 	row, err := maskingAttachmentRow(*data, rows)
 	if err != nil || row == nil {
 		return false, err
 	}
+
 	priority, err := maskingAttachmentPriority(row["priority"])
 	if err != nil {
 		return false, err
 	}
+
 	inputs, err := maskingAttachmentParseNames(row["input_columns"])
 	if err != nil {
 		return false, err
@@ -132,13 +138,16 @@ func (r *maskingPolicyAttachmentResource) read(ctx context.Context, data *maskin
 	if !maskingAttachmentNamesMatch(maskingAttachmentNames(data.InputColumns), inputs) {
 		data.InputColumns = maskingAttachmentNameList(inputs)
 	}
+
 	data.Priority = types.Int64Value(priority)
+
 	return true, nil
 }
 
 // verify re-reads the attachment after Create or Update and checks that it holds the planned values.
 func (r *maskingPolicyAttachmentResource) verify(ctx context.Context, data *maskingPolicyAttachmentModel) error {
 	planned := *data
+
 	found, err := r.read(ctx, data)
 	switch {
 	case err != nil:
@@ -150,6 +159,7 @@ func (r *maskingPolicyAttachmentResource) verify(ctx context.Context, data *mask
 	case !planned.InputColumns.IsNull() && !planned.InputColumns.IsUnknown() && !data.InputColumns.Equal(planned.InputColumns):
 		return fmt.Errorf("the masking policy attachment's input columns differ from the configuration")
 	}
+
 	return nil
 }
 
@@ -157,9 +167,11 @@ func (r *maskingPolicyAttachmentResource) verify(ctx context.Context, data *mask
 func (r *maskingPolicyAttachmentResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data maskingPolicyAttachmentModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := maskingAttachmentKnownConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid masking policy attachment", err.Error())
 	}
@@ -169,29 +181,36 @@ func (r *maskingPolicyAttachmentResource) ValidateConfig(ctx context.Context, re
 func (r *maskingPolicyAttachmentResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data maskingPolicyAttachmentModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statement, err := attachMaskingPolicyStatement(data)
 	if err == nil {
 		err = r.exec(ctx, data.Database.ValueString(), statement)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Create masking policy attachment", err.Error())
 		return
 	}
+
 	data.ID = r.identity(data.Database.ValueString(), maskingAttachmentIdentity(data))
 	planned := data
 	// A failed verification must still record the attachment with serializable state.
 	if data.InputColumns.IsUnknown() {
 		data.InputColumns = types.ListNull(types.StringType)
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	data.InputColumns = planned.InputColumns
 	if err := r.verify(ctx, &data); err != nil {
 		resp.Diagnostics.AddError("Verify masking policy attachment", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -199,18 +218,22 @@ func (r *maskingPolicyAttachmentResource) Create(ctx context.Context, req resour
 func (r *maskingPolicyAttachmentResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data maskingPolicyAttachmentModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read masking policy attachment", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -219,12 +242,15 @@ func (r *maskingPolicyAttachmentResource) Update(ctx context.Context, req resour
 	var plan, prior maskingPolicyAttachmentModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	plan.ID = prior.ID
 	// Comparing with the catalog rather than the prior state also repairs a priority changed outside Terraform.
 	current := plan
+
 	found, err := r.read(ctx, &current)
 	switch {
 	case err != nil:
@@ -234,21 +260,26 @@ func (r *maskingPolicyAttachmentResource) Update(ctx context.Context, req resour
 		resp.Diagnostics.AddError("Update masking policy attachment", "The attachment disappeared during the update; refresh the plan.")
 		return
 	}
+
 	statements, err := alterMaskingAttachmentStatements(current, plan)
 	if err == nil && len(statements) != 0 {
 		err = r.checkPriority(ctx, plan)
 	}
+
 	if err == nil {
 		err = r.reattach(ctx, current, statements)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Update masking policy attachment", err.Error())
 		return
 	}
+
 	if err := r.verify(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Verify masking policy attachment", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -258,6 +289,7 @@ func (r *maskingPolicyAttachmentResource) checkPriority(ctx context.Context, pla
 	if err != nil {
 		return err
 	}
+
 	return maskingAttachmentPriorityConflict(plan, peers)
 }
 
@@ -271,18 +303,23 @@ func (r *maskingPolicyAttachmentResource) reattach(ctx context.Context, current 
 		if err == nil {
 			continue
 		}
+
 		if i == 0 {
 			return err
 		}
+
 		restore, restoreErr := attachMaskingPolicyStatement(current)
 		if restoreErr == nil {
 			restoreErr = r.exec(ctx, database, restore)
 		}
+
 		if restoreErr != nil {
 			return fmt.Errorf("%w; restoring the previous attachment also failed, so the columns are unmasked for the recipient until the next apply: %w", err, restoreErr)
 		}
+
 		return fmt.Errorf("%w; the previous attachment with priority %d was restored", err, current.Priority.ValueInt64())
 	}
+
 	return nil
 }
 
@@ -290,15 +327,18 @@ func (r *maskingPolicyAttachmentResource) reattach(ctx context.Context, current 
 func (r *maskingPolicyAttachmentResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data maskingPolicyAttachmentModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		var statement string
 		if statement, err = detachMaskingPolicyStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
 		}
+
 		if err == nil {
 			found, err = r.read(ctx, &data)
 			if err == nil && found {
@@ -306,6 +346,7 @@ func (r *maskingPolicyAttachmentResource) Delete(ctx context.Context, req resour
 			}
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete masking policy attachment", err.Error())
 	}
@@ -314,23 +355,29 @@ func (r *maskingPolicyAttachmentResource) Delete(ctx context.Context, req resour
 // ImportState restores the attachment tuple from the same JSON identity Create records; columns is a JSON list.
 func (r *maskingPolicyAttachmentResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importIdentity(ctx, req, resp, "database", "policy", "schema", "relation", "grantee", "grantee_type")
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	var values map[string]string
-	var columns []string
+
+	var (
+		values  map[string]string
+		columns []string
+	)
 	// importIdentity already rejected malformed JSON.
 	_ = json.Unmarshal([]byte(req.ID), &values)
 	if err := json.Unmarshal([]byte(values["columns"]), &columns); err != nil || len(columns) == 0 {
 		resp.Diagnostics.AddError("Invalid import identity", `Field columns must be a nonempty JSON list of column names, such as "[\"email\"]".`)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("columns"), maskingAttachmentNameList(columns))...)
 }
 
 // maskingAttachmentModelFromObject reads the selector attributes of a lookup into a model.
 func maskingAttachmentModelFromObject(data types.Object) maskingPolicyAttachmentModel {
 	attributes := data.Attributes()
+
 	return maskingPolicyAttachmentModel{
 		ID: types.StringNull(), Database: attributes["database"].(types.String), Policy: attributes["policy"].(types.String),
 		Schema: attributes["schema"].(types.String), Relation: attributes["relation"].(types.String),

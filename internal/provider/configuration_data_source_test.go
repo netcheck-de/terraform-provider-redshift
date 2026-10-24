@@ -40,13 +40,17 @@ func TestConfigurationSQL(t *testing.T) {
 // configurationRead reads name against client and returns the observed model.
 func configurationRead(t *testing.T, name string, client sqlclient.Client) (configurationModel, bool, string) {
 	t.Helper()
+
 	source := newConfigurationDataSource()
+
 	state, diagnostics := readSource(t, source, configurationModel{ID: types.StringNull(), Name: types.StringValue(name), Value: types.StringNull()}, client)
 	if diagnostics.HasError() {
 		return configurationModel{}, false, diagnostics.Errors()[0].Detail()
 	}
+
 	var observed configurationModel
 	require.False(t, state.Get(context.Background(), &observed).HasError())
+
 	return observed, true, ""
 }
 
@@ -65,9 +69,12 @@ func TestConfigurationRead(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var statements []string
+
 			observed, ok, detail := configurationRead(t, test.name, queryFunc(func(_ context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				statements = append(statements, target.Database+": "+sql)
+
 				assert.Empty(t, parameters)
+
 				return []sqlclient.Row{test.row}, nil
 			}))
 			require.True(t, ok, detail)

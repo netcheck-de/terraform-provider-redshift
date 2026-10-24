@@ -65,19 +65,24 @@ var datasharePublicObservation = schema.BoolAttribute{Computed: true, MarkdownDe
 func (d *datashareDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data datashareData
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	share := datashareModel{Name: data.Name, Database: data.Database}
+
 	found, err := (&datashareResource{d.resourceClient}).read(ctx, &share)
 	if err != nil {
 		resp.Diagnostics.AddError("Read datashare", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("Datashare not found", "No outbound datashare named "+data.Name.ValueString()+" exists in the configured database.")
 		return
 	}
+
 	data.Name, data.PublicAccessible, data.Owner, data.ShareID = share.Name, share.PublicAccessible, share.Owner, share.ShareID
 	data.ProducerAccount, data.ProducerNamespace, data.CreatedAt = share.ProducerAccount, share.ProducerNamespace, share.CreatedAt
 	data.ID = d.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})

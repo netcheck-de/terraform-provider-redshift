@@ -41,6 +41,7 @@ func TestDatashareGrantViaDataCatalogReplacement(t *testing.T) {
 	var response resource.SchemaResponse
 	(&datashareGrantResource{}).Schema(context.Background(), resource.SchemaRequest{}, &response)
 	attribute := response.Schema.Attributes["via_data_catalog"].(schema.BoolAttribute)
+
 	for _, test := range []struct {
 		state, plan types.Bool
 		replace     bool
@@ -59,12 +60,14 @@ func TestDatashareGrantViaDataCatalogReplacement(t *testing.T) {
 		plan := testState(t, &datashareGrantResource{}, datashareGrantModel{ViaDataCatalog: test.plan})
 		request := planmodifier.BoolRequest{Path: path.Root("via_data_catalog"), StateValue: test.state, PlanValue: test.plan, ConfigValue: test.plan, State: state, Plan: tfsdk.Plan(plan), Config: tfsdk.Config(plan)}
 		replace := false
+
 		for _, modifier := range attribute.PlanModifiers {
 			var result planmodifier.BoolResponse
 			modifier.PlanModifyBool(context.Background(), request, &result)
 			require.False(t, result.Diagnostics.HasError(), "%v", result.Diagnostics)
 			replace = replace || result.RequiresReplace
 		}
+
 		assert.Equal(t, test.replace, replace, "%v -> %v", test.state, test.plan)
 	}
 }
@@ -76,6 +79,7 @@ func TestDatashareGrantViaDataCatalogValidation(t *testing.T) {
 		t.Fatalf("invalid consumer reached SQL: %s", sql)
 		return nil, nil
 	}))}
+
 	for name, test := range map[string]struct {
 		data    datashareGrantModel
 		invalid bool
@@ -88,9 +92,11 @@ func TestDatashareGrantViaDataCatalogValidation(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			config := testState(t, r, test.data)
+
 			var validated resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(config)}, &validated)
 			assert.Equal(t, test.invalid, validated.Diagnostics.HasError(), "%v", validated.Diagnostics)
+
 			if test.invalid {
 				resp := resource.CreateResponse{State: tfsdk.State{Schema: config.Schema, Raw: tftypes.NewValue(config.Raw.Type(), nil)}}
 				r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(config)}, &resp)
@@ -99,6 +105,7 @@ func TestDatashareGrantViaDataCatalogValidation(t *testing.T) {
 			}
 		})
 	}
+
 	var validated resource.ValidateConfigResponse
 	r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config{Schema: testState(t, r, datashareCatalogGrant()).Schema, Raw: tftypes.NewValue(tftypes.String, "invalid")}}, &validated)
 	assert.True(t, validated.Diagnostics.HasError())
@@ -107,16 +114,20 @@ func TestDatashareGrantViaDataCatalogValidation(t *testing.T) {
 // TestDatashareGrantViaDataCatalogLifecycle grants and revokes the Data Catalog form and records it in the identity.
 func TestDatashareGrantViaDataCatalogLifecycle(t *testing.T) {
 	c := &catalog{}
+
 	var statements []string
+
 	r := &datashareGrantResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		if !strings.HasPrefix(sql, "SELECT") {
 			statements = append(statements, sql)
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	}))}
 	data := datashareCatalogGrant()
 	state, diagnostics := applyOperation(t, r, "create", nil, data, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var created datashareGrantModel
 	require.False(t, state.Get(context.Background(), &created).HasError())
 	assert.Equal(t, r.identity("admin", map[string]string{"datashare": "producer", "account_id": "123456789012", "via_data_catalog": "true"}), created.ID)
@@ -131,6 +142,7 @@ func TestDatashareGrantViaDataCatalogLifecycle(t *testing.T) {
 // TestDatashareGrantViaDataCatalogImport restores the flag from the JSON identity and rejects other values.
 func TestDatashareGrantViaDataCatalogImport(t *testing.T) {
 	r := &datashareGrantResource{}
+
 	for selector, valid := range map[string]bool{
 		`"account_id":"123456789012","via_data_catalog":"true"`:                           true,
 		`"account_id":"123456789012","via_data_catalog":"false"`:                          false,
@@ -141,6 +153,7 @@ func TestDatashareGrantViaDataCatalogImport(t *testing.T) {
 		resp := resource.ImportStateResponse{State: testState(t, r, datashareGrantModel{})}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
 		require.Equal(t, !valid, resp.Diagnostics.HasError(), "%s: %v", selector, resp.Diagnostics)
+
 		if valid {
 			var data datashareGrantModel
 			require.False(t, resp.State.Get(context.Background(), &data).HasError())
@@ -156,6 +169,7 @@ func TestDatashareGrantUpdateRejectsFormSwitch(t *testing.T) {
 	plain := datashareCatalogGrant()
 	plain.ViaDataCatalog = types.BoolValue(false)
 	legacy := plain
+
 	legacy.ViaDataCatalog = types.BoolNull()
 	for name, test := range map[string]struct {
 		prior, planned datashareGrantModel
@@ -169,6 +183,7 @@ func TestDatashareGrantUpdateRejectsFormSwitch(t *testing.T) {
 			r := &datashareGrantResource{testResourceClient(catalogWith()())}
 			state, diagnostics := applyOperation(t, r, "update", test.prior, test.planned, test.planned)
 			assert.Equal(t, test.invalid, diagnostics.HasError(), "%v", diagnostics)
+
 			if !test.invalid {
 				var updated datashareGrantModel
 				require.False(t, state.Get(context.Background(), &updated).HasError())
@@ -197,6 +212,7 @@ func TestDatashareAccountGrant(t *testing.T) {
 	found, err := r.read(context.Background(), data)
 	require.NoError(t, err)
 	assert.True(t, found)
+
 	c.shareGrant = false
 	found, err = r.read(context.Background(), data)
 	require.NoError(t, err)
@@ -206,8 +222,10 @@ func TestDatashareAccountGrant(t *testing.T) {
 // TestDatashareGrantSelectorValidation checks exclusivity and deferred unknown namespace validation.
 func TestDatashareGrantSelectorValidation(t *testing.T) {
 	r := &datashareGrantResource{}
+
 	var response resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &response)
+
 	for _, test := range []struct {
 		// name identifies the validation case.
 		name string
@@ -231,16 +249,19 @@ func TestDatashareGrantSelectorValidation(t *testing.T) {
 			state := testState(t, r, datashareGrantModel{AccountID: test.account, NamespaceID: test.namespace})
 			config := tfsdk.Config{Schema: response.Schema, Raw: state.Raw}
 			invalid := false
+
 			for field, value := range map[string]types.String{"account_id": test.account, "namespace_id": test.namespace} {
 				attribute := response.Schema.Attributes[field].(schema.StringAttribute)
 				assert.True(t, attribute.Optional)
 				assert.NotEmpty(t, attribute.PlanModifiers)
+
 				for _, validation := range attribute.Validators {
 					var result validator.StringResponse
 					validation.ValidateString(context.Background(), validator.StringRequest{Path: path.Root(field), PathExpression: path.MatchRoot(field), Config: config, ConfigValue: value}, &result)
 					invalid = invalid || result.Diagnostics.HasError()
 				}
 			}
+
 			assert.Equal(t, test.invalid, invalid)
 		})
 	}
@@ -255,6 +276,7 @@ func TestDatashareGrantReadSeparatesConsumerScopes(t *testing.T) {
 		} else {
 			data.AccountID = types.StringValue("123456789012")
 		}
+
 		r := &datashareGrantResource{testResourceClient(&catalog{shareGrant: namespace, shareNamespaceGrant: !namespace})}
 		found, err := r.read(context.Background(), data)
 		require.NoError(t, err)
@@ -268,6 +290,7 @@ func TestDatashareGrantLifecycle(t *testing.T) {
 		t.Run(map[bool]string{false: "account", true: "namespace"}[namespace], func(t *testing.T) {
 			c := &catalog{shareGrant: namespace, shareNamespaceGrant: !namespace}
 			data := datashareGrantModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), AccountID: types.StringNull(), NamespaceID: types.StringNull()}
+
 			kind, field, value := "ACCOUNT", "account_id", "123456789012"
 			if namespace {
 				kind, field, value = "NAMESPACE", "namespace_id", "12345678-1234-1234-1234-123456789abc"
@@ -275,13 +298,16 @@ func TestDatashareGrantLifecycle(t *testing.T) {
 			} else {
 				data.AccountID = types.StringValue(value)
 			}
+
 			r := &datashareGrantResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if strings.HasPrefix(sql, "GRANT ") {
 					assert.Equal(t, `GRANT USAGE ON DATASHARE "producer" TO `+kind+" '"+value+"'", sql)
 				}
+
 				if strings.HasPrefix(sql, "REVOKE ") {
 					assert.Equal(t, `REVOKE USAGE ON DATASHARE "producer" FROM `+kind+" '"+value+"'", sql)
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			}))}
 			require.False(t, invoke(t, r, "create", data).HasError())
@@ -301,18 +327,23 @@ func TestDatashareGrantLifecycle(t *testing.T) {
 // TestDatashareGrantImport checks both JSON identities and invalid selectors.
 func TestDatashareGrantImport(t *testing.T) {
 	r := &datashareGrantResource{}
+
 	var schema resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &schema)
+
 	for _, selector := range []string{`"account_id":"123456789012"`, `"namespace_id":"12345678-1234-1234-1234-123456789abc"`, ``, `"account_id":"123456789012","namespace_id":"12345678-1234-1234-1234-123456789abc"`, `"account_id":"bad"`, `"namespace_id":"bad"`, `"namespace_id":""`} {
 		id := `{"workgroup_name":"warehouse","database":"admin","datashare":"producer"`
 		if selector != "" {
 			id += "," + selector
 		}
+
 		id += "}"
 		resp := resource.ImportStateResponse{State: testState(t, r, datashareGrantModel{})}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
+
 		valid := selector == `"account_id":"123456789012"` || selector == `"namespace_id":"12345678-1234-1234-1234-123456789abc"`
 		require.Equal(t, !valid, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 		if valid {
 			var data datashareGrantModel
 			require.False(t, resp.State.Get(context.Background(), &data).HasError())
@@ -323,6 +354,7 @@ func TestDatashareGrantImport(t *testing.T) {
 			require.NoError(t, err)
 		}
 	}
+
 	resp := resource.ImportStateResponse{State: tfsdk.State{Schema: schema.Schema}}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: "invalid"}, &resp)
 	assert.True(t, resp.Diagnostics.HasError())
@@ -331,34 +363,43 @@ func TestDatashareGrantImport(t *testing.T) {
 // TestDatashareGrantFailures checks transport failures and failed mutation verification.
 func TestDatashareGrantFailures(t *testing.T) {
 	data := datashareGrantModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), AccountID: types.StringValue("123456789012")}
+
 	for _, operation := range []string{"create", "read", "update", "delete"} {
 		r := &datashareGrantResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return nil, errors.New("API unavailable")
 		}))}
 		assert.True(t, invoke(t, r, operation, data).HasError(), operation)
 	}
+
 	for _, failure := range []string{"absent", "verify", "revoke", "remains"} {
 		reads := 0
 		r := &datashareGrantResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 			if strings.HasPrefix(sql, "SELECT") {
 				reads++
+
 				if failure == "absent" {
 					return nil, nil
 				}
+
 				if failure == "verify" || (failure == "revoke" && reads > 1) {
 					return nil, errors.New("verification failed")
 				}
+
 				return []sqlclient.Row{{"consumer_account": "123456789012"}}, nil
 			}
+
 			if failure == "revoke" {
 				return nil, errors.New("revoke failed")
 			}
+
 			return nil, nil
 		}))}
+
 		operation := "delete"
 		if failure == "absent" || failure == "verify" {
 			operation = "create"
 		}
+
 		assert.True(t, invoke(t, r, operation, data).HasError(), failure)
 	}
 }

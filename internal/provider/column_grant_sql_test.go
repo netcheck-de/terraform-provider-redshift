@@ -16,8 +16,10 @@ func columnGrantTestModel(fields map[string]string, columns map[string][]string)
 		if text, ok := fields[name]; ok {
 			return types.StringValue(text)
 		}
+
 		return types.StringNull()
 	}
+
 	return columnGrantModel{
 		ID: types.StringNull(), DatabaseName: value("database_name"), SchemaName: value("schema_name"), ObjectName: value("object_name"),
 		Grantee: value("grantee"), GranteeType: value("grantee_type"), Privileges: columnGrantValue(columns),
@@ -33,23 +35,29 @@ func TestColumnGrantSQL(t *testing.T) {
 		return func() ([]string, error) {
 			fields := maps.Clone(columnGrantBaseFields)
 			maps.Copy(fields, changes)
+
 			model := columnGrantTestModel(fields, desired)
 			if err := validateColumnGrant(model); err != nil {
 				return nil, err
 			}
+
 			target, err := prepareColumnGrant(model)
 			if err != nil {
 				return nil, err
 			}
+
 			var statements []string
 			for _, check := range target.checks {
 				statements = append(statements, check.sql)
 			}
+
 			query, _, err := target.query.Build()
 			if err != nil {
 				return nil, err
 			}
+
 			mutations, err := columnGrantStatements(target, current, desired)
+
 			return append(append(statements, query), mutations...), err
 		}
 	}

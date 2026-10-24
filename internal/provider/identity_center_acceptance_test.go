@@ -43,11 +43,13 @@ data "redshift_identity_provider" "test" {
 		if group != "" {
 			text += fmt.Sprintf("resource \"redshift_role\" \"group\" {\n name = %q\n}\n", "${redshift_identity_provider.test.namespace}:"+group)
 		}
+
 		return text
 	}
 	address := "redshift_identity_provider.test"
 	initial := configuration(name, namespace, true)
 	renamed := configuration(name+"_replacement", namespace+"_new", true)
+
 	steps := []resource.TestStep{
 		{Config: initial, Check: resource.ComposeAggregateTestCheckFunc(
 			resource.TestCheckResourceAttr(address, "enabled", "true"),
@@ -70,30 +72,37 @@ data "redshift_identity_provider" "test" {
 			}, ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction("redshift_role.group", plancheck.ResourceActionCreate)}}},
 		)
 	}
+
 	steps = append(steps, resource.TestStep{Config: renamed, ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionDestroyBeforeCreate)}}})
+
 	if username := os.Getenv("REDSHIFT_ACC_IDC_USER_NAME"); username != "" {
 		user := namespace + "_new:" + username
 		created := false
+
 		t.Cleanup(func() {
 			if created {
 				_, err := f.client.Query(context.Background(), f.conn, sqlclient.Stmt("DROP USER").Ident(user).String(), nil)
 				assert.NoError(t, err, "clean up only the SQL user created by this test")
 			}
 		})
+
 		steps = append(steps,
 			resource.TestStep{Config: renamed, PreConfig: func() {
 				rows := f.query(t, sqlclient.Select("usename").From("pg_user").Where("usename = :name", sqlclient.Bind("name", user)))
 				require.Empty(t, rows, "never adopt or delete a preexisting SQL user")
 				f.exec(t, sqlclient.Stmt("CREATE USER").Ident(user).Kw("PASSWORD DISABLE"))
+
 				created = true
 			}, Destroy: true, ExpectError: regexp.MustCompile("Federated users with the namespace prefix")},
 			resource.TestStep{Config: configuration(name+"_replacement", namespace+"_blocked", true), ExpectError: regexp.MustCompile("Federated users with the namespace prefix")},
 			resource.TestStep{Config: renamed, PreConfig: func() {
 				f.exec(t, sqlclient.Stmt("DROP USER").Ident(user))
+
 				created = false
 			}},
 		)
 	}
+
 	final := resource.TestStep{Config: configuration(name+"_replacement", namespace+"_final", true), Check: resource.TestCheckResourceAttr(address, "namespace", namespace+"_final")}
 	if group != "" {
 		final.Check = resource.ComposeAggregateTestCheckFunc(final.Check,
@@ -102,6 +111,7 @@ data "redshift_identity_provider" "test" {
 		)
 		final.ConfigPlanChecks = resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction("redshift_role.group", plancheck.ResourceActionDestroyBeforeCreate)}}
 	}
+
 	steps = append(steps, final)
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
@@ -116,6 +126,7 @@ data "redshift_identity_provider" "test" {
 					return fmt.Errorf("identity-center SQL fixture remains after destroy: %v", rows)
 				}
 			}
+
 			return nil
 		},
 	})

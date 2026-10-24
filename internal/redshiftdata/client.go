@@ -73,9 +73,11 @@ func waitSeconds(ctx context.Context) *int32 {
 	if deadline, ok := ctx.Deadline(); ok {
 		wait = min(wait, time.Until(deadline)-time.Second)
 	}
+
 	if wait < time.Second {
 		return nil
 	}
+
 	return aws.Int32(int32(wait / time.Second))
 }
 
@@ -83,6 +85,7 @@ func waitSeconds(ctx context.Context) *int32 {
 func (c *Client) Query(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 	ctx, cancel := context.WithTimeout(ctx, cmp.Or(c.Timeout, DefaultTimeout))
 	defer cancel()
+
 	input := &redshiftdata.ExecuteStatementInput{
 		Database: aws.String(connection.Database),
 		Sql:      aws.String(sql),
@@ -92,19 +95,24 @@ func (c *Client) Query(ctx context.Context, connection sqlclient.Connection, sql
 	} else {
 		input.ClusterIdentifier = aws.String(c.Cluster)
 	}
+
 	if c.SecretARN != "" {
 		input.SecretArn = aws.String(c.SecretARN)
 	} else if c.DBUser != "" {
 		input.DbUser = aws.String(c.DBUser)
 	}
+
 	if c.StatementName != "" {
 		input.StatementName = aws.String(c.StatementName)
 	}
+
 	keys := make([]string, 0, len(parameters))
 	for key := range parameters {
 		keys = append(keys, key)
 	}
+
 	sort.Strings(keys)
+
 	for _, key := range keys {
 		input.Parameters = append(input.Parameters, types.SqlParameter{Name: aws.String(key), Value: aws.String(parameters[key])})
 	}
@@ -117,11 +125,14 @@ func (c *Client) Query(ctx context.Context, connection sqlclient.Connection, sql
 			// The request may have reached AWS, and without an ID the statement cannot be cancelled or observed.
 			err = fmt.Errorf("%w; it may have been submitted: %w", err, sqlclient.ErrUnsettled)
 		}
+
 		return nil, err
 	}
+
 	if statement.Id == nil || *statement.Id == "" {
 		return nil, fmt.Errorf("data API returned no statement ID")
 	}
+
 	return c.wait(ctx, statement.Id)
 }
 
@@ -130,6 +141,7 @@ func (c *Client) wait(ctx context.Context, id *string) ([]sqlclient.Row, error) 
 	for {
 		started := time.Now()
 		status, err := c.API.DescribeStatement(ctx, &redshiftdata.DescribeStatementInput{Id: id, WaitTimeSeconds: waitSeconds(ctx)})
+
 		var waiting *types.ActiveWaitingRequestsExceededException
 		switch {
 		case errors.As(err, &waiting) && ctx.Err() == nil:
@@ -142,6 +154,7 @@ func (c *Client) wait(ctx context.Context, id *string) ([]sqlclient.Row, error) 
 			if !aws.ToBool(status.HasResultSet) {
 				return nil, nil
 			}
+
 			return c.results(ctx, id)
 		}
 		// A refused or ignored long poll returns at once; the poll interval keeps that from becoming a busy loop.
@@ -157,10 +170,13 @@ func (c *Client) wait(ctx context.Context, id *string) ([]sqlclient.Row, error) 
 // ended, the request or its response was lost in transit, or the service failed while handling it. Errors raised before
 // sending, such as credential failures, and client-fault responses mean nothing ran.
 func submissionUncertain(ctx context.Context, err error) bool {
-	var send *smithyhttp.RequestSendError
-	var decode *smithy.DeserializationError
-	var response *smithyhttp.ResponseError
-	var api smithy.APIError
+	var (
+		send     *smithyhttp.RequestSendError
+		decode   *smithy.DeserializationError
+		response *smithyhttp.ResponseError
+		api      smithy.APIError
+	)
+
 	return ctx.Err() != nil || errors.As(err, &send) || errors.As(err, &decode) ||
 		(errors.As(err, &response) && response.HTTPStatusCode() >= 500) ||
 		(errors.As(err, &api) && api.ErrorFault() == smithy.FaultServer)
@@ -171,21 +187,28 @@ func submissionUncertain(ctx context.Context, err error) bool {
 // statement that cannot be shown to have stopped wraps sqlclient.ErrUnsettled together with any cancellation failure.
 func (c *Client) abandon(id *string, cause error) error {
 	var problems []error
+
 	cancelCtx, cancelDone := context.WithTimeout(context.Background(), cancelTimeout)
 	cancelled, err := c.API.CancelStatement(cancelCtx, &redshiftdata.CancelStatementInput{Id: id})
+
 	cancelDone()
+
 	switch {
 	case err != nil:
 		problems = append(problems, fmt.Errorf("cancel statement %s: %w", *id, err))
 	case !aws.ToBool(cancelled.Status):
 		problems = append(problems, fmt.Errorf("cancel statement %s was not accepted", *id))
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), settleTimeout)
 	defer cancel()
+
 	var observed error
+
 	for {
 		started := time.Now()
 		status, err := c.API.DescribeStatement(ctx, &redshiftdata.DescribeStatementInput{Id: id, WaitTimeSeconds: waitSeconds(ctx)})
+
 		var waiting *types.ActiveWaitingRequestsExceededException
 		switch {
 		case err == nil && (status.Status == types.StatusStringFailed || status.Status == types.StatusStringAborted):
@@ -195,6 +218,7 @@ func (c *Client) abandon(id *string, cause error) error {
 		case err != nil && !errors.As(err, &waiting) && ctx.Err() == nil:
 			observed = fmt.Errorf("describe statement %s after cancellation: %w", *id, err)
 		}
+
 		select {
 		case <-ctx.Done():
 			problems = append(problems, observed, fmt.Errorf("statement %s did not reach a final state within %s after cancellation: %w", *id, settleTimeout, sqlclient.ErrUnsettled))
@@ -207,19 +231,24 @@ func (c *Client) abandon(id *string, cause error) error {
 // results reads all result pages and normalizes supported scalar fields to textual rows.
 func (c *Client) results(ctx context.Context, id *string) ([]sqlclient.Row, error) {
 	input := &redshiftdata.GetStatementResultInput{Id: id}
+
 	var rows []sqlclient.Row
+
 	for {
 		page, err := c.API.GetStatementResult(ctx, input)
 		if err != nil {
 			return nil, fmt.Errorf("get results for statement %s: %w", *id, err)
 		}
+
 		for _, record := range page.Records {
 			if len(record) != len(page.ColumnMetadata) {
 				return nil, fmt.Errorf("statement %s returned inconsistent column metadata", *id)
 			}
+
 			row := make(sqlclient.Row, len(record))
 			for i, field := range record {
 				name := aws.ToString(page.ColumnMetadata[i].Name)
+
 				switch field := field.(type) {
 				case *types.FieldMemberStringValue:
 					row[name] = field.Value
@@ -235,11 +264,14 @@ func (c *Client) results(ctx context.Context, id *string) ([]sqlclient.Row, erro
 					return nil, fmt.Errorf("statement %s returned unsupported field %T", *id, field)
 				}
 			}
+
 			rows = append(rows, row)
 		}
+
 		if aws.ToString(page.NextToken) == "" {
 			return rows, nil
 		}
+
 		input.NextToken = page.NextToken
 	}
 }

@@ -135,6 +135,7 @@ func (r *copyJobResource) read(ctx context.Context, data *copyJobModel) (bool, e
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, err
 	}
+
 	return readCopyJob(ctx, &r.resourceClient, data)
 }
 
@@ -143,28 +144,35 @@ func readCopyJob(ctx context.Context, client *resourceClient, data *copyJobModel
 	if exists, err := client.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
+
 	rows, err := client.selectRows(ctx, data.Database.ValueString(), readCopyJobQuery(data.Name.ValueString()))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
+
 	if len(rows) != 1 {
 		return false, fmt.Errorf("copy job %q has ambiguous catalog metadata", data.Name.ValueString())
 	}
+
 	auto, err := copyJobAutoValue(rows[0]["is_auto"])
 	if err != nil {
 		return false, err
 	}
+
 	data.Auto = types.BoolValue(auto)
+
 	data.IAMRole = copyJobRoleValue(data.IAMRole, rows[0]["iam_role"])
 	if err := readCopyJobDefinition(data, rows[0]["copy_query"]); err != nil {
 		return false, err
 	}
+
 	return true, nil
 }
 
 // verify checks that the complete planned definition, AUTO setting, and role took effect.
 func (r *copyJobResource) verify(ctx context.Context, data *copyJobModel) error {
 	planned := *data
+
 	found, err := r.read(ctx, data)
 	switch {
 	case err != nil:
@@ -178,6 +186,7 @@ func (r *copyJobResource) verify(ctx context.Context, data *copyJobModel) error 
 	case !data.Table.Equal(planned.Table) || !data.Source.Equal(planned.Source) || !data.Format.Equal(planned.Format) || !data.FormatArgument.Equal(planned.FormatArgument) || !data.Parameters.Equal(planned.Parameters):
 		return errors.New("the copy job definition differs from the configuration after apply")
 	}
+
 	return nil
 }
 
@@ -189,6 +198,7 @@ func (r *copyJobResource) ValidateConfig(ctx context.Context, req resource.Valid
 	if resp.Diagnostics.HasError() || data.Table.IsNull() {
 		return
 	}
+
 	if err := copyJobValidate(data); err != nil {
 		resp.Diagnostics.AddError("Invalid copy job", err.Error())
 	}
@@ -198,28 +208,34 @@ func (r *copyJobResource) ValidateConfig(ctx context.Context, req resource.Valid
 func (r *copyJobResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data copyJobModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statement, err := createCopyJobStatement(data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid copy job", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), statement); err != nil {
 		resp.Diagnostics.AddError("Create copy job", err.Error())
 		return
 	}
+
 	data.ID = r.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
 	if data.Auto.IsUnknown() {
 		data.Auto = types.BoolValue(true)
 	}
 	// A failed verification must still record the created job.
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if err := r.verify(ctx, &data); err != nil {
 		resp.Diagnostics.AddError("Verify copy job", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -227,18 +243,22 @@ func (r *copyJobResource) Create(ctx context.Context, req resource.CreateRequest
 func (r *copyJobResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data copyJobModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read copy job", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -247,6 +267,7 @@ func (r *copyJobResource) Update(ctx context.Context, req resource.UpdateRequest
 	var plan, prior copyJobModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -255,19 +276,23 @@ func (r *copyJobResource) Update(ctx context.Context, req resource.UpdateRequest
 		resp.Diagnostics.AddError("Update copy job", err.Error())
 		return
 	}
+
 	statements, err := alterCopyJobStatements(prior, plan)
 	if err == nil {
 		err = r.exec(ctx, plan.Database.ValueString(), statements...)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Update copy job", err.Error())
 		return
 	}
+
 	plan.ID = prior.ID
 	if err := r.verify(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Verify copy job", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -275,9 +300,11 @@ func (r *copyJobResource) Update(ctx context.Context, req resource.UpdateRequest
 func (r *copyJobResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data copyJobModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		var statement string
@@ -285,6 +312,7 @@ func (r *copyJobResource) Delete(ctx context.Context, req resource.DeleteRequest
 			err = r.exec(ctx, data.Database.ValueString(), statement)
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete copy job", err.Error())
 	}

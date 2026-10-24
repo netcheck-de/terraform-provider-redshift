@@ -25,6 +25,7 @@ import (
 func functionLifecycleModel() functionModel {
 	data := functionTestModel("integer")
 	data.Database, data.Owner, data.Signature = types.StringValue("admin"), types.StringValue("admin"), types.StringValue("integer")
+
 	return data
 }
 
@@ -49,11 +50,13 @@ var (
 		invalid: func() functionModel {
 			data := functionTestModel("integer")
 			data.Language = types.StringValue("plpythonu")
+
 			return data
 		}(),
 		unknown: func() functionModel {
 			data := functionTestModel("integer")
 			data.Body = types.StringUnknown()
+
 			return data
 		}(),
 	})
@@ -72,6 +75,7 @@ func TestFunctionTypeChangesReplace(t *testing.T) {
 		for i, value := range values {
 			elements[i] = types.StringValue(value)
 		}
+
 		return types.ListValueMust(types.StringType, elements)
 	}
 	for name, test := range map[string]struct {
@@ -92,6 +96,7 @@ func TestFunctionTypeChangesReplace(t *testing.T) {
 		functionArgumentsChanged(context.Background(), planmodifier.ListRequest{StateValue: test.before, PlanValue: test.after}, &resp)
 		assert.Equal(t, test.replace, resp.RequiresReplace, name)
 	}
+
 	for name, test := range map[string]struct {
 		before, after string
 		replace       bool
@@ -116,12 +121,14 @@ func functionRowClient(rows []sqlclient.Row, statements *[]string) resourceClien
 		if statements != nil {
 			*statements = append(*statements, sql)
 		}
+
 		switch {
 		case strings.HasPrefix(sql, "SELECT p.proname"):
 			return rows, nil
 		case strings.HasPrefix(sql, "SELECT database_name"):
 			return []sqlclient.Row{{"database_name": "analytics"}}, nil
 		}
+
 		return nil, nil
 	}))
 }
@@ -165,10 +172,12 @@ func TestFunctionCatalogArguments(t *testing.T) {
 // TestFunctionReadRejectsIncompleteMetadata reports ambiguous or malformed catalog rows instead of guessing.
 func TestFunctionReadRejectsIncompleteMetadata(t *testing.T) {
 	valid := sqlclient.Row{"owner": "admin", "language": "sql", "volatility": "i", "return_type": "integer", "arguments": "integer", "body": "SELECT 1"}
+
 	without := func(key, value string) sqlclient.Row {
 		row := sqlclient.Row{}
 		maps.Copy(row, valid)
 		row[key] = value
+
 		return row
 	}
 	for name, rows := range map[string][]sqlclient.Row{
@@ -180,6 +189,7 @@ func TestFunctionReadRejectsIncompleteMetadata(t *testing.T) {
 		_, err := (&functionResource{functionRowClient(rows, nil)}).read(context.Background(), new(functionTestModel("integer")))
 		require.Error(t, err, name)
 	}
+
 	invalid := functionTestModel("money")
 	_, err := (&functionResource{functionRowClient(nil, nil)}).read(context.Background(), &invalid)
 	assert.Error(t, err, "invalid stored types cannot select an overload")
@@ -188,6 +198,7 @@ func TestFunctionReadRejectsIncompleteMetadata(t *testing.T) {
 // TestFunctionCreateRejectsInvalidDefinitionBeforeSQL validates before the first statement and state write.
 func TestFunctionCreateRejectsInvalidDefinitionBeforeSQL(t *testing.T) {
 	var statements []string
+
 	r := &functionResource{functionRowClient(nil, &statements)}
 	data := functionTestModel("integer")
 	data.Language = types.StringValue("plpythonu")
@@ -209,6 +220,7 @@ func TestFunctionCreateKeepsStateWhenVerificationFails(t *testing.T) {
 				if strings.HasPrefix(sql, failing) {
 					return nil, errors.New("injected failure")
 				}
+
 				return nil, nil
 			}))}
 			data := functionTestModel("integer")
@@ -216,6 +228,7 @@ func TestFunctionCreateKeepsStateWhenVerificationFails(t *testing.T) {
 			resp := resource.CreateResponse{State: emptyState(t, r)}
 			r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(testState(t, r, data))}, &resp)
 			require.True(t, resp.Diagnostics.HasError())
+
 			var observed functionModel
 			require.False(t, resp.State.Get(context.Background(), &observed).HasError())
 			assert.Equal(t, "INTEGER", observed.Signature.ValueString())
@@ -250,10 +263,12 @@ func TestFunctionImportIdentity(t *testing.T) {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
 		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 		var arguments types.List
 		require.False(t, resp.State.GetAttribute(context.Background(), path.Root("arguments"), &arguments).HasError())
 		assert.Equal(t, expected, routineStrings(arguments))
 	}
+
 	for _, id := range []string{
 		`{"workgroup_name":"w","database":"d","schema":"s","name":"f"}`,
 		`{"workgroup_name":"w","database":"d","schema":"s","name":"f","arguments":"money"}`,
@@ -313,15 +328,18 @@ func TestFunctionValidateConfigExplainsPython(t *testing.T) {
 	python := functionTestModel("integer")
 	python.Language, python.Body = types.StringValue("plpythonu"), types.StringUnknown()
 	plpgsql := functionTestModel("integer")
+
 	plpgsql.Language = types.StringValue("PLPGSQL")
 	for name, data := range map[string]functionModel{"python with unknown body": python, "unknown type": functionTestModel("money"), "plpgsql": plpgsql} {
 		var resp resource.ValidateConfigResponse
 		r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, data))}, &resp)
 		assert.True(t, resp.Diagnostics.HasError(), name)
 	}
+
 	for _, language := range []string{"SQL", "sql", "Sql"} {
 		data := functionTestModel("integer")
 		data.Language = types.StringValue(language)
+
 		var resp resource.ValidateConfigResponse
 		r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, data))}, &resp)
 		assert.False(t, resp.Diagnostics.HasError(), "%s: %v", language, resp.Diagnostics)
@@ -334,6 +352,7 @@ func TestFunctionUpdateFailures(t *testing.T) {
 	changed := prior
 	changed.Body = types.StringValue("SELECT $1 * 2")
 	invalid := changed
+
 	invalid.ReturnType = types.StringValue("money")
 	for name, test := range map[string]struct {
 		planned functionModel
@@ -345,18 +364,23 @@ func TestFunctionUpdateFailures(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := fullCatalog()
+
 			var writes []string
+
 			r := &functionResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if test.fail != "" && strings.HasPrefix(sql, test.fail) {
 					return nil, errors.New("injected failure")
 				}
+
 				if !strings.HasPrefix(sql, "SELECT") {
 					writes = append(writes, sql)
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			}))}
 			_, diagnostics := applyOperation(t, r, "update", prior, test.planned, nil)
 			require.True(t, diagnostics.HasError())
+
 			if test.fail == "" {
 				assert.Empty(t, writes)
 			}
@@ -372,6 +396,7 @@ func TestRoutineValidationWithPartialArguments(t *testing.T) {
 	procedure := procedureTestDefault()
 	procedure.Body, procedure.Nonatomic = types.StringUnknown(), types.BoolValue(true)
 	procedure.Configuration = procedureTestSettings(map[string]string{"statement_timeout": "100"})
+
 	procedure.Arguments = types.ListValueMust(types.ObjectType{AttrTypes: procedureArgumentTypes}, []attr.Value{
 		types.ObjectUnknown(procedureArgumentTypes),
 		procedureArgumentList([]procedureArgumentModel{procedureTestArgument("x", "", "anyelement")}).Elements()[0],
@@ -401,6 +426,7 @@ func TestFunctionPartialCreateKeepsKnownState(t *testing.T) {
 	model.Owner = types.StringUnknown()
 	state, diagnostics := applyOperation(t, r, "create", nil, model, nil)
 	require.True(t, diagnostics.HasError())
+
 	var actual functionModel
 	require.False(t, state.Get(context.Background(), &actual).HasError())
 	assert.False(t, actual.ID.IsNull())

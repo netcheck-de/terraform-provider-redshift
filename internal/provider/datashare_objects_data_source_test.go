@@ -30,27 +30,34 @@ func TestDatashareObjectsList(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			c := fullCatalog()
 			source := newDatashareObjectsDataSource()
+
 			filters := map[string]string{"database": "admin", "datashare": test.share}
 			if test.share == "" {
 				delete(filters, "datashare")
 			}
+
 			if test.name == "defaults" {
 				delete(filters, "database")
 			}
+
 			if test.kind != "" {
 				filters["object_type"] = test.kind
 			}
+
 			state, diagnostics := readSource(t, source, collectionConfig(t, source, filters), c)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			assert.Empty(t, c.writes)
+
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
 			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", filters)
 			items := collectionResult(source, observed).Elements()
 			require.Len(t, items, test.count)
+
 			for _, item := range items {
 				attributes := item.(types.Object).Attributes()
 				assert.Equal(t, types.StringValue("producer"), attributes["datashare"])
+
 				if attributes["object_type"] == types.StringValue("schema") {
 					assert.Equal(t, types.BoolValue(true), attributes["include_new"])
 				} else {
@@ -81,10 +88,13 @@ func TestDatashareObjectsOpaqueNamesAndFailures(t *testing.T) {
 				if _, ok := params["share"]; !ok {
 					return c.Query(ctx, connection, sql, params)
 				}
+
 				assert.Equal(t, "admin", connection.Database)
+
 				return []sqlclient.Row{test.row}, test.err
 			}))
 			require.Equal(t, test.invalid, diagnostics.HasError(), "%v", diagnostics)
+
 			if !test.invalid {
 				var observed types.Object
 				require.False(t, state.Get(context.Background(), &observed).HasError())
@@ -104,6 +114,7 @@ func TestDatashareObjectsMissingDatabase(t *testing.T) {
 		return nil, nil
 	}))
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	assert.Empty(t, collectionResult(source, observed).Elements())

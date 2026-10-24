@@ -20,12 +20,15 @@ func (f *groupFamily) query(c *catalog, _ sqlclient.Connection, sql string, para
 	if !strings.HasPrefix(sql, "SELECT g.groname, g.grosysid, u.usename") {
 		return nil, false, nil
 	}
+
 	if !c.group {
 		return nil, true, nil
 	}
+
 	member := ""
 	if c.groupMember {
 		member = "grafana"
 	}
+
 	return []sqlclient.Row{{"groname": parameters["name"], "grosysid": "101", "usename": member}}, true, nil
 }

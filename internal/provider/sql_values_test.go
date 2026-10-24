@@ -68,6 +68,7 @@ func TestOptOneOf(t *testing.T) {
 			assert.Equal(t, test.expected, keyword)
 		})
 	}
+
 	keyword, err := optOneOf(types.StringValue("SNAPSHOT; DROP TABLE t"), "SERIALIZABLE", "SNAPSHOT")
 	require.ErrorContains(t, err, "is not one of SERIALIZABLE, SNAPSHOT")
 	assert.Empty(t, keyword)

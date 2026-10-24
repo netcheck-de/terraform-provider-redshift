@@ -22,9 +22,11 @@ func datashareMembershipKind(data datashareMembershipModel) (sqlclient.Keyword, 
 	if strings.Contains(data.Schema.ValueString(), ".") {
 		return "", fmt.Errorf("exclusive membership cannot distinguish catalog names for a schema containing a period")
 	}
+
 	if data.Kind.ValueString() != "TABLES" && data.Kind.ValueString() != "FUNCTIONS" {
 		return "", fmt.Errorf("kind must be TABLES or FUNCTIONS")
 	}
+
 	return sqlclient.OneOf(data.Kind.ValueString(), "TABLES", "FUNCTIONS")
 }
 
@@ -34,6 +36,7 @@ func createDatashareMembershipStatement(data datashareMembershipModel) (string, 
 	if err != nil {
 		return "", err
 	}
+
 	return sqlclient.Stmt("ALTER DATASHARE").Ident(data.Datashare.ValueString()).Kw("ADD ALL", kind, "IN SCHEMA").Ident(data.Schema.ValueString()).String(), nil
 }
 
@@ -43,6 +46,7 @@ func dropDatashareMembershipStatement(data datashareMembershipModel) (string, er
 	if err != nil {
 		return "", err
 	}
+
 	return sqlclient.Stmt("ALTER DATASHARE").Ident(data.Datashare.ValueString()).Kw("REMOVE ALL", kind, "IN SCHEMA").Ident(data.Schema.ValueString()).String(), nil
 }
 
@@ -54,6 +58,7 @@ func readDatashareMembershipObjectsQuery(data datashareMembershipModel) sqlclien
 	if data.Kind.ValueString() == "FUNCTIONS" {
 		return query.Where("object_type = 'function'")
 	}
+
 	return query.Where("object_type IN ('table', 'view', 'late binding view', 'materialized view')")
 }
 
@@ -67,6 +72,7 @@ func readDatashareMembershipCandidatesQuery(data datashareMembershipModel) sqlcl
 			Where("n.nspname = :schema", sqlclient.Bind("schema", data.Schema.ValueString())).
 			Where("p.prokind = 'f'").Where("l.lanname = 'sql'")
 	}
+
 	return sqlclient.Select("table_name AS member_name").From("svv_all_tables").
 		Where("database_name = :database", sqlclient.Bind("database", data.Database.ValueString())).
 		Where("schema_name = :schema", sqlclient.Bind("schema", data.Schema.ValueString())).

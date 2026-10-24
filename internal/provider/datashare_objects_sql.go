@@ -12,5 +12,6 @@ func listDatashareObjectsQuery(database, share, objectType string) sqlclient.Que
 	if objectType != "" {
 		query = query.Where("object_type = :object_type", sqlclient.Bind("object_type", objectType))
 	}
+
 	return query.OrderBy("share_name", "object_type", "object_name")
 }

@@ -86,6 +86,7 @@ func TestGroupCreateVerificationFailureKeepsKnownState(t *testing.T) {
 			created = true
 			return nil, nil
 		}
+
 		return nil, errors.New("catalog unavailable")
 	}))}
 	plan := readersGroup()
@@ -94,6 +95,7 @@ func TestGroupCreateVerificationFailureKeepsKnownState(t *testing.T) {
 	require.True(t, diagnostics.HasError())
 	require.True(t, created)
 	require.True(t, state.Raw.IsFullyKnown())
+
 	var recorded groupModel
 	require.False(t, state.Get(context.Background(), &recorded).HasError())
 	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","name":"readers"}`, recorded.ID.ValueString())

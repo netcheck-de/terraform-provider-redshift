@@ -31,6 +31,7 @@ func identityProviderType(data identityProviderModel) string {
 	if value := knownString(data.Type); value != "" {
 		return strings.ToUpper(value)
 	}
+
 	return identityProviderAWSIDC
 }
 
@@ -51,6 +52,7 @@ type identityProviderAzureParameters struct {
 func identityProviderAudience(values []string) []string {
 	sorted := slices.Clone(values)
 	slices.Sort(sorted)
+
 	return sorted
 }
 
@@ -76,6 +78,7 @@ func identityProviderModelInputs(data identityProviderModel) identityProviderInp
 	if data.Audience != nil {
 		audience = types.SetValueMust(types.StringType, nil)
 	}
+
 	return identityProviderInputs{
 		"type": types.StringValue(identityProviderType(data)), "application_arn": data.ApplicationARN, "iam_role_arn": data.IAMRoleARN,
 		"issuer": data.Issuer, "client_id": data.ClientID, "audience": audience, "client_secret_wo": data.ClientSecret,
@@ -103,33 +106,41 @@ func validateIdentityProviderInputs(inputs identityProviderInputs) error {
 		if configured == "" {
 			configured = name
 		}
+
 		if _, err := sqlclient.OneOf(configured, identityProviderAWSIDC, identityProviderAzure); err != nil {
 			return fmt.Errorf("unsupported identity provider type: %w", err)
 		}
+
 		awsidc := []string{"application_arn", "iam_role_arn"}
 		azure := []string{"issuer", "client_id", "client_secret_wo_version"}
+
 		required, forbidden := awsidc, append(slices.Clone(azure), "audience", "client_secret_wo")
 		if name == identityProviderAzure {
 			required, forbidden = azure, awsidc
 		}
+
 		for _, attribute := range required {
 			if inputs[attribute].IsNull() {
 				return fmt.Errorf("type %s requires %s", name, attribute)
 			}
 		}
+
 		for _, attribute := range forbidden {
 			if present(attribute) {
 				return fmt.Errorf("%s does not apply to type %s", attribute, name)
 			}
 		}
 	}
+
 	include, exclude := present("auto_create_roles_include_groups"), present("auto_create_roles_exclude_groups")
 	if include && exclude {
 		return errors.New("set at most one of auto_create_roles_include_groups and auto_create_roles_exclude_groups")
 	}
+
 	if autoCreate, ok := inputs["auto_create_roles"].(types.Bool); ok && (include || exclude) && !autoCreate.IsUnknown() && !autoCreate.ValueBool() {
 		return errors.New("auto_create_roles_include_groups and auto_create_roles_exclude_groups require auto_create_roles = true")
 	}
+
 	return nil
 }
 
@@ -139,6 +150,7 @@ func identityProviderValidated(data identityProviderModel, secret string) error 
 	if secret != "" {
 		data.ClientSecret = types.StringValue(secret)
 	}
+
 	return validateIdentityProvider(data)
 }
 
@@ -156,13 +168,16 @@ func identityProviderAutoCreate(data identityProviderModel, reset bool) sqlclien
 		if !reset {
 			return sqlclient.Fragment()
 		}
+
 		fallback := identityProviderType(data) == identityProviderAzure
 		enabled = &fallback
 	}
+
 	clause := sqlclient.Kw("AUTO_CREATE_ROLES").Toggle(*enabled, "TRUE", "FALSE")
 	if !*enabled {
 		return clause
 	}
+
 	return clause.OptLit("INCLUDE GROUPS LIKE", knownString(data.IncludeGroups)).OptLit("EXCLUDE GROUPS LIKE", knownString(data.ExcludeGroups))
 }
 
@@ -173,21 +188,26 @@ func createIdentityProviderStatement(data identityProviderModel, secret string) 
 	if err := identityProviderValidated(data, secret); err != nil {
 		return "", err
 	}
+
 	kind, err := sqlclient.OneOf(identityProviderType(data), identityProviderAWSIDC, identityProviderAzure)
 	if err != nil {
 		return "", err
 	}
+
 	statement := sqlclient.Stmt("CREATE IDENTITY PROVIDER").Ident(data.Name.ValueString()).Kw("TYPE", kind).
 		KwLit("NAMESPACE", data.Namespace.ValueString())
 	if identityProviderType(data) == identityProviderAzure {
 		if secret == "" {
 			return "", errIdentityProviderSecret
 		}
+
 		statement = statement.Kw("PARAMETERS").JSON(identityProviderParameters(data, secret))
 	} else {
 		statement = statement.KwLit("APPLICATION_ARN", data.ApplicationARN.ValueString()).KwLit("IAM_ROLE", data.IAMRoleARN.ValueString())
 	}
+
 	statement = statement.Append(identityProviderAutoCreate(data, false))
+
 	return statement.String(), statement.Err()
 }
 
@@ -207,10 +227,13 @@ func identityProviderParametersChange(prev, plan identityProviderModel) bool {
 	if identityProviderType(plan) != identityProviderAzure {
 		return false
 	}
+
 	if !prev.Issuer.Equal(plan.Issuer) || !prev.ClientID.Equal(plan.ClientID) || !slices.Equal(identityProviderAudience(prev.Audience), identityProviderAudience(plan.Audience)) {
 		return true
 	}
+
 	before, after := prev.ClientSecretVersion, plan.ClientSecretVersion
+
 	return !before.IsNull() && !after.IsUnknown() && !before.Equal(after)
 }
 
@@ -249,21 +272,26 @@ func identityProviderAlterBatches(prev, plan identityProviderModel, secret strin
 	if identityProviderType(plan) == identityProviderAWSIDC && !prev.IAMRoleARN.Equal(plan.IAMRoleARN) {
 		role = []string{identityProviderRoleStatement(plan)}
 	}
+
 	options = alterStatements(prev, plan, identityProviderAlterSteps[:1])
 	if identityProviderParametersChange(prev, plan) {
 		if secret == "" {
 			return nil, nil, nil, errIdentityProviderSecret
 		}
+
 		parameters := identityProviderAlter(plan).Kw("PARAMETERS").JSON(identityProviderParameters(plan, secret))
 		if parameters.Err() != nil {
 			return nil, nil, nil, parameters.Err()
 		}
+
 		options = append(options, parameters.String())
 	}
+
 	options = append(options, alterStatements(prev, plan, identityProviderAlterSteps[1:])...)
 	if !prev.Enabled.Equal(plan.Enabled) {
 		status = []string{identityProviderStatusStatement(plan)}
 	}
+
 	return role, options, status, nil
 }
 

@@ -22,17 +22,21 @@ import (
 func TestDocsExistForEveryRegisteredType(t *testing.T) {
 	root := filepath.Join("..", "..")
 	p := New("test")()
+
 	var resources, dataSources []string
+
 	for _, factory := range p.Resources(context.Background()) {
 		var metadata resource.MetadataResponse
 		factory().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
 		resources = append(resources, metadata.TypeName)
 	}
+
 	for _, factory := range p.DataSources(context.Background()) {
 		var metadata datasource.MetadataResponse
 		factory().Metadata(context.Background(), datasource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
 		dataSources = append(dataSources, metadata.TypeName)
 	}
+
 	for _, category := range []struct {
 		dir      string
 		types    []string
@@ -45,8 +49,10 @@ func TestDocsExistForEveryRegisteredType(t *testing.T) {
 		pages, err := filepath.Glob(filepath.Join(root, "docs", category.dir, "*.md"))
 		require.NoError(t, err)
 		assert.Len(t, pages, len(category.types), "docs/%s must contain exactly one page per registered type", category.dir)
+
 		for _, typeName := range category.types {
 			name := strings.TrimPrefix(typeName, "redshift_")
+
 			files := []string{
 				filepath.Join("docs", category.dir, name+".md"),
 				filepath.Join("templates", category.dir, name+".md.tmpl"),
@@ -54,14 +60,18 @@ func TestDocsExistForEveryRegisteredType(t *testing.T) {
 			for _, example := range category.examples {
 				files = append(files, filepath.Join("examples", category.dir, typeName, example))
 			}
+
 			for _, file := range files {
 				assert.FileExists(t, filepath.Join(root, file), "%s requires %s", typeName, file)
 			}
+
 			template, err := os.ReadFile(filepath.Join(root, "templates", category.dir, name+".md.tmpl"))
 			if assert.NoError(t, err) {
 				assert.Contains(t, string(template), heading+"\n\n```sql\n", "%s must introduce its SQL summary with %q", typeName, heading)
+
 				if category.dir == "resources" {
 					assert.Contains(t, string(template), importBindingsNote, "%s must name the other import bindings", typeName)
+
 					_, section, found := strings.Cut(string(template), "\n## Import\n")
 					if assert.True(t, found, "%s requires an Import section", typeName) {
 						block := `{{ tffile "examples/resources/` + typeName + `/import.tf" }}`
@@ -109,11 +119,13 @@ func exampleTypeValues(line string) []string {
 	if match := typeArgument.FindStringSubmatch(line); match != nil {
 		values = append(values, match[1])
 	}
+
 	if match := argumentsList.FindStringSubmatch(line); match != nil {
 		for _, quoted := range quotedValue.FindAllStringSubmatch(match[1], -1) {
 			values = append(values, quoted[1])
 		}
 	}
+
 	return values
 }
 
@@ -130,26 +142,33 @@ var (
 // file (and snippet number), because the documentation renders both as written.
 func terraformSnippets(t *testing.T) map[string][]string {
 	t.Helper()
+
 	root := filepath.Join("..", "..")
 	snippets := map[string][]string{}
 	examples, err := filepath.Glob(filepath.Join(root, "examples", "*", "*", "*.tf"))
 	require.NoError(t, err)
 	complete, err := filepath.Glob(filepath.Join(root, "examples", "complete", "*.tf"))
 	require.NoError(t, err)
+
 	for _, file := range append(examples, complete...) {
 		content, err := os.ReadFile(file)
 		require.NoError(t, err)
+
 		snippets[file] = strings.Split(string(content), "\n")
 	}
+
 	templates, err := filepath.Glob(filepath.Join(root, "templates", "*", "*.md.tmpl"))
 	require.NoError(t, err)
+
 	for _, file := range templates {
 		content, err := os.ReadFile(file)
 		require.NoError(t, err)
+
 		for i, block := range terraformFence.FindAllStringSubmatch(string(content), -1) {
 			snippets[file+"#"+strconv.Itoa(i+1)] = strings.Split(block[1], "\n")
 		}
 	}
+
 	return snippets
 }
 
@@ -184,6 +203,7 @@ var sqlSummaryHeadings = map[string]string{
 func TestReconciliationSectionDocumentsEveryInput(t *testing.T) {
 	for _, factory := range New("test")().Resources(context.Background()) {
 		instance := factory()
+
 		var metadata resource.MetadataResponse
 		instance.Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
 		t.Run(metadata.TypeName, func(t *testing.T) {
@@ -192,14 +212,18 @@ func TestReconciliationSectionDocumentsEveryInput(t *testing.T) {
 			require.NoError(t, err)
 			section := reconciliationSection(t, string(template))
 			assert.True(t, changeTableHeader.MatchString(section), "the Reconciliation section needs a | Change | Result | table")
+
 			var response resource.SchemaResponse
 			instance.Schema(context.Background(), resource.SchemaRequest{}, &response)
+
 			var missing []string
+
 			for _, input := range documentedInputs(response.Schema) {
 				if !strings.Contains(section, "`"+input+"`") {
 					missing = append(missing, input)
 				}
 			}
+
 			assert.Empty(t, missing, "the Reconciliation section must name these inputs in backticks")
 		})
 	}
@@ -212,10 +236,12 @@ var changeTableHeader = regexp.MustCompile(`(?m)^\| Change +\| Result +\|$`)
 // follow it.
 func reconciliationSection(t *testing.T, template string) string {
 	t.Helper()
+
 	start := strings.Index(template, "\n## Reconciliation\n")
 	require.NotEqual(t, -1, start, "template needs a ## Reconciliation section")
 	length := strings.Index(template[start:], "\n## Import\n")
 	require.NotEqual(t, -1, length, "## Reconciliation must come before ## Import")
+
 	return template[start : start+length]
 }
 
@@ -224,21 +250,26 @@ func reconciliationSection(t *testing.T, template string) string {
 // `timeouts.create` already names the timeouts block.
 func documentedInputs(s schema.Schema) []string {
 	var inputs []string
+
 	for name, attribute := range s.Attributes {
 		if attribute.IsRequired() || attribute.IsOptional() {
 			inputs = append(inputs, name)
 		}
 	}
+
 	for name, block := range s.Blocks {
 		inputs = append(inputs, blockInputs(name, block)...)
 	}
+
 	slices.Sort(inputs)
+
 	return inputs
 }
 
 // blockInputs lists the configurable fields of a block as dotted paths, or the block itself when it has none.
 func blockInputs(path string, block schema.Block) []string {
 	var inputs []string
+
 	for name, child := range nestedInputs(block) {
 		switch child := child.(type) {
 		case schema.Block:
@@ -249,8 +280,10 @@ func blockInputs(path string, block schema.Block) []string {
 			}
 		}
 	}
+
 	if len(inputs) == 0 {
 		return []string{path}
 	}
+
 	return inputs
 }

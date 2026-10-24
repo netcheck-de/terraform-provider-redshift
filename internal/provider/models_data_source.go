@@ -33,22 +33,27 @@ func newModelsDataSource() datasource.DataSource {
 // because SHOW MODEL has no filter clause.
 func modelsList(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
 	database, schemaName := discoveryDatabase(client, filters), objectString(filters, "schema")
+
 	rows, err := client.queryDatabase(ctx, database, listModelsStatement(), nil)
 	if err != nil {
 		return nil, err
 	}
+
 	models, err := parseShowModels(rows)
 	if err != nil {
 		return nil, err
 	}
+
 	items := make([]map[string]attr.Value, 0, len(models))
 	for _, model := range models {
 		if schemaName != "" && model.schema != schemaName {
 			continue
 		}
+
 		items = append(items, map[string]attr.Value{
 			"database": types.StringValue(database), "schema": types.StringValue(model.schema), "name": types.StringValue(model.name),
 		})
 	}
+
 	return items, nil
 }

@@ -22,8 +22,10 @@ import (
 // testAccRolesClient returns a Data API client for drift injection and destroy checks on the shared workgroup.
 func testAccRolesClient(t *testing.T, region, profile, workgroup string) sqlclient.Client {
 	t.Helper()
+
 	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	return &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 }
 
@@ -69,6 +71,7 @@ data "redshift_role_grant" "this" {
 	}
 	ctx, client := context.Background(), testAccRolesClient(t, region, profile, workgroup)
 	admin := sqlclient.Connection{Database: database}
+
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		CheckDestroy: func(*terraform.State) error {
@@ -76,6 +79,7 @@ data "redshift_role_grant" "this" {
 			if err == nil && len(rows) != 0 {
 				err = fmt.Errorf("role %s still exists after destroy", roleName)
 			}
+
 			return err
 		},
 		Steps: []resource.TestStep{
@@ -147,6 +151,7 @@ data "redshift_identity_provider" "this" { name = redshift_identity_provider.thi
 			if err == nil && len(rows) != 0 {
 				err = fmt.Errorf("identity provider %s still exists after destroy", name)
 			}
+
 			return err
 		},
 		Steps: []resource.TestStep{

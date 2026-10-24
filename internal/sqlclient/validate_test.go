@@ -21,10 +21,12 @@ func TestOneOf(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, test.expected, keyword)
 	}
+
 	for _, value := range []string{"", "SELECT; DROP TABLE x", "SELECT ", "ALL"} {
 		_, err := OneOf(value, "SELECT", "USAGE")
 		require.ErrorContains(t, err, "is not one of SELECT, USAGE", value)
 	}
+
 	_, err := OneOf("SELECT")
 	require.Error(t, err, "an empty allowlist accepts nothing")
 }
@@ -114,8 +116,10 @@ func TestTypeName(t *testing.T) {
 			if expected == "" {
 				require.Error(t, err)
 				assert.Empty(t, actual)
+
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, expected, actual)
 		})
@@ -150,8 +154,10 @@ func TestColumnType(t *testing.T) {
 			if expected == "" {
 				require.Error(t, err)
 				assert.Empty(t, actual)
+
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, expected, actual)
 		})
@@ -181,6 +187,7 @@ func TestSignature(t *testing.T) {
 	signature, err = Signature()
 	require.NoError(t, err)
 	assert.Empty(t, signature)
+
 	_, err = Signature("int", "nope")
 	require.ErrorContains(t, err, "argument 2")
 }
@@ -207,6 +214,7 @@ func TestCheckUserSQL(t *testing.T) {
 			assert.Equal(t, UserSQL(text), checked)
 		})
 	}
+
 	for _, test := range []struct {
 		text, message string
 	}{

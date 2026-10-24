@@ -105,11 +105,14 @@ data "redshift_procedure" "scale" {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
+
 	t.Cleanup(func() {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
 			_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)
@@ -121,6 +124,7 @@ data "redshift_procedure" "scale" {
 		for _, address := range []string{"redshift_function.label", "redshift_procedure.scale"} {
 			ids[address] = state.RootModule().Resources[address].Primary.ID
 		}
+
 		return nil
 	}
 	recordedID := func(address string) resource.ImportStateIdFunc {
@@ -174,8 +178,11 @@ func forgetRoutines(configuration string) string {
 		`resource "redshift_function" "label" {`: true, `resource "redshift_procedure" "scale" {`: true,
 		`data "redshift_function" "label" {`: true, `data "redshift_procedure" "scale" {`: true,
 	}
+
 	var kept []string
+
 	skipping := false
+
 	for line := range strings.SplitSeq(configuration, "\n") {
 		switch {
 		case forgotten[line]:
@@ -186,6 +193,7 @@ func forgetRoutines(configuration string) string {
 			kept = append(kept, line)
 		}
 	}
+
 	return strings.Join(kept, "\n") + `
 removed {
   from = redshift_function.label

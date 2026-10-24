@@ -72,11 +72,13 @@ func databaseIntegrationSource(integration databaseIntegrationModel) sqlclient.S
 	clause := sqlclient.Fragment().KwLit("FROM INTEGRATION", integration.IntegrationID.ValueString()).
 		OptIdent("DATABASE", knownString(integration.SourceDatabase))
 	settings := sqlclient.Fragment()
+
 	for _, setting := range databaseIntegrationSettings {
 		if value := setting.value(integration); !value.IsNull() && !value.IsUnknown() {
 			settings = setting.render(settings, integration)
 		}
 	}
+
 	return clause.When(settings.String() != "", func(s sqlclient.Statement) sqlclient.Statement { return s.Kw("SET").Append(settings) })
 }
 
@@ -86,24 +88,30 @@ func alterDatabaseIntegrationStatements(prev, plan databaseModel) []string {
 	if plan.Integration == nil {
 		return nil
 	}
+
 	var prior databaseIntegrationModel
 	if prev.Integration != nil {
 		prior = *prev.Integration
 	}
+
 	var statements []string
+
 	for _, setting := range databaseIntegrationSettings {
 		after := setting.value(*plan.Integration)
 		if after.IsNull() || after.IsUnknown() || after.Equal(setting.value(prior)) {
 			continue
 		}
+
 		statement := setting.render(databaseAlter(plan).Kw("INTEGRATION SET"), *plan.Integration)
 		// Without FOR ALL TABLES, Redshift changes only the default for newly replicated tables, leaving existing
 		// tables in their old history mode even when SVV_INTEGRATION already reports the new database default.
 		if setting.attribute == "history_mode" {
 			statement = statement.Kw("FOR ALL TABLES")
 		}
+
 		statements = append(statements, statement.String())
 	}
+
 	return statements
 }
 

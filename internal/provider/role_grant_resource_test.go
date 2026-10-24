@@ -34,6 +34,7 @@ var _ = registerValidateConfigCase("role_grant", validateConfigCase{
 func roleGrantUserCatalog(granted, admin bool) *catalog {
 	c := &catalog{user: true, userGrant: granted}
 	fakeState[*roleGrantFakeFamily](c, "role_grant").admin = admin
+
 	return c
 }
 
@@ -47,6 +48,7 @@ func TestRoleGrantObservesSystemRole(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, types.BoolValue(false), data.AdminOption)
+
 	c.membership = false
 	found, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
@@ -62,6 +64,7 @@ func TestRoleGrantObservesUserMembership(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, found)
 	assert.True(t, data.AdminOption.ValueBool())
+
 	c.userGrant = false
 	found, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
@@ -86,14 +89,17 @@ func TestRoleGrantAdminOptionFromAnyGrantor(t *testing.T) {
 				for _, option := range test.options {
 					rows = append(rows, sqlclient.Row{"role_name": "sys:monitor", "admin_option": option})
 				}
+
 				return rows, nil
 			}))}
 			data := roleGrantFixture("sys:monitor", "", "grafana", false)
+
 			_, err := r.read(context.Background(), &data)
 			if test.fails {
 				require.Error(t, err)
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, test.admin, data.AdminOption.ValueBool())
 		})
@@ -105,10 +111,12 @@ func TestRoleGrantAdminOptionRequiresUser(t *testing.T) {
 	c := &catalog{role: true}
 	r := newRoleGrantResource()
 	configureTestResource(t, r, c)
+
 	invalid := roleGrantFixture("sys:dba", "example:readers", "", true)
 	diagnostics := invoke(t, r, "create", invalid)
 	require.True(t, diagnostics.HasError())
 	assert.Equal(t, "Invalid role grant", diagnostics.Errors()[0].Summary())
+
 	prior := roleGrantFixture("sys:dba", "example:readers", "", false)
 	_, diagnostics = applyOperation(t, r, "update", prior, invalid, nil)
 	require.True(t, diagnostics.HasError())
@@ -144,16 +152,20 @@ func TestRoleGrantAdminOptionLifecycle(t *testing.T) {
 						return nil, err
 					}
 				}
+
 				return test.catalog.Query(ctx, target, sql, parameters)
 			})
 			r := newRoleGrantResource()
 			configureTestResource(t, r, client)
+
 			_, diagnostics := applyOperation(t, r, test.operation, test.prior, test.plan, nil)
 			if test.summary != "" {
 				require.True(t, diagnostics.HasError())
 				assert.Equal(t, test.summary, diagnostics.Errors()[0].Summary())
+
 				return
 			}
+
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			assert.Equal(t, test.plan.adminOption(), fakeState[*roleGrantFakeFamily](test.catalog, "role_grant").admin)
 		})
@@ -198,8 +210,10 @@ func TestRoleGrantTranscripts(t *testing.T) {
 // TestRoleGrantRejectsAmbiguousImport rejects missing or competing recipient identities.
 func TestRoleGrantRejectsAmbiguousImport(t *testing.T) {
 	r := &roleGrantResource{}
+
 	var schema resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &schema)
+
 	for _, id := range []string{"invalid", `{"workgroup_name":"warehouse","database":"admin","role":"sys:monitor"}`, `{"workgroup_name":"warehouse","database":"admin","role":"sys:monitor","to_user":"grafana","to_role":"readers"}`} {
 		resp := resource.ImportStateResponse{State: tfsdk.State{Schema: schema.Schema}}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)

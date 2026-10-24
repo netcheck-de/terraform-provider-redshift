@@ -66,27 +66,34 @@ func (r *datashareMembershipResource) Schema(_ context.Context, _ resource.Schem
 func (r *datashareMembershipResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data datashareMembershipModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	for _, value := range []types.String{data.Database, data.Datashare, data.Schema} {
 		if !value.IsUnknown() && value.ValueString() == "" {
 			resp.Diagnostics.AddError("Invalid exclusive datashare membership", "database, datashare, and schema must be nonempty")
 			return
 		}
 	}
+
 	if strings.Contains(knownString(data.Schema), ".") {
 		resp.Diagnostics.AddError("Invalid exclusive datashare membership", "exclusive membership cannot distinguish catalog names for a schema containing a period")
 	}
+
 	if !data.Kind.IsUnknown() && data.Kind.ValueString() != "TABLES" && data.Kind.ValueString() != "FUNCTIONS" {
 		resp.Diagnostics.AddError("Invalid exclusive datashare membership", "kind must be TABLES or FUNCTIONS")
 	}
+
 	if !data.All.IsUnknown() && !data.All.ValueBool() {
 		resp.Diagnostics.AddError("Invalid exclusive datashare membership", "all must be true to acknowledge exclusive ownership")
 	}
+
 	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
 		return
 	}
+
 	if _, err := datashareMembershipKind(data); err != nil {
 		resp.Diagnostics.AddError("Invalid exclusive datashare membership", err.Error())
 	}
@@ -98,17 +105,21 @@ func (r *datashareMembershipResource) readManaged(ctx context.Context, data *dat
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, false, 0, err
 	}
+
 	rows, err := r.selectRows(ctx, r.database.ValueString(), readDatashareMembershipSuperuserQuery())
 	if err != nil {
 		return false, false, 0, err
 	}
+
 	if len(rows) != 1 {
 		return false, false, 0, fmt.Errorf("exclusive datashare membership requires a SQL superuser; current-user visibility could not be verified")
 	}
+
 	superuser, err := strconv.ParseBool(rows[0]["usesuper"])
 	if err != nil || !superuser {
 		return false, false, 0, fmt.Errorf("exclusive datashare membership requires a SQL superuser to verify complete catalog visibility")
 	}
+
 	return r.read(ctx, data)
 }
 
@@ -117,45 +128,59 @@ func (r *datashareMembershipResource) read(ctx context.Context, data *datashareM
 	if _, err = datashareMembershipKind(*data); err != nil {
 		return found, includeNew, members, err
 	}
+
 	parent := datashareSchemaModel{ID: data.ID, Database: data.Database, Datashare: data.Datashare, Schema: data.Schema}
+
 	found, err = (&datashareSchemaResource{r.resourceClient}).read(ctx, &parent)
 	if err != nil || !found {
 		return found, includeNew, members, err
 	}
+
 	includeNew = parent.IncludeNew.ValueBool()
+
 	candidates, readErr := r.selectRows(ctx, data.Database.ValueString(), readDatashareMembershipCandidatesQuery(*data))
 	if readErr != nil {
 		err = readErr
 		return found, includeNew, members, err
 	}
+
 	wanted := map[string]int{}
+
 	for _, row := range candidates {
 		name := row["member_name"]
 		if name == "" || strings.Contains(name, ".") {
 			err = fmt.Errorf("exclusive membership cannot distinguish catalog member name %q", name)
 			return found, includeNew, members, err
 		}
+
 		wanted[data.Schema.ValueString()+"."+name]++
 	}
+
 	rows, readErr := r.selectRows(ctx, data.Database.ValueString(), readDatashareMembershipObjectsQuery(*data))
 	if readErr != nil {
 		err = readErr
 		return found, includeNew, members, err
 	}
+
 	actual := map[string]int{}
+
 	for _, row := range rows {
 		if _, ok := wanted[row["object_name"]]; ok {
 			actual[row["object_name"]]++
 			members++
 		}
 	}
+
 	complete := true
+
 	for name, count := range wanted {
 		if actual[name] != count {
 			complete = false
 		}
 	}
+
 	data.All = types.BoolValue(complete)
+
 	return found, includeNew, members, err
 }
 
@@ -164,23 +189,29 @@ func (r *datashareMembershipResource) apply(ctx context.Context, data *datashare
 	if !data.All.ValueBool() {
 		return fmt.Errorf("all must be true to acknowledge exclusive ownership")
 	}
+
 	statement, err := createDatashareMembershipStatement(*data)
 	if err != nil {
 		return err
 	}
+
 	found, includeNew, _, err := r.readManaged(ctx, data)
 	if err != nil {
 		return err
 	}
+
 	if !found {
 		return fmt.Errorf("add the schema to the datashare before managing its members")
 	}
+
 	if includeNew {
 		return fmt.Errorf("exclusive membership requires include_new = false; disable it on the datashare schema first")
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), statement); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -193,12 +224,15 @@ func (r *datashareMembershipResource) verify(ctx context.Context, data *datashar
 		if err != nil {
 			return err
 		}
+
 		if found && !includeNew && data.All.ValueBool() {
 			return nil
 		}
+
 		if !found || includeNew || round == snapshotRounds {
 			return fmt.Errorf("exclusive membership did not converge to full coverage with include_new = false")
 		}
+
 		data.All = types.BoolValue(true)
 		if err := r.apply(ctx, data); err != nil {
 			return err
@@ -210,20 +244,25 @@ func (r *datashareMembershipResource) verify(ctx context.Context, data *datashar
 func (r *datashareMembershipResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data datashareMembershipModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.apply(ctx, &data); err != nil {
 		resp.Diagnostics.AddError("Add exclusive datashare members", err.Error())
 		return
 	}
+
 	data.ID = r.identity(data.Database.ValueString(), map[string]string{"datashare": data.Datashare.ValueString(), "schema": data.Schema.ValueString(), "kind": data.Kind.ValueString()})
 	data.All = types.BoolValue(true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if err := r.verify(ctx, &data); err != nil {
 		resp.Diagnostics.AddError("Verify exclusive datashare membership", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -232,21 +271,26 @@ func (r *datashareMembershipResource) Create(ctx context.Context, req resource.C
 func (r *datashareMembershipResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data datashareMembershipModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, includeNew, _, err := r.readManaged(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read exclusive datashare membership", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	if includeNew {
 		resp.Diagnostics.AddWarning("Incompatible future-object inclusion", "Set include_new = false on the datashare schema before changing or destroying its exclusive membership owner.")
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -254,17 +298,21 @@ func (r *datashareMembershipResource) Read(ctx context.Context, req resource.Rea
 func (r *datashareMembershipResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data datashareMembershipModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.apply(ctx, &data); err != nil {
 		resp.Diagnostics.AddError("Reconcile exclusive datashare members", err.Error())
 		return
 	}
+
 	if err := r.verify(ctx, &data); err != nil {
 		resp.Diagnostics.AddError("Verify exclusive datashare membership", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -272,32 +320,40 @@ func (r *datashareMembershipResource) Update(ctx context.Context, req resource.U
 func (r *datashareMembershipResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data datashareMembershipModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, includeNew, _, err := r.readManaged(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read exclusive datashare membership", err.Error())
 		return
 	}
+
 	if !found {
 		return
 	}
+
 	if includeNew {
 		resp.Diagnostics.AddError("Remove exclusive datashare members", "Disable include_new before destroying exclusive membership; no members were removed.")
 		return
 	}
+
 	statement, err := dropDatashareMembershipStatement(data)
 	if err == nil {
 		err = r.exec(ctx, data.Database.ValueString(), statement)
 	}
+
 	if err == nil {
 		_, _, members, readErr := r.readManaged(ctx, &data)
+
 		err = readErr
 		if err == nil && members != 0 {
 			err = fmt.Errorf("%d members remain after removing the selected kind", members)
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Remove exclusive datashare members", err.Error())
 	}

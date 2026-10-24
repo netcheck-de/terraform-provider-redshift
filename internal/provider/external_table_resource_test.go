@@ -49,11 +49,13 @@ var _ = registerValidateConfigCase("external_table", validateConfigCase{
 	invalid: func() externalTableModel {
 		model := externalTableTestModel()
 		model.InputFormat = types.StringValue("org.apache.hadoop.mapred.TextInputFormat")
+
 		return model
 	}(),
 	unknown: func() externalTableModel {
 		model := externalTableTestModel()
 		model.StoredAs, model.InputFormat, model.OutputFormat = types.StringNull(), types.StringUnknown(), types.StringValue("org.example.Output")
+
 		return model
 	}(),
 })
@@ -66,8 +68,10 @@ func externalTableFakeOf(c *catalog) *externalTableFake {
 // externalTableTestResource binds a table resource to a SQL client.
 func externalTableTestResource(t *testing.T, client sqlclient.Client) *externalTableResource {
 	t.Helper()
+
 	r := &externalTableResource{}
 	configureTestResource(t, r, client)
+
 	return r
 }
 
@@ -80,6 +84,7 @@ func TestExternalTablePartialKnownColumnsValidation(t *testing.T) {
 	list := func(columns ...attr.Value) types.List { return types.ListValueMust(externalTableColumnType, columns) }
 	none := types.ListNull(externalTableColumnType)
 	valid := column(known("id"), known("integer"))
+
 	unknownBlock := types.ObjectUnknown(externalTableColumnType.AttrTypes)
 	for _, test := range []struct {
 		name                string
@@ -115,17 +120,22 @@ func TestExternalTablePartialKnownColumnsValidation(t *testing.T) {
 			model := externalTableTestModel()
 			model.Columns, model.PartitionKeys, model.Location = test.columns, test.partitions, unknown
 			r := newExternalTableResource().(*externalTableResource)
+
 			var response resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, model))}, &response)
+
 			if test.want == "" {
 				assert.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
 				return
 			}
+
 			require.True(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
+
 			var details []string
 			for _, diagnostic := range response.Diagnostics.Errors() {
 				details = append(details, diagnostic.Detail())
 			}
+
 			assert.Contains(t, strings.Join(details, "\n"), test.want)
 			assert.GreaterOrEqual(t, len(response.Diagnostics.Errors()), test.minimumErrors)
 		})
@@ -139,6 +149,7 @@ func TestExternalTablePartialKnownPropertiesValidation(t *testing.T) {
 		return types.MapValueMust(types.StringType, map[string]attr.Value{key: value})
 	}
 	none, unknown := types.MapNull(types.StringType), types.MapUnknown(types.StringType)
+
 	serde := types.StringValue("org.example.Serde")
 	for _, test := range []struct {
 		name                             string
@@ -167,12 +178,15 @@ func TestExternalTablePartialKnownPropertiesValidation(t *testing.T) {
 			model.TableProperties, model.SerdeProperties, model.Serde = test.tableProperties, test.serdeProperties, test.serde
 			model.FieldDelimiter = types.StringNull()
 			r := newExternalTableResource().(*externalTableResource)
+
 			var response resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, model))}, &response)
+
 			if test.want == "" {
 				assert.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
 				return
 			}
+
 			require.True(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
 			assert.Contains(t, response.Diagnostics.Errors()[0].Detail(), test.want)
 		})
@@ -188,6 +202,7 @@ func TestExternalTableNestedUnknownValidationAndStrictCreate(t *testing.T) {
 		{Name: types.StringUnknown(), Type: types.StringValue("super")},
 	})
 	r := newExternalTableResource().(*externalTableResource)
+
 	var response resource.ValidateConfigResponse
 	r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, model))}, &response)
 	require.True(t, response.Diagnostics.HasError())
@@ -198,6 +213,7 @@ func TestExternalTableNestedUnknownValidationAndStrictCreate(t *testing.T) {
 	response = resource.ValidateConfigResponse{}
 	r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, model))}, &response)
 	require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
+
 	c := fullCatalog()
 	state, diagnostics := applyOperation(t, externalTableTestResource(t, c), "create", model, model, nil)
 	require.True(t, diagnostics.HasError(), "%v", diagnostics)
@@ -210,13 +226,16 @@ func TestExternalTableNestedUnknownValidationAndStrictCreate(t *testing.T) {
 func externalTableState(t *testing.T, client sqlclient.Client, operation string, prior, planned externalTableModel) (externalTableModel, error) {
 	t.Helper()
 	state, diagnostics := applyOperation(t, externalTableTestResource(t, client), operation, prior, planned, nil)
+
 	var observed externalTableModel
 	if !state.Raw.IsNull() {
 		require.False(t, state.Get(context.Background(), &observed).HasError())
 	}
+
 	if diagnostics.HasError() {
 		return observed, errors.New(diagnostics.Errors()[0].Summary() + ": " + diagnostics.Errors()[0].Detail())
 	}
+
 	return observed, nil
 }
 
@@ -224,6 +243,7 @@ func externalTableState(t *testing.T, client sqlclient.Client, operation string,
 func TestExternalTableCreateKeepsConfiguredSpellings(t *testing.T) {
 	c := fullCatalog()
 	delete(fakeState[*externalTableFamily](c, "external_table").tables, "events")
+
 	model := externalTableTestModel()
 	model.Columns = externalTableTestColumns("ID", "int4", "Amount", "decimal(8, 2)", "ratio", "float", "label", "varchar")
 	model.InputFormat, model.OutputFormat = types.StringUnknown(), types.StringUnknown()
@@ -233,6 +253,7 @@ func TestExternalTableCreateKeepsConfiguredSpellings(t *testing.T) {
 	assert.Equal(t, model.Location, observed.Location)
 	assert.Equal(t, "org.apache.hadoop.mapred.TextInputFormat", observed.InputFormat.ValueString())
 	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","name":"events"}`, observed.ID.ValueString())
+
 	table := externalTableFakeOf(c)
 	assert.Equal(t, []externalTableFakeColumn{{"id", "int"}, {"amount", "decimal(8,2)"}, {"ratio", "double"}, {"label", "varchar(256)"}}, table.columns)
 }
@@ -248,8 +269,10 @@ func TestExternalTableImportAdoptsCatalog(t *testing.T) {
 	read := resource.ReadResponse{State: imported.State}
 	r.Read(context.Background(), resource.ReadRequest{State: imported.State}, &read)
 	require.False(t, read.Diagnostics.HasError(), "%v", read.Diagnostics)
+
 	var observed externalTableModel
 	require.False(t, read.State.Get(context.Background(), &observed).HasError())
+
 	expected := externalTableTestModel()
 	// Import adopts the catalog types in their canonical uppercase spelling.
 	assert.Equal(t, externalTableTestColumns("id", "INTEGER", "label", "VARCHAR(64)"), observed.Columns)
@@ -280,6 +303,7 @@ func TestExternalTableObserveModes(t *testing.T) {
 	assert.True(t, adopted.PartitionKeys.IsNull())
 	assert.True(t, adopted.TableProperties.IsNull())
 	assert.True(t, adopted.FieldDelimiter.IsNull())
+
 	looked := observeExternalTable(catalog, prior, externalTableLookup)
 	assert.Equal(t, externalTableTestMap("EXTERNAL", "TRUE", "numRows", "5"), looked.TableProperties)
 
@@ -329,6 +353,7 @@ func TestExternalTableUpdateAltersInPlace(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, plan.Columns, observed.Columns)
 	assert.Equal(t, externalTableFileFormats["PARQUET"], observed.InputFormat.ValueString())
+
 	table := externalTableFakeOf(c)
 	assert.Equal(t, "s3://example-bucket/events-v2/", table.location)
 	assert.Equal(t, "42", table.parameters["numRows"])
@@ -344,6 +369,7 @@ func TestExternalTableUpdateAltersInPlace(t *testing.T) {
 func TestExternalTableUpdateAfterImportComparesProperties(t *testing.T) {
 	prior := externalTableTestModel()
 	prior.TableProperties = types.MapNull(types.StringType)
+
 	for name, test := range map[string]struct {
 		properties types.Map
 		writes     []string
@@ -357,12 +383,15 @@ func TestExternalTableUpdateAfterImportComparesProperties(t *testing.T) {
 			c := fullCatalog()
 			plan := prior
 			plan.TableProperties = test.properties
+
 			_, err := externalTableState(t, c, "update", prior, plan)
 			if test.err != "" {
 				require.ErrorContains(t, err, test.err)
 				assert.Empty(t, c.writes)
+
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Equal(t, test.writes, c.writes)
 		})
@@ -372,6 +401,7 @@ func TestExternalTableUpdateAfterImportComparesProperties(t *testing.T) {
 // TestExternalTableFailurePaths covers validation before SQL, malformed catalog rows, and non-converging changes.
 func TestExternalTableFailurePaths(t *testing.T) {
 	model := externalTableTestModel()
+
 	t.Run("validation runs before SQL", func(t *testing.T) {
 		invalid := model
 		invalid.InputFormat = types.StringValue("org.apache.hadoop.mapred.TextInputFormat")
@@ -384,15 +414,18 @@ func TestExternalTableFailurePaths(t *testing.T) {
 		require.ErrorContains(t, err, "stored_as conflicts with input_format")
 		assert.Zero(t, calls)
 	})
+
 	rows := func(table, columns []sqlclient.Row) sqlclient.Client {
 		return queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 			if strings.Contains(sql, "svv_external_tables") {
 				return table, nil
 			}
+
 			return columns, nil
 		})
 	}
 	table := sqlclient.Row{"tablename": "events", "location": "s3://example-bucket/events/", "serde_parameters": "{}", "parameters": "{}"}
+
 	column := sqlclient.Row{"columnname": "id", "external_type": "int", "columnnum": "1", "part_key": "0"}
 	for name, test := range map[string]struct {
 		client sqlclient.Client
@@ -409,14 +442,17 @@ func TestExternalTableFailurePaths(t *testing.T) {
 			require.ErrorContains(t, err, test.err)
 		})
 	}
+
 	t.Run("create does not converge", func(t *testing.T) {
 		c := fullCatalog()
 		delete(fakeState[*externalTableFamily](c, "external_table").tables, "events")
+
 		drifting := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 			rows, err := c.Query(ctx, target, sql, parameters)
 			if strings.HasPrefix(sql, "CREATE") {
 				externalTableFakeOf(c).location = "s3://elsewhere/"
 			}
+
 			return rows, err
 		})
 		observed, err := externalTableState(t, drifting, "create", model, model)
@@ -464,7 +500,9 @@ func TestExternalTableFailurePaths(t *testing.T) {
 // externalTableModifierRequests builds plan-modifier requests from two full models.
 func externalTableModifierRequests(t *testing.T, prior, plan externalTableModel) (tfsdk.State, tfsdk.Plan) {
 	t.Helper()
+
 	r := newExternalTableResource()
+
 	return testState(t, r, prior), tfsdk.Plan(testState(t, r, plan))
 }
 
@@ -508,15 +546,18 @@ func TestExternalTableColumnsReplacement(t *testing.T) {
 				if value == "" {
 					return types.MapNull(types.StringType)
 				}
+
 				return externalTableTestMap("orc.schema.resolution", value)
 			}
 			prior.TableProperties = resolution(test.prior)
 			plan := prior
 			plan.Columns = externalTableTestColumns(test.columns...)
+
 			plan.TableProperties = resolution(test.plan)
 			if test.columns == nil {
 				plan.Columns = types.ListUnknown(externalTableColumnType)
 			}
+
 			state, planned := externalTableModifierRequests(t, prior, plan)
 			resp := listplanmodifier.RequiresReplaceIfFuncResponse{}
 			externalTableColumnsReplace(context.Background(), planmodifier.ListRequest{Path: path.Root("column"), State: state, Plan: planned, StateValue: prior.Columns, PlanValue: plan.Columns}, &resp)
@@ -600,6 +641,7 @@ func TestExternalTablePropertiesReplacement(t *testing.T) {
 			if test.storedAs != "" {
 				prior.StoredAs, prior.FieldDelimiter = types.StringValue(test.storedAs), types.StringNull()
 			}
+
 			prior.TableProperties = test.prior
 			plan := prior
 			plan.TableProperties = test.plan
@@ -696,6 +738,7 @@ func externalTableOrderConfig(storedAs, properties string, pairs ...string) stri
 	for i := 0; i+1 < len(pairs); i += 2 {
 		fmt.Fprintf(&columns, "\n  column {\n    name = %q\n    type = %q\n  }", pairs[i], pairs[i+1])
 	}
+
 	return fmt.Sprintf(`
 provider "redshift" {
   region         = "eu-central-1"
@@ -726,9 +769,11 @@ func TestExternalTableObservedColumnOrder(t *testing.T) {
 	prior.Columns = externalTableTestColumns("Amount", "numeric(8,2)", "id", "int4", "gone", "date", "label", "varchar(64)")
 	observed := observeExternalTable(catalog, prior, externalTableRefresh)
 	assert.Equal(t, externalTableTestColumns("Amount", "numeric(8,2)", "id", "int4", "label", "varchar(64)", "extra", "date"), observed.Columns)
+
 	catalog.parameters["orc.schema.resolution"] = "position"
 	observed = observeExternalTable(catalog, prior, externalTableRefresh)
 	assert.Equal(t, externalTableTestColumns("id", "int4", "label", "varchar(64)", "Amount", "numeric(8,2)", "extra", "date"), observed.Columns)
+
 	catalog.table["input_format"] = externalTableFileFormats["PARQUET"]
 	delete(catalog.parameters, "orc.schema.resolution")
 	observed = observeExternalTable(catalog, prior, externalTableRefresh)
@@ -753,7 +798,9 @@ func TestExternalTableValidatesKnownOptionsWithUnknownColumns(t *testing.T) {
 			model := externalTableTestModel()
 			model.Columns = types.ListUnknown(externalTableColumnType)
 			test.change(&model)
+
 			r := &externalTableResource{}
+
 			var response resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, model))}, &response)
 			require.True(t, response.Diagnostics.HasError())
@@ -766,16 +813,20 @@ func TestExternalTableValidatesKnownOptionsWithUnknownColumns(t *testing.T) {
 func TestExternalTableObservationEdges(t *testing.T) {
 	ctx := context.Background()
 	assert.Empty(t, recordExternalTableLayout(ctx, nil, nil))
+
 	model := externalTableTestModel()
 	model.SerdeProperties = externalTableTestMap("", "value")
 	_, err := externalTableSpecFrom(model)
 	require.ErrorContains(t, err, "nonempty names")
+
 	layout := &externalTableLayout{Columns: []string{"missing"}}
 	_, ok := layout.physical([]externalTableColumnValue{{Name: types.StringValue("id"), Type: types.StringValue("integer")}})
 	assert.False(t, ok)
+
 	prior := externalTableTestModel()
 	observed := observeExternalTable(&externalTableCatalog{table: map[string]string{"tablename": "renamed", "location": "s3://bucket/path"}}, prior, externalTableLookup)
 	assert.Equal(t, "renamed", observed.Name.ValueString())
+
 	prior.StoredAs = types.StringNull()
 	observed = prior
 	prior.InputFormat = types.StringValue("custom.Input")

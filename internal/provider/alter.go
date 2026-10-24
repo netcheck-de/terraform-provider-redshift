@@ -20,12 +20,15 @@ type alterStep[M any] struct {
 // Unknown plan values are skipped because they are only resolved by a later read.
 func alterStatements[M any](prev, plan M, steps []alterStep[M]) []string {
 	var statements []string
+
 	for _, step := range steps {
 		before, after := step.value(prev), step.value(plan)
 		if after.IsUnknown() || before.Equal(after) || step.skipNullPrior && before.IsNull() {
 			continue
 		}
+
 		statements = append(statements, step.render(prev, plan)...)
 	}
+
 	return statements
 }

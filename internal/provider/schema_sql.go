@@ -45,6 +45,7 @@ func createSchemaStatement(data schemaModel) (string, error) {
 			return "", err
 		}
 	}
+
 	return statement.String(), statement.Err()
 }
 
@@ -76,12 +77,15 @@ func alterSchemaStatements(prev, plan schemaModel) ([]string, error) {
 			return nil, err
 		}
 	}
+
 	var managed []alterStep[schemaModel]
+
 	for _, step := range schemaAlterSteps {
 		if !step.value(plan).IsNull() {
 			managed = append(managed, step)
 		}
 	}
+
 	return alterStatements(prev, plan, managed), nil
 }
 

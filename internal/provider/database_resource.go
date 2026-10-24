@@ -107,10 +107,12 @@ func parseShare(value string) (shareSource, error) {
 	if err != nil || parsed.Service != "redshift" || parsed.Partition == "" || parsed.Region == "" || parsed.AccountID == "" || !strings.HasPrefix(parsed.Resource, "datashare:") {
 		return shareSource{}, fmt.Errorf("invalid Redshift datashare ARN %q", value)
 	}
+
 	namespace, name, ok := strings.Cut(strings.TrimPrefix(parsed.Resource, "datashare:"), "/")
 	if !ok || namespace == "" || name == "" {
 		return shareSource{}, fmt.Errorf("datashare ARN must include a producer namespace and share name")
 	}
+
 	return shareSource{Account: parsed.AccountID, Namespace: namespace, Name: name}, nil
 }
 
@@ -187,6 +189,7 @@ func (r *databaseResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 // FROM DATASHARE has no OWNER, CONNECTION LIMIT, COLLATE or ISOLATION LEVEL clause.
 func databaseLocalOptions(data databaseModel) []string {
 	var configured []string
+
 	for _, option := range []struct {
 		name  string
 		value attr.Value
@@ -195,6 +198,7 @@ func databaseLocalOptions(data databaseModel) []string {
 			configured = append(configured, option.name)
 		}
 	}
+
 	return configured
 }
 
@@ -204,12 +208,15 @@ func validateDatabase(data databaseModel) error {
 	if err := validateDatabaseIntegration(data); err != nil {
 		return err
 	}
+
 	if data.DatashareARN.IsNull() || data.DatashareARN.IsUnknown() {
 		return nil
 	}
+
 	if conflicts := databaseLocalOptions(data); len(conflicts) > 0 {
 		return fmt.Errorf("shared databases do not accept %s; remove it or datashare_arn", strings.Join(conflicts, ", "))
 	}
+
 	return nil
 }
 
@@ -220,18 +227,22 @@ func (r *databaseResource) ValidateConfig(ctx context.Context, req resource.Vali
 	// that object, but it must not hide a known conflict between a datashare and a local option.
 	var integration types.Object
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("integration"), &integration)...)
+
 	var data databaseModel
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("datashare_arn"), &data.DatashareARN)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("owner"), &data.Owner)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("connection_limit"), &data.ConnectionLimit)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("collation"), &data.Collation)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("isolation_level"), &data.IsolationLevel)...)
+
 	if !integration.IsNull() && !integration.IsUnknown() {
 		resp.Diagnostics.Append(integration.As(ctx, &data.Integration, basetypes.ObjectAsOptions{})...)
 	}
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := validateDatabase(data); err != nil {
 		resp.Diagnostics.AddError("Invalid database options", err.Error())
 	}
@@ -245,6 +256,7 @@ func sharedDatabaseReplacement(ctx context.Context, req planmodifier.BoolRequest
 		resp.RequiresReplace = true
 		return
 	}
+
 	resp.RequiresReplace = !arn.IsNull()
 }
 
@@ -261,21 +273,26 @@ func (r *resourceClient) databaseMetadata(ctx context.Context, name string) (dat
 func (r *resourceClient) databaseCatalog(ctx context.Context, name string, destination bool) (databaseModel, bool, error) {
 	rows, err := r.query(ctx, readDatabaseStatement(name), nil)
 	matching := make([]sqlclient.Row, 0, 1)
+
 	for _, row := range rows {
 		// LIKE treats underscores/percent signs as wildcards; retain exact names.
 		if row["database_name"] == name {
 			matching = append(matching, row)
 		}
 	}
+
 	rows = matching
 	if err != nil || len(rows) == 0 {
 		return databaseModel{}, false, err
 	}
+
 	if len(rows) != 1 || strings.TrimSpace(rows[0]["database_type"]) == "" {
 		return databaseModel{}, false, fmt.Errorf("expected one database named %q with a type", name)
 	}
+
 	row := rows[0]
 	databaseType := strings.ToUpper(strings.TrimSpace(row["database_type"]))
+
 	data := databaseModel{
 		Name: types.StringValue(row["database_name"]), DatabaseType: types.StringValue(databaseType),
 		WithPermissions: types.BoolValue(false),
@@ -284,23 +301,29 @@ func (r *resourceClient) databaseCatalog(ctx context.Context, name string, desti
 	if databaseType == databaseTypeLocal || databaseType != databaseTypeShared && destination {
 		return data, true, r.databaseLocalMetadata(ctx, &data, row["database_isolation_level"])
 	}
+
 	if databaseType != databaseTypeShared {
 		return data, true, nil
 	}
+
 	var options sharedDatabaseOptions
 	if err := json.Unmarshal([]byte(row["parameters"]), &options); err != nil {
 		return databaseModel{}, false, fmt.Errorf("decode shared database %q parameters: %w", name, err)
 	}
+
 	if options.Permissions == nil {
 		return databaseModel{}, false, fmt.Errorf("shared database %q has no permissions catalog option", name)
 	}
+
 	data.WithPermissions = types.BoolValue(*options.Permissions)
 	data.ShareName = types.StringValue(strings.TrimSpace(options.ShareName))
 	data.ProducerAccount = types.StringValue(strings.TrimSpace(options.ProducerAccount))
+
 	data.ProducerNamespace = types.StringValue(strings.TrimSpace(options.ProducerNamespace))
 	if data.ShareName.ValueString() == "" || data.ProducerAccount.ValueString() == "" || data.ProducerNamespace.ValueString() == "" {
 		return databaseModel{}, false, fmt.Errorf("shared database %q has no complete inbound producer binding", name)
 	}
+
 	return data, true, nil
 }
 
@@ -309,23 +332,29 @@ func (r *resourceClient) databaseCatalog(ctx context.Context, name string, desti
 // databaseReadCollation, because it needs a session inside the database itself.
 func (r *resourceClient) databaseLocalMetadata(ctx context.Context, data *databaseModel, isolation string) error {
 	name := data.Name.ValueString()
+
 	level, err := databaseIsolationLevel(isolation)
 	if err != nil {
 		return fmt.Errorf("database %q: %w", name, err)
 	}
+
 	rows, err := r.selectRows(ctx, r.database.ValueString(), readDatabaseOptionsQuery(name))
 	if err != nil {
 		return err
 	}
+
 	if len(rows) != 1 || strings.TrimSpace(rows[0]["owner"]) == "" {
 		return fmt.Errorf("database %q has no unique owner in pg_database_info", name)
 	}
+
 	limit, err := databaseConnectionLimitValue(rows[0]["connection_limit"])
 	if err != nil {
 		return fmt.Errorf("database %q: %w", name, err)
 	}
+
 	data.Owner, data.ConnectionLimit = types.StringValue(strings.TrimSpace(rows[0]["owner"])), types.Int64Value(limit)
 	data.IsolationLevel = types.StringValue(level)
+
 	return nil
 }
 
@@ -336,13 +365,16 @@ func (r *resourceClient) databaseCollation(ctx context.Context, name string) (st
 	if err != nil {
 		return "", err
 	}
+
 	if len(rows) != 1 {
 		return "", fmt.Errorf("database %q returned no collation", name)
 	}
+
 	collation := strings.ToUpper(strings.TrimSpace(rows[0]["collation"]))
 	if _, err := sqlclient.OneOf(collation, databaseCollations...); err != nil {
 		return "", fmt.Errorf("database %q has unsupported collation %q", name, rows[0]["collation"])
 	}
+
 	return collation, nil
 }
 
@@ -355,16 +387,20 @@ func (r *resourceClient) databaseReadCollation(ctx context.Context, data *databa
 	if data.DatabaseType.ValueString() != databaseTypeLocal || data.Integration != nil {
 		return
 	}
+
 	collation, err := r.databaseCollation(ctx, data.Name.ValueString())
 	if err != nil {
 		if data.Collation.IsUnknown() {
 			data.Collation = types.StringNull()
 		}
+
 		diagnostics.AddWarning("Read database collation", fmt.Sprintf(
 			"DB_COLLATION() could not run in a session inside database %q, so the collation stays %s: %v. "+
 				"Non-superusers are subject to the database's CONNECTION LIMIT.", data.Name.ValueString(), data.Collation, err))
+
 		return
 	}
+
 	data.Collation = types.StringValue(collation)
 }
 
@@ -394,10 +430,12 @@ func databaseConnectionLimitValue(catalog string) (int64, error) {
 	if strings.EqualFold(value, "UNLIMITED") {
 		return databaseUnlimited, nil
 	}
+
 	limit, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || limit < databaseUnlimited {
 		return 0, fmt.Errorf("unrecognized connection limit %q", catalog)
 	}
+
 	return limit, nil
 }
 
@@ -417,6 +455,7 @@ func databaseConverged(expected, observed databaseModel) error {
 			return fmt.Errorf("%s is %s in the catalog, not the planned %s", option.name, option.observed, option.expected)
 		}
 	}
+
 	return databaseIntegrationConverged(expected.Integration, observed.Integration)
 }
 
@@ -425,10 +464,12 @@ func (r *databaseResource) read(ctx context.Context, data *databaseModel) (bool,
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
+
 	observed, found, err := r.databaseCatalog(ctx, data.Name.ValueString(), data.Integration != nil)
 	if err != nil || !found {
 		return found, err
 	}
+
 	observed.ID, observed.DatashareARN = data.ID, data.DatashareARN
 	if data.DatashareARN.IsNull() {
 		if data.Integration != nil {
@@ -449,18 +490,24 @@ func (r *databaseResource) read(ctx context.Context, data *databaseModel) (bool,
 		if data.WithPermissions.IsNull() || data.WithPermissions.IsUnknown() {
 			observed.WithPermissions = types.BoolValue(true)
 		}
+
 		*data = observed
+
 		return true, nil
 	}
+
 	source, err := parseShare(data.DatashareARN.ValueString())
 	if err != nil {
 		return false, err
 	}
+
 	if observed.DatabaseType.ValueString() != databaseTypeShared || observed.ShareName.ValueString() != source.Name ||
 		observed.ProducerAccount.ValueString() != source.Account || observed.ProducerNamespace.ValueString() != source.Namespace {
 		return false, fmt.Errorf("database %q has an incompatible type or producer binding; migrate it explicitly", data.Name.ValueString())
 	}
+
 	*data = observed
+
 	return true, nil
 }
 
@@ -472,9 +519,11 @@ func databaseClearUnknown(data *databaseModel) {
 			*value = types.StringNull()
 		}
 	}
+
 	if data.ConnectionLimit.IsUnknown() {
 		data.ConnectionLimit = types.Int64Null()
 	}
+
 	databaseIntegrationClearUnknown(data.Integration)
 }
 
@@ -482,17 +531,20 @@ func databaseClearUnknown(data *databaseModel) {
 // database or an option that did not converge.
 func (r *databaseResource) verifyCreatedDatabase(ctx context.Context, data databaseResourceModel, resp *resource.CreateResponse) {
 	expected := data.databaseModel
+
 	found, err := r.read(ctx, &data.databaseModel)
 	if err == nil && found {
 		err = r.waitDatabaseIntegration(ctx, expected, &data.databaseModel)
 		r.databaseReadCollation(ctx, &data.databaseModel, &resp.Diagnostics)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 		if err == nil {
 			err = databaseConverged(expected, data.databaseModel)
 		}
 	} else if err == nil {
 		err = errors.New("the local database is absent after creation")
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Verify database", err.Error())
 	}
@@ -502,30 +554,38 @@ func (r *databaseResource) verifyCreatedDatabase(ctx context.Context, data datab
 func (r *databaseResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data databaseResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	ctx, done := boundOperation(ctx, "create", data.Timeouts.Create, &resp.Diagnostics)
 	defer done()
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := validateDatabase(data.databaseModel); err != nil {
 		resp.Diagnostics.AddError("Invalid database options", err.Error())
 		return
 	}
+
 	target, err := r.connection(r.database.ValueString())
 	if err != nil || target.Database == data.Name.ValueString() {
 		resp.Diagnostics.AddError("Create database", "Configure a local administration database different from the database being created.")
 		return
 	}
+
 	if data.DatashareARN.IsNull() {
 		statement, err := createDatabaseStatement(data.databaseModel)
 		if err == nil {
 			err = r.exec(ctx, r.database.ValueString(), statement)
 		}
+
 		if err != nil {
 			resp.Diagnostics.AddError("Create database", err.Error())
 			return
 		}
+
 		identity := map[string]string{"name": data.Name.ValueString()}
+
 		data.DatabaseType = types.StringValue(databaseTypeLocal)
 		if data.Integration != nil {
 			// The integration binds the database like a datashare does, so the identity carries it for import.
@@ -533,13 +593,16 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 			// The type of a zero-ETL destination is only known from the catalog.
 			data.DatabaseType = types.StringNull()
 		}
+
 		data.ID = r.identity(r.database.ValueString(), identity)
 		data.ShareName, data.ProducerAccount, data.ProducerNamespace = types.StringNull(), types.StringNull(), types.StringNull()
 		databaseClearUnknown(&data.databaseModel)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 		r.verifyCreatedDatabase(ctx, data, resp)
+
 		return
 	}
+
 	source, err := parseShare(data.DatashareARN.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Create shared database", err.Error())
@@ -548,21 +611,26 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 	// AWS association can complete before the share appears in the SQL catalog. A create timeout bounds the wait with
 	// the rest of the operation; without one, only the wait is bounded, by databaseShareWait.
 	wait, _ := data.Timeouts.Create(ctx, databaseShareWait)
+
 	waitCtx, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
+
 	for {
 		rows, err := r.selectRows(waitCtx, r.database.ValueString(), readDatabaseInboundShareQuery(source))
 		if err != nil {
 			resp.Diagnostics.AddError("Discover associated datashare", err.Error())
 			return
 		}
+
 		if len(rows) > 0 {
 			if strings.TrimSpace(rows[0]["consumer_database"]) != "" {
 				resp.Diagnostics.AddError("Create shared database", "The datashare is already bound to a database; import that database instead.")
 				return
 			}
+
 			break
 		}
+
 		select {
 		case <-waitCtx.Done():
 			resp.Diagnostics.AddError("Discover associated datashare", fmt.Sprintf("The datashare did not become visible in the SQL catalog within %s.", wait))
@@ -570,14 +638,17 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 		case <-time.After(time.Second):
 		}
 	}
+
 	statement, err := createDatabaseStatement(data.databaseModel)
 	if err == nil {
 		err = r.exec(ctx, r.database.ValueString(), statement)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Create shared database", err.Error())
 		return
 	}
+
 	data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString(), "datashare_arn": data.DatashareARN.ValueString()})
 	data.DatabaseType = types.StringValue(databaseTypeShared)
 	data.ShareName = types.StringValue(source.Name)
@@ -588,10 +659,12 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 	expectedPermissions := data.WithPermissions
 	found, err := r.read(ctx, &data.databaseModel)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if err != nil {
 		resp.Diagnostics.AddError("Verify shared database", err.Error())
 		return
 	}
+
 	if !found || !data.WithPermissions.Equal(expectedPermissions) {
 		resp.Diagnostics.AddError("Verify shared database", "The database is absent or its permission mode does not match after creation.")
 		return
@@ -602,24 +675,30 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 func (r *databaseResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data databaseResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	destination := data.Integration != nil
+
 	found, err := r.read(ctx, &data.databaseModel)
 	if err != nil {
 		resp.Diagnostics.AddError("Read database", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	if destination && data.Integration == nil {
 		resp.Diagnostics.AddWarning("Zero-ETL integration not found",
 			fmt.Sprintf("SVV_INTEGRATION shows no integration for database %q, so a configured integration block plans a replacement. "+
 				"The integration may have been deleted. A catalog permission error instead fails refresh without removing the binding.", data.Name.ValueString()))
 	}
+
 	r.databaseReadCollation(ctx, &data.databaseModel, &resp.Diagnostics)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -634,21 +713,27 @@ func (r *databaseResource) Update(ctx context.Context, req resource.UpdateReques
 	var data, prior databaseResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	ctx, done := boundOperation(ctx, "update", data.Timeouts.Update, &resp.Diagnostics)
 	defer done()
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := validateDatabase(data.databaseModel); err != nil {
 		resp.Diagnostics.AddError("Invalid database options", err.Error())
 		return
 	}
+
 	expected := data.databaseModel
 	priorBinding := prior.Integration
+
 	found, err := r.read(ctx, &prior.databaseModel)
 	if err == nil && !found {
 		err = errDatabaseVanished
 	}
+
 	if err == nil && priorBinding != nil && prior.Integration == nil {
 		binding := *priorBinding
 		binding.SourceDatabase, binding.RefreshInterval = types.StringNull(), types.Int64Null()
@@ -657,10 +742,13 @@ func (r *databaseResource) Update(ctx context.Context, req resource.UpdateReques
 		bindingOnly.Integration = &binding
 		err = r.waitDatabaseIntegration(ctx, bindingOnly, &prior.databaseModel)
 	}
+
 	changeCollation := !data.Collation.IsNull() && !data.Collation.IsUnknown() && !data.Collation.Equal(prior.Collation)
 	collationProgress := false
+
 	if err == nil && changeCollation {
 		var collation string
+
 		collation, err = r.databaseCollation(ctx, data.Name.ValueString())
 		if err == nil {
 			prior.Collation = types.StringValue(collation)
@@ -671,30 +759,37 @@ func (r *databaseResource) Update(ctx context.Context, req resource.UpdateReques
 			err = fmt.Errorf("cannot verify the current collation before updating: %w; allow a session inside the database (raise connection_limit or use a superuser) and retry", err)
 		}
 	}
+
 	var statements []string
 	if err == nil {
 		statements, err = alterDatabaseStatements(prior.databaseModel, data.databaseModel)
 	}
+
 	if err == nil {
 		for i, statement := range statements {
 			target := r.database.ValueString()
+
 			collationStatement := i == 0 && changeCollation && !prior.Collation.Equal(data.Collation)
 			if collationStatement {
 				// Redshift refuses COLLATE unless the session is connected to the altered database.
 				target = data.Name.ValueString()
 			}
+
 			err = r.exec(ctx, target, statement)
 			if err != nil {
 				if collationStatement {
 					err = fmt.Errorf("redshift rejected ALTER DATABASE ... COLLATE: %w. No replacement was attempted. Keep the current collation or resolve the database's ALTER restrictions and retry; use terraform apply -replace only if deliberately recreating the database and losing its contents is acceptable", err)
 				}
+
 				break
 			}
+
 			if collationStatement {
 				collationProgress = true
 				// Invalidate the planned value until a fresh session verifies it. If that read fails, null state
 				// is safer than either claiming success or keeping the now potentially stale prior collation.
 				data.Collation = types.StringNull()
+
 				collation, readErr := r.databaseCollation(ctx, data.Name.ValueString())
 				if readErr != nil {
 					err = fmt.Errorf("cannot verify collation after ALTER: %w; allow a fresh session inside the database (raise connection_limit or use a superuser) and refresh before retrying", readErr)
@@ -704,33 +799,41 @@ func (r *databaseResource) Update(ctx context.Context, req resource.UpdateReques
 						err = fmt.Errorf("collation is %s in the catalog, not the planned %s", data.Collation, expected.Collation)
 					}
 				}
+
 				progress := prior
 				progress.Collation = data.Collation
 				resp.Diagnostics.Append(resp.State.Set(ctx, &progress)...)
+
 				if resp.Diagnostics.HasError() {
 					return
 				}
+
 				if err != nil {
 					break
 				}
 			}
 		}
 	}
+
 	if err == nil {
 		// Unmanaged collation does not need another database session.
 		if data.Collation.IsUnknown() {
 			data.Collation = prior.Collation
 		}
+
 		if found, err = r.read(ctx, &data.databaseModel); err == nil && !found {
 			err = errDatabaseVanished
 		}
 	}
+
 	if err == nil {
 		err = r.waitDatabaseIntegration(ctx, expected, &data.databaseModel)
 	}
+
 	if err == nil {
 		err = databaseConverged(expected, data.databaseModel)
 	}
+
 	if err != nil {
 		if collationProgress {
 			progress := prior
@@ -740,9 +843,12 @@ func (r *databaseResource) Update(ctx context.Context, req resource.UpdateReques
 			_, _ = r.read(ctx, &progress.databaseModel)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &progress)...)
 		}
+
 		resp.Diagnostics.AddError("Update database", err.Error())
+
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -750,11 +856,14 @@ func (r *databaseResource) Update(ctx context.Context, req resource.UpdateReques
 func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state databaseResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
 	ctx, done := boundOperation(ctx, "delete", state.Timeouts.Delete, &resp.Diagnostics)
 	defer done()
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	data := state.databaseModel
 
 	found, err := r.read(ctx, &data)
@@ -769,9 +878,11 @@ func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteReques
 				"earlier apply failed after creating it, keep it with terraform untaint instead. To remove it, delete the "+
 				"integration outside Terraform, for example with aws rds delete-integration (Aurora/RDS) or aws redshift "+
 				"delete-integration (DynamoDB), wait until it is gone, and destroy again.", err))
+
 			return
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete shared database", err.Error())
 	}
@@ -780,13 +891,16 @@ func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteReques
 // ImportState restores local, zero-ETL destination, or shared database ownership from JSON.
 func (r *databaseResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importIdentity(ctx, req, resp, "name")
+
 	var values map[string]string
 	if err := json.Unmarshal([]byte(req.ID), &values); err != nil {
 		return
 	}
+
 	if values["datashare_arn"] != "" {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("datashare_arn"), values["datashare_arn"])...)
 	}
+
 	if values["integration_id"] != "" {
 		// Refresh reads every other field; the settings no catalog view reports stay null until configured.
 		integration := databaseIntegrationModel{

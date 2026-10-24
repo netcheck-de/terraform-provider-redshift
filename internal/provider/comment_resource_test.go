@@ -50,23 +50,30 @@ func TestCommentLifecycle(t *testing.T) {
 					if calls == failAt {
 						return nil, errors.New("injected query failure")
 					}
+
 					if strings.HasPrefix(sql, "SELECT database_name") {
 						return []sqlclient.Row{{"database_name": "analytics"}}, nil
 					}
+
 					assert.Equal(t, "analytics", connection.Database)
+
 					if strings.HasPrefix(sql, "COMMENT ON") {
 						text = ""
 						if !strings.HasSuffix(sql, " IS NULL") {
 							text = literals.FindStringSubmatch(sql)[1]
 						}
+
 						return nil, nil
 					}
+
 					return []sqlclient.Row{{"text": text}}, nil
 				})
 				r := &commentResource{testResourceClient(client)}
+
 				diagnostics := invoke(t, r, operation, schemaComment())
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 					queries = calls
 				} else {
 					require.True(t, diagnostics.HasError(), "query %d", failAt)
@@ -99,8 +106,10 @@ func TestCommentTargets(t *testing.T) {
 		data.ObjectType, data.SchemaName, data.ColumnName, data.ObjectName = types.StringValue(test.kind), types.StringValue(test.schema), types.StringValue(test.column), types.StringValue(test.name)
 		statement, query, err := commentTarget(data)
 		assert.Equal(t, test.valid, err == nil)
+
 		if test.valid {
 			assert.Contains(t, statement.String(), `"`+test.name+`"`)
+
 			_, parameters, err := query.Build()
 			require.NoError(t, err)
 			assert.Equal(t, test.name, parameters["name"])
@@ -116,22 +125,29 @@ func TestCommentMissingTargets(t *testing.T) {
 			if mode == "database" || (mode == "object" && !strings.HasPrefix(sql, "SELECT database_name")) {
 				return nil, nil
 			}
+
 			rows := []sqlclient.Row{{"text": "after"}}
 			if mode == "ambiguous" && !strings.HasPrefix(sql, "SELECT database_name") {
 				rows = append(rows, rows[0])
 			}
+
 			return rows, nil
 		}))}
+
 		if mode == "binding" {
 			data.ID = types.StringValue(`{"workgroup_name":"other","database":"admin"}`)
 		}
+
 		if mode == "type" {
 			data.ObjectType = types.StringValue("unknown")
 		}
+
 		found, err := r.read(context.Background(), &data)
 		assert.False(t, found)
+
 		if mode == "database" || mode == "object" {
 			require.NoError(t, err)
+
 			for _, operation := range []string{"create", "read", "update", "delete"} {
 				assert.Equal(t, operation == "create" || operation == "update", invoke(t, r, operation, data).HasError())
 			}
@@ -148,6 +164,7 @@ func TestCommentConvergence(t *testing.T) {
 			if strings.HasPrefix(sql, "COMMENT") {
 				return nil, nil
 			}
+
 			return []sqlclient.Row{{"text": text}}, nil
 		}))}
 		data := schemaComment()
@@ -160,14 +177,17 @@ func TestCommentConvergence(t *testing.T) {
 // TestCommentImport restores optional column/schema identity and rejects invalid IDs.
 func TestCommentImport(t *testing.T) {
 	r := &commentResource{testResourceClient(nil)}
+
 	var metadata resource.MetadataResponse
 	r.Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
 	assert.Equal(t, "redshift_comment", metadata.TypeName)
+
 	for _, id := range []string{"invalid", `{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","object_type":"COLUMN","object_name":"table","schema_name":"serving","column_name":"column"}`} {
 		resp := resource.ImportStateResponse{State: testState(t, r, schemaComment())}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
 		assert.Equal(t, id == "invalid", resp.Diagnostics.HasError())
 	}
+
 	data := schemaComment()
 	data.ObjectType, data.ObjectName, data.SchemaName, data.ColumnName = types.StringValue("COLUMN"), types.StringValue("table"), types.StringValue("serving"), types.StringValue("column")
 	r.resourceClient = testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {

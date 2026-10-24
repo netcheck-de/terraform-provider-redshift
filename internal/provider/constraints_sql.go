@@ -30,6 +30,7 @@ func readConstraintsQuery(schemaName, table, constraintType string) (sqlclient.Q
 	if constraintType != "" && !known {
 		return sqlclient.Query{}, fmt.Errorf("unsupported constraint_type %q", constraintType)
 	}
+
 	return sqlclient.Select("n.nspname AS schema_name", "c.relname AS table_name", "k.conname AS constraint_name", constraintsTypeColumn, "pg_get_constraintdef(k.oid) AS definition", "fn.nspname AS referenced_schema", "f.relname AS referenced_table").
 		From(constraintsSource).
 		Where("k.contype IN ('p', 'u', 'f')").
@@ -47,13 +48,16 @@ func constraintsKeyColumns(definition string, foreign bool) ([]string, []string,
 	if err != nil {
 		return nil, nil, fmt.Errorf("constraint definition %q: %w", definition, err)
 	}
+
 	if !foreign {
 		return columns, nil, nil
 	}
+
 	referenced, _, err := constraintsIdentifierList(rest)
 	if err != nil {
 		return nil, nil, fmt.Errorf("constraint definition %q: referenced columns: %w", definition, err)
 	}
+
 	return columns, referenced, nil
 }
 
@@ -69,31 +73,42 @@ func constraintsIdentifierList(text string) ([]string, string, error) {
 			start = i + 1
 		}
 	}
+
 	if start < 0 {
 		return nil, "", fmt.Errorf("missing column list")
 	}
+
 	var names []string
+
 	i := start
 	for {
 		for i < len(text) && text[i] == ' ' {
 			i++
 		}
+
 		var name strings.Builder
+
 		if i < len(text) && text[i] == '"' {
 			i++
 			for {
 				if i >= len(text) {
 					return nil, "", fmt.Errorf("unterminated quoted identifier")
 				}
+
 				if text[i] == '"' {
 					if i+1 < len(text) && text[i+1] == '"' {
 						name.WriteByte('"')
+
 						i += 2
+
 						continue
 					}
+
 					i++
+
 					break
 				}
+
 				name.WriteByte(text[i])
 				i++
 			}
@@ -103,16 +118,21 @@ func constraintsIdentifierList(text string) ([]string, string, error) {
 				i++
 			}
 		}
+
 		if name.Len() == 0 {
 			return nil, "", fmt.Errorf("empty column name")
 		}
+
 		names = append(names, name.String())
+
 		for i < len(text) && text[i] == ' ' {
 			i++
 		}
+
 		if i >= len(text) {
 			return nil, "", fmt.Errorf("unterminated column list")
 		}
+
 		switch text[i] {
 		case ',':
 			i++

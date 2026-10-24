@@ -93,7 +93,9 @@ func fakeViewTarget(rest string) (schema, name, tail string, err error) {
 	if match == nil {
 		return "", "", "", fmt.Errorf("fake view catalog cannot parse relation in %q", rest)
 	}
+
 	unquote := func(text string) string { return strings.ReplaceAll(text, `""`, `"`) }
+
 	return unquote(match[1]), unquote(match[2]), rest[len(match[0]):], nil
 }
 
@@ -105,19 +107,23 @@ func (f *viewFamily) query(_ *catalog, _ sqlclient.Connection, sql string, param
 		if relation == nil {
 			return nil, true, nil
 		}
+
 		return []sqlclient.Row{{"schemaname": relation.schema, "viewname": relation.name, "viewowner": relation.owner, "definition": relation.definition()}}, true, nil
 	case strings.HasPrefix(sql, "SELECT autorefresh FROM svv_mv_info"):
 		relation := f.relations[fakeViewKey(parameters["schema"], parameters["name"])]
 		if relation == nil || !relation.materialized {
 			return nil, true, nil
 		}
+
 		return []sqlclient.Row{{"autorefresh": map[bool]string{true: "t", false: "f"}[relation.autoRefresh]}}, true, nil
 	case strings.HasPrefix(sql, "CREATE VIEW "), strings.HasPrefix(sql, "CREATE OR REPLACE VIEW "):
 		replace := strings.HasPrefix(sql, "CREATE OR REPLACE VIEW ")
+
 		schema, name, tail, err := fakeViewTarget(strings.TrimPrefix(strings.TrimPrefix(sql, "CREATE OR REPLACE VIEW "), "CREATE VIEW "))
 		if err != nil {
 			return nil, true, err
 		}
+
 		existing := f.relations[fakeViewKey(schema, name)]
 		switch {
 		case existing != nil && (!replace || existing.materialized):
@@ -125,53 +131,68 @@ func (f *viewFamily) query(_ *catalog, _ sqlclient.Connection, sql string, param
 		case !strings.HasPrefix(tail, "AS "):
 			return nil, true, fmt.Errorf("fake view catalog expected AS in %q", sql)
 		}
+
 		body, late := strings.CutSuffix(strings.TrimPrefix(tail, "AS "), " WITH NO SCHEMA BINDING")
+
 		relation := &fakeViewRelation{schema: schema, name: name, query: body, owner: "admin", lateBinding: late}
 		if existing != nil {
 			// CREATE OR REPLACE VIEW keeps ownership and grants.
 			relation.owner = existing.owner
 		}
+
 		f.relations[fakeViewKey(schema, name)] = relation
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "CREATE MATERIALIZED VIEW "):
 		schema, name, tail, err := fakeViewTarget(strings.TrimPrefix(sql, "CREATE MATERIALIZED VIEW "))
 		if err != nil {
 			return nil, true, err
 		}
+
 		if f.relations[fakeViewKey(schema, name)] != nil {
 			return nil, true, fmt.Errorf("relation %q already exists", name)
 		}
+
 		options, body, found := strings.Cut(tail, "AS ")
 		if !found {
 			return nil, true, fmt.Errorf("fake view catalog expected AS in %q", sql)
 		}
+
 		f.relations[fakeViewKey(schema, name)] = &fakeViewRelation{schema: schema, name: name, query: body, owner: "admin", materialized: true, autoRefresh: strings.Contains(options, "AUTO REFRESH YES")}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "ALTER TABLE "):
 		var relation *fakeViewRelation
+
 		schema, name, tail, parseErr := fakeViewTarget(strings.TrimPrefix(sql, "ALTER TABLE "))
 		if parseErr == nil {
 			relation = f.relations[fakeViewKey(schema, name)]
 		}
+
 		if relation == nil {
 			// Tables belong to other families or the legacy switch.
 			return nil, false, nil
 		}
+
 		owner, found := strings.CutPrefix(tail, "OWNER TO ")
 		if !found {
 			return nil, true, fmt.Errorf("fake view catalog supports only OWNER TO in %q", sql)
 		}
+
 		relation.owner = strings.ReplaceAll(strings.Trim(owner, `"`), `""`, `"`)
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "ALTER MATERIALIZED VIEW "):
 		schema, name, tail, err := fakeViewTarget(strings.TrimPrefix(sql, "ALTER MATERIALIZED VIEW "))
 		if err != nil {
 			return nil, true, err
 		}
+
 		relation := f.relations[fakeViewKey(schema, name)]
 		if relation == nil || !relation.materialized {
 			return nil, true, errors.New("materialized view does not exist")
 		}
+
 		switch {
 		case tail == "AUTO REFRESH YES", tail == "AUTO REFRESH NO":
 			relation.autoRefresh = tail == "AUTO REFRESH YES"
@@ -180,19 +201,25 @@ func (f *viewFamily) query(_ *catalog, _ sqlclient.Connection, sql string, param
 		default:
 			return nil, true, fmt.Errorf("fake view catalog does not support %q", sql)
 		}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "DROP VIEW "), strings.HasPrefix(sql, "DROP MATERIALIZED VIEW "):
 		materialized := strings.HasPrefix(sql, "DROP MATERIALIZED VIEW ")
+
 		schema, name, _, err := fakeViewTarget(strings.TrimPrefix(strings.TrimPrefix(sql, "DROP MATERIALIZED VIEW "), "DROP VIEW "))
 		if err != nil {
 			return nil, true, err
 		}
+
 		relation := f.relations[fakeViewKey(schema, name)]
 		if relation == nil || relation.materialized != materialized {
 			return nil, true, fmt.Errorf("view %q does not exist", name)
 		}
+
 		delete(f.relations, fakeViewKey(schema, name))
+
 		return nil, true, nil
 	}
+
 	return nil, false, nil
 }

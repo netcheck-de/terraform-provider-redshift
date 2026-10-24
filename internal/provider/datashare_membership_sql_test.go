@@ -18,6 +18,7 @@ func TestDatashareMembershipSQL(t *testing.T) {
 	quoted.Datashare, quoted.Schema = types.StringValue(`Odd"Share`), types.StringValue(`Odd"Schema`)
 	invalid := tables
 	invalid.Schema = types.StringValue("ambiguous.schema")
+
 	checkSQL(t, "datashare_membership", []sqlCase{
 		{"superuser", query(readDatashareMembershipSuperuserQuery())},
 		{"add_tables", func() (string, error) { return createDatashareMembershipStatement(tables) }},

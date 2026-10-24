@@ -18,6 +18,7 @@ func templateRelation(schema, name string) (sqlclient.Statement, error) {
 	if schema == "" || name == "" {
 		return sqlclient.Statement{}, fmt.Errorf("a template requires a nonempty schema and name")
 	}
+
 	return sqlclient.Fragment().Qualified(schema, name), nil
 }
 
@@ -29,15 +30,19 @@ func templateValidate(data templateModel) error {
 			return err
 		}
 	}
+
 	if name := data.Name.ValueString(); name != strings.ToLower(name) {
 		return fmt.Errorf("name %q must be lowercase, because Redshift folds template names to lowercase", name)
 	}
+
 	if err := copyValidateKnown(data.Format, data.FormatArgument, data.Parameters, false); err != nil {
 		return err
 	}
+
 	if !data.Format.IsUnknown() && !data.Parameters.IsUnknown() && knownString(data.Format) == "" && len(data.Parameters.Elements()) == 0 {
 		return fmt.Errorf("a template needs a format or at least one parameter")
 	}
+
 	return nil
 }
 
@@ -47,19 +52,25 @@ func templateDefinitionStatement(verb sqlclient.Keyword, data templateModel) (st
 	if data.Schema.IsUnknown() || data.Name.IsUnknown() || !copyOptionsKnown(data.Format, data.FormatArgument, data.Parameters) {
 		return "", fmt.Errorf("the template definition must be known before apply")
 	}
+
 	if err := templateValidate(data); err != nil {
 		return "", err
 	}
+
 	relation, _ := templateRelation(data.Schema.ValueString(), data.Name.ValueString())
+
 	format, err := copyFormatFragment(knownString(data.Format), knownString(data.FormatArgument))
 	if err != nil {
 		return "", err
 	}
+
 	parameters, err := copyParameterFragments(knownMap(data.Parameters), false)
 	if err != nil {
 		return "", err
 	}
+
 	statement := sqlclient.Stmt(verb).Append(relation).Kw("FOR COPY AS").Append(format).Append(parameters...)
+
 	return statement.String(), statement.Err()
 }
 
@@ -77,10 +88,12 @@ func createTemplateStatements(data templateModel) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	statements := []string{create}
 	if knownString(data.Owner) != "" {
 		statements = append(statements, templateOwnerStatement(data))
 	}
+
 	return statements, nil
 }
 
@@ -94,10 +107,12 @@ func templateReplaced(prev, plan templateModel) bool {
 // replacing statement may leave the template owned by the provider's user.
 func templateReplaceStatements(plan templateModel) []string {
 	statement, _ := templateDefinitionStatement("CREATE OR REPLACE TEMPLATE", plan) // alterTemplateStatements validated plan.
+
 	statements := []string{statement}
 	if knownString(plan.Owner) != "" {
 		statements = append(statements, templateOwnerStatement(plan))
 	}
+
 	return statements
 }
 
@@ -111,9 +126,12 @@ func templateParameterStatements(prev, plan templateModel) []string {
 	after, _ := copyCanonicalParameters(knownMap(plan.Parameters), false)
 	relation, _ := templateRelation(plan.Schema.ValueString(), plan.Name.ValueString())
 	alter := sqlclient.Stmt("ALTER TEMPLATE").Append(relation)
+
 	var statements []string
+
 	for _, name := range slices.Sorted(maps.Keys(before)) {
 		value, kept := after[name]
+
 		keyword, parameter, _ := copyParameterKeyword(name, false)
 		switch {
 		case !kept:
@@ -126,21 +144,25 @@ func templateParameterStatements(prev, plan templateModel) []string {
 			}
 		default:
 			statements = append(statements, alter.Kw("DROP", keyword).String())
+
 			added, err := copyParameterFragment(name, value, false)
 			if err == nil {
 				statements = append(statements, alter.Kw("ADD").Append(added).String())
 			}
 		}
 	}
+
 	for _, name := range slices.Sorted(maps.Keys(after)) {
 		if _, existed := before[name]; existed {
 			continue
 		}
+
 		added, err := copyParameterFragment(name, after[name], false)
 		if err == nil {
 			statements = append(statements, alter.Kw("ADD").Append(added).String())
 		}
 	}
+
 	return statements
 }
 
@@ -162,6 +184,7 @@ var templateAlterSteps = []alterStep[templateModel]{
 			if !strings.EqualFold(knownString(prev.Format), knownString(plan.Format)) {
 				return templateReplaceStatements(plan)
 			}
+
 			return nil
 		},
 	},
@@ -172,6 +195,7 @@ var templateAlterSteps = []alterStep[templateModel]{
 			if strings.EqualFold(knownString(prev.Format), knownString(plan.Format)) && templateReplaced(prev, plan) {
 				return templateReplaceStatements(plan)
 			}
+
 			return nil
 		},
 	},
@@ -182,6 +206,7 @@ var templateAlterSteps = []alterStep[templateModel]{
 			if templateReplaced(prev, plan) {
 				return nil
 			}
+
 			return templateParameterStatements(prev, plan)
 		},
 	},
@@ -192,6 +217,7 @@ var templateAlterSteps = []alterStep[templateModel]{
 			if knownString(plan.Owner) == "" || templateReplaced(prev, plan) {
 				return nil
 			}
+
 			return []string{templateOwnerStatement(plan)}
 		},
 	},
@@ -202,6 +228,7 @@ func alterTemplateStatements(prev, plan templateModel) ([]string, error) {
 	if err := templateValidate(plan); err != nil {
 		return nil, err
 	}
+
 	return alterStatements(prev, plan, templateAlterSteps), nil
 }
 
@@ -212,6 +239,7 @@ func dropTemplateStatement(data templateModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return sqlclient.Stmt("DROP TEMPLATE").Append(relation).String(), nil
 }
 
@@ -245,6 +273,7 @@ func listTemplatesQuery(database, schema string) sqlclient.Query {
 	if schema != "" {
 		query = query.Where("schema_name = :schema", sqlclient.Bind("schema", schema))
 	}
+
 	return query.OrderBy("schema_name, template_name")
 }
 
@@ -256,11 +285,13 @@ func templateDefinitionText(row sqlclient.Row) (string, error) {
 			return value, nil
 		}
 	}
+
 	for _, name := range slices.Sorted(maps.Keys(row)) {
 		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(row[name])), "CREATE ") {
 			return row[name], nil
 		}
 	}
+
 	return "", fmt.Errorf("SHOW TEMPLATE returned no template definition")
 }
 
@@ -271,34 +302,43 @@ func parseTemplateDefinition(text string) (copyDefinition, error) {
 	if err != nil {
 		return copyDefinition{}, fmt.Errorf("unreadable template definition: %w", err)
 	}
+
 	word := func(i int, expected string) bool {
 		return i < len(tokens) && tokens[i].Kind == sqlclient.TokenWord && strings.EqualFold(tokens[i].Text, expected)
 	}
+
 	i := 0
 	if !word(i, "CREATE") {
 		return copyDefinition{}, fmt.Errorf("template definition does not start with CREATE: %q", text)
 	}
+
 	i++
 	if word(i, "OR") && word(i+1, "REPLACE") {
 		i += 2
 	}
+
 	if !word(i, "TEMPLATE") {
 		return copyDefinition{}, fmt.Errorf("template definition is not CREATE TEMPLATE: %q", text)
 	}
+
 	i++
 	for i < len(tokens) && (!word(i, "FOR") || !word(i+1, "COPY")) {
 		i++
 	}
+
 	if i == len(tokens) {
 		return copyDefinition{}, fmt.Errorf("template definition is not FOR COPY: %q", text)
 	}
+
 	i += 2
 	if word(i, "AS") {
 		i++
 	}
+
 	definition, err := parseCopyOptions(tokens[i:])
 	if err != nil {
 		return copyDefinition{}, fmt.Errorf("template definition: %w", err)
 	}
+
 	return definition, nil
 }

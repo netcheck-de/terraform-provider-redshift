@@ -42,6 +42,7 @@ type databaseIntegrationFamily struct {
 func newDatabaseIntegrationFamily() *databaseIntegrationFamily {
 	f := &databaseIntegrationFamily{databaseType: "integration"}
 	f.reset(fakeIntegrationID, "")
+
 	return f
 }
 
@@ -81,12 +82,15 @@ func (f *databaseIntegrationFamily) apply(sql string) {
 			f.settings[match[1]] = match[2]
 		}
 	}
+
 	if owner, ok := fakeIdentifier(fakeOwner, sql); ok {
 		f.owner = owner
 	}
+
 	if match := fakeLimit.FindStringSubmatch(sql); match != nil {
 		f.connectionLimit = match[1]
 	}
+
 	if match := fakeIsolation.FindStringSubmatch(sql); match != nil {
 		f.isolation = map[string]string{"SNAPSHOT": "Snapshot Isolation", "SERIALIZABLE": "Serializable"}[match[1]]
 	}
@@ -100,11 +104,13 @@ func (f *databaseIntegrationFamily) query(_ *catalog, _ sqlclient.Connection, sq
 		if !f.exists {
 			return nil, true, nil
 		}
+
 		return []sqlclient.Row{{"database_name": fakeIntegrationDatabase, "database_owner": "100", "database_type": f.databaseType, "database_isolation_level": f.isolation}}, true, nil
 	case strings.HasPrefix(sql, "SELECT u.usename AS owner, d.datconnlimit") && parameters["name"] == fakeIntegrationDatabase:
 		if !f.exists {
 			return nil, true, nil
 		}
+
 		return []sqlclient.Row{{"owner": f.owner, "connection_limit": f.connectionLimit}}, true, nil
 	case strings.HasPrefix(sql, "SELECT TRIM(integration_id) AS integration_id"):
 		if !f.exists || f.hidden || parameters["name"] != fakeIntegrationDatabase {
@@ -119,30 +125,39 @@ func (f *databaseIntegrationFamily) query(_ *catalog, _ sqlclient.Connection, sq
 		if f.exists {
 			return nil, true, fmt.Errorf("database already exists")
 		}
+
 		source := fakeIntegrationSource.FindStringSubmatch(sql)
 		if source == nil {
 			return nil, true, fmt.Errorf("fake catalog cannot parse the integration of %q", sql)
 		}
+
 		sourceDatabase, _ := fakeIdentifier(fakeIntegrationSourceDatabase, sql)
 		f.reset(commentUnescaper.Replace(source[1]), sourceDatabase)
 		f.apply(sql)
 		f.exists = true
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "ALTER DATABASE "+quoted+" "):
 		if !f.exists {
 			return nil, true, fmt.Errorf("database does not exist")
 		}
+
 		f.apply(strings.TrimPrefix(sql, "ALTER DATABASE "+quoted))
+
 		return nil, true, nil
 	case sql == "DROP DATABASE "+quoted:
 		if !f.exists {
 			return nil, true, fmt.Errorf("database does not exist")
 		}
+
 		if f.active {
 			return nil, true, fmt.Errorf("database %q is being accessed by integration client", fakeIntegrationDatabase)
 		}
+
 		f.exists = false
+
 		return nil, true, nil
 	}
+
 	return nil, false, nil
 }

@@ -37,10 +37,12 @@ func readDatasharePrivilegeQuery(share, granteeType, grantee string) sqlclient.Q
 // (r_ALTER_DATASHARE).
 func datasharePrivilegeTarget(data types.Object) (privilegeTarget, error) {
 	database, share := objectString(data, "database_name"), objectString(data, "datashare_name")
+
 	grantee, principalCheck, err := principal(data)
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	built, err := newCatalogChecks(
 		datasharePrivilegeShareQuery(database, share),
 		readDatasharePrivilegeQuery(share, objectString(data, "grantee_type"), objectString(data, "grantee")),
@@ -48,6 +50,7 @@ func datasharePrivilegeTarget(data types.Object) (privilegeTarget, error) {
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	return privilegeTarget{
 		database: database, checks: []catalogCheck{built[0], principalCheck}, query: built[1], allowed: datasharePrivileges,
 		grant: grantSpec{object: sqlclient.Fragment().KwIdent("ON DATASHARE", share), grantee: grantee},

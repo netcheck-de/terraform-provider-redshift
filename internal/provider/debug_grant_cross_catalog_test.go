@@ -21,6 +21,7 @@ func TestDebugGrantCrossCatalogTransientReadPreservesState(t *testing.T) {
 		if statement == readDebugGrantAuthStatement() {
 			return []sqlclient.Row{{"auth_method": "IAM AssumeUser"}}, nil
 		}
+
 		if strings.HasPrefix(statement, "SHOW GRANTS") {
 			return nil, errors.New("temporary catalog failure")
 		}

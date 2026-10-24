@@ -85,27 +85,34 @@ type catalog struct {
 func (c *catalog) Query(_ context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	if connection.Database == "" {
 		return nil, fmt.Errorf("unknown connection reached SQL execution")
 	}
+
 	for _, name := range slices.Sorted(maps.Keys(fakeFamilies)) {
 		rows, handled, err := c.family(name).query(c, connection, sql, parameters)
 		if !handled {
 			continue
 		}
+
 		if err == nil && !fakeRead(sql) {
 			c.writes = append(c.writes, sql)
 		}
+
 		return rows, err
 	}
+
 	roleName := c.roleName
 	if roleName == "" {
 		roleName = "example:readers"
 	}
+
 	databaseName := c.databaseName
 	if databaseName == "" {
 		databaseName = "analytics"
 	}
+
 	switch {
 	case strings.HasPrefix(sql, "SELECT database_name FROM svv_redshift_databases"):
 		if c.localDB {
@@ -133,6 +140,7 @@ func (c *catalog) Query(_ context.Context, connection sqlclient.Connection, sql 
 		if strings.Contains(sql, "usesuper") && c.user {
 			return []sqlclient.Row{{"usename": "grafana", "usesuper": fmt.Sprint(c.superuser), "usecreatedb": fmt.Sprint(c.createDB)}}, nil
 		}
+
 		return nil, nil
 	case strings.HasPrefix(sql, "SELECT role_name FROM svv_user_grants"):
 		if c.user && c.userGrant {
@@ -146,6 +154,7 @@ func (c *catalog) Query(_ context.Context, connection sqlclient.Connection, sql 
 		if parameters["schema"] == "serving" && c.shareSchema {
 			return []sqlclient.Row{{"object_name": "serving", "include_new": fmt.Sprint(c.includeNew)}}, nil
 		}
+
 		if parameters["object"] == "serving.table" && c.shareTable {
 			return []sqlclient.Row{{"object_name": "serving.table"}}, nil
 		}
@@ -153,6 +162,7 @@ func (c *catalog) Query(_ context.Context, connection sqlclient.Connection, sql 
 		if c.shareGrant && parameters["account"] == "123456789012" && strings.Contains(sql, "NVL(consumer_namespace, '') = ''") {
 			return []sqlclient.Row{{"consumer_account": "123456789012", "consumer_namespace": ""}}, nil
 		}
+
 		if c.shareNamespaceGrant && parameters["namespace"] == "12345678-1234-1234-1234-123456789abc" && strings.Contains(sql, "consumer_namespace = :namespace") {
 			return []sqlclient.Row{{"consumer_account": "123456789012", "consumer_namespace": parameters["namespace"]}}, nil
 		}
@@ -169,9 +179,11 @@ func (c *catalog) Query(_ context.Context, connection sqlclient.Connection, sql 
 		if err != nil {
 			return nil, err
 		}
+
 		if name == "warehouse" && c.localDB {
 			return []sqlclient.Row{{"database_name": "warehouse", "database_type": "local"}}, nil
 		}
+
 		if c.database && name == databaseName {
 			options := fmt.Sprintf(`{"datashare_name":"source","datashare_producer_account":"123456789012","datashare_producer_namespace":"11111111-2222-3333-4444-555555555555","permissions":%t}`, c.permissions)
 			return []sqlclient.Row{{"database_name": databaseName, "database_type": "shared", "parameters": options}}, nil
@@ -181,6 +193,7 @@ func (c *catalog) Query(_ context.Context, connection sqlclient.Connection, sql 
 		if c.database {
 			name = databaseName
 		}
+
 		return []sqlclient.Row{{"consumer_database": name}}, nil
 	case strings.HasPrefix(sql, "SELECT database_type"):
 		if c.database {
@@ -199,13 +212,16 @@ func (c *catalog) Query(_ context.Context, connection sqlclient.Connection, sql 
 		for privilege := range c.privileges {
 			rows = append(rows, sqlclient.Row{"database_name": databaseName, "identity_name": roleName, "object_type": "DATABASE", "privilege_scope": "TABLES", "privilege_type": privilege})
 		}
+
 		return rows, nil
 	case strings.HasPrefix(sql, "CREATE IDENTITY PROVIDER"):
 		c.identity, c.enabled = true, true
+
 		role, err := literal(sql, 2)
 		if err != nil {
 			return nil, err
 		}
+
 		c.iamRole = role
 	case strings.HasPrefix(sql, "ALTER IDENTITY PROVIDER"):
 		if strings.Contains(sql, " IAM_ROLE ") {
@@ -213,6 +229,7 @@ func (c *catalog) Query(_ context.Context, connection sqlclient.Connection, sql 
 			if err != nil {
 				return nil, err
 			}
+
 			c.iamRole = role
 		} else {
 			c.enabled = strings.HasSuffix(sql, " ENABLE")
@@ -221,22 +238,26 @@ func (c *catalog) Query(_ context.Context, connection sqlclient.Connection, sql 
 		if c.role {
 			return nil, fmt.Errorf("role dependency still exists")
 		}
+
 		c.identity = false
 	case strings.HasPrefix(sql, "CREATE ROLE"):
 		if c.role || !c.identity {
 			return nil, fmt.Errorf("role exists or identity provider is absent")
 		}
+
 		c.role = true
 		c.roleName = strings.Trim(strings.TrimPrefix(sql, "CREATE ROLE "), `"`)
 	case strings.HasPrefix(sql, "DROP ROLE"):
 		if c.membership || len(c.privileges) > 0 {
 			return nil, fmt.Errorf("role still has dependencies")
 		}
+
 		c.role = false
 	case strings.HasPrefix(sql, "CREATE USER"):
 		if c.user {
 			return nil, fmt.Errorf("user already exists")
 		}
+
 		c.user = true
 		c.superuser = strings.Contains(sql, " CREATEUSER")
 		c.createDB = strings.Contains(sql, " CREATEDB")
@@ -255,37 +276,47 @@ func (c *catalog) Query(_ context.Context, connection sqlclient.Connection, sql 
 		if c.userGrant {
 			return nil, fmt.Errorf("user still has role grants")
 		}
+
 		c.user = false
 	case strings.HasPrefix(sql, "CREATE DATABASE"):
 		if sql == `CREATE DATABASE "warehouse"` {
 			c.localDB = true
 			break
 		}
+
 		if c.database {
 			return nil, fmt.Errorf("database already exists")
 		}
+
 		c.database, c.permissions = true, strings.Contains(sql, "WITH PERMISSIONS")
+
 		quoted := strings.Split(sql, `"`)
 		if len(quoted) < 2 {
 			return nil, fmt.Errorf("fake catalog cannot parse database name from %q", sql)
 		}
+
 		c.databaseName = quoted[1]
 	case strings.HasPrefix(sql, "DROP DATABASE"):
 		if sql == `DROP DATABASE "warehouse"` {
 			if c.share {
 				return nil, fmt.Errorf("datashare still uses the producer database")
 			}
+
 			c.localDB = false
+
 			break
 		}
+
 		if len(c.privileges) > 0 {
 			return nil, fmt.Errorf("database still has grants")
 		}
+
 		c.database = false
 	case strings.HasPrefix(sql, "CREATE DATASHARE"):
 		if c.share {
 			return nil, fmt.Errorf("datashare already exists")
 		}
+
 		c.share, c.public = true, strings.HasSuffix(sql, "true")
 	case strings.HasPrefix(sql, "ALTER DATASHARE") && strings.Contains(sql, " SET PUBLICACCESSIBLE "):
 		c.public = strings.HasSuffix(sql, "true")
@@ -293,6 +324,7 @@ func (c *catalog) Query(_ context.Context, connection sqlclient.Connection, sql 
 		if c.shareSchema || c.shareGrant {
 			return nil, fmt.Errorf("datashare has members or consumers")
 		}
+
 		c.share = false
 	case strings.HasPrefix(sql, "ALTER DATASHARE") && strings.Contains(sql, " ADD SCHEMA "):
 		c.shareSchema = true
@@ -302,6 +334,7 @@ func (c *catalog) Query(_ context.Context, connection sqlclient.Connection, sql 
 		if c.shareTable {
 			return nil, fmt.Errorf("datashare schema contains tables")
 		}
+
 		c.shareSchema = false
 	case strings.HasPrefix(sql, "ALTER DATASHARE") && strings.Contains(sql, " ADD TABLE "):
 		c.shareTable = true
@@ -348,9 +381,11 @@ func (c *catalog) Query(_ context.Context, connection sqlclient.Connection, sql 
 	default:
 		return nil, fmt.Errorf("unexpected SQL: %s (%v)", sql, parameters)
 	}
+
 	if !fakeRead(sql) {
 		c.writes = append(c.writes, sql)
 	}
+
 	return nil, nil
 }
 
@@ -360,6 +395,7 @@ func literal(sql string, index int) (string, error) {
 	if index >= len(values) {
 		return "", fmt.Errorf("fake catalog expected at least %d string literals in %q", index+1, sql)
 	}
+
 	return values[index][1], nil
 }
 
@@ -381,7 +417,9 @@ func registerFakeFamily(name string, factory func() fakeFamily) bool {
 	if _, ok := fakeFamilies[name]; ok {
 		panic("fake family " + name + " is registered twice")
 	}
+
 	fakeFamilies[name] = factory
+
 	return true
 }
 
@@ -391,15 +429,18 @@ func (c *catalog) family(name string) fakeFamily {
 	if c.families == nil {
 		c.families = map[string]fakeFamily{}
 	}
+
 	state, ok := c.families[name]
 	if !ok {
 		factory, registered := fakeFamilies[name]
 		if !registered {
 			panic("fake family " + name + " is not registered")
 		}
+
 		state = factory()
 		c.families[name] = state
 	}
+
 	return state
 }
 
@@ -414,6 +455,7 @@ func (c *catalog) populate() {
 func fakeState[F fakeFamily](c *catalog, name string) F {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	return c.family(name).(F)
 }
 
@@ -438,18 +480,22 @@ func (f *probeFamily) query(c *catalog, _ sqlclient.Connection, sql string, _ ma
 		if f.exists && c.role {
 			return []sqlclient.Row{{"probe": "exists"}}, true, nil
 		}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "CREATE PROBE"):
 		if f.exists {
 			return nil, true, errors.New("probe already exists")
 		}
+
 		f.exists = true
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "DESC PROBE"):
 		return []sqlclient.Row{{"probe": "described"}}, true, nil
 	case strings.HasPrefix(sql, "SELECT role_name FROM svv_roles"):
 		f.roleSeen = true
 	}
+
 	return nil, false, nil
 }
 
@@ -461,6 +507,7 @@ func TestFakeCatalogFamilies(t *testing.T) {
 	require.True(t, registerFakeFamily("probe", func() fakeFamily { return &probeFamily{} }))
 	t.Cleanup(func() { delete(fakeFamilies, "probe") })
 	assert.Panics(t, func() { registerFakeFamily("probe", func() fakeFamily { return &probeFamily{} }) })
+
 	ctx, connection := context.Background(), sqlclient.Connection{Database: "admin"}
 
 	full := fullCatalog()
@@ -468,6 +515,7 @@ func TestFakeCatalogFamilies(t *testing.T) {
 	rows, err := full.Query(ctx, connection, "SELECT probe", nil)
 	require.NoError(t, err)
 	assert.Equal(t, []sqlclient.Row{{"probe": "exists"}}, rows)
+
 	_, err = full.Query(ctx, connection, "CREATE PROBE x", nil)
 	require.Error(t, err)
 	assert.Empty(t, full.writes, "failed writes are not recorded")

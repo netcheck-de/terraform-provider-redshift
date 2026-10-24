@@ -54,6 +54,7 @@ resource "redshift_schema" "local" {
   sort_key {
     columns = ["label", "events"]
   }`}[autoRefresh]
+
 		return base + fmt.Sprintf(`
 resource "redshift_view" "ordinary" {
   database = redshift_schema.local.database
@@ -91,12 +92,14 @@ data "redshift_materialized_view" "counts" {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// A failed test may leave the fixture table and views, which block restrictive schema deletion.
 	t.Cleanup(func() {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
 			_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)

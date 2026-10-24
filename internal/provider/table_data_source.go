@@ -29,15 +29,19 @@ func newTableDataSource() datasource.DataSource {
 			observed := tableNullModel(selected.Database, selected.Schema, selected.Name)
 			observed.Distribution = types.ObjectValueMust(tableDistributionAttributeTypes, map[string]attr.Value{"style": types.StringNull(), "key": types.StringNull()})
 			observed.SortKey = types.ObjectValueMust(tableSortKeyAttributeTypes, map[string]attr.Value{"style": types.StringNull(), "columns": types.ListNull(types.StringType)})
+
 			found, _, err := (&tableResource{*client}).read(ctx, &observed)
 			if err != nil || !found {
 				return found, err
 			}
+
 			value, diagnostics := types.ObjectValueFrom(ctx, data.AttributeTypes(ctx), observed)
 			if diagnostics.HasError() {
 				return false, fmt.Errorf("convert table lookup: %v", diagnostics)
 			}
+
 			*data = value
+
 			return true, nil
 		},
 	}), map[string]string{

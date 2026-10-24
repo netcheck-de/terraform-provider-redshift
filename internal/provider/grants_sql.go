@@ -41,6 +41,7 @@ func grantsFiltersFrom(data types.Object, admin string) grantsFilters {
 	if filters.database == "" {
 		filters.database = admin
 	}
+
 	return filters
 }
 
@@ -51,7 +52,9 @@ func readGrantsStatement(filters grantsFilters) (string, error) {
 		if filters.grantee == "" {
 			return "", fmt.Errorf("set object_type, or grantee and grantee_type, to select what SHOW GRANTS lists")
 		}
+
 		var grantee sqlclient.Statement
+
 		switch filters.granteeType {
 		case "USER":
 			grantee = sqlclient.Ident(filters.grantee)
@@ -60,13 +63,17 @@ func readGrantsStatement(filters grantsFilters) (string, error) {
 		default:
 			return "", fmt.Errorf("SHOW GRANTS FOR lists only USER and ROLE grantees; set object_type to list grants of %q grantees", filters.granteeType)
 		}
+
 		return sqlclient.Stmt("SHOW GRANTS FOR").Append(grantee).KwIdent("FROM DATABASE", filters.database).String(), nil
 	}
+
 	kind, err := sqlclient.OneOf(filters.objectType, grantsObjectTypes...)
 	if err != nil {
 		return "", fmt.Errorf("unsupported object_type: %w", err)
 	}
+
 	parts := []string{filters.database}
+
 	switch kind {
 	case "DATABASE":
 		if filters.schema != "" || filters.object != "" {
@@ -76,13 +83,16 @@ func readGrantsStatement(filters grantsFilters) (string, error) {
 		if filters.schema == "" || filters.object != "" {
 			return "", fmt.Errorf("SCHEMA requires schema_name and does not accept object_name")
 		}
+
 		parts = append(parts, filters.schema)
 	default:
 		if filters.schema == "" || filters.object == "" {
 			return "", fmt.Errorf("TABLE requires schema_name and object_name")
 		}
+
 		parts = append(parts, filters.schema, filters.object)
 	}
+
 	return sqlclient.Stmt("SHOW GRANTS ON", kind).Qualified(parts...).String(), nil
 }
 
@@ -91,6 +101,7 @@ func grantsNullable(value string) types.String {
 	if value == "" {
 		return types.StringNull()
 	}
+
 	return types.StringValue(value)
 }
 
@@ -113,7 +124,9 @@ func grantsItems(filters grantsFilters, rows []sqlclient.Row) []map[string]attr.
 		key  []string
 		item map[string]attr.Value
 	}
+
 	var items []keyed
+
 	for _, row := range rows {
 		granteeType := strings.ToUpper(row["identity_type"])
 		if (filters.grantee != "" && row["identity_name"] != filters.grantee) || (filters.granteeType != "" && granteeType != filters.granteeType) {
@@ -123,6 +136,7 @@ func grantsItems(filters grantsFilters, rows []sqlclient.Row) []map[string]attr.
 		if filters.objectType == "" && ((filters.schema != "" && row["schema_name"] != filters.schema) || (filters.object != "" && row["object_name"] != filters.object)) {
 			continue
 		}
+
 		database, objectType := cmp.Or(row["database_name"], filters.database), cmp.Or(row["object_type"], filters.objectType)
 		privilege := normalizePrivilege(row["privilege_type"])
 		items = append(items, keyed{
@@ -136,11 +150,14 @@ func grantsItems(filters grantsFilters, rows []sqlclient.Row) []map[string]attr.
 			},
 		})
 	}
+
 	slices.SortStableFunc(items, func(a, b keyed) int { return slices.Compare(a.key, b.key) })
+
 	result := make([]map[string]attr.Value, 0, len(items))
 	for _, item := range items {
 		result = append(result, item.item)
 	}
+
 	return result
 }
 
@@ -167,5 +184,6 @@ func columnGrantsItems(database string, rows []sqlclient.Row) []map[string]attr.
 			"grantee":   types.StringValue(row["identity_name"]), "grantee_type": types.StringValue(strings.ToUpper(row["identity_type"])),
 		})
 	}
+
 	return items
 }

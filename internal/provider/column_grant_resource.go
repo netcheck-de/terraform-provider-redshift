@@ -82,20 +82,24 @@ func (r *columnGrantResource) read(ctx context.Context, data *columnGrantModel, 
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return columnGrantTarget{}, false, err
 	}
+
 	target, err := prepareColumnGrant(*data)
 	if err != nil {
 		return target, false, err
 	}
+
 	for _, check := range target.checks {
 		rows, err := r.queryDatabase(ctx, r.database.ValueString(), check.sql, check.parameters)
 		if err != nil || len(rows) == 0 {
 			return target, false, err
 		}
 	}
+
 	rows, err := r.selectRows(ctx, target.database, target.query)
 	if err != nil {
 		return target, false, err
 	}
+
 	columns := columnGrantRows(rows)
 	if managed {
 		for privilege := range columns {
@@ -104,7 +108,9 @@ func (r *columnGrantResource) read(ctx context.Context, data *columnGrantModel, 
 			}
 		}
 	}
+
 	data.Privileges = columnGrantValue(columns)
+
 	return target, true, nil
 }
 
@@ -113,32 +119,42 @@ func (r *columnGrantResource) reconcile(ctx context.Context, data columnGrantMod
 	if err := validateColumnGrant(data); err != nil {
 		return err
 	}
+
 	actual := data
+
 	target, found, err := r.read(ctx, &actual, true)
 	if err != nil {
 		return err
 	}
+
 	if !found {
 		return fmt.Errorf("target relation or grantee does not exist")
 	}
+
 	desired := columnGrantDesired(data.Privileges)
+
 	statements, err := columnGrantStatements(target, columnGrantDesired(actual.Privileges), desired)
 	if err != nil {
 		return err
 	}
+
 	if err := r.exec(ctx, target.database, statements...); err != nil {
 		return err
 	}
+
 	_, found, err = r.read(ctx, &actual, true)
 	if err != nil {
 		return err
 	}
+
 	if !found {
 		return fmt.Errorf("the relation, database, or grantee disappeared while the column privileges were applied")
 	}
+
 	if observed := columnGrantDesired(actual.Privileges); !actual.Privileges.Equal(columnGrantValue(desired)) {
 		return columnGrantDivergence(desired, observed)
 	}
+
 	return nil
 }
 
@@ -155,6 +171,7 @@ func columnGrantDivergence(desired, observed columnGrantColumns) error {
 func (r *columnGrantResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data columnGrantModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -163,12 +180,15 @@ func (r *columnGrantResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddError("Create column grant", err.Error())
 		return
 	}
+
 	fields := map[string]string{}
 	for _, field := range columnGrantFields {
 		fields[field] = columnGrantField(data, field)
 	}
+
 	data.ID = r.identity(r.database.ValueString(), fields)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if err := r.reconcile(ctx, data); err != nil {
 		resp.Diagnostics.AddError("Create column grant", err.Error())
 	}
@@ -186,9 +206,11 @@ func columnGrantField(data columnGrantModel, field string) string {
 func (r *columnGrantResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data columnGrantModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := validateColumnGrant(data); err != nil {
 		resp.Diagnostics.AddError("Invalid column grant", err.Error())
 	}
@@ -198,18 +220,22 @@ func (r *columnGrantResource) ValidateConfig(ctx context.Context, req resource.V
 func (r *columnGrantResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data columnGrantModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	_, found, err := r.read(ctx, &data, true)
 	if err != nil {
 		resp.Diagnostics.AddError("Read column grant", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -217,13 +243,16 @@ func (r *columnGrantResource) Read(ctx context.Context, req resource.ReadRequest
 func (r *columnGrantResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data columnGrantModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.reconcile(ctx, data); err != nil {
 		resp.Diagnostics.AddError("Update column grant", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -231,17 +260,21 @@ func (r *columnGrantResource) Update(ctx context.Context, req resource.UpdateReq
 func (r *columnGrantResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data columnGrantModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	_, found, err := r.read(ctx, &data, true)
 	if err != nil {
 		resp.Diagnostics.AddError("Read column grant", err.Error())
 		return
 	}
+
 	if !found {
 		return
 	}
+
 	data.Privileges = columnGrantValue(nil)
 	if err := r.reconcile(ctx, data); err != nil {
 		resp.Diagnostics.AddError("Delete column grant", err.Error())

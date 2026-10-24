@@ -40,20 +40,25 @@ func (c *serializedClient) Query(ctx context.Context, target Connection, sql str
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
 	fields := strings.Fields(sql)
 	if len(fields) > 0 && slices.ContainsFunc(observationVerbs, func(verb string) bool { return strings.EqualFold(fields[0], verb) }) {
 		return c.client.Query(ctx, target, sql, parameters)
 	}
+
 	select {
 	case c.mutation <- struct{}{}:
 		defer func() { <-c.mutation }()
+
 		if c.unsettled != nil {
 			return nil, fmt.Errorf("refusing to send another change while an earlier statement may still be running: %w", c.unsettled)
 		}
+
 		rows, err := c.client.Query(ctx, target, sql, parameters)
 		if errors.Is(err, ErrUnsettled) {
 			c.unsettled = err
 		}
+
 		return rows, err
 	case <-ctx.Done():
 		return nil, ctx.Err()

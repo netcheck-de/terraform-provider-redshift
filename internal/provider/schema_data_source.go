@@ -56,19 +56,24 @@ func (d *schemaDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 func (d *schemaDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data schemaData
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	current := schemaModel{Database: data.Database, Name: data.Name}
+
 	found, err := (&schemaResource{d.resourceClient}).read(ctx, &current)
 	if err != nil {
 		resp.Diagnostics.AddError("Read schema", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("Schema not found", "No local schema named "+data.Name.ValueString()+" exists in the configured database.")
 		return
 	}
+
 	data.Name, data.Owner, data.Quota = current.Name, current.Owner, current.Quota
 	data.ID = d.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

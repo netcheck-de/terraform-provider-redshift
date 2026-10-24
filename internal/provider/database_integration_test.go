@@ -26,12 +26,14 @@ var _ = registerValidateConfigCase("database_integration", validateConfigCase{
 	invalid: func() databaseModel {
 		data := integrationDatabaseModel()
 		data.Collation = types.StringValue("CASE_SENSITIVE")
+
 		return data
 	}(),
 	// An unknown collation may still conflict, which Create checks once it is known.
 	unknown: func() databaseModel {
 		data := integrationDatabaseModel()
 		data.Collation, data.Integration.IntegrationID = types.StringUnknown(), types.StringUnknown()
+
 		return data
 	}(),
 })
@@ -40,6 +42,7 @@ var _ = registerValidateConfigCase("database_integration", validateConfigCase{
 func integrationCatalog(exists bool, changes ...func(*databaseIntegrationFamily)) func() sqlclient.Client {
 	return catalogWith(func(c *catalog) {
 		f := c.family("database_integration").(*databaseIntegrationFamily)
+
 		f.exists = exists
 		for _, change := range changes {
 			change(f)
@@ -52,6 +55,7 @@ func integrationState() databaseModel {
 	data := configuredIntegrationDatabase()
 	data.ID = types.StringValue(`{"workgroup_name":"warehouse","database":"admin","name":"replica","integration_id":"` + fakeIntegrationID + `"}`)
 	data.DatabaseType = types.StringValue("INTEGRATION")
+
 	return data
 }
 
@@ -92,8 +96,10 @@ func TestDatabaseIntegrationTranscripts(t *testing.T) {
 func TestDatabaseIntegrationImport(t *testing.T) {
 	c := fullCatalog()
 	configuredIntegrationCatalog(fakeState[*databaseIntegrationFamily](c, "database_integration"))
+
 	r := newDatabaseResource()
 	configureTestResource(t, r, c)
+
 	ctx := context.Background()
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
 	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: integrationState().ID.ValueString()}, &imported)
@@ -101,6 +107,7 @@ func TestDatabaseIntegrationImport(t *testing.T) {
 	resp := resource.ReadResponse{State: imported.State}
 	r.Read(ctx, resource.ReadRequest{State: imported.State}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 	var data databaseResourceModel
 	require.False(t, resp.State.Get(ctx, &data).HasError())
 	require.NotNil(t, data.Integration)
@@ -132,6 +139,7 @@ func TestDatabaseIntegrationDrift(t *testing.T) {
 	assert.True(t, data.Integration.QueryAllStates.ValueBool(), "drift of unreadable settings is not detected")
 	state, diagnostics := applyOperation(t, r, "update", data, integrationState(), nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed databaseResourceModel
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	assert.Equal(t, int64(600), observed.Integration.RefreshInterval.ValueInt64())
@@ -146,10 +154,12 @@ func TestDatabaseIntegrationMustConverge(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c := fullCatalog()
 		configuredIntegrationCatalog(fakeState[*databaseIntegrationFamily](c, "database_integration"))
+
 		r := &databaseResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 			if sql == `ALTER DATABASE "replica" INTEGRATION SET REFRESH_INTERVAL 0` {
 				return nil, nil
 			}
+
 			return c.Query(ctx, target, sql, parameters)
 		}))}
 		planned := integrationState()
@@ -160,6 +170,7 @@ func TestDatabaseIntegrationMustConverge(t *testing.T) {
 		plan := withTimeouts(t, testState(t, r, planned), map[string]string{"update": "30s"})
 		response := resource.UpdateResponse{State: state}
 		started := time.Now()
+
 		r.Update(context.Background(), resource.UpdateRequest{State: state, Plan: tfsdk.Plan(plan)}, &response)
 		require.True(t, response.Diagnostics.HasError())
 		assert.Contains(t, response.Diagnostics.Errors()[0].Detail(), "integration.refresh_interval is 600")
@@ -172,12 +183,14 @@ func TestDatabaseIntegrationDelayedReadback(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c := fullCatalog()
 		configuredIntegrationCatalog(fakeState[*databaseIntegrationFamily](c, "database_integration"))
+
 		readsAfterAlter := 0
 		altered := false
 		client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 			if strings.HasPrefix(sql, `ALTER DATABASE "replica" INTEGRATION SET REFRESH_INTERVAL`) {
 				altered = true
 			}
+
 			rows, err := c.Query(ctx, target, sql, parameters)
 			if altered && strings.HasPrefix(sql, "SELECT TRIM(integration_id)") {
 				readsAfterAlter++
@@ -185,6 +198,7 @@ func TestDatabaseIntegrationDelayedReadback(t *testing.T) {
 					rows[0]["refresh_interval"] = "600"
 				}
 			}
+
 			return rows, err
 		})
 		r := &databaseResource{testResourceClient(client)}
@@ -192,14 +206,18 @@ func TestDatabaseIntegrationDelayedReadback(t *testing.T) {
 		integration := *planned.Integration
 		integration.RefreshInterval = types.Int64Value(1800)
 		planned.Integration = &integration
+
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
+
 		state := testState(t, r, integrationState())
 		response := resource.UpdateResponse{State: state}
 		started := time.Now()
+
 		r.Update(ctx, resource.UpdateRequest{State: state, Plan: tfsdk.Plan(testState(t, r, planned))}, &response)
 		require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
 		assert.Equal(t, 2, readsAfterAlter)
+
 		var observed databaseResourceModel
 		require.False(t, response.State.Get(ctx, &observed).HasError())
 		assert.Equal(t, int64(1800), observed.Integration.RefreshInterval.ValueInt64())
@@ -247,6 +265,7 @@ func TestDatabaseIntegrationHidden(t *testing.T) {
 			f := fakeState[*databaseIntegrationFamily](c, "database_integration")
 			configuredIntegrationCatalog(f)
 			f.hidden = true
+
 			return c
 		}
 		r := newDatabaseResource()
@@ -255,6 +274,7 @@ func TestDatabaseIntegrationHidden(t *testing.T) {
 		require.False(t, diagnostics.HasError(), "%v", diagnostics)
 		require.Len(t, diagnostics.Warnings(), 1)
 		assert.Contains(t, diagnostics.Warnings()[0].Detail(), "plans a replacement")
+
 		var data databaseResourceModel
 		require.False(t, state.Get(context.Background(), &data).HasError())
 		assert.Nil(t, data.Integration)
@@ -275,6 +295,7 @@ func TestDatabaseIntegrationHidden(t *testing.T) {
 		plan := withTimeouts(t, testState(t, r, configuredIntegrationDatabase()), map[string]string{"create": "2m"})
 		response := resource.CreateResponse{State: emptyState(t, r)}
 		started := time.Now()
+
 		r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(plan)}, &response)
 		require.True(t, response.Diagnostics.HasError())
 		assert.Contains(t, response.Diagnostics.Errors()[0].Detail(), "only superusers")
@@ -282,6 +303,7 @@ func TestDatabaseIntegrationHidden(t *testing.T) {
 		require.False(t, response.State.Get(context.Background(), &data).HasError())
 		require.NotNil(t, data.Integration, "apply verification must keep the binding even when visibility times out")
 		assert.Equal(t, fakeIntegrationID, data.Integration.IntegrationID.ValueString())
+
 		f.hidden = false
 		refreshed := resource.ReadResponse{State: response.State}
 		r.Read(context.Background(), resource.ReadRequest{State: response.State}, &refreshed)
@@ -306,21 +328,26 @@ func TestDatabaseIntegrationAbsentThenVisible(t *testing.T) {
 					if strings.HasPrefix(sql, "CREATE DATABASE") || strings.HasPrefix(sql, "ALTER DATABASE") {
 						written = true
 					}
+
 					if written && strings.HasPrefix(sql, "SELECT TRIM(integration_id)") && hiddenReads < 2 {
 						hiddenReads++
 						return nil, nil
 					}
+
 					return c.Query(ctx, target, sql, parameters)
 				})
 				r := &databaseResource{testResourceClient(client)}
+
 				planned := configuredIntegrationDatabase()
 				if operation == "update" {
 					planned.Integration.RefreshInterval = types.Int64Value(1800)
 				}
+
 				started := time.Now()
 				state, diagnostics := applyOperation(t, r, operation, integrationState(), planned, nil)
 				require.False(t, diagnostics.HasError(), "%v", diagnostics)
 				assert.Equal(t, 2, hiddenReads)
+
 				var observed databaseResourceModel
 				require.False(t, state.Get(context.Background(), &observed).HasError())
 				require.NotNil(t, observed.Integration)
@@ -346,6 +373,7 @@ func TestDatabaseIntegrationInitiallyAbsentBeforeUpdate(t *testing.T) {
 				hiddenReads++
 				return nil, nil
 			}
+
 			return c.Query(ctx, target, sql, parameters)
 		}))}
 		planned := integrationState()
@@ -356,8 +384,10 @@ func TestDatabaseIntegrationInitiallyAbsentBeforeUpdate(t *testing.T) {
 		plan := withTimeouts(t, testState(t, r, planned), map[string]string{"update": "2m"})
 		response := resource.UpdateResponse{State: state}
 		started := time.Now()
+
 		r.Update(context.Background(), resource.UpdateRequest{State: state, Plan: tfsdk.Plan(plan)}, &response)
 		require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
+
 		var observed databaseResourceModel
 		require.False(t, response.State.Get(context.Background(), &observed).HasError())
 		require.NotNil(t, observed.Integration)
@@ -395,6 +425,7 @@ func TestDatabaseIntegrationLocalType(t *testing.T) {
 	configureTestResource(t, r, c)
 	state, diagnostics := applyOperation(t, r, "create", nil, configuredIntegrationDatabase(), nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var data databaseResourceModel
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.Equal(t, databaseTypeLocal, data.DatabaseType.ValueString())
@@ -407,6 +438,7 @@ func TestDatabaseIntegrationLocalType(t *testing.T) {
 // succeeded, and checks that every one is reported; an empty catalog fails creation and update only.
 func TestDatabaseIntegrationFailures(t *testing.T) {
 	state := integrationState()
+
 	for _, operation := range []string{"create", "read", "update", "delete"} {
 		t.Run(operation, func(t *testing.T) {
 			calls := 0
@@ -415,6 +447,7 @@ func TestDatabaseIntegrationFailures(t *testing.T) {
 				f := fakeState[*databaseIntegrationFamily](c, "database_integration")
 				f.exists = operation != "create"
 				configuredIntegrationCatalog(f)
+
 				count := 0
 				r := newDatabaseResource()
 				configureTestResource(t, r, queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
@@ -422,30 +455,37 @@ func TestDatabaseIntegrationFailures(t *testing.T) {
 					if count == failAt {
 						return nil, errors.New("injected API failure")
 					}
+
 					return c.Query(ctx, target, sql, parameters)
 				}))
+
 				planned := any(state)
 				if operation == "create" {
 					planned = configuredIntegrationDatabase()
 				}
+
 				_, diagnostics := applyOperation(t, r, operation, state, planned, nil)
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 					calls = count
 				} else {
 					require.True(t, diagnostics.HasError(), "query %d failure must be reported", failAt)
 				}
 			}
+
 			r := newDatabaseResource()
 			configureTestResource(t, r, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 				return nil, nil
 			}))
+
 			after, diagnostics := applyOperation(t, r, operation, state, state, nil)
 			if operation == "read" {
 				// applyOperation reports the removal as an error; Read itself only removes the resource.
 				assert.True(t, after.Raw.IsNull(), "a vanished destination is removed from state")
 				return
 			}
+
 			assert.Equal(t, operation == "create" || operation == "update", diagnostics.HasError(), "%v", diagnostics)
 		})
 	}
@@ -481,17 +521,20 @@ func TestDatabaseLookupIntegrationDenied(t *testing.T) {
 		if strings.HasPrefix(sql, "SELECT TRIM(integration_id)") {
 			return nil, errors.New("ERROR: permission denied for relation svv_integration (SQLSTATE 42501)")
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	})
 	state, diagnostics := readSource(t, newDatabaseDataSource(), databaseData{Name: types.StringValue("warehouse")}, client)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	require.Len(t, diagnostics.Warnings(), 1)
 	assert.Contains(t, diagnostics.Warnings()[0].Detail(), "requires a superuser")
+
 	var data databaseData
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.Nil(t, data.Integration)
 	assert.Equal(t, "admin", data.Owner.ValueString())
 	assert.Equal(t, "CASE_SENSITIVE", data.Collation.ValueString())
+
 	r := &databaseResource{testResourceClient(client)}
 	_, _, err := r.databaseIntegration(context.Background(), "warehouse")
 	require.ErrorContains(t, err, "permission denied")
@@ -510,10 +553,12 @@ func TestDatabaseIntegrationReplacement(t *testing.T) {
 		if change != nil {
 			change(values)
 		}
+
 		return types.ObjectValueMust(databaseIntegrationAttributeTypes, values)
 	}
 	null, unknown := types.ObjectNull(databaseIntegrationAttributeTypes), types.ObjectUnknown(databaseIntegrationAttributeTypes)
 	unknownID := object(func(v map[string]attr.Value) { v["integration_id"] = types.StringUnknown() })
+
 	unknownSource := object(func(v map[string]attr.Value) { v["source_database"] = types.StringUnknown() })
 	for name, test := range map[string]struct {
 		state, plan, config types.Object
@@ -539,7 +584,9 @@ func TestDatabaseIntegrationReplacement(t *testing.T) {
 			if config.IsNull() && !test.plan.IsNull() {
 				config = test.plan
 			}
+
 			request := planmodifier.ObjectRequest{Path: path.Root("integration"), StateValue: test.state, PlanValue: test.plan, ConfigValue: config}
+
 			var response objectplanmodifier.RequiresReplaceIfFuncResponse
 			databaseIntegrationReplacement(context.Background(), request, &response)
 			assert.Equal(t, test.replace, response.RequiresReplace)
@@ -557,15 +604,19 @@ func TestDatabaseIntegrationLookup(t *testing.T) {
 		f.hidden = hidden
 		state, diagnostics := readSource(t, newDatabaseDataSource(), databaseData{Name: types.StringValue(fakeIntegrationDatabase)}, c)
 		require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 		var data databaseData
 		require.False(t, state.Get(context.Background(), &data).HasError())
 		assert.Equal(t, "INTEGRATION", data.DatabaseType.ValueString())
 		assert.Equal(t, `Etl"Owner`, data.Owner.ValueString())
+
 		if hidden {
 			assert.Nil(t, data.Integration)
 			assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","name":"replica"}`, data.ID.ValueString())
+
 			continue
 		}
+
 		require.NotNil(t, data.Integration)
 		assert.Equal(t, fakeIntegrationID, data.Integration.IntegrationID.ValueString())
 		assert.Equal(t, int64(600), data.Integration.RefreshInterval.ValueInt64())
@@ -580,6 +631,7 @@ func TestDatabaseIntegrationLookup(t *testing.T) {
 	f.databaseType = "local"
 	state, diagnostics := readSource(t, newDatabaseDataSource(), databaseData{Name: types.StringValue(fakeIntegrationDatabase)}, c)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var local databaseData
 	require.False(t, state.Get(context.Background(), &local).HasError())
 	assert.Equal(t, databaseTypeLocal, local.DatabaseType.ValueString())
@@ -591,6 +643,7 @@ func TestDatabaseIntegrationLookup(t *testing.T) {
 		if strings.HasPrefix(sql, "SELECT TRIM(integration_id)") {
 			return nil, errors.New("permission denied")
 		}
+
 		return fullCatalog().Query(ctx, target, sql, parameters)
 	})
 	_, diagnostics = readSource(t, newDatabaseDataSource(), databaseData{Name: types.StringValue(fakeIntegrationDatabase)}, failing)

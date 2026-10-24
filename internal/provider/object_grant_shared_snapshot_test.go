@@ -33,54 +33,71 @@ func (c *sharedSnapshotCatalog) Query(_ context.Context, _ sqlclient.Connection,
 	if strings.HasPrefix(statement, "SELECT usesuper") {
 		return []sqlclient.Row{{"usesuper": "true"}}, nil
 	}
+
 	if parameters["collision_schema"] != "" || parameters["ambiguous_name"] != "" {
 		return nil, nil
 	}
+
 	if strings.HasPrefix(statement, "SELECT DISTINCT") {
 		var rows []sqlclient.Row
+
 		for _, member := range c.members {
 			row := sqlclient.Row{"object_name": member}
 			if strings.Contains(statement, "function_type") {
 				row["function_type"] = "STORED PROCEDURE"
 			}
+
 			rows = append(rows, row)
 		}
+
 		return rows, nil
 	}
+
 	if strings.HasPrefix(statement, "SHOW GRANTS ON") {
 		for _, member := range c.members {
 			if !strings.HasSuffix(statement, sqlclient.Ident(member).String()) {
 				continue
 			}
+
 			var rows []sqlclient.Row
+
 			for privilege, held := range c.privileges[member] {
 				if !held {
 					continue
 				}
+
 				rows = append(rows, sqlclient.Row{"privilege_type": privilege, "identity_name": "reader", "identity_type": "user", "privilege_scope": c.scope, "admin_option": "false"})
 				if c.options[member][privilege] {
 					rows = append(rows, sqlclient.Row{"privilege_type": privilege, "identity_name": "reader", "identity_type": "user", "privilege_scope": c.scope, "admin_option": "true"})
 				}
 			}
+
 			return rows, nil
 		}
+
 		return nil, fmt.Errorf("unexpected member read %s", statement)
 	}
+
 	if strings.HasPrefix(statement, "SELECT") {
 		return []sqlclient.Row{{"name": "exists"}}, nil
 	}
+
 	c.writes = append(c.writes, statement)
 	grant := strings.HasPrefix(statement, "GRANT ")
 	optionOnly := strings.HasPrefix(statement, "REVOKE GRANT OPTION FOR ")
+
 	_, rest, _ := strings.Cut(statement, " ")
 	if optionOnly {
 		rest = strings.TrimPrefix(rest, "GRANT OPTION FOR ")
 	}
+
 	privilege, _, _ := strings.Cut(rest, " ")
+
 	for _, member := range c.members {
 		if !strings.Contains(statement, "ON ALL") && !strings.Contains(statement, sqlclient.Ident(member).String()+" ") {
 			continue
 		}
+
 		switch {
 		case grant:
 			c.privileges[member][privilege] = true
@@ -92,6 +109,7 @@ func (c *sharedSnapshotCatalog) Query(_ context.Context, _ sqlclient.Connection,
 			delete(c.options[member], privilege)
 		}
 	}
+
 	return nil, nil
 }
 
@@ -104,6 +122,7 @@ func TestObjectGrantSharedSnapshots(t *testing.T) {
 			if kind != "ALL TABLES" {
 				privilege, scope = "EXECUTE", "FUNCTION"
 			}
+
 			c := &sharedSnapshotCatalog{members: []string{"first", "second"}, privileges: map[string]map[string]bool{"first": {privilege: true}, "second": {}}, options: map[string]map[string]bool{"first": {privilege: true}, "second": {}}, scope: scope}
 			r := newObjectGrantResource().(*privilegeResource)
 			r.resourceClient = testResourceClient(queryFunc(func(ctx context.Context, connection sqlclient.Connection, statement string, parameters map[string]string) ([]sqlclient.Row, error) {
@@ -117,11 +136,14 @@ func TestObjectGrantSharedSnapshots(t *testing.T) {
 			require.True(t, found)
 			assert.Empty(t, knownStrings(actual.Attributes()["privileges"].(types.Set)), "an incomplete snapshot has no common privilege")
 			require.NoError(t, r.reconcile(context.Background(), data))
+
 			for _, member := range c.members {
 				assert.True(t, c.privileges[member][privilege])
 				assert.False(t, c.options[member][privilege], "partial options are revoked, not hidden by the intersection")
 			}
+
 			require.NoError(t, r.reconcile(context.Background(), withGrantOptions(data, []string{privilege})))
+
 			for _, member := range c.members {
 				assert.True(t, c.options[member][privilege])
 			}
@@ -129,10 +151,12 @@ func TestObjectGrantSharedSnapshots(t *testing.T) {
 			delete(c.privileges["second"], privilege)
 			delete(c.options["second"], privilege)
 			require.NoError(t, r.reconcile(context.Background(), withGrantOptions(withPrivileges(data, nil), nil)))
+
 			for _, member := range c.members {
 				assert.Empty(t, c.privileges[member])
 				assert.Empty(t, c.options[member])
 			}
+
 			c.members = nil
 			_, found, err = r.read(context.Background(), &actual)
 			require.NoError(t, err)
@@ -149,49 +173,62 @@ func TestObjectGrantSharedExtendedSQL(t *testing.T) {
 		cases = append(cases, sqlCase{name: test.name, render: func() ([]string, error) {
 			r := newObjectGrantResource().(*privilegeResource)
 			data := privilegeObject(t, r, map[string]string{"database_name": "shared_db", "database_type": "shared", "schema_name": "serving", "object_type": test.kind, "object_name": test.object, "grantee": "reader", "grantee_type": "USER"})
+
 			target, err := r.target(data)
 			if err != nil {
 				return nil, err
 			}
+
 			var statements []string
+
 			if target.completeCatalog {
 				statement, _, err := grantCatalogVisibilityQuery().Build()
 				if err != nil {
 					return nil, err
 				}
+
 				statements = append(statements, statement)
 			}
+
 			for _, check := range target.checks {
 				if check.sql != "" {
 					statements = append(statements, check.sql)
 				}
 			}
+
 			if target.snapshot != nil {
 				statements = append(statements, target.snapshot.members.sql, target.snapshot.query(sqlclient.Row{"object_name": "member"}).sql)
 			} else {
 				statements = append(statements, target.query.sql)
 			}
+
 			if target.mutationGuard != nil {
 				statements = append(statements, target.mutationGuard.sql)
 			}
+
 			if target.snapshot != nil && target.snapshot.grant != nil {
 				target.grant = target.snapshot.grant(sqlclient.Row{"object_name": "member"})
 			}
+
 			privilege, err := sqlclient.OneOf(test.privilege, target.allowed...)
 			if err != nil {
 				return nil, err
 			}
+
 			grant, err := target.grant.optionStatement(true, privilege)
 			if err != nil {
 				return nil, err
 			}
+
 			revokeOption, err := target.grant.optionStatement(false, privilege)
 			if err != nil {
 				return nil, err
 			}
+
 			return append(statements, grant, revokeOption, target.grant.statement(false, privilege)), nil
 		}})
 	}
+
 	checkSQL(t, "object_grant_shared_extended", cases)
 }
 
@@ -217,6 +254,7 @@ func TestObjectGrantSharedSnapshotReadErrors(t *testing.T) {
 				if strings.HasPrefix(statement, "SELECT usesuper") {
 					return []sqlclient.Row{{"usesuper": "true"}}, nil
 				}
+
 				if strings.HasPrefix(statement, "SELECT DISTINCT") {
 					switch failure {
 					case "members":
@@ -227,9 +265,11 @@ func TestObjectGrantSharedSnapshotReadErrors(t *testing.T) {
 						return []sqlclient.Row{{"object_name": "member"}}, nil
 					}
 				}
+
 				if strings.HasPrefix(statement, "SHOW GRANTS") {
 					return nil, errors.New("object catalog unavailable")
 				}
+
 				return []sqlclient.Row{{"name": "exists"}}, nil
 			}))
 			data := privilegeObject(t, r, map[string]string{"database_name": "shared_db", "database_type": "shared", "schema_name": "serving", "object_type": "ALL TABLES", "grantee": "reader", "grantee_type": "USER"})
@@ -253,6 +293,7 @@ func TestObjectGrantSharedSnapshotTranscripts(t *testing.T) {
 			if partial {
 				delete(c.privileges["second"], "EXECUTE")
 			}
+
 			return c
 		}
 	}
@@ -274,38 +315,50 @@ func TestObjectGrantSharedAmbiguousRoutineNames(t *testing.T) {
 				if strings.HasPrefix(statement, "SELECT usesuper") {
 					return []sqlclient.Row{{"usesuper": "true"}}, nil
 				}
+
 				if parameters["ambiguous_name"] != "" || parameters["collision_schema"] != "" {
 					return []sqlclient.Row{{"function_name": "routine"}}, nil
 				}
+
 				if strings.HasPrefix(statement, "SELECT DISTINCT") {
 					if kind == "ALL PROCEDURES" {
 						return []sqlclient.Row{{"object_name": "routine", "function_type": "STORED PROCEDURE"}, {"object_name": "routine", "function_type": "REGULAR FUNCTION"}}, nil
 					}
+
 					return []sqlclient.Row{{"object_name": "routine"}}, nil
 				}
+
 				if strings.HasPrefix(statement, "SHOW GRANTS") {
 					return []sqlclient.Row{{"privilege_type": "EXECUTE", "identity_name": "reader", "identity_type": "user", "privilege_scope": "FUNCTION"}}, nil
 				}
+
 				if strings.HasPrefix(statement, "SELECT") {
 					return []sqlclient.Row{{"name": "exists"}}, nil
 				}
+
 				writes++
+
 				return nil, nil
 			}))
+
 			fields := map[string]string{"database_name": "shared_db", "database_type": "shared", "schema_name": "serving", "object_type": kind, "grantee": "reader", "grantee_type": "USER"}
 			if kind != "ALL PROCEDURES" {
 				fields["object_name"] = "routine"
 			}
+
 			data := privilegeObject(t, r, fields, "EXECUTE")
 			observed := data
+
 			_, found, err := r.read(context.Background(), &observed)
 			if kind == "ALL PROCEDURES" {
 				require.ErrorContains(t, err, "name-wide ACL")
 				assert.False(t, found)
 				require.ErrorContains(t, r.reconcile(context.Background(), data), "name-wide ACL")
 				assert.Zero(t, writes)
+
 				return
 			}
+
 			require.NoError(t, err)
 			require.True(t, found)
 			require.ErrorContains(t, r.reconcile(context.Background(), data), "name-wide ACL")
@@ -323,13 +376,17 @@ func TestObjectGrantSharedCompleteVisibilityRequired(t *testing.T) {
 			calls := 0
 			r.resourceClient = testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, statement string, _ map[string]string) ([]sqlclient.Row, error) {
 				calls++
+
 				assert.True(t, strings.HasPrefix(statement, "SELECT usesuper"), "filtered catalog must not be consulted: %s", statement)
+
 				return []sqlclient.Row{{"usesuper": "false"}}, nil
 			}))
+
 			fields := map[string]string{"database_name": "shared_db", "database_type": "shared", "schema_name": "serving", "object_type": kind, "grantee": "reader", "grantee_type": "USER"}
 			if kind == "FUNCTION" || kind == "PROCEDURE" {
 				fields["object_name"] = "routine"
 			}
+
 			data := privilegeObject(t, r, fields)
 			_, found, err := r.read(context.Background(), &data)
 			require.ErrorContains(t, err, "SQL superuser")
@@ -346,7 +403,9 @@ func TestSharedGrantSnapshotIgnoresOtherRecipients(t *testing.T) {
 		if strings.Contains(sql, "DISTINCT table_name AS object_name") {
 			return []sqlclient.Row{{"object_name": "orders"}}, nil
 		}
+
 		assert.Equal(t, `SHOW GRANTS ON TABLE "shared_db"."serving"."orders"`, sql)
+
 		return []sqlclient.Row{{"identity_name": "other", "identity_type": "user", "privilege_scope": "TABLE", "privilege_type": "SELECT"}, {"identity_name": "reader", "identity_type": "user", "privilege_scope": "TABLE", "privilege_type": "SELECT"}}, nil
 	}))
 	data := privilegeObject(t, r, map[string]string{"database_name": "shared_db", "database_type": "shared", "schema_name": "serving", "object_type": "ALL TABLES", "grantee": "reader", "grantee_type": "USER"})

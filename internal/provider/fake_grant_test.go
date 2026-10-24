@@ -31,17 +31,20 @@ func (f *grantUserFamily) query(_ *catalog, _ sqlclient.Connection, sql string, 
 		if f.exists {
 			return []sqlclient.Row{{"usename": grantFakeUser}}, true, nil
 		}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SHOW GRANTS ON DATABASE ") && strings.HasSuffix(sql, " FOR "+quoted):
 		var rows []sqlclient.Row
 		for _, privilege := range slices.Sorted(maps.Keys(f.privileges)) {
 			rows = append(rows, sqlclient.Row{"database_name": "analytics", "privilege_type": privilege, "identity_name": grantFakeUser, "identity_type": "user", "admin_option": grantFakeBool(f.options[privilege]), "privilege_scope": "TABLES"})
 		}
+
 		return rows, true, nil
 	case (strings.HasPrefix(sql, "GRANT ") && strings.Contains(sql, " TO "+quoted)) || (strings.HasPrefix(sql, "REVOKE ") && strings.HasSuffix(sql, " FROM "+quoted)):
 		f.apply(sql)
 		return nil, true, nil
 	}
+
 	return nil, false, nil
 }
 
@@ -50,6 +53,7 @@ func (f *grantUserFamily) apply(sql string) {
 	if f.privileges == nil {
 		f.privileges, f.options = map[string]bool{}, map[string]bool{}
 	}
+
 	fields := strings.Fields(sql)
 	switch {
 	case fields[0] == "GRANT":
@@ -73,5 +77,6 @@ func grantFakeBool(value bool) string {
 	if value {
 		return "true"
 	}
+
 	return "false"
 }

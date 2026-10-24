@@ -140,14 +140,17 @@ func (p *redshiftProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 func (p *redshiftProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var data providerModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	deferred := data.deferred()
 	if err := data.validate(deferred); err != nil {
 		resp.Diagnostics.AddError("Invalid connection configuration", err.Error())
 		return
 	}
+
 	if deferred {
 		// Credentials or endpoints can be created alongside their warehouse.
 		// Retain an unknown binding so no SQL can run with fallback credentials;
@@ -157,6 +160,7 @@ func (p *redshiftProvider) Configure(ctx context.Context, req provider.Configure
 		binding.value = types.StringUnknown()
 		resp.ResourceData = providerData{warehouse: binding, database: data.Database}
 		resp.DataSourceData = resp.ResourceData
+
 		return
 	}
 	// Reconfiguration must not retain credentials or routing from an earlier configuration.
@@ -164,18 +168,22 @@ func (p *redshiftProvider) Configure(ctx context.Context, req provider.Configure
 	case *dataapi.Client, *redshiftconn.Client:
 		p.client = nil
 	}
+
 	if p.client == nil {
 		client, err := data.sqlClient(ctx, p.version)
 		if err != nil {
 			resp.Diagnostics.AddError("Configure SQL connection", err.Error())
 			return
 		}
+
 		p.client = client
 	}
+
 	lookup := p.datashareARN
 	if lookup == nil {
 		lookup = data.datashareARN
 	}
+
 	resp.ResourceData = providerData{client: sqlclient.SerializeMutations(p.client), warehouse: data.binding(), database: data.Database, datashareARN: lookup}
 	resp.DataSourceData = resp.ResourceData
 }
@@ -184,9 +192,11 @@ func (p *redshiftProvider) Configure(ctx context.Context, req provider.Configure
 func (p *redshiftProvider) ValidateConfig(ctx context.Context, req provider.ValidateConfigRequest, resp *provider.ValidateConfigResponse) {
 	var data providerModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := data.validate(true); err != nil {
 		resp.Diagnostics.AddError("Invalid connection configuration", err.Error())
 	}

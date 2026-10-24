@@ -17,6 +17,7 @@ func TestRoleLookup(t *testing.T) {
 	fakeState[*roleFakeFamily](c, "role").externalID = "ABC123"
 	state, diagnostics := readSource(t, newRoleDataSource(), roleData{Name: types.StringValue("example:readers")}, c)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var data roleData
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.Equal(t, "example:readers", data.Name.ValueString())

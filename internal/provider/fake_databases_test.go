@@ -36,6 +36,7 @@ func newDatabasesFamily() *databasesFamily {
 	f.resetExternal()
 	f.externalKind, f.externalDatabase = "1", "example_glue"
 	f.externalOptions = map[string]string{"IAM_ROLE": "arn:aws:iam::123456789012:role/spectrum"}
+
 	return f
 }
 
@@ -85,6 +86,7 @@ func fakeIdentifier(pattern *regexp.Regexp, sql string) (string, bool) {
 	if match == nil {
 		return "", false
 	}
+
 	return strings.ReplaceAll(match[1], `""`, `"`), true
 }
 
@@ -94,6 +96,7 @@ func fakeLiteral(keyword, sql string) (string, bool) {
 	if match == nil {
 		return "", false
 	}
+
 	return commentUnescaper.Replace(match[1]), true
 }
 
@@ -107,9 +110,11 @@ func (f *databasesFamily) applyExternalOptions(sql string) {
 			f.externalOptions[key] = value
 		}
 	}
+
 	if match := fakePort.FindStringSubmatch(sql); match != nil {
 		f.externalOptions["PORT"] = match[1]
 	}
+
 	if match := fakeAuth.FindStringSubmatch(sql); match != nil {
 		f.externalOptions["AUTHENTICATION"] = strings.ToUpper(match[1])
 		// A new mode replaces the certificate source the statement does not repeat.
@@ -126,12 +131,15 @@ func (f *databasesFamily) applyDatabaseOptions(sql string) {
 	if owner, ok := fakeIdentifier(fakeOwner, sql); ok {
 		f.owner = owner
 	}
+
 	if match := fakeLimit.FindStringSubmatch(sql); match != nil {
 		f.connectionLimit = match[1]
 	}
+
 	if match := fakeCollation.FindStringSubmatch(sql); match != nil {
 		f.collation = strings.ToLower(match[1])
 	}
+
 	if match := fakeIsolation.FindStringSubmatch(sql); match != nil {
 		f.isolation = map[string]string{"SNAPSHOT": "Snapshot Isolation", "SERIALIZABLE": "Serializable"}[match[1]]
 	}
@@ -142,6 +150,7 @@ func (f *databasesFamily) applySchemaOptions(sql string) {
 	if owner, ok := fakeIdentifier(fakeOwner, sql); ok {
 		f.schemaOwner = owner
 	}
+
 	if match := fakeQuota.FindStringSubmatch(sql); match != nil {
 		f.schemaQuota = match[2]
 	}
@@ -155,54 +164,68 @@ func (f *databasesFamily) query(c *catalog, connection sqlclient.Connection, sql
 		if err != nil {
 			return nil, true, err
 		}
+
 		databaseName := c.databaseName
 		if databaseName == "" {
 			databaseName = "analytics"
 		}
+
 		if name == "warehouse" && c.localDB {
 			return []sqlclient.Row{{"database_name": "warehouse", "database_owner": "100", "database_type": "local", "database_isolation_level": f.isolation}}, true, nil
 		}
+
 		if c.database && name == databaseName {
 			options := fmt.Sprintf(`{"datashare_name":"source","datashare_producer_account":"123456789012","datashare_producer_namespace":"11111111-2222-3333-4444-555555555555","permissions":%t}`, c.permissions)
 			return []sqlclient.Row{{"database_name": databaseName, "database_owner": "100", "database_type": "shared", "parameters": options, "database_isolation_level": "UNKNOWN"}}, true, nil
 		}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT u.usename AS owner, d.datconnlimit"):
 		if c.localDB && parameters["name"] == "warehouse" {
 			return []sqlclient.Row{{"owner": f.owner, "connection_limit": f.connectionLimit}}, true, nil
 		}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT db_collation()"):
 		if connection.Database != "warehouse" || !c.localDB {
 			return nil, true, fmt.Errorf("database %q does not exist", connection.Database)
 		}
+
 		return []sqlclient.Row{{"collation": f.collation}}, true, nil
 	case strings.HasPrefix(sql, `CREATE DATABASE "warehouse"`):
 		if c.localDB {
 			return nil, true, fmt.Errorf("database already exists")
 		}
+
 		c.localDB = true
+
 		f.resetDatabase()
 		f.applyDatabaseOptions(sql)
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, `ALTER DATABASE "warehouse" `):
 		if fakeCollation.MatchString(sql) && connection.Database != "warehouse" {
 			return nil, true, fmt.Errorf("Cannot change case sensitivity for a database that you are not connected to")
 		}
+
 		if !c.localDB {
 			return nil, true, fmt.Errorf("database does not exist")
 		}
+
 		f.applyDatabaseOptions(strings.TrimPrefix(sql, `ALTER DATABASE "warehouse"`))
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT n.nspname AS schema_name, u.usename AS owner FROM pg_namespace"):
 		if c.schema {
 			return []sqlclient.Row{{"schema_name": "serving", "owner": f.schemaOwner}}, true, nil
 		}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT quota FROM svv_redshift_schema_quota"):
 		if c.schema && f.schemaQuota != "" && (!f.sessionRegular || f.schemaOwner == f.sessionUser) {
 			return []sqlclient.Row{{"quota": f.schemaQuota}}, true, nil
 		}
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT usename AS name, usesuper AS superuser FROM pg_user"):
 		return []sqlclient.Row{{"name": f.sessionUser, "superuser": fmt.Sprint(!f.sessionRegular)}}, true, nil
@@ -210,23 +233,28 @@ func (f *databasesFamily) query(c *catalog, connection sqlclient.Connection, sql
 		c.schema = true
 		f.schemaOwner, f.schemaQuota = "admin", ""
 		f.applySchemaOptions(strings.TrimPrefix(sql, "CREATE SCHEMA"))
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, `ALTER SCHEMA "example_external" OWNER TO `):
 		if owner, ok := fakeIdentifier(fakeOwner, sql); ok && c.external {
 			f.externalOwner = owner
 			return nil, true, nil
 		}
+
 		return nil, true, fmt.Errorf("external schema does not exist")
 	case strings.HasPrefix(sql, "ALTER SCHEMA"):
 		if !c.schema {
 			return nil, true, fmt.Errorf("schema does not exist")
 		}
+
 		f.applySchemaOptions(strings.TrimPrefix(sql, "ALTER SCHEMA"))
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT n.nspname AS schemaname, s.eskind"):
 		if !c.external {
 			return nil, true, nil
 		}
+
 		if f.externalHidden {
 			return []sqlclient.Row{{"schemaname": "example_external", "eskind": "", "databasename": "", "esoptions": "", "owner": f.externalOwner}}, true, nil
 		}
@@ -235,27 +263,35 @@ func (f *databasesFamily) query(c *catalog, connection sqlclient.Connection, sql
 		if err != nil {
 			return nil, true, err
 		}
+
 		return []sqlclient.Row{{"schemaname": "example_external", "eskind": f.externalKind, "databasename": f.externalDatabase, "esoptions": string(encoded), "owner": f.externalOwner}}, true, nil
 	case strings.HasPrefix(sql, "CREATE EXTERNAL SCHEMA"):
 		if c.external {
 			return nil, true, fmt.Errorf("external schema already exists")
 		}
+
 		match := fakeExternalOf.FindStringSubmatch(sql)
 		if match == nil {
 			return nil, true, fmt.Errorf("fake catalog cannot parse the source of %q", sql)
 		}
+
 		c.external = true
+
 		f.resetExternal()
 		f.externalKind, f.externalOptions = fakeExternalKinds[match[1]], map[string]string{}
 		f.externalDatabase, _ = fakeLiteral("DATABASE", sql)
 		f.applyExternalOptions(sql)
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "ALTER EXTERNAL SCHEMA"):
 		if !c.external {
 			return nil, true, fmt.Errorf("external schema does not exist")
 		}
+
 		f.applyExternalOptions(sql)
+
 		return nil, true, nil
 	}
+
 	return nil, false, nil
 }

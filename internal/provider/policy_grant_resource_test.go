@@ -30,6 +30,7 @@ var _ = registerLookupExemption("redshift_policy_grant", "Redshift documents no 
 var _ = registerValidateConfigCase("policy_grant", func() validateConfigCase {
 	unknown := policyGrantObject(nil, "SELECT")
 	lookupValue(&unknown, "policy_name", types.StringUnknown())
+
 	return validateConfigCase{new: newPolicyGrantResource, valid: policyGrantObject(nil, "SELECT"), invalid: policyGrantObject(nil, "INSERT"), unknown: unknown}
 }())
 
@@ -37,8 +38,10 @@ var _ = registerValidateConfigCase("policy_grant", func() validateConfigCase {
 func policyGrantObject(changes map[string]string, privileges ...string) types.Object {
 	fields := maps.Clone(policyGrantTupleFields)
 	maps.Copy(fields, changes)
+
 	var response resource.SchemaResponse
 	newPolicyGrantResource().Schema(context.Background(), resource.SchemaRequest{}, &response)
+
 	attributes, attributeTypes := map[string]attr.Value{}, map[string]attr.Type{}
 	for name, attribute := range response.Schema.Attributes {
 		attributeTypes[name], attributes[name] = attribute.GetType(), types.StringNull()
@@ -46,7 +49,9 @@ func policyGrantObject(changes map[string]string, privileges ...string) types.Ob
 			attributes[name] = types.StringValue(value)
 		}
 	}
+
 	attributes["privileges"] = types.SetValueMust(types.StringType, nil)
+
 	return withPrivileges(types.ObjectValueMust(attributeTypes, attributes), privileges)
 }
 
@@ -66,17 +71,20 @@ func (c *policyGrantTestCatalog) Query(_ context.Context, _ sqlclient.Connection
 		if c.missing {
 			return nil, nil
 		}
+
 		return []sqlclient.Row{{"exists": "true"}}, nil
 	case strings.HasPrefix(sql, "GRANT "), strings.HasPrefix(sql, "REVOKE "):
 		c.writes = append(c.writes, sql)
 		return nil, nil
 	}
+
 	return nil, errors.New("unexpected SQL: " + sql)
 }
 
 // TestPolicyGrantLifecycle injects failures at every SQL boundary and checks missing parents for each operation.
 func TestPolicyGrantLifecycle(t *testing.T) {
 	data := policyGrantObject(nil, "SELECT")
+
 	for _, operation := range []string{"create", "read", "update", "delete"} {
 		t.Run(operation, func(t *testing.T) {
 			queries := 0
@@ -89,16 +97,20 @@ func TestPolicyGrantLifecycle(t *testing.T) {
 					if calls == failAt {
 						return nil, errors.New("injected query failure")
 					}
+
 					return c.Query(ctx, connection, sql, parameters)
 				}))
+
 				diagnostics := invoke(t, r, operation, data)
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 					queries = calls
 				} else {
 					require.True(t, diagnostics.HasError(), "failure %d: %v", failAt, diagnostics)
 				}
 			}
+
 			r := newPolicyGrantResource()
 			configureTestResource(t, r, &policyGrantTestCatalog{missing: true})
 			diagnostics := invoke(t, r, operation, data)
@@ -112,6 +124,7 @@ func TestPolicyGrantLifecycle(t *testing.T) {
 func TestPolicyGrantStatements(t *testing.T) {
 	grant := `GRANT SELECT ON TABLE "analytics"."public"."masking_exempt" TO MASKING POLICY "mask_email"`
 	revoke := `REVOKE SELECT ON TABLE "analytics"."public"."masking_exempt" FROM MASKING POLICY "mask_email"`
+
 	selected, none := policyGrantObject(nil, "SELECT"), policyGrantObject(nil)
 	for name, test := range map[string]struct {
 		operation      string
@@ -135,14 +148,17 @@ func TestPolicyGrantStatements(t *testing.T) {
 			state, diagnostics := applyOperation(t, r, test.operation, test.prior, test.planned, nil)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			assert.Equal(t, test.writes, c.writes)
+
 			if test.operation == "delete" {
 				return
 			}
+
 			var privileges types.Set
 			require.False(t, state.GetAttribute(context.Background(), path.Root("privileges"), &privileges).HasError())
 			assert.Equal(t, test.privileges, knownStrings(privileges))
 		})
 	}
+
 	for name, data := range map[string]types.Object{
 		"unsupported privilege": policyGrantObject(nil, "INSERT"),
 		"unsupported type":      policyGrantObject(map[string]string{"policy_type": "ROLE"}, "SELECT"),
@@ -163,19 +179,23 @@ func TestPolicyGrantStatements(t *testing.T) {
 func TestPolicyGrantImport(t *testing.T) {
 	r := newPolicyGrantResource()
 	configureTestResource(t, r, &policyGrantTestCatalog{})
+
 	data := policyGrantObject(nil, "SELECT")
+
 	id := r.(*policyGrantResource).identity("admin", maps.Clone(policyGrantTupleFields)).ValueString()
 	for _, candidate := range []string{"invalid JSON", `{}`, id} {
 		resp := resource.ImportStateResponse{State: testState(t, r, data)}
 		r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: candidate}, &resp)
 		assert.Equal(t, candidate != id, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 	}
+
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
 	r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
 	refreshed := resource.ReadResponse{State: imported.State}
 	r.Read(context.Background(), resource.ReadRequest{State: imported.State}, &refreshed)
 	require.False(t, refreshed.Diagnostics.HasError(), "%v", refreshed.Diagnostics)
+
 	var privileges types.Set
 	require.False(t, refreshed.State.GetAttribute(context.Background(), path.Root("privileges"), &privileges).HasError())
 	assert.False(t, privileges.IsNull())
@@ -202,6 +222,7 @@ func TestPolicyGrantValidationBeforeOwnership(t *testing.T) {
 	configureTestResource(t, r, &policyGrantTestCatalog{})
 	_, diagnostics := applyOperation(t, r, "create", nil, policyGrantObject(nil, "INSERT"), nil)
 	require.True(t, diagnostics.HasError())
+
 	invalidID := policyGrantObject(nil, "SELECT")
 	lookupValue(&invalidID, "id", types.StringValue("invalid JSON"))
 	_, found, err := r.parents(context.Background(), invalidID)
@@ -210,6 +231,7 @@ func TestPolicyGrantValidationBeforeOwnership(t *testing.T) {
 	_, found, err = r.parents(context.Background(), policyGrantObject(map[string]string{"policy_type": "INVALID"}, "SELECT"))
 	require.Error(t, err)
 	assert.False(t, found)
+
 	target, err := r.target(policyGrantObject(nil, "SELECT"))
 	require.NoError(t, err)
 	require.Error(t, r.revise(context.Background(), target, nil, []string{"INSERT"}))

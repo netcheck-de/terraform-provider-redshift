@@ -34,6 +34,7 @@ func TestAccSpectrumParquetColumnMapping(t *testing.T) {
 		_, err := f.client.Query(context.Background(), f.conn, sqlclient.Stmt("DROP SCHEMA IF EXISTS").Ident(f.schema).String(), nil)
 		assert.NoError(t, err, "clean up Parquet external schema without deleting the shared Glue database")
 	})
+
 	for _, scenario := range []struct {
 		name, first, second, nullable, wantFirst, wantSecond string
 		property, value                                      string
@@ -48,16 +49,19 @@ func TestAccSpectrumParquetColumnMapping(t *testing.T) {
 		t.Run(scenario.name, func(t *testing.T) {
 			// Glue is shared, so table names must be unique even across different external schemas.
 			table := f.schema + "_" + scenario.name
+
 			t.Cleanup(func() {
 				_, err := f.client.Query(context.Background(), f.conn, sqlclient.Stmt("DROP TABLE IF EXISTS").Qualified(f.schema, table).String(), nil)
 				assert.NoError(t, err, "clean up Parquet Glue table")
 			})
+
 			create := sqlclient.Stmt("CREATE EXTERNAL TABLE").Qualified(f.schema, table).
 				Kw("(").Ident(scenario.first).Kw("INTEGER,").Ident(scenario.second).Kw("INTEGER,").Ident(scenario.nullable).Kw("INTEGER)").
 				Kw("STORED AS PARQUET LOCATION").Lit(strings.TrimRight(os.Getenv("REDSHIFT_ACC_PARQUET_LOCATION"), "/") + "/")
 			if scenario.property != "" {
 				create = create.Kw("TABLE PROPERTIES (").Lit(scenario.property).Kw("=").Lit(scenario.value).Kw(")")
 			}
+
 			f.exec(t, create)
 			rows := f.exec(t, sqlclient.Stmt("SELECT").Ident(scenario.first).Kw("AS first_value,").Ident(scenario.second).
 				Kw("AS second_value,").Ident(scenario.first).Kw("IS NULL AS first_null,").Ident(scenario.second).

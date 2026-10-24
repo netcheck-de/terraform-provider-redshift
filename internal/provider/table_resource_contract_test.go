@@ -16,9 +16,12 @@ import (
 // in place.
 func TestContractTablePlans(t *testing.T) {
 	t.Parallel()
+
 	c := fullCatalog()
 	delete(fakeState[*tableFake](c, "table").tables, "serving.events")
+
 	var reordered int
+
 	testresource.UnitTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: tablePlanProviders(c),
 		Steps: []testresource.TestStep{
@@ -52,6 +55,7 @@ func TestContractTablePlans(t *testing.T) {
 						if len(c.writes) != reordered {
 							return fmt.Errorf("reordering columns wrote %v", c.writes[reordered:])
 						}
+
 						return nil
 					},
 				),
@@ -72,6 +76,7 @@ func TestContractTablePlans(t *testing.T) {
 // detours through EVEN and no sort key before the drop.
 func TestContractTableAutoLayoutPlans(t *testing.T) {
 	t.Parallel()
+
 	c := fullCatalog()
 	fake := fakeState[*tableFake](c, "table")
 	delete(fake.tables, "serving.events")
@@ -80,7 +85,9 @@ func TestContractTableAutoLayoutPlans(t *testing.T) {
 		{name: "note", dataType: "character varying(32)", encoding: "lzo"},
 	}}
 	table := func() *tableFakeTable { return fake.tables["serving.events"] }
+
 	var detour int
+
 	testresource.UnitTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: tablePlanProviders(c),
 		Steps: []testresource.TestStep{
@@ -114,6 +121,7 @@ func TestContractTableAutoLayoutPlans(t *testing.T) {
 // is empty.
 func TestContractTableImportPlan(t *testing.T) {
 	t.Parallel()
+
 	c := fullCatalog()
 	config := tableConfig(tableIDColumn+tableLabelColumn, "") + `
 import {
@@ -129,5 +137,6 @@ import {
 	})
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	assert.Equal(t, []string{`DROP TABLE "serving"."events"`}, c.writes, "only the final destroy writes")
 }

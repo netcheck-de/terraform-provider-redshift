@@ -124,6 +124,7 @@ data "redshift_grant" "schema" {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	connection := sqlclient.Connection{Database: database}
 
@@ -142,10 +143,12 @@ data "redshift_grant" "schema" {
 				if err != nil {
 					return err
 				}
+
 				if len(rows) != 0 {
 					return fmt.Errorf("%s still exists after destroy", check.name)
 				}
 			}
+
 			return nil
 		},
 		Steps: []resource.TestStep{

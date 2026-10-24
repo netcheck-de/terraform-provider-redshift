@@ -191,9 +191,11 @@ func (identityProviderInstanceModifier) PlanModifyString(ctx context.Context, re
 	if req.State.Raw.IsNull() || !req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
 		return
 	}
+
 	var prior, planned types.String
 	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("issuer"), &prior)...)
 	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("issuer"), &planned)...)
+
 	if !resp.Diagnostics.HasError() && prior.Equal(planned) {
 		resp.PlanValue = req.StateValue
 	}
@@ -220,7 +222,9 @@ var identityProviderRedactedSecret = regexp.MustCompile(`("client_secret"\s*:\s*
 // decodeIdentityProviderParameters parses the catalog parameters after making the redacted secret valid JSON.
 func decodeIdentityProviderParameters(text string) (identityProviderCatalogParameters, error) {
 	var parameters identityProviderCatalogParameters
+
 	err := json.Unmarshal([]byte(identityProviderRedactedSecret.ReplaceAllString(text, "${1}null${2}")), &parameters)
+
 	return parameters, err
 }
 
@@ -230,33 +234,41 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, r.database.ValueString(), readIdentityProviderQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
+
 	row := rows[0]
 	if len(rows) != 1 || row["namespc"] == "" {
 		return false, fmt.Errorf("identity provider %q has incomplete or ambiguous catalog metadata", data.Name.ValueString())
 	}
+
 	parameters, err := decodeIdentityProviderParameters(row["params"])
 	if err != nil {
 		return false, fmt.Errorf("decode identity provider parameters: %w", err)
 	}
+
 	enabled, err := strconv.ParseBool(row["enabled"])
 	if err != nil {
 		return false, fmt.Errorf("decode identity provider enabled flag: %w", err)
 	}
+
 	data.ApplicationARN, data.IAMRoleARN, data.IdentityCenterInstanceARN = types.StringNull(), types.StringNull(), types.StringNull()
 	data.Issuer, data.ClientID, data.Audience = types.StringNull(), types.StringNull(), nil
+
 	kind := strings.ToUpper(row["type"])
 	switch kind {
 	case identityProviderAWSIDC:
 		if row["instanceid"] == "" {
 			return false, fmt.Errorf("identity provider %q has incomplete or ambiguous catalog metadata", data.Name.ValueString())
 		}
+
 		if parameters.IAMRole == "" {
 			return false, fmt.Errorf("identity provider has no IAM role in its catalog parameters")
 		}
+
 		data.ApplicationARN = types.StringValue(row["instanceid"])
 		data.IAMRoleARN = types.StringValue(parameters.IAMRole)
 		data.IdentityCenterInstanceARN = optionalString(parameters.InstanceARN)
@@ -264,6 +276,7 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 		if parameters.Issuer == "" || parameters.ClientID == "" {
 			return false, fmt.Errorf("identity provider %q has no issuer or client_id in its catalog parameters", data.Name.ValueString())
 		}
+
 		data.Issuer, data.ClientID = types.StringValue(parameters.Issuer), types.StringValue(parameters.ClientID)
 		if len(parameters.Audience) > 0 {
 			data.Audience = identityProviderAudience(parameters.Audience)
@@ -271,19 +284,24 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 	default:
 		return false, fmt.Errorf("identity provider %q has unsupported type %q", data.Name.ValueString(), row["type"])
 	}
+
 	data.ProviderID = types.Int64Null()
+
 	if row["uid"] != "" {
 		id, err := strconv.ParseInt(row["uid"], 10, 64)
 		if err != nil {
 			return false, fmt.Errorf("decode identity provider uid: %w", err)
 		}
+
 		data.ProviderID = types.Int64Value(id)
 	}
+
 	data.Name = types.StringValue(row["name"])
 	data.Type = keywordValue(data.Type, kind)
 	data.Namespace = types.StringValue(row["namespc"])
 	data.InstanceID = optionalString(row["instanceid"])
 	data.Enabled = types.BoolValue(enabled)
+
 	return true, nil
 }
 
@@ -300,7 +318,9 @@ func identityProviderConverged(planned, observed identityProviderModel) bool {
 			return false
 		}
 	}
+
 	enabled := knownBool(planned.Enabled) == nil || planned.Enabled.ValueBool()
+
 	return identityProviderType(planned) == identityProviderType(observed) && enabled == observed.Enabled.ValueBool() &&
 		slices.Equal(identityProviderAudience(planned.Audience), identityProviderAudience(observed.Audience))
 }
@@ -312,6 +332,7 @@ func identityProviderSecret(ctx context.Context, config tfsdk.Config) string {
 	if config.Schema == nil || config.GetAttribute(ctx, path.Root("client_secret_wo"), &value).HasError() {
 		return ""
 	}
+
 	return knownString(value)
 }
 
@@ -320,14 +341,17 @@ func identityProviderSecret(ctx context.Context, config tfsdk.Config) string {
 // deferred to apply. The configuration is the only place the write-only secret is visible at plan time.
 func (r *identityProviderResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	inputs := identityProviderInputs{}
+
 	for _, name := range identityProviderInputNames {
 		var value attr.Value
 		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root(name), &value)...)
 		inputs[name] = value
 	}
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := validateIdentityProviderInputs(inputs); err != nil {
 		resp.Diagnostics.AddError("Invalid identity provider", err.Error())
 	}
@@ -337,37 +361,46 @@ func (r *identityProviderResource) ValidateConfig(ctx context.Context, req resou
 func (r *identityProviderResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data identityProviderModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statement, err := createIdentityProviderStatement(data, identityProviderSecret(ctx, req.Config))
 	if err == nil {
 		err = r.exec(ctx, r.database.ValueString(), statement)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Create identity provider", err.Error())
 		return
 	}
+
 	data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
 	// The provider exists now, so its identity is saved before anything else can fail; unknown values cannot be saved.
 	data.ProviderID, data.InstanceID, data.IdentityCenterInstanceARN = types.Int64Null(), types.StringNull(), types.StringNull()
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if !data.Enabled.ValueBool() {
 		if err := r.exec(ctx, r.database.ValueString(), identityProviderStatusStatement(data)); err != nil {
 			resp.Diagnostics.AddError("Disable identity provider", err.Error())
 			return
 		}
 	}
+
 	expected := data
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify identity provider", err.Error())
 		return
 	}
+
 	if !found || !identityProviderConverged(expected, data) {
 		resp.Diagnostics.AddError("Verify identity provider", "The catalog does not match the identity provider configuration after creation.")
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -375,18 +408,22 @@ func (r *identityProviderResource) Create(ctx context.Context, req resource.Crea
 func (r *identityProviderResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data identityProviderModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read identity provider", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -395,9 +432,11 @@ func (r *identityProviderResource) Update(ctx context.Context, req resource.Upda
 	var data, previous identityProviderModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &previous)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.bound(previous.ID, r.database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update identity provider", err.Error())
 		return
@@ -408,10 +447,12 @@ func (r *identityProviderResource) Update(ctx context.Context, req resource.Upda
 		resp.Diagnostics.AddError("Read identity provider before update", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("Update identity provider", "The identity provider disappeared before updating; refresh and retry.")
 		return
 	}
+
 	role, options, status, err := identityProviderAlterBatches(previous, data, identityProviderSecret(ctx, req.Config))
 	if err != nil {
 		resp.Diagnostics.AddError("Update identity provider", err.Error())
@@ -432,16 +473,20 @@ func (r *identityProviderResource) Update(ctx context.Context, req resource.Upda
 			return
 		}
 	}
+
 	expected := data
+
 	found, err = r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify identity provider", err.Error())
 		return
 	}
+
 	if !found || !identityProviderConverged(expected, data) {
 		resp.Diagnostics.AddError("Verify identity provider", "The catalog does not match the identity provider configuration after updating.")
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -449,25 +494,32 @@ func (r *identityProviderResource) Update(ctx context.Context, req resource.Upda
 func (r *identityProviderResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data identityProviderModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	expectedNamespace, expectedApplication := data.Namespace, data.ApplicationARN
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read identity provider", err.Error())
 		return
 	}
+
 	if !found {
 		return
 	}
+
 	if !data.Namespace.Equal(expectedNamespace) || knownString(data.ApplicationARN) != knownString(expectedApplication) {
 		resp.Diagnostics.AddError("Delete identity provider", "The identity binding changed; migrate it explicitly before deletion.")
 		return
 	}
+
 	if r.federatedUsersRemain(ctx, data, "Delete identity provider", &resp.Diagnostics) {
 		return
 	}
+
 	if err := r.exec(ctx, r.database.ValueString(), dropIdentityProviderStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Delete identity provider", err.Error())
 		return
@@ -482,10 +534,12 @@ func (r *identityProviderResource) federatedUsersRemain(ctx context.Context, dat
 		diagnostics.AddError("Inspect federated users", err.Error())
 		return true
 	}
+
 	if len(users) > 0 {
 		diagnostics.AddError(summary, fmt.Sprintf("Federated users with the namespace prefix %q still exist; migrate or remove them explicitly first.", data.Namespace.ValueString()+":"))
 		return true
 	}
+
 	return false
 }
 

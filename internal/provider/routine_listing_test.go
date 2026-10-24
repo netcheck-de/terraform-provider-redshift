@@ -26,13 +26,18 @@ func routineListingRead(t *testing.T, source datasource.DataSource, filters map[
 	t.Helper()
 	state, diagnostics := readSource(t, source, collectionConfig(t, source, filters), client)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
+
 	identity := map[string]string{}
 	require.NoError(t, json.Unmarshal([]byte(observed.Attributes()["id"].(types.String).ValueString()), &identity))
+
 	var items []map[string]any
+
 	for _, element := range collectionResult(source, observed).Elements() {
 		item := map[string]any{}
+
 		for name, value := range element.(types.Object).Attributes() {
 			switch value := value.(type) {
 			case types.String:
@@ -43,8 +48,10 @@ func routineListingRead(t *testing.T, source datasource.DataSource, filters map[
 				item[name] = externalFunctionTypeList(value)
 			}
 		}
+
 		items = append(items, item)
 	}
+
 	return identity, items
 }
 
@@ -87,6 +94,7 @@ func TestRoutineParametersListing(t *testing.T) {
 	identity, items := routineListingRead(t, newRoutineParametersDataSource(), map[string]string{"routine_type": "PROCEDURE"}, fullCatalog())
 	assert.Equal(t, "PROCEDURE", identity["routine_type"])
 	require.Len(t, items, 2)
+
 	for _, item := range items {
 		assert.Equal(t, "PROCEDURE", item["routine_type"])
 	}
@@ -95,10 +103,12 @@ func TestRoutineParametersListing(t *testing.T) {
 // TestRoutineListingsReportFailures turns catalog errors and malformed rows into diagnostics.
 func TestRoutineListingsReportFailures(t *testing.T) {
 	routine := sqlclient.Row{"schema_name": "serving", "routine_name": "f", "arguments": "integer", "return_type": "integer", "volatility": "v", "security_definer": "false", "language": "sql", "owner": "admin", "kind": "f"}
+
 	with := func(change func(sqlclient.Row)) sqlclient.Row {
 		row := sqlclient.Row{}
 		maps.Copy(row, routine)
 		change(row)
+
 		return row
 	}
 	for name, test := range map[string]struct {
@@ -126,6 +136,7 @@ func TestRoutineListingsReportFailures(t *testing.T) {
 				case test.routines == nil:
 					return nil, errors.New("catalog unavailable")
 				}
+
 				return test.routines, nil
 			})
 			source := test.source()

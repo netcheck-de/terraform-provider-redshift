@@ -22,24 +22,33 @@ func definitionFingerprint(catalogText string) string {
 // ends a line comment stays a line break, so text after it cannot be read as part of the comment.
 func definitionNormalize(text string) string {
 	var out strings.Builder
+
 	separator := ""
+
 	for i := 0; i < len(text); {
 		if strings.ContainsRune(" \t\n\r\f\v", rune(text[i])) {
 			if separator == "" && out.Len() > 0 {
 				separator = " "
 			}
+
 			i++
+
 			continue
 		}
+
 		end := definitionSpanEnd(text, i)
+
 		out.WriteString(separator)
 		out.WriteString(text[i:end])
+
 		separator = ""
 		if strings.HasPrefix(text[i:], "--") && end < len(text) {
 			separator = "\n"
 		}
+
 		i = end
 	}
+
 	return out.String()
 }
 
@@ -67,6 +76,7 @@ func definitionSpanEnd(text string, start int) int {
 					i++
 					continue
 				}
+
 				return start + i + 1
 			}
 		}
@@ -83,12 +93,14 @@ func definitionSpanEnd(text string, start int) int {
 		if tag == "" {
 			return start + 1
 		}
+
 		if end := strings.Index(rest[len(tag):], tag); end >= 0 {
 			return start + len(tag) + end + len(tag)
 		}
 	default:
 		return start + 1
 	}
+
 	return len(text)
 }
 
@@ -105,6 +117,7 @@ func definitionDollarTag(text string) string {
 			return ""
 		}
 	}
+
 	return ""
 }
 
@@ -128,9 +141,11 @@ func recordDefinition(configured types.String, catalogText string) (types.String
 // which then differs from configuration, once the catalog changed or nothing was configured, as after import.
 func reconcileDefinition(configured, fingerprint types.String, catalogText string) (types.String, types.String) {
 	current := definitionFingerprint(catalogText)
+
 	stored := fingerprint.ValueString()
 	if configured.IsNull() || configured.IsUnknown() || stored != current {
 		return types.StringValue(catalogText), types.StringValue(current)
 	}
+
 	return configured, types.StringValue(current)
 }

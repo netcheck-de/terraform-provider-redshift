@@ -22,11 +22,14 @@ func TestAssumeroleGrantOverlapGuard(t *testing.T) {
 			r.resourceClient = testResourceClient(queryFunc(func(ctx context.Context, connection sqlclient.Connection, statement string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if parameters["all_arn"] != "" {
 					guards++
+
 					if guardFailure {
 						return nil, errors.New("catalog unavailable")
 					}
+
 					return []sqlclient.Row{{"iam_arn": "default"}}, nil
 				}
+
 				return c.Query(ctx, connection, statement, parameters)
 			}))
 			data := privilegeObject(t, r, map[string]string{"iam_role_arn": selector, "grantee": "reader", "grantee_type": "ROLE"}, "COPY")
@@ -38,7 +41,9 @@ func TestAssumeroleGrantOverlapGuard(t *testing.T) {
 			require.ErrorContains(t, r.reconcile(context.Background(), data), "also holds ASSUMEROLE ON ALL")
 			require.ErrorContains(t, r.reconcile(context.Background(), withPrivileges(data, nil)), "also holds ASSUMEROLE ON ALL")
 			assert.Empty(t, c.writes, "an overlapping tuple must never mutate another tuple's access")
+
 			guardFailure = true
+
 			require.ErrorContains(t, r.reconcile(context.Background(), data), "catalog unavailable")
 			clear(c.values)
 			require.NoError(t, r.reconcile(context.Background(), withPrivileges(data, nil)), "an empty failed create can be forgotten without mutating ON ALL")

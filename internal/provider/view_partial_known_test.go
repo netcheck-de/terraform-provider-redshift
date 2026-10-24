@@ -84,10 +84,12 @@ func TestViewFamiliesPartialKnownValidation(t *testing.T) {
 			for _, test := range family.cases {
 				t.Run(test.name, func(t *testing.T) {
 					r := family.new()
+
 					state := testState(t, r, family.model)
 					for name, value := range test.values {
 						require.False(t, state.SetAttribute(context.Background(), path.Root(name), value).HasError())
 					}
+
 					var response resource.ValidateConfigResponse
 					r.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(state)}, &response)
 					assert.Equal(t, test.invalid, response.Diagnostics.HasError(), "%v", response.Diagnostics)
