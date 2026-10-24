@@ -58,7 +58,8 @@ New types add files rather than modifying shared infrastructure. Follow this che
    execute through `resourceClient`; permission resources reuse `privilegeResource` and `grantSpec` where applicable.
 3. Pin renderers with `checkSQL` and lifecycle transcripts with `runTranscripts`. Register replacement policy,
    data-source parity or an exemption, lifecycle cases, and a fake family in the type's test files.
-4. Add a template and per-type examples, including resource import instructions, then run `task docs`.
+4. Add a template and per-type examples. Resource import sections render `import.tf` for the `import` block first,
+   then `import.sh` for CLI import. Run `task docs`.
 5. Add usage to `examples/complete/<block>.tf`, data-source outputs to `outputs_<block>.tf`, and mocked assertions to
    `tests/<block>.tftest.hcl` using the shared mocks.
 6. Update provider-index tables and ownership entries in `templates/index.md.tmpl`, and any affected README or backlog

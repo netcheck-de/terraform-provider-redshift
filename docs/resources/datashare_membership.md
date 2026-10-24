@@ -111,7 +111,7 @@ ALTER DATASHARE "producer" ADD ALL FUNCTIONS IN SCHEMA "serving";
 
 ## Import
 
-Import acknowledges ownership of every member of the selected kind, not just the memberships originally added in bulk.
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
 ```terraform
 import {
@@ -130,9 +130,11 @@ The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see
 [connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
-Alternatively:
+Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_datashare_membership.functions \
   '{"workgroup_name":"warehouse","database":"analytics","datashare":"reporting","schema":"reporting","kind":"FUNCTIONS"}'
 ```
+
+Import acknowledges ownership of every member of the selected kind, not just the memberships originally added in bulk.

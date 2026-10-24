@@ -87,7 +87,7 @@ datashare_row_level_security = false # was true
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_table_security/import-by-string-id.tf" }}
+{{ tffile "examples/resources/redshift_table_security/import.tf" }}
 
 The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see

@@ -99,7 +99,7 @@ resource "redshift_language_grant" "public_sql" {
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_language_grant/import-by-string-id.tf" }}
+{{ tffile "examples/resources/redshift_language_grant/import.tf" }}
 
 The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see

@@ -80,7 +80,7 @@ owner. A dropped model or database is removed from state, and the next plan crea
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_external_model/import-by-string-id.tf" }}
+{{ tffile "examples/resources/redshift_external_model/import.tf" }}
 
 The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see

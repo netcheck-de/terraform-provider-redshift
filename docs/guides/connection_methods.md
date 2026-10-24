@@ -144,39 +144,18 @@ provider page.
 
 ## Imports and transport switching
 
-All JSON import IDs contain an administration `database`, exactly one warehouse key, and resource-specific fields:
+The [provider import guide](../index.md#importing-existing-resources) explains `import` blocks, CLI import, provider
+aliases, and JSON fields. Each resource page shows its block example first and CLI example second. The ID's `database`
+is the administration or containing database according to the resource; it does not always match the SQL connection's
+administration database.
 
-| Method                          | Warehouse key        | Example                                |
-|---------------------------------|----------------------|----------------------------------------|
-| Serverless Data API/direct IAM  | `workgroup_name`     | `"analytics"` or its configured ARN    |
-| Provisioned Data API/direct IAM | `cluster_identifier` | `"analytics-cluster"`                  |
-| Direct password                 | `endpoint`           | `"redshift.internal.example.com:5439"` |
+Data API and direct IAM identify the warehouse with `workgroup_name` for Serverless or `cluster_identifier` for a
+provisioned cluster. Direct password connections use a normalized `endpoint` (`host:port`).
 
 Existing Serverless IDs remain unchanged. Switching Data API to direct IAM for the same selector spelling preserves
 resource identity and needs no import or replacement. Name and ARN spellings are deliberately not treated as equivalent;
 changing the spelling requires explicit re-importing. Password endpoint identities normalize DNS case/trailing dots and
 include the port. Switching between AWS identity and password endpoint identity requires explicit re-importing.
-
-```sh
-terraform import redshift_role.readers \
-  '{"cluster_identifier":"analytics-cluster","database":"analytics","name":"readers"}'
-
-terraform import redshift_role.readers \
-  '{"endpoint":"redshift.internal.example.com:5439","database":"analytics","name":"readers"}'
-```
-
-The same identity works in an `import` block (Terraform 1.5 and later):
-
-```terraform
-import {
-  to = redshift_role.readers
-  id = jsonencode({
-    cluster_identifier = "analytics-cluster"
-    database           = "analytics"
-    name               = "readers"
-  })
-}
-```
 
 Do not destroy/recreate SQL objects merely to switch bindings. Re-import the same objects under the intended
 configuration and inspect the next plan. Read-only data sources never need imports.

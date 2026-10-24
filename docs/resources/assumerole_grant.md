@@ -199,5 +199,5 @@ Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_assumerole_grant.loader \
-  '{"workgroup_name":"warehouse","database":"admin","iam_role_arn":"default","grantee":"loader","grantee_type":"ROLE"}'
+  '{"workgroup_name":"warehouse","database":"admin","iam_role_arn":"DEFAULT","grantee":"loader","grantee_type":"ROLE"}'
 ```

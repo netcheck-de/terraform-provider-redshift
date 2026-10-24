@@ -334,8 +334,6 @@ GRANT UPDATE ON TABLE "analytics"."serving"."orders" TO "analyst" WITH GRANT OPT
 
 ## Import
 
-For shared consumer objects, include `"database_type":"shared"` in the JSON identity; local identities omit it.
-
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
 ```terraform
@@ -358,7 +356,7 @@ The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see
 [connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
-Alternatively, use `terraform import`. Routine identities add `arguments` as configured:
+Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_object_grant.report \
@@ -366,5 +364,9 @@ terraform import redshift_object_grant.report \
 
 # Function overload: arguments as configured
 terraform import redshift_object_grant.score \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","schema_name":"reporting","object_name":"f_score","object_type":"FUNCTION","arguments":"integer, varchar","grantee":"analyst","grantee_type":"USER"}'
+  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","schema_name":"reporting","object_name":"f_score","object_type":"FUNCTION","arguments":"INTEGER, VARCHAR","grantee":"analyst","grantee_type":"USER"}'
 ```
+
+For shared consumer objects, include `"database_type":"shared"` in the JSON identity; local identities omit it.
+
+Routine identities add `arguments` as configured.

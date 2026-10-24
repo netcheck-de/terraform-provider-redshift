@@ -76,8 +76,7 @@ update fails when the partition disappeared after the plan; refresh and plan aga
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity. The `values` field holds the partition values as
-a JSON-encoded string, because identity fields are strings:
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
 ```terraform
 import {
@@ -102,5 +101,7 @@ Alternatively, use `terraform import`:
 terraform import redshift_external_partition.sales_2008_01 \
   '{"workgroup_name":"warehouse","database":"warehouse","schema":"raw","table":"sales","values":"{\"sale_date\":\"2008-01-01\"}"}'
 ```
+
+The `values` field holds the partition values as a JSON-encoded string, because identity fields are strings.
 
 The location is read from the catalog on refresh.

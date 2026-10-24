@@ -94,9 +94,9 @@ resource "redshift_masking_policy_attachment" "email" {
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity; `columns` is a JSON list inside the identity:
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_masking_policy_attachment/import-by-string-id.tf" }}
+{{ tffile "examples/resources/redshift_masking_policy_attachment/import.tf" }}
 
 The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see
@@ -105,3 +105,5 @@ cluster, or with `endpoint` (`host:port`) for a direct password connection; see
 Alternatively, use `terraform import`:
 
 {{ codefile "shell" "examples/resources/redshift_masking_policy_attachment/import.sh" }}
+
+`columns` is a JSON list inside the identity.

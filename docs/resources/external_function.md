@@ -118,9 +118,7 @@ outside Terraform are not detected, and an import leaves them unset until the fi
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity. `arguments` is the canonical signature
-Create records: the argument types as the catalog spells them, without length or precision, separated by `", "`, and
-`""` for a function without arguments.
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
 ```terraform
 import {
@@ -130,7 +128,7 @@ import {
     database       = "warehouse"
     schema         = "public"
     name           = "f_upper"
-    arguments      = "character varying"
+    arguments      = "CHARACTER VARYING"
   })
 }
 ```
@@ -143,5 +141,8 @@ Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_external_function.upper \
-  '{"workgroup_name":"warehouse","database":"warehouse","schema":"public","name":"f_upper","arguments":"character varying"}'
+  '{"workgroup_name":"warehouse","database":"warehouse","schema":"public","name":"f_upper","arguments":"CHARACTER VARYING"}'
 ```
+
+`arguments` is the canonical signature Create records: the argument types as the catalog spells them, without length or
+precision, separated by `", "`, and `""` for a function without arguments.

@@ -52,9 +52,9 @@ creation requires a superuser).
 
 The provider selects the warehouse and its default local administration database. Use an alias for another warehouse.
 The producer database owning a datashare and the database receiving a grant remain resource arguments because they
-identify those SQL objects. A newly created workgroup can be referenced during a fresh apply; imports need a workgroup
-that is already known when planning. Read-only object lookups do not require imports. For resource and data-source
-arguments, lifecycle behavior, and imports, see the [resource index](docs/index.md).
+identify those SQL objects. Newly created warehouses can be referenced during a fresh apply; imports require known
+warehouse selectors, routing, and authentication. Read-only object lookups do not require imports. For resource and
+data-source arguments, lifecycle behavior, and imports, see the [resource index](docs/index.md).
 
 Resource arguments are readable attributes, and paired data sources expose the same readable object attributes and JSON
 import-compatible `id`. Write-only passwords and Terraform-only rotation/replacement controls are excluded from lookups.

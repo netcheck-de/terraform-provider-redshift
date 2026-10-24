@@ -244,7 +244,7 @@ The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see
 [connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
-Alternatively, use `terraform import`. Omit `owner` from the identity for the connection user's defaults:
+Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_default_privileges.reports \
@@ -254,3 +254,5 @@ terraform import redshift_default_privileges.reports \
 terraform import redshift_default_privileges.mine \
   '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","object_type":"TABLES","grantee":"analyst","grantee_type":"USER"}'
 ```
+
+Omit `owner` from the identity for the connection user's defaults.

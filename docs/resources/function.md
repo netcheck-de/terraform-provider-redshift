@@ -115,8 +115,7 @@ read back, so a change to them alone outside Terraform is not detected.
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity. `arguments` holds the input types as
-`signature` reports them, comma-separated, and is `""` for a function without arguments:
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
 ```terraform
 import {
@@ -126,7 +125,7 @@ import {
     database       = "analytics"
     schema         = "reporting"
     name           = "f_sql_greater"
-    arguments      = "double precision, double precision"
+    arguments      = "DOUBLE PRECISION, DOUBLE PRECISION"
   })
 }
 ```
@@ -139,5 +138,8 @@ Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_function.greater \
-  '{"workgroup_name":"warehouse","database":"analytics","schema":"reporting","name":"f_sql_greater","arguments":"double precision, double precision"}'
+  '{"workgroup_name":"warehouse","database":"analytics","schema":"reporting","name":"f_sql_greater","arguments":"DOUBLE PRECISION, DOUBLE PRECISION"}'
 ```
+
+`arguments` holds the input types as `signature` reports them, comma-separated, and is `""` for a function without
+arguments.

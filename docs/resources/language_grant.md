@@ -189,5 +189,5 @@ Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_language_grant.procedures \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","language_name":"plpgsql","grantee":"developers","grantee_type":"ROLE"}'
+  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","language_name":"PLPGSQL","grantee":"developers","grantee_type":"ROLE"}'
 ```

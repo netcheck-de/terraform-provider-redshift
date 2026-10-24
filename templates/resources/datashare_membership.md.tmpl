@@ -85,14 +85,16 @@ adds every current SQL overload:
 
 ## Import
 
-Import acknowledges ownership of every member of the selected kind, not just the memberships originally added in bulk.
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_datashare_membership/import-by-string-id.tf" }}
+{{ tffile "examples/resources/redshift_datashare_membership/import.tf" }}
 
 The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see
 [connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
-Alternatively:
+Alternatively, use `terraform import`:
 
 {{ codefile "shell" "examples/resources/redshift_datashare_membership/import.sh" }}
+
+Import acknowledges ownership of every member of the selected kind, not just the memberships originally added in bulk.

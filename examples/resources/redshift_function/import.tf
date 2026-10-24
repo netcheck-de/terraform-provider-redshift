@@ -1,10 +1,10 @@
 import {
-  to = redshift_procedure.purge
+  to = redshift_function.greater
   id = jsonencode({
     workgroup_name = "warehouse"
     database       = "analytics"
     schema         = "reporting"
-    name           = "sp_purge_events"
-    arguments      = "integer"
+    name           = "f_sql_greater"
+    arguments      = "DOUBLE PRECISION, DOUBLE PRECISION"
   })
 }

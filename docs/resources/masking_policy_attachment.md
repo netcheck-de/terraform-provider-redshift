@@ -150,7 +150,7 @@ ATTACH MASKING POLICY "mask_email" ON "public"."customers" ("email") TO ROLE "ex
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity; `columns` is a JSON list inside the identity:
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
 ```terraform
 import {
@@ -178,3 +178,5 @@ Alternatively, use `terraform import`:
 terraform import redshift_masking_policy_attachment.email_analysts \
   '{"workgroup_name":"warehouse","database":"warehouse","policy":"mask_email","schema":"public","relation":"customers","columns":"[\"email\"]","grantee":"analysts","grantee_type":"ROLE"}'
 ```
+
+`columns` is a JSON list inside the identity.

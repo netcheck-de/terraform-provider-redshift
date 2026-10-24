@@ -38,7 +38,7 @@ func TestDocsExistForEveryRegisteredType(t *testing.T) {
 		types    []string
 		examples []string
 	}{
-		{"resources", resources, []string{"resource.tf", "import.sh"}},
+		{"resources", resources, []string{"resource.tf", "import.tf", "import.sh"}},
 		{"data-sources", dataSources, []string{"data-source.tf"}},
 	} {
 		heading := sqlSummaryHeadings[category.dir]
@@ -62,6 +62,15 @@ func TestDocsExistForEveryRegisteredType(t *testing.T) {
 				assert.Contains(t, string(template), heading+"\n\n```sql\n", "%s must introduce its SQL summary with %q", typeName, heading)
 				if category.dir == "resources" {
 					assert.Contains(t, string(template), importBindingsNote, "%s must name the other import bindings", typeName)
+					_, section, found := strings.Cut(string(template), "\n## Import\n")
+					if assert.True(t, found, "%s requires an Import section", typeName) {
+						block := `{{ tffile "examples/resources/` + typeName + `/import.tf" }}`
+						cli := `{{ codefile "shell" "examples/resources/` + typeName + `/import.sh" }}`
+						assert.Contains(t, section, importBlockIntroduction+"\n\n"+block, typeName)
+						assert.Contains(t, section, importCLIIntroduction+"\n\n"+cli, typeName)
+						assert.Less(t, strings.Index(section, block), strings.Index(section, importBindingsNote), typeName)
+						assert.Less(t, strings.Index(section, importBindingsNote), strings.Index(section, cli), typeName)
+					}
 				}
 			}
 		}
@@ -149,6 +158,13 @@ var terraformFence = regexp.MustCompile("(?ms)^```(?:terraform|hcl)\n(.*?)^```")
 
 // blockHeader matches a line that opens a block, such as `column {` or `resource "redshift_table" "events" {`.
 var blockHeader = regexp.MustCompile(`^\s*[a-z_]+(\s+"[^"]*")*\s*\{\s*$`)
+
+const (
+	// importBlockIntroduction makes the modern workflow the first example on every resource page.
+	importBlockIntroduction = "In Terraform 1.5 and later, use an `import` block with a JSON identity:"
+	// importCLIIntroduction introduces the equivalent CLI command after the block example.
+	importCLIIntroduction = "Alternatively, use `terraform import`:"
+)
 
 // importBindingsNote follows each Serverless import example, because provisioned clusters and direct password
 // connections bind the import identity with a different key.
