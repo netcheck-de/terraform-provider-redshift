@@ -51,8 +51,10 @@ type IAM struct {
 	Serverless ServerlessAPI
 	// Provisioned executes provisioned cluster requests.
 	Provisioned ClusterAPI
-	// mu serializes lazy discovery and credential-cache updates.
-	mu sync.Mutex
+	// initialize allows callers to construct IAM without a separate constructor.
+	initialize sync.Once
+	// access serializes discovery and cache updates while letting waiting queries cancel independently.
+	access chan struct{}
 	// name is the discovered workgroup name used by GetCredentials.
 	name string
 	// host is the discovered endpoint hostname.
@@ -139,8 +141,16 @@ func (i *IAM) discover(ctx context.Context) error {
 
 // Resolve returns credentials valid for a new connection, refreshing before expiry and never creating users.
 func (i *IAM) Resolve(ctx context.Context, database string) (Credentials, error) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
+	i.initialize.Do(func() { i.access = make(chan struct{}, 1) })
+	select {
+	case i.access <- struct{}{}:
+		defer func() { <-i.access }()
+	case <-ctx.Done():
+		return Credentials{}, ctx.Err()
+	}
+	if err := ctx.Err(); err != nil {
+		return Credentials{}, err
+	}
 	if err := i.discover(ctx); err != nil {
 		return Credentials{}, err
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -192,5 +193,78 @@ func TestIAMDiscoveryAndCredentialFailures(t *testing.T) {
 		_, err := iam.Resolve(context.Background(), "admin")
 		require.Error(t, err, mode)
 		assert.Empty(t, iam.cache)
+	}
+}
+
+// blockingIAMStub holds one credential request open while another caller's deadline expires.
+type blockingIAMStub struct {
+	// iamStub supplies the normal response after the held call is released.
+	*iamStub
+
+	// started signals that the resolver is holding its credential gate.
+	started chan struct{}
+	// release lets the active lookup finish independently of the waiting caller.
+	release chan struct{}
+}
+
+// wait holds the active request open until the test releases it or its own context ends.
+func (s *blockingIAMStub) wait(ctx context.Context) error {
+	close(s.started)
+	select {
+	case <-s.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// GetCredentials blocks the active Serverless call while a second query waits.
+func (s *blockingIAMStub) GetCredentials(ctx context.Context, input *redshiftserverless.GetCredentialsInput, options ...func(*redshiftserverless.Options)) (*redshiftserverless.GetCredentialsOutput, error) {
+	if err := s.wait(ctx); err != nil {
+		return nil, err
+	}
+	return s.iamStub.GetCredentials(ctx, input, options...)
+}
+
+// GetClusterCredentials exercises the same wait with provisioned credentials.
+func (s *blockingIAMStub) GetClusterCredentials(ctx context.Context, input *redshift.GetClusterCredentialsInput, options ...func(*redshift.Options)) (*redshift.GetClusterCredentialsOutput, error) {
+	if err := s.wait(ctx); err != nil {
+		return nil, err
+	}
+	return s.iamStub.GetClusterCredentials(ctx, input, options...)
+}
+
+// TestIAMCredentialWaitHonorsCancellation ensures waiting queries keep their own deadline and leave the active
+// lookup and its cache usable, for both credential APIs.
+func TestIAMCredentialWaitHonorsCancellation(t *testing.T) {
+	for name, provisioned := range map[string]bool{"serverless": false, "provisioned": true} {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				iam, stub := iamTestClient()
+				blocking := &blockingIAMStub{iamStub: stub, started: make(chan struct{}), release: make(chan struct{})}
+				iam.Serverless, iam.Provisioned = blocking, blocking
+				if provisioned {
+					iam.Workgroup, iam.Cluster, iam.DBUser = "", "cluster", "reader"
+				}
+				finished := make(chan error, 1)
+				go func() {
+					_, err := iam.Resolve(context.Background(), "admin")
+					finished <- err
+				}()
+				<-blocking.started
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				_, err := iam.Resolve(ctx, "admin")
+				close(blocking.release)
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+				require.NoError(t, <-finished)
+				credentials, err := iam.Resolve(context.Background(), "admin")
+				require.NoError(t, err)
+				assert.Equal(t, "IAM:reader", credentials.Username)
+				assert.Equal(t, 1, stub.calls["admin"])
+				_, err = iam.Resolve(ctx, "admin")
+				require.ErrorIs(t, err, context.DeadlineExceeded, "expired callers cannot use cached credentials")
+			})
+		})
 	}
 }
