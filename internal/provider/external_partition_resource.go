@@ -66,15 +66,18 @@ func (r *externalPartitionResource) Schema(_ context.Context, _ resource.SchemaR
 			"location": schema.StringAttribute{Required: true, MarkdownDescription: "`s3://` folder or manifest file holding the partition's data. Changes run `ALTER TABLE ... PARTITION (...) SET LOCATION`."},
 		},
 	}
+	foldNames(&resp.Schema, "database")
 }
 
 // ValidateConfig reports values or a location Create would reject, during planning once they are known.
 func (r *externalPartitionResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data externalPartitionModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := validateExternalPartitionKnownConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid external partition", err.Error())
 	}
@@ -86,21 +89,26 @@ func (r *externalPartitionResource) partitionKeys(ctx context.Context, data exte
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return nil, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return nil, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readExternalTableColumnsQuery(data.Database.ValueString(), data.Schema.ValueString(), data.Table.ValueString()))
 	if err != nil {
 		return nil, err
 	}
+
 	_, keys, err := externalTableCatalogColumns(rows)
 	if err != nil {
 		return nil, err
 	}
+
 	names := make([]string, len(keys))
 	for i, key := range keys {
 		names[i] = key.name
 	}
+
 	return names, nil
 }
 
@@ -115,10 +123,12 @@ func (r *externalPartitionResource) read(ctx context.Context, data *externalPart
 	if !externalPartitionKeysMatch(knownMap(data.Values), keys) {
 		return externalPartitionSpec{}, false, nil
 	}
+
 	spec, err := externalPartitionSpecFrom(*data, keys)
 	if err != nil {
 		return spec, false, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readExternalPartitionsQuery(spec))
 	if err != nil {
 		return spec, false, err
@@ -127,15 +137,18 @@ func (r *externalPartitionResource) read(ctx context.Context, data *externalPart
 	// partition values. The same Glue table seen through both schemas reports the same location; different
 	// locations mean different tables, and picking one could read or verify the wrong partition.
 	var locations []string
+
 	for _, row := range rows {
 		match, err := externalPartitionValuesMatch(spec, row["values"])
 		if err != nil {
 			return spec, false, err
 		}
+
 		if match && !slices.Contains(locations, row["location"]) {
 			locations = append(locations, row["location"])
 		}
 	}
+
 	switch len(locations) {
 	case 0:
 		return spec, false, nil
@@ -143,10 +156,13 @@ func (r *externalPartitionResource) read(ctx context.Context, data *externalPart
 	default:
 		return spec, false, fmt.Errorf("external partition %s of table %q is ambiguous in the catalog: locations %s", externalPartitionIDValues(knownMap(data.Values)), data.Table.ValueString(), strings.Join(locations, ", "))
 	}
+
 	if location := knownString(data.Location); location == "" || !externalLocationsMatch(location, locations[0]) {
 		data.Location = types.StringValue(locations[0])
 	}
+
 	spec.location = data.Location.ValueString()
+
 	return spec, true, nil
 }
 
@@ -159,28 +175,36 @@ func (r *externalPartitionResource) partitionIdentity(data externalPartitionMode
 func (r *externalPartitionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data externalPartitionModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	err := validateExternalPartitionConfig(data)
+
 	var keys []string
 	if err == nil {
 		keys, err = r.partitionKeys(ctx, data)
 	}
+
 	var spec externalPartitionSpec
 	if err == nil {
 		spec, err = externalPartitionSpecFrom(data, keys)
 	}
+
 	if err == nil {
 		err = r.exec(ctx, data.Database.ValueString(), createExternalPartitionStatement(spec))
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Create external partition", err.Error())
 		return
 	}
+
 	data.ID = r.partitionIdentity(data)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	planned := data.Location
+
 	_, found, err := r.read(ctx, &data)
 	switch {
 	case err != nil:
@@ -198,9 +222,11 @@ func (r *externalPartitionResource) Create(ctx context.Context, req resource.Cre
 func (r *externalPartitionResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data externalPartitionModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	_, found, err := r.read(ctx, &data)
 	switch {
 	case err != nil:
@@ -217,26 +243,33 @@ func (r *externalPartitionResource) Update(ctx context.Context, req resource.Upd
 	var plan, prior externalPartitionModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	current, found, err := r.read(ctx, &prior)
 	if err == nil && !found {
 		err = fmt.Errorf("the partition disappeared; refresh the plan")
 	}
+
 	if err == nil {
 		err = externalLocation(plan.Location.ValueString())
 	}
+
 	if err == nil {
 		next := current
 		next.location = plan.Location.ValueString()
 		err = r.exec(ctx, plan.Database.ValueString(), alterExternalPartitionStatements(current, next)...)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Update external partition", err.Error())
 		return
 	}
+
 	observed := plan
+
 	_, found, err = r.read(ctx, &observed)
 	switch {
 	case err != nil:
@@ -254,13 +287,16 @@ func (r *externalPartitionResource) Update(ctx context.Context, req resource.Upd
 func (r *externalPartitionResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data externalPartitionModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	spec, found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropExternalPartitionStatement(spec))
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete external partition", err.Error())
 	}
@@ -269,23 +305,29 @@ func (r *externalPartitionResource) Delete(ctx context.Context, req resource.Del
 // ImportState restores the partition identity; the values field holds the values map encoded as a JSON string.
 func (r *externalPartitionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importIdentity(ctx, req, resp, "database", "schema", "table")
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	// importIdentity has already decoded the identity as a JSON object of strings.
 	var fields, values map[string]string
+
 	_ = json.Unmarshal([]byte(req.ID), &fields)
+
 	err := json.Unmarshal([]byte(fields["values"]), &values)
 	if err == nil {
 		err = validateExternalPartitionValues(values)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid import identity", "Field values must be a JSON object string of partition key values: "+err.Error())
 		return
 	}
+
 	elements := map[string]attr.Value{}
 	for key, value := range values {
 		elements[key] = types.StringValue(value)
 	}
+
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("values"), types.MapValueMust(types.StringType, elements))...)
 }

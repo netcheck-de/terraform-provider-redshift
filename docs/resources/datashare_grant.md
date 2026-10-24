@@ -153,8 +153,7 @@ The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see
 [connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
-Alternatively, use `terraform import`. Namespace grants use `namespace_id` instead of `account_id` in the JSON
-identity:
+Alternatively, use `terraform import`:
 
 ```shell
 # Account grant
@@ -169,6 +168,8 @@ terraform import redshift_datashare_grant.namespace \
 terraform import redshift_datashare_grant.lake_formation \
   '{"workgroup_name":"warehouse","database":"warehouse","datashare":"analytics","account_id":"123456789012","via_data_catalog":"true"}'
 ```
+
+Namespace grants use `namespace_id` instead of `account_id` in the JSON identity.
 
 Existing account JSON identities and state retain the `account_id` key. A Lake Formation grant adds
 `"via_data_catalog":"true"`; plain grants omit the key. Imports require exactly one valid consumer selector and one

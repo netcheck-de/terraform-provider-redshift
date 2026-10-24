@@ -7,6 +7,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
+// TestGrantRestoreSQL pins the statements that restore Redshift's PUBLIC defaults for languages and default function
+// privileges on destroy.
 func TestGrantRestoreSQL(t *testing.T) {
 	var cases []sqlCase
 	for _, test := range []struct {
@@ -23,16 +25,20 @@ func TestGrantRestoreSQL(t *testing.T) {
 			r := test.factory().(*privilegeResource)
 			data := privilegeObject(t, r, test.fields)
 			lookupValue(&data, "restore_default_on_destroy", types.BoolValue(true))
+
 			desired, err := r.destroyPrivileges(data)
 			if err != nil {
 				return nil, err
 			}
+
 			target, err := r.target(data)
 			if err != nil {
 				return nil, err
 			}
+
 			return privilegeOptionStatements(target.grant, target.allowed, privilegeSets{}, privilegeSets{privileges: desired})
 		}})
 	}
+
 	checkSQL(t, "grant_restore", cases)
 }

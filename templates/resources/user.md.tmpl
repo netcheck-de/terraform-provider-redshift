@@ -36,7 +36,7 @@ Superusers see every row of [SVV_USER_INFO](https://docs.aws.amazon.com/redshift
 provider identity that is not a superuser sees only its own. `session_defaults` accepts only the documented session
 parameters listed above; cluster-wide parameters belong to the parameter group.
 
-`password_wo` is a write-only argument and requires Terraform 1.11 or later. Write-only values are absent from
+`password_wo` is a write-only argument. Write-only values are absent from
 **this resource's** state. The password source (for example, `random_password`) may
 still keep a value in its own Terraform state, and the Data API executes a SQL statement containing the password.
 Restrict Terraform state, provider logs, and Data API query-history access accordingly.
@@ -125,7 +125,7 @@ session_defaults = {
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_user/import-by-string-id.tf" }}
+{{ tffile "examples/resources/redshift_user/import.tf" }}
 
 The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see

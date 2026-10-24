@@ -46,7 +46,7 @@ next plan adds it again. Other members of the group are never read, so members a
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_group_membership/import-by-string-id.tf" }}
+{{ tffile "examples/resources/redshift_group_membership/import.tf" }}
 
 The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see

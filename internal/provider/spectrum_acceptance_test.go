@@ -31,6 +31,8 @@ func TestAccSpectrumExternalTableLifecycle(t *testing.T) {
 	}
 }
 
+// testAccSpectrumExternalTableLifecycle runs the external table lifecycle for one columnar format and drops leftover
+// tables from the shared Glue database afterwards.
 func testAccSpectrumExternalTableLifecycle(t *testing.T, format string) {
 	t.Helper()
 	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SPECTRUM_ROLE_ARN", "REDSHIFT_ACC_SPECTRUM_GLUE_DATABASE", "REDSHIFT_ACC_SPECTRUM_LOCATION")
@@ -41,16 +43,19 @@ func testAccSpectrumExternalTableLifecycle(t *testing.T, format string) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+
 	t.Cleanup(func() {
 		// A failed run may leave the table in the shared Glue database, which restrictive DROP SCHEMA cannot remove.
 		for _, table := range []string{"events", "metrics"} {
-			_, err := client.Query(ctx, sqlclient.Connection{Database: database}, "DROP TABLE IF EXISTS "+sqlclient.Identifier(schema)+"."+table, nil)
+			_, err := client.Query(ctx, sqlclient.Connection{Database: database}, sqlclient.Stmt("DROP TABLE IF EXISTS").Qualified(schema, table).String(), nil)
 			if err != nil {
 				t.Logf("external table cleanup: %v", err)
 			}
 		}
 	})
+
 	configuration := func(tableLocation, partitionLocation, extraColumn, numRows, mappedColumns string) string {
 		return fmt.Sprintf(`
 provider "redshift" {

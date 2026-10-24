@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestGrantRestoreDefaultOnDestroy regrants the PUBLIC default on destroy only when restore_default_on_destroy is true,
+// verifies that it converged, and rejects the option for other grantees.
 func TestGrantRestoreDefaultOnDestroy(t *testing.T) {
 	for _, test := range []struct {
 		name                 string
@@ -32,12 +34,14 @@ func TestGrantRestoreDefaultOnDestroy(t *testing.T) {
 				diagnostics := invoke(t, r, "delete", data)
 				require.False(t, diagnostics.HasError(), "%v", diagnostics)
 				assert.Equal(t, restore.ValueBool(), c.values[test.privilege])
+
 				if restore.ValueBool() {
 					assert.Equal(t, []string{test.statement}, c.writes)
 				} else {
 					assert.NotContains(t, c.writes, test.statement)
 				}
 			}
+
 			r := test.factory().(*privilegeResource)
 			r.resourceClient = testResourceClient(&privilegeCatalog{values: map[string]bool{}, stuck: true})
 			data := privilegeObject(t, r, test.fields)
@@ -49,6 +53,8 @@ func TestGrantRestoreDefaultOnDestroy(t *testing.T) {
 	}
 }
 
+// TestDefaultPrivilegesRestoreScope allows restore_default_on_destroy only for schema-less FUNCTIONS defaults and keeps
+// it out of lookup schemas.
 func TestDefaultPrivilegesRestoreScope(t *testing.T) {
 	r := newDefaultPrivilegesResource().(*privilegeResource)
 	data := privilegeObject(t, r, map[string]string{"database_name": "warehouse", "object_type": "FUNCTIONS", "grantee": "public", "grantee_type": "PUBLIC"})
@@ -73,10 +79,12 @@ func TestDefaultPrivilegesRestoreRequiresDefaults(t *testing.T) {
 	data = types.ObjectValueMust(data.AttributeTypes(context.Background()), attributes)
 	require.ErrorContains(t, r.validateConfig(data), "restore_default_on_destroy requires")
 	state := testState(t, r, data)
+
 	var response resource.DeleteResponse
 	r.Delete(context.Background(), resource.DeleteRequest{State: state}, &response)
 	require.True(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
 	assert.Contains(t, response.Diagnostics.Errors()[0].Detail(), "restore_default_on_destroy requires")
+
 	allowed, err := fixedPrivilegeAllowlist([]sqlclient.Keyword{"USAGE"})(data)
 	require.NoError(t, err)
 	assert.Equal(t, []sqlclient.Keyword{"USAGE"}, allowed)

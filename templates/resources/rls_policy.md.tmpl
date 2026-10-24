@@ -74,7 +74,7 @@ the catalog. A dropped policy is removed from state, and the next plan creates i
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_rls_policy/import-by-string-id.tf" }}
+{{ tffile "examples/resources/redshift_rls_policy/import.tf" }}
 
 The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see

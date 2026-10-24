@@ -2,6 +2,7 @@ package provider
 
 import "testing"
 
+// TestDatashareObjectsSQL pins the member listing query with and without datashare and object type filters.
 func TestDatashareObjectsSQL(t *testing.T) {
 	checkSQL(t, "datashare_objects", []sqlCase{
 		{"all", func() (string, error) {

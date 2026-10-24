@@ -35,6 +35,9 @@ Creating, changing, and reading a provider requires a Redshift database superuse
 [SVV_IDENTITY_PROVIDERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_IDENTITY_PROVIDERS.html) is visible only
 to superusers.
 
+`client_secret_wo` is write-only and absent from this resource's state, but the SQL statements that send it contain the
+secret, so restrict provider logs and Data API query-history access accordingly.
+
 Deletion never uses `CASCADE`, which would drop the provider's users and roles. It refuses to drop the provider while
 namespace-prefixed federated users remain. Manage role grants and memberships separately; use resource dependencies so
 they are removed first.
@@ -117,7 +120,7 @@ resource "redshift_identity_provider" "entra" {
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_identity_provider/import-by-string-id.tf" }}
+{{ tffile "examples/resources/redshift_identity_provider/import.tf" }}
 
 The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see

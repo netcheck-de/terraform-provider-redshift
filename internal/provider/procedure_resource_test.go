@@ -21,6 +21,7 @@ import (
 func procedureLifecycleModel() procedureModel {
 	data := procedureTestDefault()
 	data.Database, data.Owner, data.Signature = types.StringValue("admin"), types.StringValue("admin"), types.StringValue("integer")
+
 	return data
 }
 
@@ -80,6 +81,7 @@ func procedureRowClient(row sqlclient.Row, parameters []sqlclient.Row, statement
 		if statements != nil {
 			*statements = append(*statements, sql)
 		}
+
 		switch {
 		case strings.HasPrefix(sql, "SELECT p.proname") && row != nil:
 			return []sqlclient.Row{row}, nil
@@ -88,6 +90,7 @@ func procedureRowClient(row sqlclient.Row, parameters []sqlclient.Row, statement
 		case strings.HasPrefix(sql, "SELECT database_name"):
 			return []sqlclient.Row{{"database_name": "analytics"}}, nil
 		}
+
 		return nil, nil
 	}))
 }
@@ -104,6 +107,7 @@ func TestProcedureReadReconcilesArguments(t *testing.T) {
 	found, err := (&procedureResource{procedureRowClient(row, parameters, nil)}).read(context.Background(), &data)
 	require.NoError(t, err)
 	require.True(t, found)
+
 	arguments := procedureArguments(data.Arguments)
 	require.Len(t, arguments, 2)
 	assert.Equal(t, "MIN_ID", arguments[0].Name.ValueString())
@@ -115,6 +119,7 @@ func TestProcedureReadReconcilesArguments(t *testing.T) {
 	found, err = (&procedureResource{procedureRowClient(row, parameters, nil)}).read(context.Background(), &data)
 	require.NoError(t, err)
 	require.True(t, found)
+
 	arguments = procedureArguments(data.Arguments)
 	require.Len(t, arguments, 2)
 	assert.Equal(t, "INOUT", arguments[0].Mode.ValueString())
@@ -126,6 +131,7 @@ func TestProcedureReadReconcilesArguments(t *testing.T) {
 // TestProcedureReadRejectsIncompleteMetadata reports malformed catalog rows and parameter failures.
 func TestProcedureReadRejectsIncompleteMetadata(t *testing.T) {
 	valid := sqlclient.Row{"owner": "admin", "security_definer": "false", "arguments": "integer", "body": "BEGIN NULL; END;"}
+
 	parameter := []sqlclient.Row{{"parameter_name": "a", "ordinal_position": "1", "parameter_type": "IN", "data_type": "integer"}}
 	for name, test := range map[string]struct {
 		row        sqlclient.Row
@@ -140,6 +146,7 @@ func TestProcedureReadRejectsIncompleteMetadata(t *testing.T) {
 		_, err := (&procedureResource{procedureRowClient(test.row, test.parameters, nil)}).read(context.Background(), &data)
 		require.Error(t, err, name)
 	}
+
 	failing := &procedureResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		switch {
 		case strings.HasPrefix(sql, "SHOW PARAMETERS"):
@@ -147,6 +154,7 @@ func TestProcedureReadRejectsIncompleteMetadata(t *testing.T) {
 		case strings.HasPrefix(sql, "SELECT p.proname"):
 			return []sqlclient.Row{valid}, nil
 		}
+
 		return []sqlclient.Row{{"database_name": "analytics"}}, nil
 	}))}
 	data := procedureTestDefault()
@@ -161,6 +169,7 @@ func TestProcedureReadRejectsIncompleteMetadata(t *testing.T) {
 // TestProcedureCreateRejectsInvalidDefinitionBeforeSQL validates before the first statement and state write.
 func TestProcedureCreateRejectsInvalidDefinitionBeforeSQL(t *testing.T) {
 	var statements []string
+
 	r := &procedureResource{procedureRowClient(nil, nil, &statements)}
 	data := procedureTestChange(func(data *procedureModel) {
 		data.Nonatomic, data.Configuration = types.BoolValue(true), procedureTestSettings(map[string]string{"search_path": "x"})
@@ -180,6 +189,7 @@ func TestProcedureCreateKeepsStateWhenVerificationFails(t *testing.T) {
 				if strings.HasPrefix(sql, failing) {
 					return nil, errors.New("injected failure")
 				}
+
 				return nil, nil
 			}))}
 			data := procedureTestDefault()
@@ -187,6 +197,7 @@ func TestProcedureCreateKeepsStateWhenVerificationFails(t *testing.T) {
 			resp := resource.CreateResponse{State: emptyState(t, r)}
 			r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(testState(t, r, data))}, &resp)
 			require.True(t, resp.Diagnostics.HasError())
+
 			var observed procedureModel
 			require.False(t, resp.State.Get(context.Background(), &observed).HasError())
 			assertLookupIdentity(t, observed.ID, "admin", map[string]string{"schema": "public", "name": "sp_example", "arguments": "INTEGER"})
@@ -216,12 +227,14 @@ func TestProcedureImportIdentity(t *testing.T) {
 	resp := resource.ImportStateResponse{State: emptyState(t, r)}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"w","database":"d","schema":"s","name":"p","arguments":"int, varchar"}`}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 	var arguments types.List
 	require.False(t, resp.State.GetAttribute(context.Background(), path.Root("argument"), &arguments).HasError())
 	imported := procedureArguments(arguments)
 	require.Len(t, imported, 2)
 	assert.Equal(t, "CHARACTER VARYING", imported[1].Type.ValueString())
 	assert.True(t, imported[1].Mode.IsNull())
+
 	for _, id := range []string{`{"workgroup_name":"w","database":"d","schema":"s","name":"p"}`, `not json`} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
@@ -256,6 +269,7 @@ func TestProcedureUpdateFailures(t *testing.T) {
 	changed := prior
 	changed.Security = types.StringValue("DEFINER")
 	invalid := changed
+
 	invalid.Nonatomic = types.BoolValue(true)
 	for name, test := range map[string]struct {
 		planned procedureModel
@@ -267,18 +281,23 @@ func TestProcedureUpdateFailures(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := fullCatalog()
+
 			var writes []string
+
 			r := &procedureResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if test.fail != "" && strings.HasPrefix(sql, test.fail) {
 					return nil, errors.New("injected failure")
 				}
+
 				if !fakeRead(sql) {
 					writes = append(writes, sql)
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			}))}
 			_, diagnostics := applyOperation(t, r, "update", prior, test.planned, nil)
 			require.True(t, diagnostics.HasError())
+
 			if test.fail == "" {
 				assert.Empty(t, writes)
 			}

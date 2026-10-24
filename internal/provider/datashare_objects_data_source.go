@@ -16,6 +16,7 @@ import (
 
 var _ = registerDataSource(newDatashareObjectsDataSource)
 
+// newDatashareObjectsDataSource lists the objects of the datashares in one local database.
 func newDatashareObjectsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:        "datashare_objects",
@@ -35,29 +36,36 @@ func newDatashareObjectsDataSource() datasource.DataSource {
 	})
 }
 
+// datashareObjectsList returns no objects for a missing database instead of failing the lookup.
 func datashareObjectsList(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
 	database := objectString(filters, "database")
 	if database == "" {
 		database = client.database.ValueString()
 	}
+
 	exists, err := client.localDatabaseExists(ctx, database)
 	if err != nil || !exists {
 		return nil, err
 	}
+
 	rows, err := client.selectRows(ctx, database, listDatashareObjectsQuery(database, objectString(filters, "datashare"), objectString(filters, "object_type")))
 	if err != nil {
 		return nil, err
 	}
+
 	items := make([]map[string]attr.Value, 0, len(rows))
 	for _, row := range rows {
 		includeNew := types.BoolNull()
+
 		if row["object_type"] == "schema" && strings.TrimSpace(row["include_new"]) != "" {
 			value, err := strconv.ParseBool(strings.TrimSpace(row["include_new"]))
 			if err != nil {
 				return nil, fmt.Errorf("decode datashare schema include_new: %w", err)
 			}
+
 			includeNew = types.BoolValue(value)
 		}
+
 		items = append(items, map[string]attr.Value{
 			"datashare":   types.StringValue(row["share_name"]),
 			"object_name": types.StringValue(row["object_name"]),
@@ -65,5 +73,6 @@ func datashareObjectsList(ctx context.Context, client *resourceClient, filters t
 			"include_new": includeNew,
 		})
 	}
+
 	return items, nil
 }

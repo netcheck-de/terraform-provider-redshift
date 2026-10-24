@@ -25,18 +25,20 @@ connections require endpoint connectivity. See the
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
-Select exactly one warehouse method: `workgroup_name`, `cluster_identifier`, or `direct_connection`.
-`direct_connection` accepts optional `host`, `port`, `username`, sensitive `password`, `ca_cert_file`, and a nested
-`iam` block. Password mode requires host/username/password. IAM requires exactly one workgroup_name or
-cluster_identifier; cluster IAM also requires an existing db_user. Port defaults to 5439 or the discovered port. See
-[connection methods](guides/connection_methods.md) for complete configuration, permissions, TLS, and warehouse binding
-details.
+Select exactly one warehouse method: `workgroup_name`, `cluster_identifier`, or `direct_connection`. `direct_connection`
+accepts optional `host`, `port`, `username`, sensitive `password`, `ca_cert_file`, and a nested `iam` block. Password
+mode requires host/username/password. IAM requires exactly one `workgroup_name` or `cluster_identifier`; cluster IAM
+also requires an existing `db_user`. Port defaults to 5439 or the discovered port. See [connection
+methods](guides/connection_methods.md) for complete configuration, permissions, TLS, and warehouse binding details.
 
 When `region` or `profile` is omitted, the provider falls back to the AWS SDK defaults, including the `AWS_REGION` and
 `AWS_PROFILE` environment variables, shared configuration files, and the standard credential chain. Profiles may include
-assumed-role settings. Use provider aliases with separate profiles for additional accounts or warehouses. The caller
-needs Data API permissions, `redshift-serverless:GetCredentials`, and the SQL privileges required by each operation.
-Identity-provider and SQL group creation require a SQL superuser.
+assumed-role settings. Use provider aliases with separate profiles for additional accounts or warehouses. Data API
+connections need Data API permissions and the permissions for the selected authentication method: Serverless IAM uses
+`redshift-serverless:GetCredentials`, provisioned IAM uses `redshift:GetClusterCredentials`, and secret authentication
+uses Secrets Manager access. Direct IAM also needs endpoint discovery permissions; direct password connections use SQL
+credentials. See the connection guide for details. Every method needs the SQL privileges required by each operation;
+identity-provider and SQL group creation require a SQL superuser.
 
 Catalog mutations are serialized within each configured provider instance, across its databases, to avoid Redshift
 catalog transaction conflicts. Read-only SELECT and SHOW statements remain concurrent. Separate provider instances or
@@ -48,7 +50,9 @@ external SQL clients are not coordinated by this gate.
   both transports, including IAM credential lookup, connecting, and reading results. An earlier deadline of the running
   Terraform operation wins. When either expires or Terraform is interrupted, a running statement is cancelled: through
   the Data API, or with a cancel request on a direct connection, which is closed if the statement has not stopped five
-  seconds later.
+  seconds later. A cancelled Data API statement is awaited for up to 30 seconds until Redshift reports it stopped.
+  When a statement's outcome cannot be confirmed, for example because it did not stop or the connection was lost after
+  sending it, that provider instance sends no further changes, and the affected operations fail until the next run.
 - `direct_connection.connect_timeout` (default `30s`) bounds opening one direct connection: TCP connect, TLS
   handshake, and authentication. `PGCONNECT_TIMEOUT` does not override it.
 - A `timeouts` block on [`redshift_table`](resources/table.md),
@@ -78,8 +82,14 @@ Each page's Schema section lists required and optional arguments, including opti
 read-only attributes. Except for write-only arguments, argument values are also readable through Terraform references.
 Read-only attributes list only additional computed outputs; arguments are not repeated there.
 
-Write-only arguments, such as `password_wo` on [`redshift_user`](resources/user.md), require Terraform 1.11 or later.
-Their values are never stored in plan or state.
+Terraform 1.16 or later is supported; CI tests the provider and its examples on 1.16 and on the latest release. Older
+versions may work for plans and applies but are not tested: their `terraform test` passes optional ephemeral input
+variables to the apply phase of a run that left them unset during plan, and rejects the run
+([hashicorp/terraform#38974](https://github.com/hashicorp/terraform/issues/38974), fixed in 1.16.0), so the examples'
+mocked tests cannot run on them.
+
+Write-only arguments, such as `password_wo` on [`redshift_user`](resources/user.md), are never stored in plan or
+state.
 
 ## Resources
 
@@ -425,12 +435,120 @@ profile for that alias; otherwise the AWS SDK credential chain applies. Use prov
 The datashare resource requires its producer database separately; grants require the database receiving privileges.
 Scoped grants connect to that database for local grants and the administration database for shared grants.
 
-All resources export a computed `id` containing their stable import identity as JSON; it is independent of Data API
-statement IDs. Import IDs contain exactly one of `workgroup_name`, `cluster_identifier`, or `endpoint`, the relevant
-`database`, and the resource-specific keys documented on each page. The first refresh reads the existing object; import
-does not execute creation SQL. Configure the provider with a known workgroup before importing. A resource rejects state
-whose stored workgroup or database differs from its provider binding, rather than adopting a same-named object in
-another warehouse. Check the import plan before applying changes.
+### Importing existing resources
+
+Every resource exports a computed `id` containing its stable JSON import identity, independent of Data API statement
+IDs. Each resource page shows an `import` block first and an equivalent CLI command second, including the fields that
+identify that resource. Import reads an existing object into state without running creation SQL. Read-only data sources
+do not need imports.
+
+Configure the provider with known warehouse selectors, routing, and authentication before importing. Add the matching
+resource configuration and select its provider alias, if any. These examples adopt an existing SQL role named `readers`
+on each warehouse. Use the example for your connection method.
+
+**Serverless:**
+
+```terraform
+provider "redshift" {
+  alias          = "analytics"
+  region         = "eu-central-1"
+  workgroup_name = "analytics"
+  database       = "admin"
+}
+
+resource "redshift_role" "readers" {
+  provider = redshift.analytics
+  name     = "readers"
+}
+
+import {
+  to = redshift_role.readers
+  id = jsonencode({
+    workgroup_name = "analytics"
+    database       = "admin"
+    name           = "readers"
+  })
+}
+```
+
+**Provisioned cluster:**
+
+```terraform
+provider "redshift" {
+  alias              = "provisioned"
+  region             = "eu-central-1"
+  cluster_identifier = "analytics-cluster"
+  database           = "admin"
+  db_user            = "terraform_admin"
+}
+
+resource "redshift_role" "cluster_readers" {
+  provider = redshift.provisioned
+  name     = "readers"
+}
+
+import {
+  to = redshift_role.cluster_readers
+  id = jsonencode({
+    cluster_identifier = "analytics-cluster"
+    database           = "admin"
+    name               = "readers"
+  })
+}
+```
+
+Run `terraform plan` to inspect the import and any configuration changes, then `terraform apply` to carry them out.
+`jsonencode` constructs the JSON string without manual escaping. After a successful import, the block can remain as a
+record or be removed.
+
+Alternatively, with the same provider and resource configuration, omit the `import` block and run:
+
+```sh
+# Serverless
+terraform import redshift_role.readers \
+  '{"workgroup_name":"analytics","database":"admin","name":"readers"}'
+
+# Provisioned cluster
+terraform import redshift_role.cluster_readers \
+  '{"cluster_identifier":"analytics-cluster","database":"admin","name":"readers"}'
+```
+
+The CLI command writes the imported state immediately; it does not generate the resource configuration. These examples
+use POSIX shell quoting. Quote indexed addresses too, such as `'redshift_role.readers["analytics"]'`. The resource's
+`provider` argument selects the alias for either import method. Run `terraform plan` afterwards and review changes
+before applying them.
+
+### Import identity and warehouse binding
+
+The JSON ID contains exactly one nonempty warehouse key, a `database`, and the resource-specific keys:
+
+| Connection method               | Warehouse key        | Example                                |
+|---------------------------------|----------------------|----------------------------------------|
+| Serverless Data API/direct IAM  | `workgroup_name`     | `"analytics"` or its configured ARN    |
+| Provisioned Data API/direct IAM | `cluster_identifier` | `"analytics-cluster"`                  |
+| Direct password                 | `endpoint`           | `"redshift.internal.example.com:5439"` |
+
+For a direct password connection, use `endpoint` with the normalized host and port. Both import methods accept the same
+JSON identity. Direct IAM retains the AWS warehouse key; it does not use `endpoint` as its identity.
+
+The meaning of the ID's `database` follows the resource's ownership binding. Warehouse-wide resources such as roles,
+users, and groups use the provider's administration database. Resources such as schemas, tables, and views use their
+containing database. Grants that also expose `database_name` generally use the administration database in `database` and
+identify the target database separately in `database_name`. Use the complete identity on each resource page rather than
+inferring it from the SQL execution database. Identity values are strings; nested lists or maps, where required, are
+JSON-encoded strings inside the outer JSON object.
+
+Warehouse selectors must match the configured spelling exactly: a Serverless name and its ARN are distinct bindings.
+Direct password endpoints lowercase the DNS hostname, remove its trailing dot, and include the port (5439 by default). A
+resource rejects a different warehouse or identity database instead of adopting a same-named object elsewhere. Switching
+between Data API and direct IAM with the same selector spelling preserves identity. Switching to or from a password
+endpoint binding, or changing selector spelling, requires explicit state removal and re-import under the intended
+provider configuration; back up the state and review the resulting plan. These steps change Terraform's binding, not the
+location of SQL objects. See [connection methods](guides/connection_methods.md#imports-and-transport-switching).
+
+Import can recover only what the catalogs expose. Resource-specific instructions explain unreadable options, secrets,
+and first-apply adoption behavior. Match configuration to the existing object and inspect the plan, especially where
+replacement could recreate data-bearing objects.
 
 Object names and immutable bindings require replacement. For a warehouse migration, explicitly rebind/import resources
 under the new provider alias; changing provider configuration does not automatically move SQL objects. Reads refresh

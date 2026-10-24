@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,6 +29,7 @@ func TestDatashareSchemaMembership(t *testing.T) {
 	found, err := r.read(context.Background(), &data)
 	require.NoError(t, err)
 	assert.True(t, found)
+
 	c.shareSchema = false
 	found, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
@@ -37,11 +38,11 @@ func TestDatashareSchemaMembership(t *testing.T) {
 
 // TestDatashareSchemaRejectsInvalidCatalog rejects ambiguous or malformed schema members.
 func TestDatashareSchemaRejectsInvalidCatalog(t *testing.T) {
-	for _, rows := range [][]dataapi.Row{
+	for _, rows := range [][]sqlclient.Row{
 		{{"object_name": "serving", "include_new": "invalid"}},
 		{{"object_name": "serving", "include_new": "false"}, {"object_name": "serving", "include_new": "false"}},
 	} {
-		r := &datashareSchemaResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		r := &datashareSchemaResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return rows, nil
 		}))}
 		data := datashareSchemaModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), Schema: types.StringValue("serving")}
@@ -53,10 +54,11 @@ func TestDatashareSchemaRejectsInvalidCatalog(t *testing.T) {
 // TestDatashareSchemaReportsIncludeNewFailure checks errors after membership creation.
 func TestDatashareSchemaReportsIncludeNewFailure(t *testing.T) {
 	c := &catalog{}
-	r := &datashareSchemaResource{testResourceClient(queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+	r := &datashareSchemaResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		if c.shareSchema && strings.HasPrefix(sql, "ALTER DATASHARE") && strings.Contains(sql, " SET INCLUDENEW ") {
 			return nil, errors.New("cannot enable include_new")
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	}))}
 	data := datashareSchemaModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), Schema: types.StringValue("serving"), IncludeNew: types.BoolValue(true)}

@@ -5,6 +5,6 @@ import {
     database       = "warehouse"
     schema         = "public"
     name           = "f_upper"
-    arguments      = "character varying"
+    arguments      = "CHARACTER VARYING"
   })
 }

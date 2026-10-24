@@ -31,6 +31,7 @@ func newPolicyGrantResource() resource.Resource {
 	attributes["object_name"] = privilegeString("Lookup table that the policy's expression reads.", false)
 	attributes["policy_type"] = privilegeString("`RLS` for a row-level security policy or `MASKING` for a dynamic data masking policy.", false, "RLS", "MASKING")
 	attributes["policy_name"] = privilegeString("Policy that receives the permission.", false)
+
 	return &policyGrantResource{privilegeResource: &privilegeResource{
 		name: "policy_grant", attributes: attributes,
 		fields:  []string{"database_name", "schema_name", "object_name", "policy_type", "policy_name"},
@@ -42,6 +43,7 @@ func newPolicyGrantResource() resource.Resource {
 func (r *policyGrantResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	r.privilegeResource.Schema(ctx, req, resp)
 	resp.Schema.MarkdownDescription = "Grants `SELECT` on one lookup table to one row-level security or masking policy. Redshift does not report grants to policies, so the provider tracks the grant in state and refresh only checks that the table and policy still exist."
+	foldNames(&resp.Schema, "database_name", "schema_name", "object_name", "policy_name")
 }
 
 // parents checks that the tuple's database, schema, table, and policy exist, the only catalog facts the grant can be
@@ -50,16 +52,19 @@ func (r *policyGrantResource) parents(ctx context.Context, data types.Object) (p
 	if err := r.bound(data.Attributes()["id"].(types.String), r.database.ValueString()); err != nil {
 		return privilegeTarget{}, false, err
 	}
+
 	target, err := r.target(data)
 	if err != nil {
 		return target, false, err
 	}
+
 	for _, check := range target.checks {
 		rows, err := r.queryDatabase(ctx, r.database.ValueString(), check.sql, check.parameters)
 		if err != nil || len(rows) == 0 {
 			return target, false, err
 		}
 	}
+
 	return target, true, nil
 }
 
@@ -69,13 +74,16 @@ func (r *policyGrantResource) apply(ctx context.Context, data types.Object, reco
 	if err := r.validate(data); err != nil {
 		return err
 	}
+
 	target, found, err := r.parents(ctx, data)
 	if err != nil {
 		return err
 	}
+
 	if !found {
 		return fmt.Errorf("the database, schema, lookup table, or policy does not exist")
 	}
+
 	return r.revise(ctx, target, recorded, knownStrings(data.Attributes()["privileges"].(types.Set)))
 }
 
@@ -85,6 +93,7 @@ func (r *policyGrantResource) revise(ctx context.Context, target privilegeTarget
 	if err != nil {
 		return err
 	}
+
 	return r.exec(ctx, r.targetDatabase(target), statements...)
 }
 
@@ -92,6 +101,7 @@ func (r *policyGrantResource) revise(ctx context.Context, target privilegeTarget
 func (r *policyGrantResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data types.Object
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -100,10 +110,12 @@ func (r *policyGrantResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddError("Create policy_grant", err.Error())
 		return
 	}
+
 	fields := map[string]string{}
 	for _, field := range r.fields {
 		fields[field] = objectString(data, field)
 	}
+
 	attributes := data.Attributes()
 	attributes["id"] = r.identity(r.database.ValueString(), fields)
 	data = types.ObjectValueMust(data.AttributeTypes(ctx), attributes)
@@ -118,14 +130,17 @@ func (r *policyGrantResource) Create(ctx context.Context, req resource.CreateReq
 func (r *policyGrantResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data types.Object
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	_, found, err := r.parents(ctx, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read policy_grant", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
@@ -134,6 +149,7 @@ func (r *policyGrantResource) Read(ctx context.Context, req resource.ReadRequest
 	if data.Attributes()["privileges"].IsNull() {
 		data = withPrivileges(data, nil)
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 
@@ -142,13 +158,16 @@ func (r *policyGrantResource) Update(ctx context.Context, req resource.UpdateReq
 	var plan, prior types.Object
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.apply(ctx, plan, knownStrings(prior.Attributes()["privileges"].(types.Set))); err != nil {
 		resp.Diagnostics.AddError("Update policy_grant", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, plan)...)
 }
 
@@ -156,13 +175,16 @@ func (r *policyGrantResource) Update(ctx context.Context, req resource.UpdateReq
 func (r *policyGrantResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data types.Object
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	target, found, err := r.parents(ctx, data)
 	if err == nil && found {
 		err = r.revise(ctx, target, knownStrings(data.Attributes()["privileges"].(types.Set)), nil)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete policy_grant", err.Error())
 	}

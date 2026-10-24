@@ -63,7 +63,7 @@ resource "redshift_view" "all_sales" {
 
 ### Read-Only
 
-- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
+- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed outside literals, quoted identifiers, and comments; detects definition changes made outside Terraform.
 - `id` (String) JSON import identity; independent of Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 

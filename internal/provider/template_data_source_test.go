@@ -32,6 +32,7 @@ func TestTemplatesListing(t *testing.T) {
 		source := newTemplatesDataSource()
 		state, diagnostics := readSource(t, source, collectionConfig(t, source, filters), fullCatalog())
 		require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 		var data types.Object
 		require.False(t, state.Get(context.Background(), &data).HasError())
 		items := collectionResult(source, data).Elements()
@@ -42,6 +43,7 @@ func TestTemplatesListing(t *testing.T) {
 		assert.Equal(t, "admin", objectString(items[0].(types.Object), "owner"))
 		assert.Equal(t, "admin", objectString(items[0].(types.Object), "database"))
 	}
+
 	source := newTemplatesDataSource()
 	_, diagnostics := readSource(t, source, collectionConfig(t, source, nil), queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return nil, errors.New("catalog unavailable")
@@ -49,6 +51,8 @@ func TestTemplatesListing(t *testing.T) {
 	assert.True(t, diagnostics.HasError())
 }
 
+// TestTemplatesListingPreservesQuotedWhitespace returns schema, template, and owner names with their surrounding spaces
+// instead of trimming them.
 func TestTemplatesListingPreservesQuotedWhitespace(t *testing.T) {
 	source := newTemplatesDataSource()
 	client := queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
@@ -56,6 +60,7 @@ func TestTemplatesListingPreservesQuotedWhitespace(t *testing.T) {
 	})
 	state, diagnostics := readSource(t, source, collectionConfig(t, source, nil), client)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var data types.Object
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	items := collectionResult(source, data).Elements()

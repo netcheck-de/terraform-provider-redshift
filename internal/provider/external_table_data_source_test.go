@@ -13,14 +13,18 @@ var _ = registerParity(parityCase{source: newExternalTableDataSource, resource: 
 // externalTableLookupState reads the table lookup against a fake catalog.
 func externalTableLookupState(t *testing.T, c *catalog, name string) (externalTableModel, bool) {
 	t.Helper()
+
 	source := newExternalTableDataSource()
 	config := catalogLookupObject(t, source, map[string]string{"database": "admin", "schema": "example_external", "name": name})
+
 	state, diagnostics := readSource(t, source, config, c)
 	if diagnostics.HasError() {
 		return externalTableModel{}, false
 	}
+
 	var data externalTableModel
 	require.False(t, state.Get(context.Background(), &data).HasError())
+
 	return data, true
 }
 

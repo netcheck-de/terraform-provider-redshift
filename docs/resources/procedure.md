@@ -15,7 +15,7 @@ configuration, and owner. See AWS
 ## SQL Statements
 
 ```sql
-CREATE [ OR REPLACE ] PROCEDURE schema.name (arguments) ... AS $$ body $$ LANGUAGE plpgsql ...;
+CREATE [ OR REPLACE ] PROCEDURE schema.name (arguments) ... AS $$ body $$ LANGUAGE PLPGSQL ...;
 ALTER PROCEDURE schema.name (arguments) OWNER TO owner;
 DROP PROCEDURE schema.name (arguments);
 ```
@@ -71,7 +71,7 @@ resource "redshift_procedure" "purge" {
 
 ### Read-Only
 
-- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
+- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed outside literals, quoted identifiers, and comments; detects definition changes made outside Terraform.
 - `id` (String) JSON import identity; independent of Data API execution history.
 - `signature` (String) Canonical `IN` and `INOUT` argument types without modifiers, as `ALTER PROCEDURE`, `DROP PROCEDURE`, and `GRANT ... ON PROCEDURE` identify the procedure, for example `INTEGER, CHARACTER VARYING`.
 
@@ -146,9 +146,7 @@ argument types are not read back either.
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity. `arguments` holds the `IN` and `INOUT` types as
-`signature` reports them, comma-separated, and is `""` for a procedure without input arguments. They are imported as
-`argument` blocks, and the refresh after the import reports argument names, modes, and `OUT` arguments:
+In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
 ```terraform
 import {
@@ -158,7 +156,7 @@ import {
     database       = "analytics"
     schema         = "reporting"
     name           = "sp_purge_events"
-    arguments      = "integer"
+    arguments      = "INTEGER"
   })
 }
 ```
@@ -171,5 +169,9 @@ Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_procedure.purge \
-  '{"workgroup_name":"warehouse","database":"analytics","schema":"reporting","name":"sp_purge_events","arguments":"integer"}'
+  '{"workgroup_name":"warehouse","database":"analytics","schema":"reporting","name":"sp_purge_events","arguments":"INTEGER"}'
 ```
+
+`arguments` holds the `IN` and `INOUT` types as `signature` reports them, comma-separated, and is `""` for a procedure
+without input arguments. They are imported as `argument` blocks, and the refresh after the import reports argument
+names, modes, and `OUT` arguments.

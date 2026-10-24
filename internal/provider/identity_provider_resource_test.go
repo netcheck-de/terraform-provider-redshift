@@ -14,7 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -54,6 +54,7 @@ func identityProviderAzureCatalog(existing bool) *catalog {
 		family.azure, family.namespace = true, "aad"
 		family.parameters = `{"issuer":"https://sts.windows.net/tenant/", "client_id":"87f4aa26-78b7-410e-bf29-57b39929ef9a", "client_secret":, "audience":["https://analysis.windows.net/powerbi/connector/AmazonRedshift"]}`
 	}
+
 	return c
 }
 
@@ -78,6 +79,7 @@ func TestIdentityProviderObservesMutableAttributes(t *testing.T) {
 	assert.Equal(t, "application", data.InstanceID.ValueString())
 	assert.Equal(t, "arn:aws:sso:::instance/ssoins-1234567890abcdef", data.IdentityCenterInstanceARN.ValueString())
 	assert.True(t, data.Issuer.IsNull())
+
 	c.iamRole, c.enabled = "role-two", false
 	found, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
@@ -94,8 +96,8 @@ func TestIdentityProviderReadsAzureParameters(t *testing.T) {
 		"last": `{"issuer":"https://login.microsoftonline.com/t/v2.0", "client_id":"871c", "audience":["b", "a"], "client_secret": }`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			r := &identityProviderResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
-				return []dataapi.Row{{"name": "azure_idp", "type": "azure", "instanceid": "e40d", "namespc": "aad", "params": params, "enabled": "t", "uid": "126692"}}, nil
+			r := &identityProviderResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+				return []sqlclient.Row{{"name": "azure_idp", "type": "azure", "instanceid": "e40d", "namespc": "aad", "params": params, "enabled": "t", "uid": "126692"}}, nil
 			}))}
 			data := identityProviderModel{Name: types.StringValue("azure_idp")}
 			found, err := r.read(context.Background(), &data)
@@ -120,12 +122,12 @@ func TestIdentityProviderReadsAzureParameters(t *testing.T) {
 // TestIdentityProviderKeepsFederatedUsers prevents deleting integrations with unmanaged users.
 func TestIdentityProviderKeepsFederatedUsers(t *testing.T) {
 	writes := 0
-	r := &identityProviderResource{testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+	r := &identityProviderResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		switch {
 		case strings.HasPrefix(sql, "SELECT name"):
-			return []dataapi.Row{{"name": "identity", "type": "awsidc", "namespc": "example", "instanceid": "application", "params": `{"iam_role":"role"}`, "enabled": "true"}}, nil
+			return []sqlclient.Row{{"name": "identity", "type": "awsidc", "namespc": "example", "instanceid": "application", "params": `{"iam_role":"role"}`, "enabled": "true"}}, nil
 		case strings.HasPrefix(sql, "SELECT usename"):
-			return []dataapi.Row{{"usename": "example:user"}}, nil
+			return []sqlclient.Row{{"usename": "example:user"}}, nil
 		default:
 			writes++
 			return nil, nil
@@ -150,10 +152,11 @@ func TestIdentityProviderRejectsInvalidCatalog(t *testing.T) {
 		"uid":                 {"uid": "x"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			row := dataapi.Row{"name": "identity", "type": "awsidc", "namespc": "example", "instanceid": "application", "params": `{"iam_role":"role-one"}`, "enabled": "true", "uid": "1"}
+			row := sqlclient.Row{"name": "identity", "type": "awsidc", "namespc": "example", "instanceid": "application", "params": `{"iam_role":"role-one"}`, "enabled": "true", "uid": "1"}
 			maps.Copy(row, change)
-			r := &identityProviderResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
-				return []dataapi.Row{row}, nil
+
+			r := &identityProviderResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+				return []sqlclient.Row{row}, nil
 			}))}
 			data := identityProviderModel{Name: types.StringValue("identity")}
 			_, err := r.read(context.Background(), &data)
@@ -164,9 +167,9 @@ func TestIdentityProviderRejectsInvalidCatalog(t *testing.T) {
 
 // TestIdentityProviderRejectsDuplicateRows prevents selecting an arbitrary integration binding.
 func TestIdentityProviderRejectsDuplicateRows(t *testing.T) {
-	row := dataapi.Row{"name": "identity", "type": "awsidc", "namespc": "example", "instanceid": "application", "params": `{"iam_role":"role-one"}`, "enabled": "true"}
-	r := &identityProviderResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
-		return []dataapi.Row{row, row}, nil
+	row := sqlclient.Row{"name": "identity", "type": "awsidc", "namespc": "example", "instanceid": "application", "params": `{"iam_role":"role-one"}`, "enabled": "true"}
+	r := &identityProviderResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+		return []sqlclient.Row{row, row}, nil
 	}))}
 	_, err := r.read(context.Background(), &identityProviderModel{Name: types.StringValue("identity")})
 	require.ErrorContains(t, err, "ambiguous catalog metadata")
@@ -178,12 +181,14 @@ func TestIdentityProviderRefusesChangedIdentityOnDelete(t *testing.T) {
 		t.Run(field, func(t *testing.T) {
 			c := &catalog{identity: true, enabled: true, iamRole: "role-one"}
 			r := &identityProviderResource{testResourceClient(c)}
+
 			data := identityProviderModel{Name: types.StringValue("identity"), Namespace: types.StringValue("example"), ApplicationARN: types.StringValue("application"), IAMRoleARN: types.StringValue("role-one"), Enabled: types.BoolValue(true)}
 			if field == "namespace" {
 				data.Namespace = types.StringValue("previous")
 			} else {
 				data.ApplicationARN = types.StringValue("previous")
 			}
+
 			diagnostics := invoke(t, r, "delete", data)
 			assert.True(t, diagnostics.HasError())
 			assert.Empty(t, c.writes)
@@ -197,17 +202,19 @@ func TestIdentityProviderCreatesDisabled(t *testing.T) {
 		t.Run(fmt.Sprint(failAt), func(t *testing.T) {
 			c := &catalog{}
 			calls := 0
-			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				calls++
 				if calls == failAt {
 					return nil, fmt.Errorf("disable failed")
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			})
 			r := &identityProviderResource{testResourceClient(client)}
 			data := identityProviderModel{Name: types.StringValue("identity"), Namespace: types.StringValue("example"), ApplicationARN: types.StringValue("application"), IAMRoleARN: types.StringValue("role-one"), Enabled: types.BoolValue(false)}
 			diagnostics := invoke(t, r, "create", data)
 			assert.Equal(t, failAt != 0, diagnostics.HasError(), "%v", diagnostics)
+
 			if failAt == 0 {
 				assert.False(t, c.enabled)
 			}
@@ -221,14 +228,16 @@ func TestIdentityProviderUpdateNamesFailedStatement(t *testing.T) {
 	for suffix, summary := range map[string]string{"IAM_ROLE 'role-two'": "Update identity provider role", "NAMESPACE 'renamed'": "Update identity provider", `"identity" DISABLE`: "Update identity provider status"} {
 		t.Run(summary, func(t *testing.T) {
 			c := &catalog{identity: true, iamRole: "role-one", enabled: true}
-			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if strings.HasSuffix(sql, suffix) {
 					return nil, fmt.Errorf("ALTER denied")
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			})
 			r := newIdentityProviderResource()
 			configureTestResource(t, r, client)
+
 			prior := identityProviderAWSIDCFixture("identity", "example", "role-one", false)
 			prior.ID = r.(*identityProviderResource).identity("admin", map[string]string{"name": "identity"})
 			planned := prior
@@ -256,8 +265,10 @@ func TestIdentityProviderAzureLifecycle(t *testing.T) {
 	assert.Empty(t, c.writes)
 	state, diagnostics := applyOperation(t, r, "create", nil, azure, identityProviderWithSecret(azure, "first"))
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	family := fakeState[*identityProviderFakeFamily](c, "identity_provider")
 	assert.Equal(t, "first", family.secret)
+
 	var created identityProviderModel
 	require.False(t, state.Get(ctx, &created).HasError())
 	assert.True(t, created.ClientSecret.IsNull(), "the secret never reaches state")
@@ -284,14 +295,16 @@ func TestIdentityProviderAzureLifecycle(t *testing.T) {
 // TestIdentityProviderUpdateVerifiesParameters fails when the catalog keeps the previous parameters.
 func TestIdentityProviderUpdateVerifiesParameters(t *testing.T) {
 	c := identityProviderAzureCatalog(true)
-	client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+	client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		if strings.Contains(sql, " PARAMETERS ") {
 			return nil, nil // An acknowledged change that did not converge.
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	})
 	r := newIdentityProviderResource()
 	configureTestResource(t, r, client)
+
 	prior := identityProviderAzureFixture("oauth_standard", "aad", "https://sts.windows.net/tenant/")
 	planned := prior
 	planned.ClientID = types.StringValue("other")
@@ -305,6 +318,7 @@ func TestIdentityProviderRejectsInvalidPlan(t *testing.T) {
 	c := &catalog{identity: true, iamRole: "role-one", enabled: true}
 	r := newIdentityProviderResource()
 	configureTestResource(t, r, c)
+
 	invalid := identityProviderAWSIDCFixture("identity", "example", "role-one", true)
 	invalid.Issuer = types.StringValue("https://issuer.example/")
 	_, diagnostics := applyOperation(t, r, "create", nil, invalid, nil)
@@ -329,8 +343,8 @@ func TestIdentityProviderTranscripts(t *testing.T) {
 	reissued.Issuer, reissued.ClientSecretVersion = types.StringValue("https://login.microsoftonline.com/tenant/v2.0"), types.Int64Value(2)
 	renamed := azure
 	renamed.Namespace, renamed.AutoCreateRoles, renamed.IncludeGroups = types.StringValue("entra"), types.BoolValue(true), types.StringValue("finance_%")
-	fake := func(existing bool) func() dataapi.Client {
-		return func() dataapi.Client { return identityProviderAzureCatalog(existing) }
+	fake := func(existing bool) func() sqlclient.Client {
+		return func() sqlclient.Client { return identityProviderAzureCatalog(existing) }
 	}
 	runTranscripts(t, "lifecycle/identity_provider_azure", newIdentityProviderResource, []transcriptCase{
 		{name: "create", operation: "create", catalog: fake(false), planned: azure, config: identityProviderWithSecret(azure, "secret")},
@@ -350,6 +364,7 @@ func TestIdentityProviderNamespaceChangeKeepsFederatedUsers(t *testing.T) {
 	family.federated = []string{"example:bob"}
 	r := newIdentityProviderResource()
 	configureTestResource(t, r, c)
+
 	prior := identityProviderAWSIDCFixture("identity", "example", "role-one", true)
 	prior.ID = r.(*identityProviderResource).identity("admin", map[string]string{"name": "identity"})
 	planned := prior
@@ -372,6 +387,7 @@ func TestIdentityProviderNamespaceChangeKeepsFederatedUsers(t *testing.T) {
 // attributes with unknown values, which the model cannot express for the audience set or the write-only secret.
 func identityProviderValidateConfig(t *testing.T, model identityProviderModel, unknown ...string) diag.Diagnostics {
 	t.Helper()
+
 	r := newIdentityProviderResource()
 	config := tfsdk.Config(testState(t, r, model))
 	raw, err := tftypes.Transform(config.Raw, func(at *tftypes.AttributePath, value tftypes.Value) (tftypes.Value, error) {
@@ -380,12 +396,16 @@ func identityProviderValidateConfig(t *testing.T, model identityProviderModel, u
 				return tftypes.NewValue(value.Type(), tftypes.UnknownValue), nil
 			}
 		}
+
 		return value, nil
 	})
 	require.NoError(t, err)
+
 	config.Raw = raw
+
 	var resp resource.ValidateConfigResponse
 	r.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: config}, &resp)
+
 	return resp.Diagnostics
 }
 
@@ -394,6 +414,7 @@ func identityProviderValidateConfig(t *testing.T, model identityProviderModel, u
 func TestIdentityProviderValidateConfigWithUnknownValues(t *testing.T) {
 	awsidc := identityProviderAWSIDCFixture("identity", "example", "role-one", true)
 	azure := identityProviderAzureFixture("oauth_standard", "aad", "https://issuer.example/")
+
 	with := func(model identityProviderModel, change func(*identityProviderModel)) identityProviderModel {
 		change(&model)
 		return model
@@ -422,6 +443,7 @@ func TestIdentityProviderValidateConfigWithUnknownValues(t *testing.T) {
 				assert.False(t, diagnostics.HasError(), "%v", diagnostics)
 				return
 			}
+
 			require.True(t, diagnostics.HasError())
 			assert.Contains(t, diagnostics.Errors()[0].Detail(), test.invalid)
 		})
@@ -432,6 +454,7 @@ func TestIdentityProviderValidateConfigWithUnknownValues(t *testing.T) {
 func TestIdentityProviderInstanceModifier(t *testing.T) {
 	r := newIdentityProviderResource()
 	prior := identityProviderAzureFixture("oauth_standard", "aad", "https://sts.windows.net/tenant/")
+
 	prior.InstanceID = types.StringValue("tenant")
 	for name, test := range map[string]struct {
 		issuer string
@@ -455,6 +478,7 @@ func TestIdentityProviderInstanceModifier(t *testing.T) {
 			assert.Equal(t, test.want, resp.PlanValue)
 		})
 	}
+
 	resp := planmodifier.StringResponse{PlanValue: types.StringUnknown()}
 	identityProviderInstanceModifier{}.PlanModifyString(context.Background(), planmodifier.StringRequest{
 		State: tfsdk.State{Raw: tftypes.NewValue(testState(t, r, prior).Raw.Type(), nil)}, PlanValue: types.StringUnknown(),

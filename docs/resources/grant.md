@@ -310,8 +310,7 @@ The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see
 [connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
-Alternatively, use `terraform import`. The identity names the one configured recipient key (`role`, `user`, or
-`datashare`) and includes `schema_name` when set:
+Alternatively, use `terraform import`:
 
 ```shell
 # Role grant
@@ -326,6 +325,9 @@ terraform import redshift_grant.analyst_tables \
 terraform import redshift_grant.share_tables \
   '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","datashare":"analytics_share","schema_name":"serving","scope":"TABLES"}'
 ```
+
+The identity names the one configured recipient key (`role`, `user`, or `datashare`) and includes `schema_name` when
+set.
 
 The actual privilege and grant option sets are read from the catalog during refresh; compare the next plan to the
 intended policy.

@@ -139,40 +139,49 @@ func (r *procedureResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "name")
 }
 
 // ValidateConfig reports an invalid procedure definition during planning once the configuration is known.
 func (r *procedureResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data procedureModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if !req.Config.Raw.IsFullyKnown() {
 		for i, value := range data.Arguments.Elements() {
 			argument := value.(types.Object)
 			if argument.IsUnknown() || argument.IsNull() {
 				continue
 			}
+
 			dataType := argument.Attributes()["type"].(types.String)
 			if !dataType.IsUnknown() && !dataType.IsNull() {
 				name, err := routineType(dataType.ValueString())
 				if err == nil {
 					err = routineRejectedType(routineBaseType(name), "procedure")
 				}
+
 				if err != nil {
 					resp.Diagnostics.AddAttributeError(path.Root("argument").AtListIndex(i).AtName("type"), "Invalid procedure argument", err.Error())
 				}
 			}
 		}
+
 		if data.Nonatomic.ValueBool() && strings.EqualFold(knownString(data.Security), "DEFINER") {
 			resp.Diagnostics.AddError("Invalid procedure definition", "SECURITY DEFINER is not supported for a NONATOMIC procedure")
 		}
+
 		if data.Nonatomic.ValueBool() && len(data.Configuration.Elements()) > 0 {
 			resp.Diagnostics.AddError("Invalid procedure definition", "SET configuration parameters are not supported for a NONATOMIC procedure")
 		}
+
 		return
 	}
+
 	if _, err := newProcedureSpec(data); err != nil {
 		resp.Diagnostics.AddError("Invalid procedure definition", err.Error())
 	}
@@ -195,30 +204,39 @@ func procedureParameters(rows []sqlclient.Row) ([]procedureArgumentModel, error)
 		position int
 		argument procedureArgumentModel
 	}
+
 	var parameters []parameter
+
 	for _, row := range rows {
 		mode := strings.ToUpper(row["parameter_type"])
 		if mode == "RETURN" {
 			continue
 		}
+
 		position, err := strconv.Atoi(row["ordinal_position"])
 		if err != nil || row["data_type"] == "" {
 			return nil, fmt.Errorf("procedure parameter %q has incomplete catalog metadata", row["parameter_name"])
 		}
+
 		argument := procedureArgumentModel{Name: types.StringNull(), Mode: types.StringNull(), Type: types.StringValue(routineCatalogType(row["data_type"]))}
 		if row["parameter_name"] != "" {
 			argument.Name = types.StringValue(row["parameter_name"])
 		}
+
 		if mode != "IN" {
 			argument.Mode = types.StringValue(mode)
 		}
+
 		parameters = append(parameters, parameter{position: position, argument: argument})
 	}
+
 	slices.SortFunc(parameters, func(a, b parameter) int { return a.position - b.position })
+
 	arguments := make([]procedureArgumentModel, len(parameters))
 	for i, parameter := range parameters {
 		arguments[i] = parameter.argument
 	}
+
 	return arguments, nil
 }
 
@@ -228,21 +246,26 @@ func (r *procedureResource) catalogRow(ctx context.Context, data procedureModel)
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return nil, "", err
 	}
+
 	signature, err := procedureSignature(procedureArguments(data.Arguments))
 	if err != nil {
 		return nil, "", err
 	}
+
 	database, schema, name := data.Database.ValueString(), data.Schema.ValueString(), data.Name.ValueString()
 	if exists, err := r.localDatabaseExists(ctx, database); err != nil || !exists {
 		return nil, "", err
 	}
+
 	rows, err := r.selectRows(ctx, database, readProcedureQuery(schema, name, signature))
 	if err != nil || len(rows) == 0 {
 		return nil, "", err
 	}
+
 	if len(rows) != 1 {
 		return nil, "", fmt.Errorf("procedure %q has ambiguous catalog metadata", name)
 	}
+
 	return rows[0], signature, nil
 }
 
@@ -252,22 +275,27 @@ func (r *procedureResource) observe(ctx context.Context, data procedureModel) (p
 	if err != nil || row == nil {
 		return procedureRow{}, false, err
 	}
+
 	database, schema, name := data.Database.ValueString(), data.Schema.ValueString(), data.Name.ValueString()
 	if row["owner"] == "" {
 		return procedureRow{}, false, fmt.Errorf("procedure %q has incomplete catalog metadata", name)
 	}
+
 	definer, err := strconv.ParseBool(row["security_definer"])
 	if err != nil {
 		return procedureRow{}, false, fmt.Errorf("procedure %q has an invalid security mode: %w", name, err)
 	}
+
 	parameters, err := r.queryDatabase(ctx, database, showProcedureParametersStatement(schema, name, signature), nil)
 	if err != nil {
 		return procedureRow{}, false, err
 	}
+
 	arguments, err := procedureParameters(parameters)
 	if err != nil {
 		return procedureRow{}, false, err
 	}
+
 	return procedureRow{signature: routineCatalogSignature(row["arguments"]), owner: row["owner"], body: row["body"], definer: definer, arguments: arguments}, true, nil
 }
 
@@ -276,15 +304,18 @@ func (r *procedureResource) observe(ctx context.Context, data procedureModel) (p
 // argument's name only as an alias inside the body.
 func procedureCatalogArguments(configured types.List, catalog []procedureArgumentModel) types.List {
 	stored := procedureArguments(configured)
+
 	matches := !configured.IsUnknown() && len(stored) == len(catalog)
 	for i := 0; matches && i < len(stored); i++ {
 		name := catalog[i].Name.ValueString()
 		matches = procedureMode(stored[i]) == procedureMode(catalog[i]) && routineCatalogTypeMatches(stored[i].Type.ValueString(), catalog[i].Type.ValueString()) &&
 			(name == "" || strings.EqualFold(stored[i].Name.ValueString(), name))
 	}
+
 	if matches {
 		return configured
 	}
+
 	return procedureArgumentList(catalog)
 }
 
@@ -295,6 +326,7 @@ func (row procedureRow) apply(data *procedureModel, applied bool) {
 	data.Arguments = procedureCatalogArguments(data.Arguments, row.arguments)
 	data.Signature = types.StringValue(row.signature)
 	data.Security = types.StringValue(procedureSecurity(row.definer))
+
 	data.Owner = routineOwner(data.Owner, row.owner)
 	if applied {
 		data.Body, data.DefinitionFingerprint = recordDefinition(data.Body, row.body)
@@ -308,6 +340,7 @@ func procedureSecurity(definer bool) string {
 	if definer {
 		return "DEFINER"
 	}
+
 	return "INVOKER"
 }
 
@@ -317,6 +350,7 @@ func (r *procedureResource) read(ctx context.Context, data *procedureModel) (boo
 	if err == nil && found {
 		row.apply(data, false)
 	}
+
 	return found, err
 }
 
@@ -338,7 +372,9 @@ func (r *procedureResource) verify(ctx context.Context, data *procedureModel) er
 	case !data.Owner.IsUnknown() && !data.Owner.IsNull() && !routineOwnerMatches(data.Owner, row.owner):
 		return fmt.Errorf("the procedure owner is %q, not %q", row.owner, data.Owner.ValueString())
 	}
+
 	row.apply(data, true)
+
 	return nil
 }
 
@@ -346,27 +382,34 @@ func (r *procedureResource) verify(ctx context.Context, data *procedureModel) er
 func (r *procedureResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data procedureModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	spec, err := newProcedureSpec(data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid procedure definition", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), createProcedureStatement(spec, false)); err != nil {
 		resp.Diagnostics.AddError("Create procedure", err.Error())
 		return
 	}
+
 	data.ID = r.identityOf(data, spec.signature)
 	data.Signature = types.StringValue(string(spec.signature))
 	// A failed owner change or verification must still return serializable state for the created procedure.
 	planned := data
+
 	data.DefinitionFingerprint = types.StringNull()
 	if data.Owner.IsUnknown() {
 		data.Owner = types.StringNull()
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -376,10 +419,12 @@ func (r *procedureResource) Create(ctx context.Context, req resource.CreateReque
 		resp.Diagnostics.AddError("Set procedure owner", err.Error())
 		return
 	}
+
 	if err := r.verify(ctx, &planned); err != nil {
 		resp.Diagnostics.AddError("Verify procedure", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &planned)...)
 }
 
@@ -387,18 +432,22 @@ func (r *procedureResource) Create(ctx context.Context, req resource.CreateReque
 func (r *procedureResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data procedureModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read procedure", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -407,26 +456,32 @@ func (r *procedureResource) Update(ctx context.Context, req resource.UpdateReque
 	var data, previous procedureModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &previous)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.bound(previous.ID, data.Database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update procedure", err.Error())
 		return
 	}
+
 	statements, err := alterProcedureStatements(previous, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid procedure definition", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), statements...); err != nil {
 		resp.Diagnostics.AddError("Update procedure", err.Error())
 		return
 	}
+
 	if err := r.verify(ctx, &data); err != nil {
 		resp.Diagnostics.AddError("Verify procedure", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -434,9 +489,11 @@ func (r *procedureResource) Update(ctx context.Context, req resource.UpdateReque
 func (r *procedureResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data procedureModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	row, _, err := r.catalogRow(ctx, data)
 	if err == nil && row != nil {
 		var statement string
@@ -444,6 +501,7 @@ func (r *procedureResource) Delete(ctx context.Context, req resource.DeleteReque
 			err = r.exec(ctx, data.Database.ValueString(), statement)
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete procedure", err.Error())
 	}
@@ -453,18 +511,22 @@ func (r *procedureResource) Delete(ctx context.Context, req resource.DeleteReque
 // imported as IN argument blocks, and the refresh reports the actual names, modes, and OUT arguments.
 func (r *procedureResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importIdentity(ctx, req, resp, "database", "schema", "name")
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	inputs, signature, err := routineImportArguments(req.ID)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid import identity", err.Error())
 		return
 	}
+
 	arguments := make([]procedureArgumentModel, len(inputs))
 	for i, input := range inputs {
 		arguments[i] = procedureArgumentModel{Name: types.StringNull(), Mode: types.StringNull(), Type: types.StringValue(input)}
 	}
+
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("argument"), procedureArgumentList(arguments))...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("signature"), string(signature))...)
 }

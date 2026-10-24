@@ -23,6 +23,7 @@ func tablesCatalogType(tableType string) string {
 	if tableType == tablesTypeMaterialized {
 		return tablesTypeView
 	}
+
 	return tableType
 }
 

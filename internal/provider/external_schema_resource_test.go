@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,12 +38,13 @@ var _ = registerReplacementPolicy("redshift_external_schema", map[string]replace
 func TestExternalSchemaRegionRoundTrips(t *testing.T) {
 	for _, key := range []string{"REGION", "region"} {
 		t.Run(key, func(t *testing.T) {
-			r := &externalSchemaResource{testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+			r := &externalSchemaResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 				if strings.HasPrefix(sql, "CREATE EXTERNAL SCHEMA") {
 					assert.Contains(t, sql, " REGION 'eu-central-1'")
 					return nil, nil
 				}
-				return []dataapi.Row{{"schemaname": "example_external", "eskind": "1", "databasename": "glue", "esoptions": `{"IAM_ROLE":"role","` + key + `":"eu-central-1"}`, "owner": "admin"}}, nil
+
+				return []sqlclient.Row{{"schemaname": "example_external", "eskind": "1", "databasename": "glue", "esoptions": `{"IAM_ROLE":"role","` + key + `":"eu-central-1"}`, "owner": "admin"}}, nil
 			}))}
 			data := externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("example_external"), GlueDatabase: types.StringValue("glue"), IAMRoleARN: types.StringValue("role"), Region: types.StringValue("eu-central-1")}
 			require.False(t, invoke(t, r, "create", data).HasError())
@@ -69,15 +70,15 @@ func TestExternalSchemaReadsGlueBinding(t *testing.T) {
 
 // TestExternalSchemaRejectsIncompatibleCatalog rejects unsupported kinds, a missing owner, and malformed options.
 func TestExternalSchemaRejectsIncompatibleCatalog(t *testing.T) {
-	for _, row := range []dataapi.Row{
+	for _, row := range []sqlclient.Row{
 		{"schemaname": "example_external", "eskind": "6", "owner": "admin", "esoptions": "{}"},
 		{"schemaname": "example_external", "eskind": "1", "esoptions": `{"IAM_ROLE":"role"}`},
 		{"schemaname": "example_external", "eskind": "1", "owner": "admin", "esoptions": "broken"},
 		{"schemaname": "example_external", "eskind": "1", "owner": "admin", "esoptions": "{}"},
 		{"schemaname": "example_external", "eskind": "3", "owner": "admin", "esoptions": `{"PORT":"many"}`},
 	} {
-		r := &externalSchemaResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
-			return []dataapi.Row{row}, nil
+		r := &externalSchemaResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+			return []sqlclient.Row{row}, nil
 		}))}
 		data := externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("example_external"), GlueDatabase: types.StringValue("glue"), IAMRoleARN: types.StringValue("role")}
 		_, err := r.read(context.Background(), &data)
@@ -95,10 +96,12 @@ func TestExternalSchemaCreationErrorsRetainKnownState(t *testing.T) {
 				resp := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
 				r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state)}, &resp)
 				require.True(t, resp.Diagnostics.HasError())
+
 				var observed externalSchemaModel
 				require.False(t, resp.State.Get(context.Background(), &observed).HasError())
 				assert.False(t, observed.ID.IsNull())
 				assert.True(t, resp.State.Raw.IsFullyKnown())
+
 				if !region.IsUnknown() {
 					assert.Equal(t, region, observed.Region)
 				}

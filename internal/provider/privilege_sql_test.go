@@ -15,21 +15,26 @@ func privilegeTargetSQL(target privilegeTarget, err error, privilege sqlclient.K
 	if err != nil {
 		return nil, err
 	}
+
 	var statements []string
+
 	for _, check := range target.checks {
 		if check.sql != "" {
 			statements = append(statements, check.sql)
 		}
 	}
+
 	return append(statements, target.query.sql, target.grant.statement(true, privilege), target.grant.statement(false, privilege)), nil
 }
 
 // privilegeTargetCase renders the target that factory's prepare builds from fields.
 func privilegeTargetCase(t *testing.T, factory func() resource.Resource, fields map[string]string, privilege sqlclient.Keyword) func() ([]string, error) {
 	t.Helper()
+
 	return func() ([]string, error) {
 		r := factory().(*privilegeResource)
 		target, err := r.prepare(privilegeObject(t, r, fields))
+
 		return privilegeTargetSQL(target, err, privilege)
 	}
 }
@@ -75,10 +80,12 @@ func TestPrincipalSQL(t *testing.T) {
 			if err != nil {
 				return nil, err
 			}
+
 			statements := []string{sqlclient.Stmt("GRANT USAGE ON SCHEMA").Ident("serving").Kw("TO").Append(grantee).String()}
 			if check.sql != "" {
 				statements = append([]string{check.sql}, statements...)
 			}
+
 			return statements, nil
 		}
 	}
@@ -103,6 +110,7 @@ func TestNewCatalogCheck(t *testing.T) {
 		sql:        "SELECT schema_name FROM svv_all_schemas WHERE database_name = :database AND schema_name = :schema",
 		parameters: map[string]string{"database": "analytics", "schema": "serving"},
 	}, check)
+
 	_, err = newCatalogChecks(privilegeUserQuery("loader"), privilegeUserQuery(""))
 	require.ErrorContains(t, err, "query parameter :name is empty")
 	assert.Equal(t, []string{"CREATE", "USAGE"}, privilegeNames([]sqlclient.Keyword{"CREATE", "USAGE"}))

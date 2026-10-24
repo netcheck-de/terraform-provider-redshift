@@ -75,24 +75,30 @@ func (d *userDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 func (d *userDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data userData
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	user := userNullModel(data.Name)
+
 	found, err := (&userResource{d.resourceClient}).read(ctx, &user)
 	if err != nil {
 		resp.Diagnostics.AddError("Read Redshift user", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("User not found", "No database user named "+data.Name.ValueString()+" exists.")
 		return
 	}
+
 	data.Name, data.Superuser, data.CreateDB, data.ValidUntil = user.Name, user.Superuser, user.CreateDB, user.ValidUntil
 	// The resource records no expiration as its infinity default; the lookup keeps reporting it as null.
 	if data.ValidUntil.ValueString() == userValidUntilInfinity {
 		data.ValidUntil = types.StringNull()
 	}
+
 	data.ConnectionLimit, data.SessionTimeout = user.ConnectionLimit, user.SessionTimeout
 	data.SyslogAccess, data.ExternalID = user.SyslogAccess, user.ExternalID
 	data.SearchPath = userListStrings(user.SearchPath)

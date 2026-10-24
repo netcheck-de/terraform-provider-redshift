@@ -37,11 +37,14 @@ func TestExternalModelLookupUnreportedSettings(t *testing.T) {
 	source := newExternalModelDataSource()
 	state, diagnostics := readSource(t, source, catalogLookupObject(t, source, map[string]string{"database": "admin", "schema": fakeModelSchema, "name": fakeModelName}), c)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
+
 	for _, name := range externalModelLookupSettings {
 		assert.True(t, observed.Attributes()[name].IsNull(), name)
 	}
+
 	assert.Equal(t, types.StringValue(fakeModelOwner), observed.Attributes()["owner"])
 }
 
@@ -49,6 +52,7 @@ func TestExternalModelLookupUnreportedSettings(t *testing.T) {
 func TestExternalModelLookupDescriptions(t *testing.T) {
 	var response datasource.SchemaResponse
 	newExternalModelDataSource().Schema(context.Background(), datasource.SchemaRequest{}, &response)
+
 	for name, description := range nestedDescriptions(response.Schema.Attributes) {
 		for _, resourceOnly := range []string{"replaces the model", "recorded in place", "must not manage"} {
 			assert.NotContains(t, description, resourceOnly, "%s", name)

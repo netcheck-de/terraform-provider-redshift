@@ -16,6 +16,7 @@ import (
 // TestContractTemplateRenamePlan drives real plans: a rename updates in place, records the new identity, and converges.
 func TestContractTemplateRenamePlan(t *testing.T) {
 	t.Parallel()
+
 	c := &catalog{identity: true, privileges: map[string]bool{}}
 	configuration := func(name, parameters string) string {
 		return fmt.Sprintf(`

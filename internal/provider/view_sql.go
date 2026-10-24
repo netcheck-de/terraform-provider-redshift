@@ -14,10 +14,12 @@ func validateViewConfig(schema, name, query types.String) error {
 	if (!schema.IsUnknown() && schema.ValueString() == "") || (!name.IsUnknown() && name.ValueString() == "") {
 		return fmt.Errorf("a view requires a nonempty schema and name")
 	}
+
 	if !query.IsUnknown() {
 		_, err := viewQuery(query.ValueString())
 		return err
 	}
+
 	return nil
 }
 
@@ -28,6 +30,7 @@ func viewRelation(schema, name string) (sqlclient.Statement, error) {
 	if schema == "" || name == "" {
 		return sqlclient.Statement{}, fmt.Errorf("a view requires a nonempty schema and name")
 	}
+
 	return sqlclient.Fragment().Qualified(schema, name), nil
 }
 
@@ -38,6 +41,7 @@ func viewQuery(query string) (sqlclient.UserSQL, error) {
 	if err != nil {
 		return "", fmt.Errorf("query: %w", err)
 	}
+
 	return checked, nil
 }
 
@@ -55,12 +59,15 @@ func viewDefinitionStatement(verb sqlclient.Keyword, data viewModel) (string, er
 	if err != nil {
 		return "", err
 	}
+
 	query, err := viewQuery(data.Query.ValueString())
 	if err != nil {
 		return "", err
 	}
+
 	statement := sqlclient.Stmt(verb).Append(relation).Kw("AS").Verbatim(query).
 		If(data.LateBinding.ValueBool(), "WITH NO SCHEMA BINDING")
+
 	return statement.String(), statement.Err()
 }
 
@@ -71,11 +78,14 @@ func createViewStatements(data viewModel) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	statements := []string{create}
+
 	if owner := knownString(data.Owner); owner != "" {
 		relation, _ := viewRelation(data.Schema.ValueString(), data.Name.ValueString())
 		statements = append(statements, viewOwnerStatement(relation, owner))
 	}
+
 	return statements, nil
 }
 
@@ -104,7 +114,9 @@ var viewAlterSteps = []alterStep[viewModel]{
 			if !prev.Query.Equal(plan.Query) {
 				return nil
 			}
+
 			statement, _ := replaceViewStatement(plan) // alterViewStatements validated plan first.
+
 			return []string{statement}
 		},
 	},
@@ -116,7 +128,9 @@ var viewAlterSteps = []alterStep[viewModel]{
 			if owner == "" {
 				return nil
 			}
+
 			relation, _ := viewRelation(plan.Schema.ValueString(), plan.Name.ValueString())
+
 			return []string{viewOwnerStatement(relation, owner)}
 		},
 	},
@@ -128,6 +142,7 @@ func alterViewStatements(prev, plan viewModel) ([]string, error) {
 	if _, err := replaceViewStatement(plan); err != nil {
 		return nil, err
 	}
+
 	return alterStatements(prev, plan, viewAlterSteps), nil
 }
 
@@ -139,6 +154,7 @@ func dropViewStatement(data viewModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return sqlclient.Stmt("DROP VIEW").Append(relation).String(), nil
 }
 
@@ -164,5 +180,6 @@ func readViewQuery(data viewModel) sqlclient.Query {
 func viewDefinitionKind(definition string) (lateBinding, materialized bool) {
 	words := strings.Fields(strings.ToLower(strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(definition), ";"))))
 	text := strings.Join(words, " ")
+
 	return strings.HasSuffix(text, " with no schema binding"), strings.HasPrefix(text, "create materialized view ")
 }

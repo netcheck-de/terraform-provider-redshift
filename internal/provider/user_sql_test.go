@@ -22,6 +22,7 @@ func userStrings(values ...string) types.List {
 	for i, value := range values {
 		elements[i] = types.StringValue(value)
 	}
+
 	return types.ListValueMust(types.StringType, elements)
 }
 
@@ -31,6 +32,7 @@ func userDefaults(values map[string]string) types.Map {
 	for key, value := range values {
 		elements[key] = types.StringValue(value)
 	}
+
 	return types.MapValueMust(types.StringType, elements)
 }
 
@@ -148,6 +150,7 @@ func TestUserSQL(t *testing.T) {
 		{"read", func() (string, error) {
 			sql, parameters, err := readUserQuery(quoted).Build()
 			assert.Equal(t, map[string]string{"name": `Odd"User`}, parameters)
+
 			return sql, err
 		}},
 		{"read_info", built(readUserInfoQuery(quoted))},
@@ -174,16 +177,19 @@ func TestUserAlterBatchOrder(t *testing.T) {
 	disabled := userWith(grafanaUser(), func(data *userModel) { data.PasswordDisabled = types.BoolValue(true) })
 	summaries := func(batches []userBatch) []string {
 		var names []string
+
 		for _, batch := range batches {
 			if len(batch.statements) > 0 {
 				names = append(names, batch.summary)
 			}
 		}
+
 		return names
 	}
 	batches, err := alterUserBatches(admin, userWith(disabled, userIdentityProvider))
 	require.NoError(t, err)
 	assert.Equal(t, []string{userUpdateSummary, userPasswordSummary, userUpdateSummary}, summaries(batches))
+
 	enabled := userWith(admin, func(data *userModel) { data.Password = types.StringValue("Secret123") })
 	batches, err = alterUserBatches(disabled, enabled)
 	require.NoError(t, err)

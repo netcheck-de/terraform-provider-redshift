@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -43,18 +44,20 @@ func TestDatasharesList(t *testing.T) {
 			state, diagnostics := readSource(t, source, collectionConfig(t, source, test.filters), c)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			assert.Empty(t, c.writes)
+
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
+
 			identity := map[string]string{}
-			for key, value := range test.filters {
-				identity[key] = value
-			}
+			maps.Copy(identity, test.filters)
 			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", identity)
 			items := collectionResult(source, observed).Elements()
 			require.Len(t, items, len(test.shares))
+
 			for index, name := range test.shares {
 				item := items[index].(types.Object).Attributes()
 				assert.Equal(t, types.StringValue(name), item["name"])
+
 				if name == "producer" {
 					assert.Equal(t, types.StringValue("OUTBOUND"), item["share_type"])
 					assert.Equal(t, types.StringValue("admin"), item["database"])
@@ -67,10 +70,12 @@ func TestDatasharesList(t *testing.T) {
 					assert.Equal(t, types.StringValue("analytics"), item["consumer_database"])
 					// SVV_DATASHARES documents share_id for every row, so inbound IDs pass through as well.
 					assert.Equal(t, types.Int64Value(200), item["share_id"])
+
 					for _, empty := range []string{"database", "owner", "created_at", "managed_by"} {
 						assert.True(t, item[empty].IsNull(), empty)
 					}
 				}
+
 				assert.Equal(t, types.StringValue("123456789012"), item["producer_account"])
 				assert.Equal(t, types.BoolValue(false), item["publicly_accessible"])
 			}
@@ -92,6 +97,7 @@ func TestDatasharesListFailures(t *testing.T) {
 			assert.True(t, diagnostics.HasError())
 		})
 	}
+
 	source := newDatasharesDataSource()
 	_, diagnostics := readSource(t, source, collectionConfig(t, source, nil), queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return nil, errors.New("catalog unavailable")

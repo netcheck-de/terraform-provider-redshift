@@ -14,6 +14,7 @@ func maskingTestPolicy(name, expression string, columns ...maskingPolicyColumn) 
 	if len(columns) == 0 {
 		columns = []maskingPolicyColumn{{Name: "email", Type: "VARCHAR(256)"}}
 	}
+
 	return maskingPolicyModel{
 		ID: types.StringNull(), Database: types.StringValue("admin"), Name: types.StringValue(name),
 		InputColumn: maskingPolicyColumnList(columns), Expression: types.StringValue(expression), DefinitionFingerprint: types.StringNull(),
@@ -42,6 +43,7 @@ func TestMaskingPolicySQL(t *testing.T) {
 	invalid := func(change func(*maskingPolicyModel)) func() (string, error) {
 		model := basic
 		change(&model)
+
 		return func() (string, error) { return createMaskingPolicyStatement(model) }
 	}
 	checkSQL(t, "masking_policy", []sqlCase{
@@ -54,12 +56,14 @@ func TestMaskingPolicySQL(t *testing.T) {
 		{"alter_quoted", func() ([]string, error) {
 			moved := quoted
 			moved.Expression = types.StringValue(`'it''s \ masked'::VARCHAR(64)`)
+
 			return alterMaskingPolicyStatements(quoted, moved)
 		}},
 		{"alter_unchanged", func() ([]string, error) { return alterMaskingPolicyStatements(basic, basic) }},
 		{"alter_invalid_expression", func() ([]string, error) {
 			broken := basic
 			broken.Expression = types.StringValue("'***'); DROP TABLE users; --")
+
 			return alterMaskingPolicyStatements(basic, broken)
 		}},
 		{"drop", func() string { return dropMaskingPolicyStatement(basic) }},
@@ -95,6 +99,7 @@ func TestMaskingPolicyCatalogParsing(t *testing.T) {
 	columns, err := maskingPolicyParseColumns(`[{"colname":"credit_card","type":"character varying(256)"},{"colname":"flag","type":"boolean"}]`)
 	require.NoError(t, err)
 	assert.Equal(t, []maskingPolicyColumn{{Name: "credit_card", Type: "CHARACTER VARYING(256)"}, {Name: "flag", Type: "BOOLEAN"}}, columns)
+
 	_, err = maskingPolicyParseColumns("not json")
 	require.Error(t, err)
 

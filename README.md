@@ -17,6 +17,12 @@ association/authorization. Its 41 resources and 58 data sources cover:
 
 The [resource index](docs/index.md#ownership-boundaries) shows which resource owns which part of a table or datashare.
 
+Terraform 1.16 or later is supported; CI tests the provider and its examples on 1.16 and on the latest release. Older
+versions may work for plans and applies but are not tested: their `terraform test` passes optional ephemeral input
+variables to the apply phase of a run that left them unset during plan, and rejects the run
+([hashicorp/terraform#38974](https://github.com/hashicorp/terraform/issues/38974), fixed in 1.16.0), so the examples'
+mocked tests cannot run on them.
+
 ## Configuration
 
 ```hcl
@@ -46,9 +52,9 @@ creation requires a superuser).
 
 The provider selects the warehouse and its default local administration database. Use an alias for another warehouse.
 The producer database owning a datashare and the database receiving a grant remain resource arguments because they
-identify those SQL objects. A newly created workgroup can be referenced during a fresh apply; imports need a workgroup
-that is already known when planning. Read-only object lookups do not require imports. For resource and data-source
-arguments, lifecycle behavior, and imports, see the [resource index](docs/index.md).
+identify those SQL objects. Newly created warehouses can be referenced during a fresh apply; imports require known
+warehouse selectors, routing, and authentication. Read-only object lookups do not require imports. For resource and
+data-source arguments, lifecycle behavior, and imports, see the [resource index](docs/index.md).
 
 Resource arguments are readable attributes, and paired data sources expose the same readable object attributes and JSON
 import-compatible `id`. Write-only passwords and Terraform-only rotation/replacement controls are excluded from lookups.
@@ -110,10 +116,9 @@ the tests still verify the certificate chain and hostname.
 
 ## Known limitations
 
-- Unquoted database, schema, and table names are folded to lowercase by Redshift by default; use lowercase names for
-  these objects.
-- `redshift_database` with `with_permissions = false` and cross-account datashare grants have not been tested against
-  live warehouses yet.
+- Redshift folds object names to lowercase, quoted ones included, unless `enable_case_sensitive_identifier` is set, so
+  the provider rejects database, schema, table, and other object names with uppercase letters at plan time. User names
+  and identity-provider principals and roles such as `AAD:alice` or `aad:Sales` keep their case.
 - On macOS, native trust can reject Serverless certificates that lack Certificate Transparency timestamps. Add the
   Amazon Trust Services root through `ca_cert_file` to retain full certificate and hostname verification, or connect
   through the Data API. `sslmode = "require"` disables server authentication and is only a disposable-fixture fallback.

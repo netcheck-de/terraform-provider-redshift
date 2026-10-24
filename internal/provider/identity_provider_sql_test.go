@@ -49,8 +49,12 @@ func TestIdentityProviderSQL(t *testing.T) {
 	azureQuoted := identityProviderAzureFixture(`Odd"Azure`, `it's \aad`, `https://issuer.example/it's\"x"`)
 	azureQuoted.Audience = []string{"https://b.example/'quoted'", `https://a.example/back\slash`}
 	azureQuoted.AutoCreateRoles, azureQuoted.ExcludeGroups = types.BoolValue(true), types.StringValue("%_admins$")
-	const secret = `BUAH~ewrqewrqwerUUY^%tHe1oNZShoiU7`
-	const quotedSecret = `it's "a" \secret`
+
+	const (
+		secret       = `BUAH~ewrqewrqwerUUY^%tHe1oNZShoiU7`
+		quotedSecret = `it's "a" \secret`
+	)
+
 	with := func(model identityProviderModel, change func(*identityProviderModel)) identityProviderModel {
 		change(&model)
 		return model
@@ -112,11 +116,13 @@ func TestIdentityProviderSQL(t *testing.T) {
 		{"read", func() (string, error) {
 			sql, parameters, err := readIdentityProviderQuery(quoted).Build()
 			assert.Equal(t, map[string]string{"name": `Odd"IdP`}, parameters)
+
 			return sql, err
 		}},
 		{"read_federated_users", func() (string, error) {
 			sql, parameters, err := readIdentityProviderUsersQuery(quoted).Build()
 			assert.Equal(t, map[string]string{"prefix": `it's \ns:`}, parameters)
+
 			return sql, err
 		}},
 	})

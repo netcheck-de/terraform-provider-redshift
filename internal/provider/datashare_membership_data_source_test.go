@@ -10,6 +10,8 @@ import (
 
 var _ = registerParity(parityCase{source: newDatashareMembershipDataSource, resource: newDatashareMembershipResource, selectors: []string{"database", "datashare", "schema", "kind"}})
 
+// TestDatashareMembershipLookup reports full coverage for the tables and functions of a schema whose objects are all
+// shared.
 func TestDatashareMembershipLookup(t *testing.T) {
 	for _, kind := range []string{"TABLES", "FUNCTIONS"} {
 		c := fullCatalog()
@@ -18,14 +20,19 @@ func TestDatashareMembershipLookup(t *testing.T) {
 	}
 }
 
+// TestDatashareMembershipRestrictedLookupIsObservational lets the lookup report the visible subset of a restricted
+// catalog, where the resource fails closed.
 func TestDatashareMembershipRestrictedLookupIsObservational(t *testing.T) {
 	c := fullCatalog()
 	f := fakeState[*fakeDatashares](c, "datashare")
 	f.restricted = true
 	f.bulkCandidates["TABLES"], f.bulkMembers["TABLES"] = nil, nil
+
 	exerciseCatalogLookup(t, newDatashareMembershipDataSource, map[string]string{"database": "admin", "datashare": "producer", "schema": "serving", "kind": "TABLES"}, map[string]attr.Value{"exists": types.BoolValue(true), "all": types.BoolValue(true)}, c)
 }
 
+// TestDatashareMembershipLookupDescriptionsAreObservational keeps resource-only requirements, such as all = true and
+// include_new = false, out of the lookup's descriptions.
 func TestDatashareMembershipLookupDescriptionsAreObservational(t *testing.T) {
 	source := dataSourceSchema(newDatashareMembershipDataSource)
 	all := source.Attributes["all"].GetMarkdownDescription()

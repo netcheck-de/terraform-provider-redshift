@@ -41,6 +41,7 @@ func TestUserLockoutsList(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var statements []string
+
 			source := newUserLockoutsDataSource()
 			state, diagnostics := readSource(t, source, collectionConfig(t, source, test.filters), queryFunc(func(_ context.Context, target sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 				statements = append(statements, target.Database+": "+sql)
@@ -48,14 +49,17 @@ func TestUserLockoutsList(t *testing.T) {
 			}))
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			assert.Equal(t, []string{"admin: SHOW USER LOCKOUT"}, statements)
+
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
 			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", test.filters)
 			items := collectionResult(source, observed).Elements()
 			require.Len(t, items, len(test.users))
+
 			for index, name := range test.users {
 				item := items[index].(types.Object).Attributes()
 				assert.Equal(t, types.StringValue(name), item["user_name"])
+
 				if name == "sales_user" {
 					assert.Equal(t, map[string]attr.Value{
 						"user_name": types.StringValue("sales_user"), "is_locked": types.BoolValue(true), "lock_reason": types.StringValue("manual"),
@@ -63,6 +67,7 @@ func TestUserLockoutsList(t *testing.T) {
 						"failed_login_attempts": types.Int64Value(0), "locked_by": types.Int64Value(100),
 					}, item)
 				}
+
 				if name == "report_user" {
 					assert.Equal(t, types.BoolValue(false), item["is_locked"])
 					assert.True(t, item["lock_reason"].IsNull())

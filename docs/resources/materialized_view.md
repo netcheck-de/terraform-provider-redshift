@@ -57,7 +57,7 @@ resource "redshift_materialized_view" "revenue_by_region" {
 
 - `database` (String) Local database containing the materialized view.
 - `name` (String) Materialized view name.
-- `query` (String) SELECT statement defining the materialized view, without a trailing `;`. Redshift cannot alter the definition. State keeps this text while the catalog definition is unchanged; a change made outside Terraform surfaces the catalog definition and plans a replacement. An import leaves it unset; the first apply after an import records the configured value without replacing the view and warns with the catalog definition, which it cannot compare.
+- `query` (String) SELECT statement defining the materialized view, without a trailing `;`. Redshift cannot alter the definition. State keeps this text while the catalog definition is unchanged; a change made outside Terraform surfaces the catalog definition. An import leaves it unset; the first apply after an import records the configured value without replacing the view and warns with the catalog definition, which it cannot compare.
 - `schema` (String) Existing schema containing the materialized view.
 
 ### Optional
@@ -71,7 +71,7 @@ resource "redshift_materialized_view" "revenue_by_region" {
 
 ### Read-Only
 
-- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
+- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed outside literals, quoted identifiers, and comments; detects definition changes made outside Terraform.
 - `id` (String) JSON import identity; independent of Data API execution history.
 
 <a id="nestedblock--distribution"></a>

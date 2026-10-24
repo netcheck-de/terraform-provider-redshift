@@ -24,11 +24,13 @@ var _ = registerValidateConfigCase("external_schema", validateConfigCase{
 	invalid: func() externalSchemaModel {
 		data := externalSchemaSourceModel("POSTGRES")
 		data.SecretARN = types.StringNull()
+
 		return data
 	}(),
 	unknown: func() externalSchemaModel {
 		data := externalSchemaSourceModel("POSTGRES")
 		data.SecretARN, data.URI = types.StringUnknown(), types.StringUnknown()
+
 		return data
 	}(),
 })
@@ -38,6 +40,7 @@ var _ = registerValidateConfigCase("external_schema", validateConfigCase{
 func externalSchemaSourceModel(sourceType string) externalSchemaModel {
 	data := externalSchemaFixture(sourceType, "example_external")
 	data.Database = types.StringValue("admin")
+
 	switch sourceType {
 	case "DATA_CATALOG":
 		data.GlueDatabase, data.IAMRoleARN = types.StringValue("example_glue"), types.StringValue("arn:aws:iam::123456789012:role/spectrum")
@@ -47,6 +50,7 @@ func externalSchemaSourceModel(sourceType string) externalSchemaModel {
 	case "POSTGRES", "MYSQL":
 		data.SourceDatabase, data.URI, data.Port = types.StringValue("orders"), types.StringValue("aurora.example.internal"), types.Int64Value(5432)
 		data.IAMRoleARN = types.StringValue("arn:aws:iam::123456789012:role/federated")
+
 		data.SecretARN = types.StringValue("arn:aws:secretsmanager:eu-central-1:123456789012:secret:aurora-AbCdEf")
 		if sourceType == "POSTGRES" {
 			data.SourceSchema = types.StringValue("public")
@@ -59,20 +63,25 @@ func externalSchemaSourceModel(sourceType string) externalSchemaModel {
 		data = externalSchemaMSK("iam")
 		data.Name, data.Database = types.StringValue("example_external"), types.StringValue("admin")
 	}
+
 	return data
 }
 
 // externalSchemaCatalog returns a full fake whose external schema was created from data, without recorded writes.
 func externalSchemaCatalog(t *testing.T, data externalSchemaModel) func() sqlclient.Client {
 	t.Helper()
+
 	statement, err := createExternalSchemaStatement(data)
 	require.NoError(t, err)
+
 	return func() sqlclient.Client {
 		c := fullCatalog()
 		c.external = false
 		_, err := c.Query(context.Background(), sqlclient.Connection{Database: "admin"}, statement, nil)
 		require.NoError(t, err)
+
 		c.writes = nil
+
 		return c
 	}
 }
@@ -85,10 +94,12 @@ func TestExternalSchemaAlterCoverage(t *testing.T) {
 // TestExternalSchemaSourceTranscripts records every source form's creation and the supported in-place changes.
 func TestExternalSchemaSourceTranscripts(t *testing.T) {
 	absent := catalogWith(func(c *catalog) { c.external = false })
+
 	var cases []transcriptCase
 	for _, sourceType := range []string{"HIVE_METASTORE", "POSTGRES", "MYSQL", "REDSHIFT", "KINESIS", "MSK"} {
 		cases = append(cases, transcriptCase{name: "create_" + strings.ToLower(sourceType), operation: "create", catalog: absent, planned: externalSchemaSourceModel(sourceType)})
 	}
+
 	glue := externalSchemaSourceModel("DATA_CATALOG")
 	owned := glue
 	owned.Owner = types.StringValue(`Etl"Owner`)
@@ -114,8 +125,10 @@ func TestExternalSchemaSourceTranscripts(t *testing.T) {
 func TestExternalSchemaConditionalReplacement(t *testing.T) {
 	ctx := context.Background()
 	r := newExternalSchemaResource()
+
 	var response resource.SchemaResponse
 	r.Schema(ctx, resource.SchemaRequest{}, &response)
+
 	value := types.StringValue("after")
 	for _, test := range []struct {
 		attribute, source string
@@ -141,12 +154,14 @@ func TestExternalSchemaConditionalReplacement(t *testing.T) {
 				PlanValue: test.planned, ConfigValue: test.planned, StateValue: types.StringValue("before"),
 			}
 			replace := false
+
 			for _, modifier := range response.Schema.Attributes[test.attribute].(schema.StringAttribute).PlanModifiers {
 				result := planmodifier.StringResponse{PlanValue: request.PlanValue}
 				modifier.PlanModifyString(ctx, request, &result)
 				require.False(t, result.Diagnostics.HasError(), "%v", result.Diagnostics)
 				replace = replace || result.RequiresReplace
 			}
+
 			assert.Equal(t, test.replace, replace)
 		})
 	}
@@ -155,6 +170,7 @@ func TestExternalSchemaConditionalReplacement(t *testing.T) {
 	unknown.SourceType = types.StringUnknown()
 	state := testState(t, r, unknown)
 	request := planmodifier.StringRequest{Path: path.Root("uri"), Plan: tfsdk.Plan(state), State: state, PlanValue: value, StateValue: types.StringValue("before")}
+
 	var result stringplanmodifier.RequiresReplaceIfFuncResponse
 	externalSchemaInPlace("uri")(ctx, request, &result)
 	assert.True(t, result.RequiresReplace)
@@ -165,6 +181,7 @@ func TestValidateExternalSchemaRules(t *testing.T) {
 	with := func(sourceType string, change func(*externalSchemaModel)) externalSchemaModel {
 		data := externalSchemaSourceModel(sourceType)
 		change(&data)
+
 		return data
 	}
 	for name, test := range map[string]struct {
@@ -243,6 +260,7 @@ func TestExternalSchemaKeepsUnrecordedOptions(t *testing.T) {
 	assert.Equal(t, "aurora.example.internal", data.URI.ValueString(), "URI is not recorded, so the configured value stays")
 	assert.Equal(t, "public", data.SourceSchema.ValueString())
 	assert.True(t, data.Region.IsNull())
+
 	imported := externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("example_external"), Port: types.Int64Unknown(), SourceSchema: types.StringUnknown()}
 	_, err = r.read(context.Background(), &imported)
 	require.NoError(t, err)
@@ -263,10 +281,12 @@ func TestExternalSchemaAuthenticationCase(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, "iam", configured.Authentication.ValueString())
+
 	imported := externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("stream"), Port: types.Int64Unknown(), SourceSchema: types.StringUnknown()}
 	_, err = r.read(context.Background(), &imported)
 	require.NoError(t, err)
 	assert.Equal(t, "IAM", imported.Authentication.ValueString())
+
 	statements, err := alterExternalSchemaStatements(externalSchemaMSK("IAM"), externalSchemaMSK("iam"))
 	require.NoError(t, err)
 	assert.Empty(t, statements)
@@ -291,6 +311,7 @@ func TestExternalSchemaUpdateFailures(t *testing.T) {
 		if strings.HasPrefix(sql, "ALTER EXTERNAL SCHEMA") {
 			return nil, nil
 		}
+
 		return ignored.Query(ctx, target, sql, parameters)
 	})
 	_, diagnostics = applyOperation(t, &externalSchemaResource{testResourceClient(client)}, "update", glue, moved, nil)
@@ -310,6 +331,7 @@ func TestExternalSchemaCreateFailures(t *testing.T) {
 		if strings.HasPrefix(sql, "ALTER SCHEMA") {
 			return nil, errors.New("permission denied")
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	})
 	owned := externalSchemaSourceModel("REDSHIFT")
@@ -319,6 +341,7 @@ func TestExternalSchemaCreateFailures(t *testing.T) {
 	require.True(t, diagnostics.HasError())
 	assert.Contains(t, diagnostics.Errors()[0].Detail(), "permission denied")
 	assert.True(t, state.Raw.IsFullyKnown())
+
 	var observed externalSchemaModel
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	assert.False(t, observed.ID.IsNull(), "the created schema stays in state so it is not orphaned")
@@ -341,6 +364,7 @@ func TestExternalSchemaHiddenFromRegularUser(t *testing.T) {
 	hidden := func() sqlclient.Client {
 		c := externalSchemaCatalog(t, glue)().(*catalog)
 		fakeState[*databasesFamily](c, "databases").externalHidden = true
+
 		return c
 	}
 	state, diagnostics := applyOperation(t, &externalSchemaResource{testResourceClient(hidden())}, "read", glue, nil, nil)
@@ -355,6 +379,7 @@ func TestExternalSchemaHiddenFromRegularUser(t *testing.T) {
 			// The provider's regular user no longer owns the schema it just handed over.
 			fakeState[*databasesFamily](c, "databases").externalHidden = true
 		}
+
 		return rows, err
 	})
 	owned := glue

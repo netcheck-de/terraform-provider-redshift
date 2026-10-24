@@ -35,11 +35,13 @@ var _ = registerValidateConfigCase("view", validateConfigCase{
 	invalid: func() viewModel {
 		data := testViewModel()
 		data.Query = types.StringValue("SELECT 1; DROP TABLE serving.sales")
+
 		return data
 	}(),
 	unknown: func() viewModel {
 		data := testViewModel()
 		data.Query = types.StringUnknown()
+
 		return data
 	}(),
 })
@@ -53,8 +55,10 @@ func viewFake() (*catalog, *viewFamily) {
 // decodeViewState reads a view model from Terraform state.
 func decodeViewState(t *testing.T, state tfsdk.State) viewModel {
 	t.Helper()
+
 	var data viewModel
 	require.False(t, state.Get(context.Background(), &data).HasError())
+
 	return data
 }
 
@@ -63,8 +67,10 @@ func decodeViewState(t *testing.T, state tfsdk.State) viewModel {
 func TestViewDefinitionDrift(t *testing.T) {
 	c, views := viewFake()
 	views.remove(fakeViewName)
+
 	r := newViewResource()
 	configureTestResource(t, r, c)
+
 	planned := testViewModel()
 	planned.Query = types.StringValue("select id,\n  label from serving.sales")
 	planned.DefinitionFingerprint = types.StringUnknown()
@@ -126,10 +132,12 @@ func TestViewRejectsMaterializedRelation(t *testing.T) {
 	data.Name = types.StringValue(fakeMaterializedViewName)
 	_, _, err := r.read(context.Background(), data)
 	require.ErrorIs(t, err, errViewIsMaterialized)
+
 	for _, operation := range []string{"read", "update", "delete"} {
 		configureTestResource(t, r, c)
 		assert.True(t, invoke(t, r, operation, data).HasError(), operation)
 	}
+
 	assert.Empty(t, c.writes)
 }
 
@@ -156,6 +164,7 @@ func TestViewCreateRejectsInvalidQueryBeforeSQL(t *testing.T) {
 	configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		return nil, errors.New("unexpected SQL " + sql)
 	}))
+
 	data := testViewModel()
 	data.Query = types.StringValue("SELECT 1; DROP VIEW serving.other")
 	plan := testState(t, r, data)
@@ -178,18 +187,23 @@ func TestViewConvergenceFailures(t *testing.T) {
 				if strings.HasPrefix(sql, ignore) {
 					return nil, nil // An acknowledged statement without effect.
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			})
 			r := newViewResource()
 			configureTestResource(t, r, client)
+
 			if name == "owner" {
 				views.remove(fakeViewName)
+
 				state, diagnostics := applyOperation(t, r, "create", nil, testViewModel(), nil)
 				require.True(t, diagnostics.HasError())
 				assert.Contains(t, diagnostics.Errors()[0].Detail(), `owned by "admin"`)
 				assert.Equal(t, fakeViewName, decodeViewState(t, state).Name.ValueString(), "the created view stays in state")
+
 				return
 			}
+
 			planned := testViewModel()
 			planned.LateBinding = types.BoolValue(true)
 			_, diagnostics := applyOperation(t, r, "update", testViewModel(), planned, nil)
@@ -203,8 +217,10 @@ func TestViewConvergenceFailures(t *testing.T) {
 func TestViewUpdateRequiresExistingView(t *testing.T) {
 	c, views := viewFake()
 	views.remove(fakeViewName)
+
 	r := newViewResource()
 	configureTestResource(t, r, c)
+
 	planned := testViewModel()
 	planned.Query = types.StringValue("SELECT id FROM serving.sales")
 	_, diagnostics := applyOperation(t, r, "update", testViewModel(), planned, nil)
@@ -223,8 +239,10 @@ func TestViewUpdateReportsRedshiftError(t *testing.T) {
 		if strings.HasPrefix(sql, "CREATE OR REPLACE VIEW") {
 			return nil, refusal
 		}
+
 		return c.Query(ctx, target, sql, parameters)
 	}))
+
 	planned := testViewModel()
 	planned.Query = types.StringValue("SELECT id FROM serving.sales")
 	_, diagnostics := applyOperation(t, r, "update", testViewModel(), planned, nil)
@@ -240,6 +258,7 @@ func TestViewReadRemovesViewOfMissingDatabase(t *testing.T) {
 	c, _ := viewFake()
 	r := newViewResource()
 	configureTestResource(t, r, c)
+
 	data := testViewModel()
 	data.Database = types.StringValue("warehouse")
 	state := testState(t, r, data)
@@ -254,6 +273,7 @@ func TestViewTranscripts(t *testing.T) {
 	with := func(change func(*viewModel)) viewModel {
 		data := testViewModel()
 		change(&data)
+
 		return data
 	}
 	late := with(func(data *viewModel) { data.LateBinding = types.BoolValue(true) })

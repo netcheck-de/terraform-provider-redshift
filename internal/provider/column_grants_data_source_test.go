@@ -18,11 +18,14 @@ func TestColumnGrantsListing(t *testing.T) {
 	c := fullCatalog()
 	fake := fakeState[*columnGrantFake](c, "column_grant")
 	fake.set(`GROUP "readers"`, map[string][]string{"SELECT": {"id"}})
+
 	var database string
+
 	client := queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		database = connection.Database
 		return c.Query(ctx, connection, sql, parameters)
 	})
+
 	for _, test := range []struct {
 		name     string
 		filters  map[string]string
@@ -39,10 +42,12 @@ func TestColumnGrantsListing(t *testing.T) {
 			state, diagnostics := readSource(t, source, collectionConfig(t, source, test.filters), client)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			assert.Equal(t, test.database, database)
+
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
 			items := collectionResult(source, observed).Elements()
 			require.Len(t, items, len(test.items))
+
 			for index, expected := range test.items {
 				item := items[index].(types.Object).Attributes()
 				assert.Equal(t, types.StringValue(test.database), item["database_name"])
@@ -55,6 +60,7 @@ func TestColumnGrantsListing(t *testing.T) {
 			}
 		})
 	}
+
 	source := newColumnGrantsDataSource()
 	_, diagnostics := readSource(t, source, collectionConfig(t, source, nil), queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return nil, errors.New("catalog unavailable")

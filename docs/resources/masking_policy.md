@@ -64,11 +64,11 @@ resource "redshift_masking_policy" "card" {
 
 ### Optional
 
-- `input_column` (Block List) At least one `input_column` block is required. Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached. Redshift cannot alter them, so changing a name or type replaces the policy; another spelling of the same type, such as `TEXT` for `VARCHAR(256)`, does not. (see [below for nested schema](#nestedblock--input_column))
+- `input_column` (Block List) At least one `input_column` block is required. Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached. (see [below for nested schema](#nestedblock--input_column))
 
 ### Read-Only
 
-- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
+- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed outside literals, quoted identifiers, and comments; detects definition changes made outside Terraform.
 - `id` (String) JSON import identity; independent of Data API execution history.
 
 <a id="nestedblock--input_column"></a>

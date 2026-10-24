@@ -33,35 +33,42 @@ func providerConfig(t *testing.T, p *redshiftProvider, region types.String) tfsd
 // providerConfigWithProfile builds typed configuration for explicit profile-selection tests.
 func providerConfigWithProfile(t *testing.T, p *redshiftProvider, region, profile types.String) tfsdk.Config {
 	t.Helper()
+
 	var schema framework.SchemaResponse
 	p.Schema(context.Background(), framework.SchemaRequest{}, &schema)
 	state := tfsdk.State{Schema: schema.Schema}
 	diagnostics := state.Set(context.Background(), &providerModel{Region: region, Profile: profile, Workgroup: types.StringValue("warehouse"), Database: types.StringValue("admin")})
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	return tfsdk.Config(state)
 }
 
 // TestProviderConfiguration checks metadata, unknown configuration, region resolution, and profile isolation.
 func TestProviderConfiguration(t *testing.T) {
 	p := New("test")().(*redshiftProvider)
+
 	var metadata framework.MetadataResponse
 	p.Metadata(context.Background(), framework.MetadataRequest{}, &metadata)
 	assert.Equal(t, "redshift", metadata.TypeName)
 	assert.Equal(t, "test", metadata.Version)
+
 	for _, invalid := range []string{"model", "unknown region", "unknown profile"} {
 		t.Run(invalid, func(t *testing.T) {
 			config := providerConfig(t, p, types.StringUnknown())
+
 			switch invalid {
 			case "model":
 				config.Raw = tftypes.NewValue(tftypes.String, "invalid model")
 			case "unknown profile":
 				config = providerConfigWithProfile(t, p, types.StringValue("eu-central-1"), types.StringUnknown())
 			}
+
 			var resp framework.ConfigureResponse
 			p.Configure(context.Background(), framework.ConfigureRequest{Config: config}, &resp)
 			assert.True(t, resp.Diagnostics.HasError())
 		})
 	}
+
 	t.Setenv("AWS_PROFILE", "")
 	t.Setenv("AWS_DEFAULT_PROFILE", "")
 	t.Setenv("AWS_REGION", "")
@@ -78,6 +85,7 @@ func TestProviderConfiguration(t *testing.T) {
 		require.NoError(t, os.WriteFile(path, []byte("[profile broken]\nrole_arn = arn:aws:iam::111111111111:role/example\nsource_profile = missing\n"), 0o600))
 		t.Setenv("AWS_CONFIG_FILE", path)
 		t.Setenv("AWS_PROFILE", "broken")
+
 		var resp framework.ConfigureResponse
 		p.Configure(context.Background(), framework.ConfigureRequest{Config: providerConfig(t, p, types.StringValue("eu-central-1"))}, &resp)
 		assert.True(t, resp.Diagnostics.HasError())
@@ -90,7 +98,9 @@ func TestProviderConfiguration(t *testing.T) {
 	})
 	t.Run("SDK region", func(t *testing.T) {
 		t.Setenv("AWS_REGION", "eu-central-1")
+
 		p := &redshiftProvider{}
+
 		var resp framework.ConfigureResponse
 		p.Configure(context.Background(), framework.ConfigureRequest{Config: providerConfig(t, p, types.StringNull())}, &resp)
 		assert.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
@@ -100,12 +110,15 @@ func TestProviderConfiguration(t *testing.T) {
 		require.NoError(t, os.WriteFile(credentials, []byte("[producer]\naws_access_key_id = PRODUCER\naws_secret_access_key = example\n[consumer]\naws_access_key_id = CONSUMER\naws_secret_access_key = example\n"), 0o600))
 		t.Setenv("AWS_SHARED_CREDENTIALS_FILE", credentials)
 		t.Setenv("AWS_PROFILE", "producer")
+
 		for profile, accessKey := range map[string]string{"producer": "PRODUCER", "consumer": "CONSUMER"} {
 			t.Run(profile, func(t *testing.T) {
 				p := New("test")().(*redshiftProvider)
+
 				var resp framework.ConfigureResponse
 				p.Configure(context.Background(), framework.ConfigureRequest{Config: providerConfigWithProfile(t, p, types.StringValue("eu-central-1"), types.StringValue(profile))}, &resp)
 				require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 				client := p.client.(*transport.Client).API.(*redshiftdata.Client)
 				identity, err := client.Options().Credentials.Retrieve(context.Background())
 				require.NoError(t, err)

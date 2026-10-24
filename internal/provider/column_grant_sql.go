@@ -51,6 +51,7 @@ func prepareColumnGrant(m columnGrantModel) (columnGrantTarget, error) {
 	if err != nil {
 		return columnGrantTarget{}, err
 	}
+
 	database, schemaName, object := knownString(m.DatabaseName), knownString(m.SchemaName), knownString(m.ObjectName)
 	// The relation check implies the schema, so no separate schema check is needed. Building the checks rejects an
 	// empty database, schema, or object name.
@@ -58,9 +59,11 @@ func prepareColumnGrant(m columnGrantModel) (columnGrantTarget, error) {
 	if err != nil {
 		return columnGrantTarget{}, err
 	}
+
 	if check.sql != "" {
 		checks = append([]catalogCheck{check}, checks...)
 	}
+
 	return columnGrantTarget{database: database, checks: checks, relation: []string{database, schemaName, object}, grantee: grantee, query: readColumnGrantQuery(m)}, nil
 }
 
@@ -83,6 +86,7 @@ func (target columnGrantTarget) spec(columns []string) grantSpec {
 	for _, column := range columns {
 		items = append(items, sqlclient.Ident(column))
 	}
+
 	return grantSpec{object: sqlclient.Fragment().Paren(items...).Kw("ON TABLE").Qualified(target.relation...), grantee: target.grantee}
 }
 
@@ -97,31 +101,38 @@ func columnGrantStatements(target columnGrantTarget, current, desired columnGran
 			}
 		}
 	}
+
 	var revokes, grants []string
+
 	for _, privilege := range columnGrantPrivileges {
 		name := string(privilege)
 		if removed := privilegesAbsent(desired[name], current[name]); len(removed) > 0 {
 			revokes = append(revokes, target.spec(removed).statement(false, privilege))
 		}
+
 		if added := privilegesAbsent(current[name], desired[name]); len(added) > 0 {
 			grants = append(grants, target.spec(added).statement(true, privilege))
 		}
 	}
+
 	return append(revokes, grants...), nil
 }
 
 // columnGrantRows groups catalog rows by privilege with sorted, unique columns.
 func columnGrantRows(rows []sqlclient.Row) columnGrantColumns {
 	columns := columnGrantColumns{}
+
 	for _, row := range rows {
 		privilege := normalizePrivilege(row["privilege_type"])
 		if !slices.Contains(columns[privilege], row["column_name"]) {
 			columns[privilege] = append(columns[privilege], row["column_name"])
 		}
 	}
+
 	for privilege := range columns {
 		slices.Sort(columns[privilege])
 	}
+
 	return columns
 }
 
@@ -133,8 +144,10 @@ func columnGrantValue(columns columnGrantColumns) types.Map {
 		for _, name := range names {
 			values = append(values, types.StringValue(name))
 		}
+
 		elements[privilege] = types.SetValueMust(types.StringType, values)
 	}
+
 	return types.MapValueMust(types.SetType{ElemType: types.StringType}, elements)
 }
 
@@ -144,11 +157,13 @@ func columnGrantDesired(value types.Map) columnGrantColumns {
 	if value.IsNull() || value.IsUnknown() {
 		return columns
 	}
+
 	for privilege, element := range value.Elements() {
 		if names := knownStrings(element.(types.Set)); len(names) > 0 {
 			columns[privilege] = names
 		}
 	}
+
 	return columns
 }
 
@@ -163,25 +178,29 @@ func validateColumnGrant(m columnGrantModel) error {
 			return err
 		}
 	}
+
 	if m.Privileges.IsNull() || m.Privileges.IsUnknown() {
 		return nil
 	}
+
 	for privilege, element := range m.Privileges.Elements() {
 		if !privilegeAllowed(columnGrantPrivileges, privilege) {
 			return fmt.Errorf("unsupported column privilege %q; use SELECT or UPDATE", privilege)
 		}
+
 		set := element.(types.Set)
 		if set.IsUnknown() {
 			continue
 		}
+
 		if len(set.Elements()) == 0 {
 			return fmt.Errorf("privilege %s needs at least one column; remove the key to revoke it", privilege)
 		}
-		for _, column := range knownStrings(set) {
-			if column == "" {
-				return fmt.Errorf("privilege %s lists an empty column name", privilege)
-			}
+
+		if slices.Contains(knownStrings(set), "") {
+			return fmt.Errorf("privilege %s lists an empty column name", privilege)
 		}
 	}
+
 	return nil
 }

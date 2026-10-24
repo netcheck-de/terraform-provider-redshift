@@ -5,7 +5,7 @@ catalog behavior, and privileges. See [AGENTS.md](AGENTS.md) for repository layo
 
 ## Local checks
 
-Install Go matching `go.mod`, Terraform 1.14+, Task v3, `curl`, yamllint, and markdownlint-cli. The pinned golangci-lint
+Install Go matching `go.mod`, Terraform 1.16+, Task v3, `curl`, yamllint, and markdownlint-cli. The pinned golangci-lint
 release is installed automatically. Run commands from the repository root.
 
 | Command                                        | Purpose                                                                                     |
@@ -58,7 +58,8 @@ New types add files rather than modifying shared infrastructure. Follow this che
    execute through `resourceClient`; permission resources reuse `privilegeResource` and `grantSpec` where applicable.
 3. Pin renderers with `checkSQL` and lifecycle transcripts with `runTranscripts`. Register replacement policy,
    data-source parity or an exemption, lifecycle cases, and a fake family in the type's test files.
-4. Add a template and per-type examples, including resource import instructions, then run `task docs`.
+4. Add a template and per-type examples. Resource import sections render `import.tf` for the `import` block first,
+   then `import.sh` for CLI import. Run `task docs`.
 5. Add usage to `examples/complete/<block>.tf`, data-source outputs to `outputs_<block>.tf`, and mocked assertions to
    `tests/<block>.tftest.hcl` using the shared mocks.
 6. Update provider-index tables and ownership entries in `templates/index.md.tmpl`, and any affected README or backlog
@@ -75,6 +76,8 @@ New types add files rather than modifying shared infrastructure. Follow this che
 - Data sources never declare blocks. `newCatalogDataSource` / `collectionElement` convert resource blocks to computed
   nested attributes. Lookup-only inputs go in `catalogSpec.selectors`; listing results use the data-source name.
   Use `lookupDescriptions` for resource wording that does not apply to lookups.
+- Pass every attribute that names an object Redshift folds to lowercase to `foldNames` at the end of `Schema` (or
+  `folded` for privilege contracts); `TestEveryIdentifierRejectsUppercase` lists the exemptions.
 - Resource descriptions say what a field holds, not whether changing it replaces the object; the template's
   Reconciliation table records that, so lookups reuse resource descriptions verbatim.
 - Register replacement rules for every configurable attribute/block. Parity registration covers shared readable

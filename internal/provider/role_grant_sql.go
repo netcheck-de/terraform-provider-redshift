@@ -12,8 +12,7 @@ import (
 // and svv_role_grants has no admin_option column to verify it.
 var errRoleGrantAdminOption = errors.New("admin_option requires to_user; Redshift grants WITH ADMIN OPTION only to users")
 
-// adminOption reports whether the grant should carry WITH ADMIN OPTION; null, as in state written before the
-// attribute existed, means no.
+// adminOption reports whether the grant should carry WITH ADMIN OPTION; null or unknown means no.
 func (data roleGrantModel) adminOption() bool {
 	return knownBool(data.AdminOption) != nil && data.AdminOption.ValueBool()
 }
@@ -23,6 +22,7 @@ func (data roleGrantModel) validate() error {
 	if data.adminOption() && data.ToUser.IsNull() {
 		return errRoleGrantAdminOption
 	}
+
 	return nil
 }
 
@@ -34,6 +34,7 @@ func (data roleGrantModel) spec() grantSpec {
 	if data.adminOption() {
 		spec.option = "WITH ADMIN OPTION"
 	}
+
 	return spec
 }
 
@@ -42,6 +43,7 @@ func (data roleGrantModel) recipient() sqlclient.Statement {
 	if !data.ToUser.IsNull() {
 		return sqlclient.Ident(data.ToUser.ValueString())
 	}
+
 	return sqlclient.Kw("ROLE").Ident(data.ToRole.ValueString())
 }
 
@@ -50,6 +52,7 @@ func createRoleGrantStatement(data roleGrantModel) (string, error) {
 	if err := data.validate(); err != nil {
 		return "", err
 	}
+
 	return data.spec().statement(true, "ROLE"), nil
 }
 
@@ -75,6 +78,7 @@ var roleGrantAlterSteps = []alterStep[roleGrantModel]{
 			if plan.adminOption() {
 				return []string{plan.spec().statement(true, "ROLE")}
 			}
+
 			return []string{revokeRoleGrantAdminStatement(plan)}
 		},
 	},
@@ -85,6 +89,7 @@ func alterRoleGrantStatements(prev, plan roleGrantModel) ([]string, error) {
 	if err := plan.validate(); err != nil {
 		return nil, err
 	}
+
 	return alterStatements(prev, plan, roleGrantAlterSteps), nil
 }
 
@@ -97,5 +102,6 @@ func readRoleGrantQuery(data roleGrantModel) sqlclient.Query {
 	if !data.ToUser.IsNull() {
 		return sqlclient.Select("role_name", "admin_option").From("svv_user_grants").Where("user_name = :user", sqlclient.Bind("user", data.ToUser.ValueString())).Where("role_name = :role", role)
 	}
+
 	return sqlclient.Select("role_name").From("svv_role_grants").Where("role_name = :recipient", sqlclient.Bind("recipient", data.ToRole.ValueString())).Where("granted_role_name = :role", role)
 }

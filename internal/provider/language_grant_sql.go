@@ -41,19 +41,24 @@ func languageGrantTarget(data types.Object) (privilegeTarget, error) {
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	database := objectString(data, "database_name")
+
 	language, err := sqlclient.OneOf(objectString(data, "language_name"), languageGrantLanguages...)
 	if err != nil {
 		return privilegeTarget{}, fmt.Errorf("unsupported language_name: %w", err)
 	}
+
 	checks, err := newCatalogChecks(localDatabaseQuery(database))
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	query, err := newCatalogCheck(readLanguageGrantQuery(string(language), objectString(data, "grantee"), objectString(data, "grantee_type")))
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	target := privilegeTarget{
 		database: database, checks: append([]catalogCheck{check}, checks...), allowed: languageGrantPrivileges, query: query,
 		grant: grantSpec{object: sqlclient.Kw("ON LANGUAGE", language), grantee: grantee},
@@ -64,5 +69,6 @@ func languageGrantTarget(data types.Object) (privilegeTarget, error) {
 		// https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html
 		target.implicit = []string{string(languageGrantPrivileges[0])}
 	}
+
 	return target, nil
 }

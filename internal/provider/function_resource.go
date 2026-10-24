@@ -72,11 +72,13 @@ func functionArgumentsChanged(_ context.Context, req planmodifier.ListRequest, r
 		resp.RequiresReplace = true
 		return
 	}
+
 	before, after := routineStrings(req.StateValue), routineStrings(req.PlanValue)
 	if len(before) != len(after) {
 		resp.RequiresReplace = true
 		return
 	}
+
 	for i := range before {
 		if routineTypeReplaces(before[i], after[i]) {
 			resp.RequiresReplace = true
@@ -147,12 +149,14 @@ func (r *functionResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "name")
 }
 
 // ValidateConfig reports an invalid function definition during planning once the configuration is known.
 func (r *functionResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data functionModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -161,31 +165,38 @@ func (r *functionResource) ValidateConfig(ctx context.Context, req resource.Vali
 		resp.Diagnostics.AddAttributeError(path.Root("language"), "Unsupported function language", err.Error())
 		return
 	}
+
 	if !req.Config.Raw.IsFullyKnown() {
 		for i, value := range data.Arguments.Elements() {
 			argument := value.(types.String)
 			if argument.IsUnknown() || argument.IsNull() {
 				continue
 			}
+
 			name, err := routineType(argument.ValueString())
 			if err == nil {
 				err = routineRejectedType(routineBaseType(name), "function")
 			}
+
 			if err != nil {
 				resp.Diagnostics.AddAttributeError(path.Root("arguments").AtListIndex(i), "Invalid function argument", err.Error())
 			}
 		}
+
 		if !data.ReturnType.IsUnknown() && !data.ReturnType.IsNull() {
 			name, err := routineType(data.ReturnType.ValueString())
 			if err == nil {
 				err = routineRejectedType(routineBaseType(name), "function")
 			}
+
 			if err != nil {
 				resp.Diagnostics.AddAttributeError(path.Root("return_type"), "Invalid function return type", err.Error())
 			}
 		}
+
 		return
 	}
+
 	if _, err := newFunctionSpec(data); err != nil {
 		resp.Diagnostics.AddError("Invalid function definition", err.Error())
 	}
@@ -203,25 +214,32 @@ func (r *functionResource) observe(ctx context.Context, data functionModel) (fun
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return functionRow{}, false, err
 	}
+
 	signature, err := functionSignature(data)
 	if err != nil {
 		return functionRow{}, false, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return functionRow{}, false, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readFunctionQuery(data.Schema.ValueString(), data.Name.ValueString(), signature))
 	if err != nil || len(rows) == 0 {
 		return functionRow{}, false, err
 	}
+
 	if len(rows) != 1 || rows[0]["owner"] == "" || rows[0]["return_type"] == "" {
 		return functionRow{}, false, fmt.Errorf("function %q has incomplete or ambiguous catalog metadata", data.Name.ValueString())
 	}
+
 	volatility, err := routineVolatility(rows[0]["volatility"])
 	if err != nil {
 		return functionRow{}, false, err
 	}
+
 	row := rows[0]
+
 	return functionRow{
 		arguments: routineCatalogSignature(row["arguments"]), returnType: sqlclient.CatalogType(row["return_type"]), volatility: volatility,
 		language: strings.ToUpper(row["language"]), owner: row["owner"], body: row["body"],
@@ -232,20 +250,25 @@ func (r *functionResource) observe(ctx context.Context, data functionModel) (fun
 // reports the catalog's types, as after an import with differently spelled identity types.
 func functionCatalogArguments(configured types.List, catalog string) types.List {
 	stored, observed := routineStrings(configured), routineSignatureTypes(catalog)
+
 	matches := len(stored) == len(observed)
 	for i := 0; matches && i < len(stored); i++ {
 		matches = routineCatalogTypeMatches(stored[i], observed[i])
 	}
+
 	if matches && !configured.IsUnknown() {
 		return configured
 	}
+
 	if len(observed) == 0 {
 		return types.ListNull(types.StringType)
 	}
+
 	values := make([]attr.Value, len(observed))
 	for i, observedType := range observed {
 		values[i] = types.StringValue(routineCatalogType(observedType))
 	}
+
 	return types.ListValueMust(types.StringType, values)
 }
 
@@ -253,11 +276,14 @@ func functionCatalogArguments(configured types.List, catalog string) types.List 
 // reconcileDefinition after a refresh.
 func (row functionRow) apply(data *functionModel, applied bool) {
 	data.Arguments = functionCatalogArguments(data.Arguments, row.arguments)
+
 	data.Signature = types.StringValue(row.arguments)
 	if data.ReturnType.IsNull() || data.ReturnType.IsUnknown() || !routineCatalogTypeMatches(data.ReturnType.ValueString(), row.returnType) {
 		data.ReturnType = types.StringValue(routineCatalogType(row.returnType))
 	}
+
 	data.Volatility, data.Language = types.StringValue(row.volatility), keywordValue(data.Language, row.language)
+
 	data.Owner = routineOwner(data.Owner, row.owner)
 	if applied {
 		data.Body, data.DefinitionFingerprint = recordDefinition(data.Body, row.body)
@@ -272,6 +298,7 @@ func (r *functionResource) read(ctx context.Context, data *functionModel) (bool,
 	if err == nil && found {
 		row.apply(data, false)
 	}
+
 	return found, err
 }
 
@@ -283,6 +310,7 @@ func (r *functionResource) identityOf(data functionModel, signature sqlclient.Ke
 // verify re-reads the function after a change and checks that the planned definition and owner converged.
 func (r *functionResource) verify(ctx context.Context, data *functionModel) error {
 	planned := *data
+
 	row, found, err := r.observe(ctx, *data)
 	switch {
 	case err != nil:
@@ -294,7 +322,9 @@ func (r *functionResource) verify(ctx context.Context, data *functionModel) erro
 	case !planned.Owner.IsUnknown() && !planned.Owner.IsNull() && !routineOwnerMatches(planned.Owner, row.owner):
 		return fmt.Errorf("the function owner is %q, not %q", row.owner, planned.Owner.ValueString())
 	}
+
 	row.apply(data, true)
+
 	return nil
 }
 
@@ -302,27 +332,34 @@ func (r *functionResource) verify(ctx context.Context, data *functionModel) erro
 func (r *functionResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data functionModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	spec, err := newFunctionSpec(data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid function definition", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), createFunctionStatement(spec, false)); err != nil {
 		resp.Diagnostics.AddError("Create function", err.Error())
 		return
 	}
+
 	data.ID = r.identityOf(data, spec.signature)
 	data.Signature = types.StringValue(string(spec.signature))
 	// A failed owner change or verification must still return serializable state for the created function.
 	planned := data
+
 	data.DefinitionFingerprint = types.StringNull()
 	if data.Owner.IsUnknown() {
 		data.Owner = types.StringNull()
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -332,10 +369,12 @@ func (r *functionResource) Create(ctx context.Context, req resource.CreateReques
 		resp.Diagnostics.AddError("Set function owner", err.Error())
 		return
 	}
+
 	if err := r.verify(ctx, &planned); err != nil {
 		resp.Diagnostics.AddError("Verify function", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &planned)...)
 }
 
@@ -343,18 +382,22 @@ func (r *functionResource) Create(ctx context.Context, req resource.CreateReques
 func (r *functionResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data functionModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read function", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -363,26 +406,32 @@ func (r *functionResource) Update(ctx context.Context, req resource.UpdateReques
 	var data, previous functionModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &previous)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.bound(previous.ID, data.Database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update function", err.Error())
 		return
 	}
+
 	statements, err := alterFunctionStatements(previous, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid function definition", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), statements...); err != nil {
 		resp.Diagnostics.AddError("Update function", err.Error())
 		return
 	}
+
 	if err := r.verify(ctx, &data); err != nil {
 		resp.Diagnostics.AddError("Verify function", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -390,9 +439,11 @@ func (r *functionResource) Update(ctx context.Context, req resource.UpdateReques
 func (r *functionResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data functionModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	_, found, err := r.observe(ctx, data)
 	if err == nil && found {
 		var statement string
@@ -400,6 +451,7 @@ func (r *functionResource) Delete(ctx context.Context, req resource.DeleteReques
 			err = r.exec(ctx, data.Database.ValueString(), statement)
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete function", err.Error())
 	}
@@ -408,22 +460,28 @@ func (r *functionResource) Delete(ctx context.Context, req resource.DeleteReques
 // ImportState restores the overload from its JSON identity, whose arguments key selects the input types.
 func (r *functionResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	importIdentity(ctx, req, resp, "database", "schema", "name")
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	arguments, signature, err := routineImportArguments(req.ID)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid import identity", err.Error())
 		return
 	}
+
 	list := types.ListNull(types.StringType)
+
 	if len(arguments) > 0 {
 		values := make([]attr.Value, len(arguments))
 		for i, argument := range arguments {
 			values[i] = types.StringValue(argument)
 		}
+
 		list = types.ListValueMust(types.StringType, values)
 	}
+
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("arguments"), list)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("signature"), string(signature))...)
 }

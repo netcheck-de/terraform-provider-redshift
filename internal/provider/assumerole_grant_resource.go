@@ -23,5 +23,6 @@ func newAssumeroleGrantResource() resource.Resource {
 		Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 	}
 	attributes["privileges"] = grantPrivilegesAttribute("Exact set of supported commands the grantee may run with the role: `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, `CREATE MODEL`, `RESULT_OFFLOAD`. The provider issues one statement per command, not `FOR ALL`, which can include additional engine-specific commands. `RESULT_OFFLOAD` uses the exact standalone keyword and catalog spelling verified against Redshift. An empty set revokes owned commands. `PUBLIC` holds every command `ON ALL` until revoked, which the `ALL`/`PUBLIC` tuple reports; deleting that tuple revokes what it holds and never grants the default back.")
+
 	return &privilegeResource{name: "assumerole_grant", attributes: attributes, fields: []string{"iam_role_arn", "grantee", "grantee_type"}, prepare: assumeroleGrantTarget, canonical: assumeroleGrantCanonical, partialAllowed: fixedPrivilegeAllowlist(assumeroleGrantCommands)}
 }

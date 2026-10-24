@@ -153,16 +153,18 @@ resource "redshift_grant" "analyst" {
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_grant/import-by-string-id.tf" }}
+{{ tffile "examples/resources/redshift_grant/import.tf" }}
 
 The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see
 [connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
-Alternatively, use `terraform import`. The identity names the one configured recipient key (`role`, `user`, or
-`datashare`) and includes `schema_name` when set:
+Alternatively, use `terraform import`:
 
 {{ codefile "shell" "examples/resources/redshift_grant/import.sh" }}
+
+The identity names the one configured recipient key (`role`, `user`, or `datashare`) and includes `schema_name` when
+set.
 
 The actual privilege and grant option sets are read from the catalog during refresh; compare the next plan to the
 intended policy.

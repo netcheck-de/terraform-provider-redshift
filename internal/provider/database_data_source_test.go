@@ -8,7 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,9 +21,11 @@ func TestDatabaseLookup(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			state, diagnostics := readSource(t, newDatabaseDataSource(), databaseData{Name: types.StringValue(name)}, &catalog{localDB: true, database: true, permissions: true})
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 			var data databaseData
 			require.False(t, state.Get(context.Background(), &data).HasError())
 			assert.Equal(t, name, data.Name.ValueString())
+
 			if name == "analytics" {
 				assert.Equal(t, "SHARED", data.DatabaseType.ValueString())
 				assert.True(t, data.Owner.IsNull(), "shared databases have no managed owner")
@@ -57,19 +59,24 @@ func TestDatabaseReadableMetadataMatchesResources(t *testing.T) {
 				expected, err := parseShare(value)
 				require.NoError(t, err)
 				assert.Equal(t, expected, source)
+
 				return value, nil
 			}
 			state, diagnostics := readSource(t, newDatabaseDataSource(), databaseData{Name: types.StringValue(name)}, c, lookup)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 			var observed databaseData
 			require.False(t, state.Get(context.Background(), &observed).HasError())
+
 			r := &databaseResource{testResourceClient(c)}
 			managed := databaseModel{Name: types.StringValue(name), WithPermissions: types.BoolValue(false)}
+
 			fields := map[string]string{"name": name}
 			if name == "analytics" {
 				managed.DatashareARN = types.StringValue(value)
 				fields["datashare_arn"] = value
 			}
+
 			managed.ID = r.identity("admin", fields)
 			found, err := r.read(context.Background(), &managed)
 			require.NoError(t, err)
@@ -103,6 +110,7 @@ func TestLocalDatabaseLookupClearsShareMetadataWithoutAWS(t *testing.T) {
 	input := databaseData{Name: types.StringValue("warehouse"), DatashareARN: types.StringValue(shareARN), ShareName: types.StringValue("stale")}
 	state, diagnostics := readSource(t, newDatabaseDataSource(), input, &catalog{localDB: true}, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed databaseData
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	assert.True(t, observed.DatashareARN.IsNull())
@@ -114,12 +122,12 @@ func TestLocalDatabaseLookupClearsShareMetadataWithoutAWS(t *testing.T) {
 
 // TestDatabaseLookupRejectsAmbiguousAndUnboundShares verifies share identity is unambiguous.
 func TestDatabaseLookupRejectsAmbiguousAndUnboundShares(t *testing.T) {
-	for _, rows := range [][]dataapi.Row{
+	for _, rows := range [][]sqlclient.Row{
 		{{"database_name": "analytics", "database_type": "external"}},
 		{{"database_name": "analytics", "database_type": "shared"}},
 		{{"database_name": "analytics", "database_type": "local"}, {"database_name": "analytics", "database_type": "local"}},
 	} {
-		_, diagnostics := readSource(t, newDatabaseDataSource(), databaseData{Name: types.StringValue("analytics")}, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		_, diagnostics := readSource(t, newDatabaseDataSource(), databaseData{Name: types.StringValue("analytics")}, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return rows, nil
 		}))
 		assert.True(t, diagnostics.HasError())

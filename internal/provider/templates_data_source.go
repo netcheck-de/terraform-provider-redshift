@@ -29,10 +29,12 @@ func newTemplatesDataSource() datasource.DataSource {
 			if database == "" {
 				database = client.database.ValueString()
 			}
+
 			rows, err := client.selectRows(ctx, database, listTemplatesQuery(database, objectString(filters, "schema")))
 			if err != nil {
 				return nil, err
 			}
+
 			items := []map[string]attr.Value{}
 			for _, row := range rows {
 				// Quoted identifiers may contain meaningful leading or trailing whitespace.
@@ -41,6 +43,7 @@ func newTemplatesDataSource() datasource.DataSource {
 					"name": types.StringValue(row["template_name"]), "owner": types.StringValue(row["template_owner"]),
 				})
 			}
+
 			return items, nil
 		},
 	})

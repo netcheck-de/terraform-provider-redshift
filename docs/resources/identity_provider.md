@@ -70,7 +70,7 @@ resource "redshift_identity_provider" "entra" {
 - `auto_create_roles_exclude_groups` (String) Case-sensitive `LIKE` pattern (`EXCLUDE GROUPS LIKE`) of the identity-provider groups for which Redshift does not create roles automatically. Requires `auto_create_roles = true`; conflicts with `auto_create_roles_include_groups`. Patterns use letters, digits, and `_ % ^ * + ? { } , $`. Not reported by the catalog, like `auto_create_roles`. Updated in place.
 - `auto_create_roles_include_groups` (String) Case-sensitive `LIKE` pattern (`INCLUDE GROUPS LIKE`) of the identity-provider groups for which Redshift creates roles automatically. Requires `auto_create_roles = true`; conflicts with `auto_create_roles_exclude_groups`. Patterns use letters, digits, and `_ % ^ * + ? { } , $`. Not reported by the catalog, like `auto_create_roles`. Updated in place.
 - `client_id` (String) Application (client) ID of the Redshift application registered in Microsoft Entra ID (`client_id` in `PARAMETERS`). Required for `AZURE`; not allowed for `AWSIDC`. Updated in place together with `client_secret_wo`.
-- `client_secret_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only client secret of the Microsoft Entra ID application (requires Terraform 1.11 or later); not allowed for `AWSIDC`. Required to create an `AZURE` provider and whenever `issuer`, `client_id`, `audience`, or `client_secret_wo_version` change, because `ALTER IDENTITY PROVIDER ... PARAMETERS` replaces every parameter. Never stored in plan or state, and the catalog never returns it.
+- `client_secret_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only client secret of the Microsoft Entra ID application; not allowed for `AWSIDC`. Required to create an `AZURE` provider and whenever `issuer`, `client_id`, `audience`, or `client_secret_wo_version` change, because `ALTER IDENTITY PROVIDER ... PARAMETERS` replaces every parameter. Never stored in plan or state, and the catalog never returns it.
 - `client_secret_wo_version` (Number) Secret rotation trigger. Required for `AZURE`; not allowed for `AWSIDC`. Change it to send `client_secret_wo` again. An imported provider has no version in state, so setting it for the first time after an import does not send the secret.
 - `enabled` (Boolean) Whether the provider is enabled; defaults to `true`. Updated in place when changed; catalog refresh detects drift.
 - `iam_role_arn` (String) IAM role attached to the Redshift namespace for the Identity Center connection. Required for `AWSIDC`; not allowed for `AZURE`. Updated in place when changed; catalog refresh detects drift.
@@ -90,6 +90,9 @@ resource "redshift_identity_provider" "entra" {
 Creating, changing, and reading a provider requires a Redshift database superuser, because
 [SVV_IDENTITY_PROVIDERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_IDENTITY_PROVIDERS.html) is visible only
 to superusers.
+
+`client_secret_wo` is write-only and absent from this resource's state, but the SQL statements that send it contain the
+secret, so restrict provider logs and Data API query-history access accordingly.
 
 Deletion never uses `CASCADE`, which would drop the provider's users and roles. It refuses to drop the provider while
 namespace-prefixed federated users remain. Manage role grants and memberships separately; use resource dependencies so

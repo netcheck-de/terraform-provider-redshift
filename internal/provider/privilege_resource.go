@@ -25,6 +25,7 @@ import (
 type privilegeResource struct {
 	// resourceClient provides SQL execution and warehouse ownership checks.
 	resourceClient
+
 	// name is the Terraform resource suffix for this concrete permission contract.
 	name string
 	// attributes defines this contract's identity fields and privilege set.
@@ -49,6 +50,8 @@ type privilegeResource struct {
 	destroyPrivileges func(types.Object) ([]string, error)
 	// partialAllowed validates known selectors and supplies their allowlist without requiring generated names.
 	partialAllowed func(types.Object) ([]sqlclient.Keyword, error)
+	// folded lists the identity attributes that name objects Redshift folds to lowercase.
+	folded []string
 }
 
 // catalogCheck is a parameterized statement used for parent existence or permission reads.
@@ -85,6 +88,12 @@ type privilegeTarget struct {
 	mutationConflict string
 	// snapshot intersects per-object catalog reads when no database-local privilege view reaches the target.
 	snapshot *privilegeSnapshot
+	// implicitOptions revokes the grant option of every desired privilege configured without one, because the read
+	// cannot see an option held on only some snapshot members.
+	implicitOptions bool
+	// scopeWide marks a grant on a schema's current objects, which resources applied in parallel can add to between
+	// its write and its verification.
+	scopeWide bool
 	// completeCatalog requires proof that metadata enumeration and absence checks cannot be privilege-filtered.
 	completeCatalog bool
 }
@@ -95,6 +104,7 @@ func privilegeString(description string, optional bool, choices ...string) schem
 	if len(choices) != 0 {
 		validators = append(validators, stringvalidator.OneOf(choices...))
 	}
+
 	return schema.StringAttribute{
 		Required: !optional, Optional: optional, MarkdownDescription: description,
 		PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, Validators: validators,
@@ -117,6 +127,7 @@ func objectString(data types.Object, key string) string {
 	if !ok {
 		return ""
 	}
+
 	return value.(types.String).ValueString()
 }
 
@@ -130,18 +141,22 @@ func withGrantOptions(data types.Object, options []string) types.Object {
 	if _, ok := data.Attributes()["grant_option_privileges"]; !ok {
 		return data
 	}
+
 	return withPrivilegeSet(data, "grant_option_privileges", options)
 }
 
 // withPrivilegeSet copies an object with key set to the sorted values.
 func withPrivilegeSet(data types.Object, key string, privileges []string) types.Object {
 	sort.Strings(privileges)
+
 	values := make([]attr.Value, 0, len(privileges))
 	for _, privilege := range privileges {
 		values = append(values, types.StringValue(privilege))
 	}
+
 	attributes := data.Attributes()
 	attributes[key] = types.SetValueMust(types.StringType, values)
+
 	return types.ObjectValueMust(data.AttributeTypes(context.Background()), attributes)
 }
 
@@ -151,6 +166,7 @@ func grantOptionPrivileges(data types.Object) []string {
 	if !ok {
 		return nil
 	}
+
 	return knownStrings(value)
 }
 
@@ -162,13 +178,16 @@ func (r *privilegeResource) Metadata(_ context.Context, req resource.MetadataReq
 // Schema exposes this grant's identity fields and authoritative privilege set.
 func (r *privilegeResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	description := "Owns the exact explicit privilege set for one permission tuple. Empty privileges revoke the owned grants."
+
 	attributes := r.attributes
 	if r.grantOptions {
 		description += " `grant_option_privileges` owns which of them a user grantee holds `WITH GRANT OPTION`."
 		attributes = maps.Clone(attributes)
 		attributes["grant_option_privileges"] = grantOptionAttribute()
 	}
-	resp.Schema = schema.Schema{MarkdownDescription: description, Attributes: attributes}
+
+	resp.Schema = schema.Schema{MarkdownDescription: description, Attributes: maps.Clone(attributes)}
+	foldNames(&resp.Schema, r.folded...)
 }
 
 // grantOptionAttribute defines the grant option subset. It defaults to none, so options granted outside Terraform
@@ -187,11 +206,14 @@ func (r *privilegeResource) target(data types.Object) (privilegeTarget, error) {
 	if err != nil || r.recipient == nil {
 		return target, err
 	}
+
 	grantee, err := r.recipient(data)
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	target.grant.grantee = grantee
+
 	return target, nil
 }
 
@@ -200,9 +222,11 @@ func (r *privilegeResource) optionGrantee(data types.Object) bool {
 	if r.recipient != nil {
 		return false
 	}
+
 	if r.optionRecipient != nil {
 		return r.optionRecipient(data)
 	}
+
 	return objectString(data, "grantee_type") == "USER"
 }
 
@@ -216,65 +240,83 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 	if err := r.bound(data.Attributes()["id"].(types.String), r.database.ValueString()); err != nil {
 		return privilegeTarget{}, false, err
 	}
+
 	target, err := r.target(*data)
 	if err != nil {
 		return target, false, err
 	}
+
 	if target.completeCatalog {
 		rows, err := r.selectRows(ctx, r.database.ValueString(), grantCatalogVisibilityQuery())
 		if err != nil {
 			return target, false, err
 		}
+
 		if len(rows) != 1 || (rows[0]["usesuper"] != "true" && rows[0]["usesuper"] != "t") {
 			return target, false, fmt.Errorf("shared routine grants and snapshots require a SQL superuser to verify complete catalog visibility; refusing to infer object absence or independent name ownership from filtered metadata")
 		}
 	}
+
 	for _, check := range target.checks {
 		if check.sql == "" {
 			continue
 		}
+
 		database := r.database.ValueString()
 		if check.local {
 			database = r.targetDatabase(target)
 		}
+
 		rows, err := r.queryDatabase(ctx, database, check.sql, check.parameters)
 		if err != nil || len(rows) == 0 {
 			return target, false, err
 		}
 	}
+
 	rows, found, err := r.privilegeRows(ctx, target)
 	if err != nil {
 		return target, false, err
 	}
+
 	if !found {
 		return target, false, nil
 	}
+
 	privileges, options := map[string]bool{}, map[string]bool{}
+
 	for _, row := range rows {
 		if target.filter != nil && !target.filter(row) {
 			continue
 		}
+
 		option := row["admin_option"] == "true" || row["admin_option"] == "t"
 		if managed && option && !r.grantOptions {
 			return target, false, fmt.Errorf("grant options are not managed; remove them explicitly before importing")
 		}
+
 		name := normalizePrivilege(row["privilege_type"])
 		if managed && !privilegeAllowed(target.allowed, name) {
 			return target, false, fmt.Errorf("unsupported catalog privilege %q", name)
 		}
+
 		privileges[name] = true
 		// Another grantor's plain grant can report the same privilege, so one row with the option is enough.
 		options[name] = options[name] || option
 	}
+
 	values := make([]string, 0, len(privileges))
+
 	var optionValues []string
+
 	for privilege := range privileges {
 		values = append(values, privilege)
 		if options[privilege] {
 			optionValues = append(optionValues, privilege)
 		}
 	}
+
 	*data = withGrantOptions(withPrivileges(*data, values), optionValues)
+
 	return target, true, nil
 }
 
@@ -283,6 +325,7 @@ func (r *privilegeResource) targetDatabase(target privilegeTarget) string {
 	if target.database != "" {
 		return target.database
 	}
+
 	return r.database.ValueString()
 }
 
@@ -305,25 +348,30 @@ func (r *privilegeResource) validate(data types.Object) error {
 			return err
 		}
 	}
+
 	target, err := r.target(data)
 	if err != nil {
 		return err
 	}
+
 	for _, value := range data.Attributes()["privileges"].(types.Set).Elements() {
 		if !privilegeAllowed(target.allowed, value.(types.String).ValueString()) {
 			return fmt.Errorf("unsupported privilege %q", value.(types.String).ValueString())
 		}
 	}
+
 	options := grantOptionPrivileges(data)
 	if len(options) != 0 && !r.optionGrantee(data) {
 		return fmt.Errorf("grant_option_privileges requires a user recipient; Redshift grants options only to users")
 	}
+
 	privileges := knownStrings(data.Attributes()["privileges"].(types.Set))
 	for _, option := range options {
 		if !slices.Contains(privileges, option) {
 			return fmt.Errorf("grant option privilege %q is not in privileges", option)
 		}
 	}
+
 	return nil
 }
 
@@ -332,32 +380,97 @@ func (r *privilegeResource) reconcile(ctx context.Context, data types.Object) er
 	if err := r.validate(data); err != nil {
 		return err
 	}
+
 	actual := data
+
 	target, found, err := r.read(ctx, &actual)
 	if err != nil {
 		return err
 	}
+
 	if !found {
 		return fmt.Errorf("target object or identity does not exist")
 	}
+
 	return r.reconcilePrivileges(ctx, data, actual, target)
 }
+
+// snapshotRounds bounds how often a scope-wide grant repeats its idempotent statements to cover objects that
+// parallel resources create in the schema between its write and its verification.
+const snapshotRounds = 3
 
 // reconcilePrivileges reuses an observed tuple, so Delete does not repeat parent and privilege discovery.
 func (r *privilegeResource) reconcilePrivileges(ctx context.Context, data, actual types.Object, target privilegeTarget) error {
 	desired := data.Attributes()["privileges"].(types.Set)
-	desiredPrivileges := knownStrings(desired)
+
+	desiredOptions := grantOptionPrivileges(data)
+	for round := 1; ; round++ {
+		statements, err := reconcileStatements(data, actual, target)
+		if err != nil {
+			return err
+		}
+
+		if target.mutationGuard != nil && (len(knownStrings(desired)) != 0 || len(statements) != 0) {
+			guard := target.mutationGuard
+
+			rows, err := r.queryDatabase(ctx, r.targetDatabase(target), guard.sql, guard.parameters)
+			if err != nil {
+				return err
+			}
+
+			if len(rows) != 0 {
+				return fmt.Errorf("unsafe privilege overlap: %s", target.mutationConflict)
+			}
+		}
+
+		if err := r.exec(ctx, r.targetDatabase(target), statements...); err != nil {
+			return err
+		}
+
+		observed, found, err := r.read(ctx, &actual)
+		switch {
+		case err != nil:
+			return err
+		case !found && len(knownStrings(desired)) == 0:
+			// The object or its last member was dropped in parallel, which leaves nothing holding the privileges.
+			return nil
+		case found && actual.Attributes()["privileges"].Equal(desired) && slices.Equal(grantOptionPrivileges(actual), desiredOptions):
+			return nil
+		case !found || !target.scopeWide || round == snapshotRounds:
+			return fmt.Errorf("privileges did not converge")
+		}
+
+		target = observed
+	}
+}
+
+// reconcileStatements renders the GRANT and REVOKE statements that move the observed tuple to the desired one.
+func reconcileStatements(data, actual types.Object, target privilegeTarget) ([]string, error) {
+	desiredPrivileges := knownStrings(data.Attributes()["privileges"].(types.Set))
 	current := actual.Attributes()["privileges"].(types.Set)
 	desiredOptions := grantOptionPrivileges(data)
 	currentOptions := grantOptionPrivileges(actual)
+
 	if target.snapshot != nil {
 		for _, option := range target.snapshot.optionUnion {
 			if !slices.Contains(desiredOptions, option) && !slices.Contains(currentOptions, option) {
 				currentOptions = append(currentOptions, option)
 			}
 		}
+
 		sort.Strings(currentOptions)
 	}
+
+	if target.implicitOptions {
+		for _, privilege := range desiredPrivileges {
+			if !slices.Contains(desiredOptions, privilege) && !slices.Contains(currentOptions, privilege) {
+				currentOptions = append(currentOptions, privilege)
+			}
+		}
+
+		sort.Strings(currentOptions)
+	}
+
 	held := knownStrings(current)
 	for _, privilege := range target.implicit {
 		// REVOKE of a privilege the grantee does not hold changes nothing, so revoking an unseen default is safe.
@@ -365,44 +478,33 @@ func (r *privilegeResource) reconcilePrivileges(ctx context.Context, data, actua
 			held = append(held, privilege)
 		}
 	}
+
 	grants := []grantSpec{target.grant}
 	if target.snapshot != nil && target.snapshot.grant != nil {
 		grants = target.snapshot.mutations
 	}
+
 	var statements []string
+
 	for _, grant := range grants {
 		changes, err := privilegeOptionStatements(grant, target.allowed,
 			privilegeSets{privileges: held, options: currentOptions},
 			privilegeSets{privileges: desiredPrivileges, options: desiredOptions})
 		if err != nil {
-			return err
+			return nil, err
 		}
+
 		statements = append(statements, changes...)
 	}
-	if target.mutationGuard != nil && (len(desiredPrivileges) != 0 || len(statements) != 0) {
-		guard := target.mutationGuard
-		rows, err := r.queryDatabase(ctx, r.targetDatabase(target), guard.sql, guard.parameters)
-		if err != nil {
-			return err
-		}
-		if len(rows) != 0 {
-			return fmt.Errorf("unsafe privilege overlap: %s", target.mutationConflict)
-		}
-	}
-	if err := r.exec(ctx, r.targetDatabase(target), statements...); err != nil {
-		return err
-	}
-	_, found, err := r.read(ctx, &actual)
-	if err == nil && (!found || !actual.Attributes()["privileges"].Equal(desired) || !slices.Equal(grantOptionPrivileges(actual), desiredOptions)) {
-		return fmt.Errorf("privileges did not converge")
-	}
-	return err
+
+	return statements, nil
 }
 
 // Create records tuple ownership before applying idempotent privilege mutations.
 func (r *privilegeResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data types.Object
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -411,19 +513,23 @@ func (r *privilegeResource) Create(ctx context.Context, req resource.CreateReque
 		resp.Diagnostics.AddError("Create "+r.name, err.Error())
 		return
 	}
+
 	fields := map[string]string{}
 	for _, field := range r.fields {
 		if value := objectString(data, field); value != "" {
 			fields[field] = value
 		}
 	}
+
 	if r.canonical != nil {
 		r.canonical(fields)
 	}
+
 	attributes := data.Attributes()
 	attributes["id"] = r.identity(r.database.ValueString(), fields)
 	data = types.ObjectValueMust(data.AttributeTypes(ctx), attributes)
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
+
 	if err := r.reconcile(ctx, data); err != nil {
 		resp.Diagnostics.AddError("Create "+r.name, err.Error())
 	}
@@ -433,9 +539,11 @@ func (r *privilegeResource) Create(ctx context.Context, req resource.CreateReque
 func (r *privilegeResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data types.Object
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.validateConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid "+r.name, err.Error())
 	}
@@ -445,18 +553,22 @@ func (r *privilegeResource) ValidateConfig(ctx context.Context, req resource.Val
 func (r *privilegeResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data types.Object
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	_, found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read "+r.name, err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 
@@ -464,13 +576,16 @@ func (r *privilegeResource) Read(ctx context.Context, req resource.ReadRequest, 
 func (r *privilegeResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data types.Object
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.reconcile(ctx, data); err != nil {
 		resp.Diagnostics.AddError("Update "+r.name, err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 
@@ -478,17 +593,21 @@ func (r *privilegeResource) Update(ctx context.Context, req resource.UpdateReque
 func (r *privilegeResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data types.Object
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	target, found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read "+r.name, err.Error())
 		return
 	}
+
 	if !found {
 		return
 	}
+
 	var desired []string
 	if r.destroyPrivileges != nil {
 		desired, err = r.destroyPrivileges(data)
@@ -497,11 +616,13 @@ func (r *privilegeResource) Delete(ctx context.Context, req resource.DeleteReque
 			return
 		}
 	}
+
 	planned := withGrantOptions(withPrivileges(data, desired), nil)
 	if err := r.validate(planned); err != nil {
 		resp.Diagnostics.AddError("Delete "+r.name, err.Error())
 		return
 	}
+
 	if err := r.reconcilePrivileges(ctx, planned, data, target); err != nil {
 		resp.Diagnostics.AddError("Delete "+r.name, err.Error())
 	}
@@ -514,16 +635,21 @@ func (r *privilegeResource) ImportState(ctx context.Context, req resource.Import
 		resp.Diagnostics.AddError("Invalid import identity", err.Error())
 		return
 	}
+
 	var required []string
+
 	for _, field := range r.fields {
 		if !r.attributes[field].IsOptional() {
 			required = append(required, field)
 		}
 	}
+
 	importIdentity(ctx, req, resp, required...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	for _, field := range r.fields {
 		if r.attributes[field].IsOptional() && values[field] != "" {
 			resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root(field), values[field])...)

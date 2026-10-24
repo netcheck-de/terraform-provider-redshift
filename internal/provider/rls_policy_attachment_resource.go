@@ -65,6 +65,7 @@ func (r *rlsPolicyAttachmentResource) Schema(_ context.Context, _ resource.Schem
 			"grantee_type": rlsPolicyAttachmentString("`USER`, `ROLE`, or `PUBLIC`.", stringvalidator.OneOf(rlsPolicyAttachmentGranteeTypes...)),
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "relation", "policy")
 }
 
 // rlsPolicyAttachmentIdentity is the JSON identity shared by the resource, its lookup, and imports.
@@ -80,10 +81,13 @@ func (r *rlsPolicyAttachmentResource) read(ctx context.Context, data rlsPolicyAt
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readRlsPolicyAttachmentQuery(data))
+
 	return len(rows) > 0, err
 }
 
@@ -91,20 +95,25 @@ func (r *rlsPolicyAttachmentResource) read(ctx context.Context, data rlsPolicyAt
 func (r *rlsPolicyAttachmentResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data rlsPolicyAttachmentModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statement, err := createRlsPolicyAttachmentStatement(data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid RLS policy attachment", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), statement); err != nil {
 		resp.Diagnostics.AddError("Attach RLS policy", err.Error())
 		return
 	}
+
 	data.ID = r.rlsPolicyAttachmentIdentity(data)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	found, err := r.read(ctx, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify RLS policy attachment", err.Error())
@@ -117,9 +126,11 @@ func (r *rlsPolicyAttachmentResource) Create(ctx context.Context, req resource.C
 func (r *rlsPolicyAttachmentResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data rlsPolicyAttachmentModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := rlsPolicyAttachmentKnownConfig(data); err != nil {
 		resp.Diagnostics.AddError("Invalid RLS policy attachment", err.Error())
 	}
@@ -129,9 +140,11 @@ func (r *rlsPolicyAttachmentResource) ValidateConfig(ctx context.Context, req re
 func (r *rlsPolicyAttachmentResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data rlsPolicyAttachmentModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, data)
 	switch {
 	case err != nil:
@@ -147,9 +160,11 @@ func (r *rlsPolicyAttachmentResource) Read(ctx context.Context, req resource.Rea
 func (r *rlsPolicyAttachmentResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data rlsPolicyAttachmentModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, data)
 	switch {
 	case err != nil:
@@ -166,15 +181,18 @@ func (r *rlsPolicyAttachmentResource) Update(ctx context.Context, req resource.U
 func (r *rlsPolicyAttachmentResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data rlsPolicyAttachmentModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, data)
 	if err == nil && found {
 		var statement string
 		if statement, err = dropRlsPolicyAttachmentStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
 		}
+
 		if err == nil {
 			found, err = r.read(ctx, data)
 			if err == nil && found {
@@ -182,6 +200,7 @@ func (r *rlsPolicyAttachmentResource) Delete(ctx context.Context, req resource.D
 			}
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Detach RLS policy", err.Error())
 	}

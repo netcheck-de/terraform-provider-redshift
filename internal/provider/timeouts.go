@@ -30,6 +30,7 @@ func operationTimeoutsBlock(ctx context.Context, createNote string) schema.Block
 		"delete": "Maximum time for dropping the object and verifying that it is gone. Applies only when the value was " +
 			"saved to state by an earlier apply before the destroy.",
 	}
+
 	for name, attribute := range block.Attributes {
 		value := attribute.(schema.StringAttribute)
 		value.Description, value.MarkdownDescription = "", descriptions[name]
@@ -37,6 +38,7 @@ func operationTimeoutsBlock(ctx context.Context, createNote string) schema.Block
 		value.Validators = []validator.String{durationValidator{}}
 		block.Attributes[name] = value
 	}
+
 	return block
 }
 
@@ -47,16 +49,20 @@ func operationTimeoutsBlock(ctx context.Context, createNote string) schema.Block
 func boundOperation(ctx context.Context, operation string, configured func(context.Context, time.Duration) (time.Duration, diag.Diagnostics), diagnostics *diag.Diagnostics) (context.Context, func()) {
 	timeout, problems := configured(ctx, 0)
 	diagnostics.Append(problems...)
+
 	if timeout <= 0 {
 		return ctx, func() {}
 	}
+
 	bounded, cancel := context.WithTimeout(ctx, timeout)
+
 	return bounded, func() {
 		if ctx.Err() == nil && errors.Is(bounded.Err(), context.DeadlineExceeded) && diagnostics.HasError() {
 			diagnostics.AddError("Operation timed out", fmt.Sprintf(
 				"The %s timeout of %s expired before the %s finished, and statements still running were cancelled. "+
 					"Increase timeouts.%s and apply again.", operation, timeout, operation, operation))
 		}
+
 		cancel()
 	}
 }

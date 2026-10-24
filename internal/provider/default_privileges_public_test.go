@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"testing"
 
@@ -29,13 +30,16 @@ func (c *defaultPrivilegesPublicCatalog) Query(_ context.Context, _ sqlclient.Co
 		if !c.entry || c.execute {
 			return []sqlclient.Row{{"privilege_type": "EXECUTE", "admin_option": "false"}}, nil
 		}
+
 		return nil, nil
 	case strings.HasPrefix(sql, "SELECT"):
 		return []sqlclient.Row{{"name": "exists"}}, nil
 	}
+
 	c.writes = append(c.writes, sql)
 	// Granting the default back leaves an entry equal to the built-in default, which reads the same as none.
 	c.entry, c.execute = true, strings.Contains(sql, " GRANT EXECUTE ")
+
 	return nil, nil
 }
 
@@ -57,6 +61,7 @@ func TestDefaultPrivilegesImplicitPublicExecute(t *testing.T) {
 	require.False(t, invoke(t, r, "delete", privilegeObject(t, r, fields)).HasError())
 	assert.Len(t, c.writes, 1, "deleting the lockdown leaves it in place")
 	c.entry, c.execute = false, false
+
 	require.False(t, invoke(t, r, "delete", privilegeObject(t, r, fields, "EXECUTE")).HasError())
 	assert.Equal(t, `ALTER DEFAULT PRIVILEGES FOR USER "loader" REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`, c.writes[len(c.writes)-1])
 }
@@ -64,6 +69,7 @@ func TestDefaultPrivilegesImplicitPublicExecute(t *testing.T) {
 // TestDefaultPrivilegesImplicitScope reads the implicit default only for PUBLIC's database-wide function tuple.
 func TestDefaultPrivilegesImplicitScope(t *testing.T) {
 	r := newDefaultPrivilegesResource().(*privilegeResource)
+
 	for _, test := range []struct {
 		fields   map[string]string
 		implicit bool
@@ -75,9 +81,7 @@ func TestDefaultPrivilegesImplicitScope(t *testing.T) {
 		{map[string]string{"object_type": "FUNCTIONS", "grantee_type": "ROLE", "grantee": "readers"}, false},
 	} {
 		fields := map[string]string{"database_name": "warehouse", "owner": "loader"}
-		for key, value := range test.fields {
-			fields[key] = value
-		}
+		maps.Copy(fields, test.fields)
 		target, err := r.prepare(privilegeObject(t, r, fields))
 		require.NoError(t, err)
 		assert.Equal(t, test.implicit, strings.Contains(target.query.sql, "pg_default_acl"), "%v", test.fields)

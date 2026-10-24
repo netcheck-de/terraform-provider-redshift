@@ -84,6 +84,7 @@ func externalSchemaInPlace(attribute string) stringplanmodifier.RequiresReplaceI
 			resp.RequiresReplace = true
 			return
 		}
+
 		source, ok := externalSchemaSources[externalSchemaSourceName(sourceType)]
 		removable := attribute == "secret_arn"
 		resp.RequiresReplace = !ok || !slices.Contains(source.alterable, attribute) || req.PlanValue.IsNull() && !removable
@@ -123,7 +124,7 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Optional: true,
 				PlanModifiers: []planmodifier.String{externalSchemaReplaceUnlessAltered("iam_role_arn",
 					"Updated in place with ALTER EXTERNAL SCHEMA for DATA_CATALOG and MSK schemas; replaces the others.")},
-				MarkdownDescription: "IAM role attached to the namespace, or a comma-separated role chain, used to reach the source. Required by every form except `REDSHIFT`, which rejects it, and `MSK`, where it is optional unless `authentication` is `IAM`. Updated in place with `ALTER EXTERNAL SCHEMA ... IAM_ROLE` for `DATA_CATALOG` and `MSK`; changing it replaces other external schemas.",
+				MarkdownDescription: "IAM role attached to the namespace, or a comma-separated role chain, used to reach the source. Required by every form except `REDSHIFT`, which rejects it, and `MSK`, where it is optional unless `authentication` is `IAM`. Updated in place with `ALTER EXTERNAL SCHEMA ... IAM_ROLE` for `DATA_CATALOG` and `MSK`.",
 			},
 			"region": schema.StringAttribute{
 				// UseStateForUnknown keeps the computed region known during an in-place ALTER, where the framework
@@ -135,7 +136,7 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Optional: true,
 				PlanModifiers: []planmodifier.String{externalSchemaReplaceUnlessAltered("uri",
 					"Updated in place with ALTER EXTERNAL SCHEMA for MSK schemas; replaces the others.")},
-				MarkdownDescription: "Hive metastore URI or federated database hostname, without a protocol, or the Kafka bootstrap broker URI of an `MSK` schema. Required by `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, and `MSK`. Updated in place with `ALTER EXTERNAL SCHEMA ... URI` for `MSK`; changing it replaces other external schemas.",
+				MarkdownDescription: "Hive metastore URI or federated database hostname, without a protocol, or the Kafka bootstrap broker URI of an `MSK` schema. Required by `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, and `MSK`. Updated in place with `ALTER EXTERNAL SCHEMA ... URI` for `MSK`.",
 			},
 			"port": schema.Int64Attribute{
 				Optional: true, Computed: true,
@@ -147,7 +148,7 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Optional: true,
 				PlanModifiers: []planmodifier.String{externalSchemaReplaceUnlessAltered("secret_arn",
 					"Updated in place with ALTER EXTERNAL SCHEMA for MSK schemas; replaces the others.")},
-				MarkdownDescription: "AWS Secrets Manager secret ARN: the database credentials that `POSTGRES` and `MYSQL` require, or the mTLS certificate of an `MSK` schema as an alternative to `authentication_arn`. Updated in place for `MSK`; changing it replaces other external schemas.",
+				MarkdownDescription: "AWS Secrets Manager secret ARN: the database credentials that `POSTGRES` and `MYSQL` require, or the mTLS certificate of an `MSK` schema as an alternative to `authentication_arn`. Updated in place for `MSK`.",
 			},
 			"authentication": schema.StringAttribute{
 				Optional: true, Validators: []validator.String{stringvalidator.OneOfCaseInsensitive("NONE", "IAM", "MTLS")},
@@ -166,6 +167,7 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"refresh_revision": schema.StringAttribute{Optional: true, PlanModifiers: replace, MarkdownDescription: "Bump to recreate the external schema after a source catalog change; deletion is restrictive."},
 		},
 	}
+	foldNames(&resp.Schema, "database", "name")
 }
 
 // ValidateConfig surfaces options that the source form requires or rejects at plan time; unknown values are
@@ -173,9 +175,11 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 func (r *externalSchemaResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data externalSchemaModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := validateExternalSchema(data, false); err != nil {
 		resp.Diagnostics.AddError("Invalid external schema", err.Error())
 	}
@@ -189,6 +193,7 @@ func externalSchemaKinds() map[string]string {
 			kinds[kind] = name
 		}
 	}
+
 	return kinds
 }
 
@@ -199,7 +204,9 @@ func externalSchemaCatalogOptions(text string) (map[string]string, error) {
 	if err := json.Unmarshal([]byte(text), &raw); err != nil {
 		return nil, fmt.Errorf("decode external schema options: %w", err)
 	}
+
 	options := map[string]string{}
+
 	for key, value := range raw {
 		switch typed := value.(type) {
 		case string:
@@ -210,6 +217,7 @@ func externalSchemaCatalogOptions(text string) (map[string]string, error) {
 			options[strings.ToUpper(key)] = strconv.FormatBool(typed)
 		}
 	}
+
 	return options, nil
 }
 
@@ -219,9 +227,11 @@ func externalSchemaObserved(options map[string]string, key string, prior types.S
 	if value, ok := options[key]; ok && value != "" {
 		return types.StringValue(value)
 	}
+
 	if prior.IsUnknown() {
 		return types.StringNull()
 	}
+
 	return prior
 }
 
@@ -230,37 +240,46 @@ func (r *externalSchemaResource) read(ctx context.Context, data *externalSchemaM
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readExternalSchemaQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
+
 	row := rows[0]
 	if len(rows) == 1 && row["eskind"] == "" {
 		return false, fmt.Errorf("schema %q (owner %q) exists, but SVV_EXTERNAL_SCHEMAS does not show it as an external schema to this user: "+
 			"it is a local schema, or an external schema owned by another user, whose options only a superuser can read", data.Name.ValueString(), row["owner"])
 	}
+
 	kind, supported := externalSchemaKinds()[row["eskind"]]
 	if len(rows) != 1 || !supported {
 		return false, fmt.Errorf("external schema %q is not a unique schema of a supported source type (eskind %q)", data.Name.ValueString(), row["eskind"])
 	}
+
 	if strings.TrimSpace(row["owner"]) == "" {
 		return false, fmt.Errorf("external schema %q has no owner in the catalog", data.Name.ValueString())
 	}
+
 	options, err := externalSchemaCatalogOptions(row["esoptions"])
 	if err != nil {
 		return false, err
 	}
+
 	if kind == externalSchemaDefaultSource && options["IAM_ROLE"] == "" {
 		return false, errors.New("external schema has no IAM_ROLE catalog option")
 	}
+
 	observed := *data
 	observed.Name = types.StringValue(strings.TrimSpace(row["schemaname"]))
 	observed.SourceType = types.StringValue(kind)
 	observed.Owner = types.StringValue(strings.TrimSpace(row["owner"]))
 	observed.GlueDatabase, observed.SourceDatabase = types.StringNull(), types.StringNull()
+
 	if database := row["databasename"]; database != "" {
 		switch {
 		case kind == externalSchemaDefaultSource:
@@ -269,6 +288,7 @@ func (r *externalSchemaResource) read(ctx context.Context, data *externalSchemaM
 			observed.SourceDatabase = types.StringValue(database)
 		}
 	}
+
 	observed.IAMRoleARN = externalSchemaObserved(options, "IAM_ROLE", data.IAMRoleARN)
 	// An omitted REGION means the warehouse region, which the catalog leaves unrecorded, so an unknown region
 	// becomes null while a configured one the catalog does not echo is kept.
@@ -277,21 +297,26 @@ func (r *externalSchemaResource) read(ctx context.Context, data *externalSchemaM
 	observed.URI = externalSchemaObserved(options, "URI", data.URI)
 	observed.SecretARN = externalSchemaObserved(options, "SECRET_ARN", data.SecretARN)
 	observed.AuthenticationARN = externalSchemaObserved(options, "AUTHENTICATION_ARN", data.AuthenticationARN)
+
 	observed.Authentication = externalSchemaObserved(options, "AUTHENTICATION", data.Authentication)
 	if authentication, ok := options["AUTHENTICATION"]; ok && authentication != "" {
 		observed.Authentication = keywordValue(data.Authentication, strings.ToUpper(authentication))
 	}
+
 	observed.Port = data.Port
 	if port, ok := options["PORT"]; ok && port != "" {
 		value, err := strconv.ParseInt(port, 10, 64)
 		if err != nil {
 			return false, fmt.Errorf("external schema %q has an unrecognized PORT %q", data.Name.ValueString(), port)
 		}
+
 		observed.Port = types.Int64Value(value)
 	} else if observed.Port.IsUnknown() {
 		observed.Port = types.Int64Null()
 	}
+
 	*data = observed
+
 	return true, nil
 }
 
@@ -303,14 +328,17 @@ func externalSchemaConverged(expected, observed externalSchemaModel) error {
 		for _, option := range externalSchemaOptions {
 			values[option] = externalSchemaOption(data, option)
 		}
+
 		return values
 	}
+
 	want, got := values(expected), values(observed)
 	for _, name := range names {
 		if !want[name].IsNull() && !want[name].IsUnknown() && !want[name].Equal(got[name]) {
 			return fmt.Errorf("%s is %s in the catalog, not the planned %s", name, got[name], want[name])
 		}
 	}
+
 	return nil
 }
 
@@ -318,21 +346,26 @@ func externalSchemaConverged(expected, observed externalSchemaModel) error {
 func (r *externalSchemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data externalSchemaModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := validateExternalSchema(data, true); err != nil {
 		resp.Diagnostics.AddError("Invalid external schema", err.Error())
 		return
 	}
+
 	statement, err := createExternalSchemaStatement(data)
 	if err == nil {
 		err = r.exec(ctx, data.Database.ValueString(), statement)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Create external schema", err.Error())
 		return
 	}
+
 	data.ID = r.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
 	// Computed options left to the server are only known after readback.
 	for _, value := range []*types.String{&data.Region, &data.SourceSchema, &data.Owner} {
@@ -340,28 +373,36 @@ func (r *externalSchemaResource) Create(ctx context.Context, req resource.Create
 			*value = types.StringNull()
 		}
 	}
+
 	if data.Port.IsUnknown() {
 		data.Port = types.Int64Null()
 	}
+
 	if data.SourceType.IsNull() {
 		data.SourceType = types.StringValue(externalSchemaDefaultSource)
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if !data.Owner.IsNull() {
 		if err := r.exec(ctx, data.Database.ValueString(), externalSchemaOwnerStatement(data)); err != nil {
 			resp.Diagnostics.AddError("Set external schema owner", err.Error())
 			return
 		}
 	}
+
 	expected := data
+
 	found, err := r.read(ctx, &data)
 	if err == nil && !found {
 		err = errors.New("the external schema is absent after creation")
 	}
+
 	if err == nil {
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 		err = externalSchemaConverged(expected, data)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Verify external schema", err.Error())
 	}
@@ -371,9 +412,11 @@ func (r *externalSchemaResource) Create(ctx context.Context, req resource.Create
 func (r *externalSchemaResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data externalSchemaModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	switch {
 	case err != nil:
@@ -394,33 +437,42 @@ func (r *externalSchemaResource) Update(ctx context.Context, req resource.Update
 	var data, prior externalSchemaModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	expected := data
+
 	found, err := r.read(ctx, &prior)
 	if err == nil && !found {
 		err = errExternalSchemaVanished
 	}
+
 	var statements []string
 	if err == nil {
 		statements, err = alterExternalSchemaStatements(prior, data)
 	}
+
 	if err == nil {
 		err = r.exec(ctx, data.Database.ValueString(), statements...)
 	}
+
 	if err == nil {
 		if found, err = r.read(ctx, &data); err == nil && !found {
 			err = errExternalSchemaVanished
 		}
 	}
+
 	if err == nil {
 		err = externalSchemaConverged(expected, data)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Update external schema", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -428,13 +480,16 @@ func (r *externalSchemaResource) Update(ctx context.Context, req resource.Update
 func (r *externalSchemaResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data externalSchemaModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropExternalSchemaStatement(data))
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete external schema", err.Error())
 	}

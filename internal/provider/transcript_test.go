@@ -41,47 +41,58 @@ type transcriptCase struct {
 func resourceTypeName(factory func() resource.Resource) string {
 	var metadata resource.MetadataResponse
 	factory().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
+
 	return strings.TrimPrefix(metadata.TypeName, "redshift_")
 }
 
 // emptyState returns a null state of the resource's schema, as Terraform sends before creation and import.
 func emptyState(t *testing.T, r resource.Resource) tfsdk.State {
 	t.Helper()
+
 	var schema resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &schema)
 	require.False(t, schema.Diagnostics.HasError(), "%v", schema.Diagnostics)
+
 	return tfsdk.State{Schema: schema.Schema, Raw: tftypes.NewValue(schema.Schema.Type().TerraformType(context.Background()), nil)}
 }
 
 // applyOperation runs one lifecycle RPC with distinct prior state, plan, and configuration.
 func applyOperation(t *testing.T, r resource.Resource, operation string, prior, planned, config any) (tfsdk.State, diag.Diagnostics) {
 	t.Helper()
+
 	ctx := context.Background()
+
 	if config == nil {
 		config = planned
 	}
+
 	switch operation {
 	case "create":
 		resp := resource.CreateResponse{State: emptyState(t, r)}
 		r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan(testState(t, r, planned)), Config: tfsdk.Config(testState(t, r, config))}, &resp)
+
 		return resp.State, resp.Diagnostics
 	case "read":
 		state := testState(t, r, prior)
 		resp := resource.ReadResponse{State: state}
 		r.Read(ctx, resource.ReadRequest{State: state}, &resp)
+
 		if resp.State.Raw.IsNull() {
 			resp.Diagnostics.AddError("Read removed the resource", "The fake catalog does not contain the object.")
 		}
+
 		return resp.State, resp.Diagnostics
 	case "update":
 		state := testState(t, r, prior)
 		resp := resource.UpdateResponse{State: state}
 		r.Update(ctx, resource.UpdateRequest{Plan: tfsdk.Plan(testState(t, r, planned)), State: state, Config: tfsdk.Config(testState(t, r, config))}, &resp)
+
 		return resp.State, resp.Diagnostics
 	case "delete":
 		state := testState(t, r, prior)
 		resp := resource.DeleteResponse{State: state}
 		r.Delete(ctx, resource.DeleteRequest{State: state}, &resp)
+
 		return resp.State, resp.Diagnostics
 	default:
 		t.Fatalf("unknown transcript operation %q", operation)
@@ -92,40 +103,52 @@ func applyOperation(t *testing.T, r resource.Resource, operation string, prior, 
 // importAndRead imports a JSON identity and refreshes it, as terraform import does.
 func importAndRead(t *testing.T, r resource.Resource, id string) diag.Diagnostics {
 	t.Helper()
+
 	ctx := context.Background()
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
 	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: id}, &imported)
+
 	if imported.Diagnostics.HasError() {
 		return imported.Diagnostics
 	}
+
 	resp := resource.ReadResponse{State: imported.State}
 	r.Read(ctx, resource.ReadRequest{State: imported.State}, &resp)
+
 	if resp.State.Raw.IsNull() {
 		resp.Diagnostics.AddError("Read removed the imported resource", "The fake catalog does not contain the object.")
 	}
+
 	return resp.Diagnostics
 }
 
 // runTranscripts records each case into group; every case must succeed, so transcripts show converging flows.
 func runTranscripts(t *testing.T, group string, factory func() resource.Resource, cases []transcriptCase) {
 	t.Helper()
+
 	for _, test := range cases {
 		recorder := &recordingClient{client: test.catalog()}
 		r := factory()
 		configureTestResource(t, r, recorder)
+
 		var diagnostics diag.Diagnostics
+
 		if test.operation == "import" {
 			// The identity comes from a real Create, so the transcript pins the ID format Create emits.
 			var state tfsdk.State
+
 			state, diagnostics = applyOperation(t, r, "create", nil, test.planned, test.config)
 			require.False(t, diagnostics.HasError(), "%s: %v", test.name, diagnostics)
+
 			var id types.String
 			require.False(t, state.GetAttribute(context.Background(), path.Root("id"), &id).HasError())
 			recorder.take()
+
 			diagnostics = importAndRead(t, r, id.ValueString())
 		} else {
 			_, diagnostics = applyOperation(t, r, test.operation, test.prior, test.planned, test.config)
 		}
+
 		require.False(t, diagnostics.HasError(), "%s: %v", test.name, diagnostics)
 		checkTranscript(t, group, test.name, recorder.take())
 	}
@@ -138,6 +161,7 @@ func catalogWith(changes ...func(*catalog)) func() sqlclient.Client {
 		for _, change := range changes {
 			change(c)
 		}
+
 		return c
 	}
 }
@@ -154,6 +178,7 @@ func standardTranscripts(test lifecycleCase) []transcriptCase {
 	prepared := func(operation string) func(*catalog) {
 		return func(c *catalog) { test.applyPrepare(c, operation) }
 	}
+
 	cases := []transcriptCase{
 		{name: "create", operation: "create", catalog: catalogWith(setup, absent, prepared("create")), planned: test.model},
 		{name: "update", operation: "update", catalog: catalogWith(setup, prepared("update")), prior: test.model, planned: test.model},
@@ -164,11 +189,13 @@ func standardTranscripts(test lifecycleCase) []transcriptCase {
 		copied := reflect.New(reflect.TypeOf(test.model)).Elem()
 		copied.Set(reflect.ValueOf(test.model))
 		copied.FieldByName("Database").Set(reflect.ValueOf(types.StringValue("warehouse")))
+
 		local := func(c *catalog) { c.localDB = true }
 		cases = append(cases,
 			transcriptCase{name: "create_local_database", operation: "create", catalog: catalogWith(setup, absent, local, prepared("create")), planned: copied.Interface()},
 		)
 	}
+
 	return cases
 }
 
@@ -198,10 +225,12 @@ func (c *scopedGrantCatalog) Query(_ context.Context, _ sqlclient.Connection, sq
 		if c.schema != "" {
 			objectType = "SCHEMA"
 		}
+
 		rows := []sqlclient.Row{}
 		for _, privilege := range slices.Sorted(maps.Keys(c.privileges)) {
 			rows = append(rows, sqlclient.Row{"database_name": "analytics", "schema_name": c.schema, "identity_name": c.identity, "object_type": objectType, "privilege_scope": c.scope, "privilege_type": privilege})
 		}
+
 		return rows, nil
 	case strings.HasPrefix(sql, "GRANT "):
 		c.privileges[strings.Fields(sql)[1]] = true
@@ -210,12 +239,14 @@ func (c *scopedGrantCatalog) Query(_ context.Context, _ sqlclient.Connection, sq
 	default:
 		return nil, fmt.Errorf("unexpected SQL: %s", sql)
 	}
+
 	return nil, nil
 }
 
 // grantTranscripts covers every grant scope and recipient form beyond the shared-database lifecycle case.
 func grantTranscripts() []transcriptCase {
 	var cases []transcriptCase
+
 	for _, shape := range []struct {
 		name, databaseType, schema, datashare, scope, catalogScope, privilege string
 	}{
@@ -232,13 +263,16 @@ func grantTranscripts() []transcriptCase {
 		{"datashare_tables", "local", "serving", "producer", "TABLES", "TABLES", "SELECT"},
 	} {
 		model := grantModel{DatabaseName: types.StringValue("analytics"), Scope: types.StringValue(shape.scope), Role: types.StringValue("example:readers"), User: types.StringNull(), Datashare: types.StringNull(), SchemaName: types.StringNull(), GrantOptionPrivileges: types.SetValueMust(types.StringType, nil)}
+
 		identity := "example:readers"
 		if shape.datashare != "" {
 			model.Role, model.Datashare, identity = types.StringNull(), types.StringValue(shape.datashare), "ds:"+shape.datashare
 		}
+
 		if shape.schema != "" {
 			model.SchemaName = types.StringValue(shape.schema)
 		}
+
 		model.Privileges = types.SetValueMust(types.StringType, []attr.Value{types.StringValue(shape.privilege)})
 		fake := func(granted bool) func() sqlclient.Client {
 			return func() sqlclient.Client {
@@ -246,9 +280,11 @@ func grantTranscripts() []transcriptCase {
 				if granted {
 					privileges[shape.privilege] = true
 				}
+
 				return &scopedGrantCatalog{databaseType: shape.databaseType, identity: identity, schema: shape.schema, scope: shape.catalogScope, privileges: privileges}
 			}
 		}
+
 		cases = append(cases, transcriptCase{name: "create_" + shape.name, operation: "create", catalog: fake(false), planned: model})
 		if shape.datashare != "" {
 			// Datashare recipients read SHOW GRANTS ON SCHEMA and import through their own identity fields.
@@ -258,6 +294,7 @@ func grantTranscripts() []transcriptCase {
 			)
 		}
 	}
+
 	return cases
 }
 
@@ -276,6 +313,7 @@ func lifecycleVariants() map[string][]transcriptCase {
 	userGranted := func(granted bool) func(*catalog) {
 		return func(c *catalog) { c.user, c.userGrant = true, granted }
 	}
+
 	return map[string][]transcriptCase{
 		"database": {
 			{name: "create_local", operation: "create", catalog: catalogWith(), planned: local},
@@ -320,6 +358,7 @@ func lifecycleVariants() map[string][]transcriptCase {
 // The transcripts characterize current behavior; a refactor must leave them byte-identical.
 func TestLifecycleTranscripts(t *testing.T) {
 	variants := lifecycleVariants()
+
 	names := map[string]bool{}
 	for _, test := range lifecycleCases() {
 		names[test.name] = true
@@ -328,6 +367,7 @@ func TestLifecycleTranscripts(t *testing.T) {
 			runTranscripts(t, group, test.new, append(standardTranscripts(test), variants[test.name]...))
 		})
 	}
+
 	for name := range variants {
 		assert.True(t, names[name], "variants for unknown lifecycle case %q", name)
 	}
@@ -382,10 +422,12 @@ func (c *commentCatalog) Query(_ context.Context, _ sqlclient.Connection, sql st
 		if err != nil {
 			return nil, err
 		}
+
 		c.text = commentUnescaper.Replace(text)
 	default:
 		return nil, fmt.Errorf("unexpected SQL: %s", sql)
 	}
+
 	return nil, nil
 }
 
@@ -394,7 +436,9 @@ func TestCommentTranscripts(t *testing.T) {
 	text := func(value string) func() sqlclient.Client {
 		return func() sqlclient.Client { return &commentCatalog{text: value} }
 	}
+
 	var cases []transcriptCase
+
 	for _, target := range []struct{ kind, schema, name, column string }{
 		{"DATABASE", "", "analytics", ""},
 		{"SCHEMA", "", "serving", ""},
@@ -406,12 +450,15 @@ func TestCommentTranscripts(t *testing.T) {
 		if target.schema != "" {
 			model.SchemaName = types.StringValue(target.schema)
 		}
+
 		if target.column != "" {
 			model.ColumnName = types.StringValue(target.column)
 		}
+
 		revised := model
 		revised.Text = types.StringValue(`Owner's \notes`)
 		kind := strings.ToLower(target.kind)
+
 		cases = append(cases,
 			transcriptCase{name: "create_" + kind, operation: "create", catalog: text(""), planned: model},
 			transcriptCase{name: "update_" + kind, operation: "update", catalog: text("note"), prior: model, planned: revised},
@@ -426,10 +473,12 @@ func TestCommentTranscripts(t *testing.T) {
 				transcriptCase{name: "unchanged_" + kind, operation: "update", catalog: text("note"), prior: model, planned: model},
 			)
 		}
+
 		if target.kind == "COLUMN" {
 			cases = append(cases, transcriptCase{name: "import_" + kind, operation: "import", catalog: text(""), planned: model})
 		}
 	}
+
 	runTranscripts(t, "lifecycle/comment", newCommentResource, cases)
 }
 
@@ -510,7 +559,9 @@ func TestPrivilegeTranscripts(t *testing.T) {
 				{name: "delete", operation: "delete", current: []string{first, second}, prior: []string{first, second}},
 				{name: "import", operation: "import", desired: []string{first}},
 			}, test.variants...)
+
 			var cases []transcriptCase
+
 			for _, flow := range flows {
 				fields := maps.Clone(test.fields)
 				for key, value := range flow.fields {
@@ -519,6 +570,7 @@ func TestPrivilegeTranscripts(t *testing.T) {
 						delete(fields, key)
 					}
 				}
+
 				r := test.factory().(*privilegeResource)
 				current := flow.current
 				cases = append(cases, transcriptCase{
@@ -528,12 +580,14 @@ func TestPrivilegeTranscripts(t *testing.T) {
 						for _, privilege := range current {
 							values[privilege] = true
 						}
+
 						return &privilegeCatalog{values: values, grantee: fields["grantee"], kind: strings.ToLower(fields["grantee_type"]), scope: fields["object_type"]}
 					},
 					prior:   privilegeObject(t, r, fields, flow.prior...),
 					planned: privilegeObject(t, r, fields, flow.desired...),
 				})
 			}
+
 			runTranscripts(t, group, test.factory, cases)
 		})
 	}

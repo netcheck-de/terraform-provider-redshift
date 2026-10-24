@@ -16,6 +16,7 @@ var _ = registerDataSource(newProceduresDataSource)
 func newProceduresDataSource() datasource.DataSource {
 	element := routineListingElement("name", "procedure")
 	element["security"] = schema.StringAttribute{Computed: true, MarkdownDescription: "`DEFINER` when the procedure runs with its owner's privileges, otherwise `INVOKER`."}
+
 	return newCollectionDataSource(collectionSpec{
 		name:        "procedures",
 		description: "Lists stored procedures in one database without managing them. `arguments` holds the `IN` and `INOUT` types that identify each overload; `redshift_routine_parameters` reports every parameter with its mode.",
@@ -26,20 +27,24 @@ func newProceduresDataSource() datasource.DataSource {
 			if err != nil {
 				return nil, err
 			}
+
 			items := make([]map[string]attr.Value, 0, len(rows))
 			for _, row := range rows {
 				definer, err := strconv.ParseBool(row["security_definer"])
 				if err != nil {
 					return nil, err
 				}
+
 				security := "INVOKER"
 				if definer {
 					security = "DEFINER"
 				}
+
 				item := routineListingItem(database, "name", row)
 				item["security"] = types.StringValue(security)
 				items = append(items, item)
 			}
+
 			return items, nil
 		},
 	})

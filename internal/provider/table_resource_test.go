@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -58,6 +58,7 @@ func tableTestColumn(name, dataType string, options ...func(*tableColumnModel)) 
 	for _, option := range options {
 		option(&column)
 	}
+
 	return column
 }
 
@@ -99,6 +100,7 @@ func tableTestColumns(columns ...tableColumnModel) types.List {
 			"encoding": column.Encoding, "nullable": column.Nullable, "default": column.Default, "identity": column.Identity,
 		})
 	}
+
 	return types.ListValueMust(types.ObjectType{AttrTypes: tableColumnAttributeTypes}, elements)
 }
 
@@ -128,7 +130,9 @@ func tableTestWideModel(base tableModel, options ...func(*tableColumnModel)) tab
 	for i := range columns {
 		columns[i] = tableTestColumn(fmt.Sprintf("c%d", i), "int", options...)
 	}
+
 	elements := slices.Concat(base.Column.Elements(), tableTestColumns(columns...).Elements())
+
 	return tableTestWithColumnValues(base, elements)
 }
 
@@ -149,6 +153,7 @@ func tableTestUnique(lists ...[]string) types.Set {
 	for i, names := range lists {
 		elements[i] = tableTestKey(names...)
 	}
+
 	return types.SetValueMust(types.ObjectType{AttrTypes: tableKeyAttributeTypes}, elements)
 }
 
@@ -181,6 +186,7 @@ func tableTestSortKey(style string, columns ...string) types.Object {
 	if len(columns) > 0 {
 		list = tableTestList(columns...)
 	}
+
 	return types.ObjectValueMust(tableSortKeyAttributeTypes, map[string]attr.Value{"style": optionalString(style), "columns": list})
 }
 
@@ -191,10 +197,12 @@ func tableAuto(distKey string, sortKey ...string) func(*tableModel) {
 		if distKey != "" {
 			distStyle = "KEY"
 		}
+
 		sortStyle := "NONE"
 		if len(sortKey) > 0 {
 			sortStyle = "COMPOUND"
 		}
+
 		m.Distribution, m.SortKey = types.ObjectNull(tableDistributionAttributeTypes), types.ObjectNull(tableSortKeyAttributeTypes)
 		m.EffectiveDistribution = tableEffectiveDistributionValue(distStyle, distKey, true)
 		m.EffectiveSortKey = tableEffectiveSortKeyValue(sortStyle, sortKey, true)
@@ -222,14 +230,17 @@ func tableEventsModel() tableModel {
 	model.Backup = types.StringValue("YES")
 	model.EffectiveDistribution = tableEffectiveDistributionValue("KEY", "id", false)
 	model.EffectiveSortKey = tableEffectiveSortKeyValue("COMPOUND", []string{"id"}, false)
+
 	return model
 }
 
 // tableSpecMust validates a model for tests.
 func tableSpecMust(t *testing.T, model tableModel) tableSpec {
 	t.Helper()
+
 	spec, err := tableSpecOf(model)
 	require.NoError(t, err)
+
 	return spec
 }
 
@@ -257,8 +268,10 @@ func TestTableConditionalReplacement(t *testing.T) {
 	atLimit := tableTestWithColumnValues(base, slices.Concat(wideColumns[:tableMaxColumns-1], extra))
 	overLimit := tableTestWithColumnValues(base, slices.Concat(wideColumns[1:tableMaxColumns-1], extra))
 	overLimit.PrimaryKey, overLimit.Distribution, overLimit.SortKey = types.ObjectNull(tableKeyAttributeTypes), types.ObjectNull(tableDistributionAttributeTypes), types.ObjectNull(tableSortKeyAttributeTypes)
+
 	var schema resource.SchemaResponse
 	newTableResource().Schema(context.Background(), resource.SchemaRequest{}, &schema)
+
 	stateOf := func(t *testing.T, model tableModel) tfsdk.State {
 		t.Helper()
 		return testStateWithSchema(t, schema.Schema, model)
@@ -287,15 +300,21 @@ func TestTableConditionalReplacement(t *testing.T) {
 		{"widen varchar", withNote, withColumns(id, label, tableTestColumn("note", "varchar(64)", tableEncoded("LZO"), tableNullable(true))), "column", false},
 		{"widen varchar alias", withNote, withColumns(id, label, tableTestColumn("note", "character varying(33)", tableEncoded("LZO"), tableNullable(true))), "column", false},
 		{"same type alias", withNote, withColumns(id, label, tableTestColumn("note", "nvarchar(32)", tableEncoded("LZO"), tableNullable(true))), "column", false},
-		{"widen varbyte", withColumns(id, label, tableTestColumn("blob", "varbyte(16)", tableEncoded("LZO"), tableNullable(true))),
-			withColumns(id, label, tableTestColumn("blob", "varbinary(32)", tableEncoded("LZO"), tableNullable(true))), "column", false},
-		{"varbyte to varchar", withColumns(id, label, tableTestColumn("blob", "varbyte(16)", tableEncoded("LZO"), tableNullable(true))),
-			withColumns(id, label, tableTestColumn("blob", "varchar(32)", tableEncoded("LZO"), tableNullable(true))), "column", true},
-		{"narrow varchar", withNote, withColumns(id, label, tableTestColumn("note", "varchar(16)", tableEncoded("LZO"), tableNullable(true))), "column", true},
+		{
+			"widen varbyte", withColumns(id, label, tableTestColumn("blob", "varbyte(16)", tableEncoded("LZO"), tableNullable(true))),
+			withColumns(id, label, tableTestColumn("blob", "varbinary(32)", tableEncoded("LZO"), tableNullable(true))), "column", false,
+		},
+		{
+			"varbyte to varchar", withColumns(id, label, tableTestColumn("blob", "varbyte(16)", tableEncoded("LZO"), tableNullable(true))),
+			withColumns(id, label, tableTestColumn("blob", "varchar(32)", tableEncoded("LZO"), tableNullable(true))), "column", true,
+		},
+		{"narrow varchar", withNote, withColumns(id, label, tableTestColumn("note", "varchar(16)", tableEncoded("LZO"), tableNullable(true))), "column", false},
 		{"change type", withNote, withColumns(id, label, tableTestColumn("note", "integer", tableEncoded("LZO"), tableNullable(true))), "column", true},
 		{"widen column with default", base, withColumns(id, tableTestColumn("label", "varchar(128)", tableEncoded("LZO"), tableNullable(true), tableDefault("'none'"))), "column", true},
-		{"widen constrained column", tableWith(withNote, func(m *tableModel) { m.Unique = tableTestUnique([]string{"note"}) }),
-			tableWith(withColumns(id, label, tableTestColumn("note", "varchar(64)", tableEncoded("LZO"), tableNullable(true))), func(m *tableModel) { m.Unique = tableTestUnique([]string{"note"}) }), "column", true},
+		{
+			"widen constrained column", tableWith(withNote, func(m *tableModel) { m.Unique = tableTestUnique([]string{"note"}) }),
+			tableWith(withColumns(id, label, tableTestColumn("note", "varchar(64)", tableEncoded("LZO"), tableNullable(true))), func(m *tableModel) { m.Unique = tableTestUnique([]string{"note"}) }), "column", true,
+		},
 		{"widen foreign key column", tableWith(withNote, func(m *tableModel) {
 			m.ForeignKey = tableTestForeignKeys(tableTestForeignKey([]string{"note"}, "serving", "notes", "note"))
 		}), tableWith(withColumns(id, label, tableTestColumn("note", "varchar(64)", tableEncoded("LZO"), tableNullable(true))), func(m *tableModel) {
@@ -309,8 +328,10 @@ func TestTableConditionalReplacement(t *testing.T) {
 		{"default respelled", base, withColumns(id, tableTestColumn("label", "varchar(64)", tableEncoded("LZO"), tableNullable(true), tableDefault("'none'::character varying"))), "column", false},
 		{"change default", base, withColumns(id, tableTestColumn("label", "varchar(64)", tableEncoded("LZO"), tableNullable(true), tableDefault("'other'"))), "column", true},
 		{"change identity", base, withColumns(tableTestColumn("id", "bigint", tableEncoded("AZ64"), tableNullable(false), tableIdentity(1, 2, false)), label), "column", true},
-		{"primary key on not null column", tableWith(withColumns(id, label, note(tableNullable(false))), func(m *tableModel) { m.PrimaryKey = types.ObjectNull(tableKeyAttributeTypes) }),
-			withColumns(id, label, note(tableNullable(false))), "primary_key", false},
+		{
+			"primary key on not null column", tableWith(withColumns(id, label, note(tableNullable(false))), func(m *tableModel) { m.PrimaryKey = types.ObjectNull(tableKeyAttributeTypes) }),
+			withColumns(id, label, note(tableNullable(false))), "primary_key", false,
+		},
 		{"primary key on nullable column", base, tableWith(withColumns(id, tableTestColumn("label", "varchar(64)", tableEncoded("LZO"), tableNullable(false), tableDefault("'none'"))),
 			func(m *tableModel) { m.PrimaryKey = tableTestKey("label") }), "primary_key", true},
 		{"drop primary key", base, tableWith(base, func(m *tableModel) { m.PrimaryKey = types.ObjectNull(tableKeyAttributeTypes) }), "primary_key", false},
@@ -362,6 +383,7 @@ func TestTableConditionalReplacement(t *testing.T) {
 			assert.Equal(t, test.replace, tableRequiresReplace(context.Background(), tfsdk.Config(planned), state, tfsdk.Plan(planned), test.attribute))
 		})
 	}
+
 	t.Run("undecodable state replaces", func(t *testing.T) {
 		invalid := tableWith(base, func(m *tableModel) { m.Distribution = tableTestDistribution("", "missing") })
 		valid := stateOf(t, base)
@@ -405,10 +427,12 @@ func TestTableColumnOrder(t *testing.T) {
 	found, _, err := r.read(context.Background(), &data)
 	require.NoError(t, err)
 	require.True(t, found)
+
 	var names []string
 	for _, column := range tableTestColumnsOf(t, data.Column) {
 		names = append(names, column.Name.ValueString())
 	}
+
 	assert.Equal(t, []string{"label", "note", "id"}, names, "read keeps the prior order")
 }
 
@@ -420,6 +444,7 @@ func TestTableAlterCoverage(t *testing.T) {
 // TestTableDuplicateColumnValidationOrder pins the first failure and the successfully parsed prefix.
 func TestTableDuplicateColumnValidationOrder(t *testing.T) {
 	unknownType := tableTestColumn("a", "int", func(c *tableColumnModel) { c.Type = types.StringUnknown() })
+
 	unknownName := tableTestColumn("a", "int", func(c *tableColumnModel) { c.Name = types.StringUnknown() })
 	for _, test := range []struct {
 		name    string
@@ -438,10 +463,12 @@ func TestTableDuplicateColumnValidationOrder(t *testing.T) {
 			model.Column = tableTestColumns(test.columns...)
 			spec, err := tableSpecOf(model)
 			require.EqualError(t, err, test.message)
+
 			var names []string
 			for _, column := range spec.columns {
 				names = append(names, column.name)
 			}
+
 			assert.Equal(t, test.prefix, names, "partial definition retains every successfully parsed column in input order")
 		})
 	}
@@ -456,6 +483,7 @@ func TestTableSpecValidation(t *testing.T) {
 	noKeys := func(m *tableModel) {
 		m.PrimaryKey, m.Distribution, m.SortKey = types.ObjectNull(tableKeyAttributeTypes), types.ObjectNull(tableDistributionAttributeTypes), types.ObjectNull(tableSortKeyAttributeTypes)
 	}
+
 	foreignKey := func(columns types.List, schemaName, table types.String, refColumns types.List) func(*tableModel) {
 		return func(m *tableModel) {
 			m.ForeignKey = tableTestForeignKeys(types.ObjectValueMust(tableForeignKeyAttributeTypes, map[string]attr.Value{
@@ -510,12 +538,16 @@ func TestTableSpecValidation(t *testing.T) {
 		{"none with sort key", func(m *tableModel) { m.SortKey = tableTestSortKey("NONE", "id") }, "remove sort_key.columns"},
 		{"compound without columns", func(m *tableModel) { m.SortKey = tableTestSortKey("COMPOUND") }, "needs sort_key.columns"},
 		{"interleaved limit", func(m *tableModel) {
-			var many []tableColumnModel
-			var names []string
+			var (
+				many  []tableColumnModel
+				names []string
+			)
+
 			for i := range 9 {
 				name := fmt.Sprintf("c%d", i)
 				many, names = append(many, tableTestColumn(name, "int")), append(names, name)
 			}
+
 			noKeys(m)
 			m.Column, m.SortKey = tableTestColumns(many...), tableTestSortKey("INTERLEAVED", names...)
 		}, "at most 8"},
@@ -581,6 +613,7 @@ func TestTableSpecValidation(t *testing.T) {
 			require.ErrorContains(t, err, test.message)
 		})
 	}
+
 	spec := tableSpecMust(t, tableWith(base, func(m *tableModel) {
 		m.Distribution, m.SortKey, m.Owner = tableTestDistribution("", "id"), tableTestSortKey("", "id"), types.StringUnknown()
 	}))
@@ -611,6 +644,7 @@ func TestTableCatalogParsing(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"id", "label"}, columns)
 	assert.Nil(t, refs)
+
 	for _, definition := range []string{"CHECK", "PRIMARY KEY (id", "UNIQUE ()", "FOREIGN KEY (a)", "FOREIGN KEY (a) REFERENCES t"} {
 		_, _, err := tableParseConstraintDefinition(definition, strings.HasPrefix(definition, "FOREIGN"))
 		require.Error(t, err, definition)
@@ -626,38 +660,41 @@ func TestTableCatalogParsing(t *testing.T) {
 	assert.Equal(t, "('a')||('b')", tableDefaultCanonical("('a') || ('b')"))
 	assert.Equal(t, "0", tableDefaultCanonical("((0)::numeric(12,2))"))
 
-	table := dataapi.Row{"owner": "admin", "diststyle": "9", "effective_diststyle": "12"}
-	attributes := []dataapi.Row{{"column_name": "a", "data_type": "integer", "not_null": "t"}}
-	details := []dataapi.Row{{"column_name": "a", "column_default": "", "encoding": "none", "distkey": "false", "sortkey": "0"}}
-	catalog, err := tableCatalogFrom(table, attributes, details, nil, []dataapi.Row{{"sortkey1": " AUTO(SORTKEY) "}})
+	table := sqlclient.Row{"owner": "admin", "diststyle": "9", "effective_diststyle": "12"}
+	attributes := []sqlclient.Row{{"column_name": "a", "data_type": "integer", "not_null": "t"}}
+	details := []sqlclient.Row{{"column_name": "a", "column_default": "", "encoding": "none", "distkey": "false", "sortkey": "0"}}
+	catalog, err := tableCatalogFrom(table, attributes, details, nil, []sqlclient.Row{{"sortkey1": " AUTO(SORTKEY) "}})
 	require.NoError(t, err)
 	assert.Equal(t, tableCatalog{
 		owner: "admin", distStyle: "AUTO", effectiveDistStyle: "KEY", sortKeyListed: true, sortKey1: "AUTO(SORTKEY)",
 		columns: []tableCatalogColumn{{name: "a", dataType: "INTEGER", notNull: true, encoding: "RAW"}},
 	}, catalog)
-	hidden, err := tableCatalogFrom(dataapi.Row{"owner": "admin", "diststyle": "9", "effective_diststyle": ""}, attributes, details, nil, nil)
+
+	hidden, err := tableCatalogFrom(sqlclient.Row{"owner": "admin", "diststyle": "9", "effective_diststyle": ""}, attributes, details, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, hidden.effectiveDistStyle, "a PG_CLASS_INFO row the identity may not see leaves the effective style unknown")
 	assert.False(t, hidden.sortKeyListed, "SVV_TABLE_INFO lists only tables with rows")
+
 	for name, test := range map[string]struct {
-		table               dataapi.Row
-		attributes, details []dataapi.Row
-		constraints         []dataapi.Row
+		table               sqlclient.Row
+		attributes, details []sqlclient.Row
+		constraints         []sqlclient.Row
 		message             string
 	}{
-		"no owner":             {dataapi.Row{"diststyle": "9"}, attributes, details, nil, "no owner"},
-		"unknown diststyle":    {dataapi.Row{"owner": "admin", "diststyle": "12"}, attributes, details, nil, "distribution style"},
+		"no owner":             {sqlclient.Row{"diststyle": "9"}, attributes, details, nil, "no owner"},
+		"unknown diststyle":    {sqlclient.Row{"owner": "admin", "diststyle": "12"}, attributes, details, nil, "distribution style"},
 		"no columns":           {table, nil, nil, nil, "different columns"},
-		"missing details":      {table, attributes, []dataapi.Row{{"column_name": "b", "sortkey": "0"}}, nil, "does not report"},
-		"bad sort position":    {table, attributes, []dataapi.Row{{"column_name": "a", "sortkey": "x"}}, nil, "sort key position"},
-		"bad constraint":       {table, attributes, details, []dataapi.Row{{"constraint_name": "c", "constraint_type": "p", "definition": "PRIMARY KEY"}}, "constraint"},
-		"dangling foreign key": {table, attributes, details, []dataapi.Row{{"constraint_name": "f", "constraint_type": "f", "definition": "FOREIGN KEY (a) REFERENCES t(b)"}}, "does not report"},
+		"missing details":      {table, attributes, []sqlclient.Row{{"column_name": "b", "sortkey": "0"}}, nil, "does not report"},
+		"bad sort position":    {table, attributes, []sqlclient.Row{{"column_name": "a", "sortkey": "x"}}, nil, "sort key position"},
+		"bad constraint":       {table, attributes, details, []sqlclient.Row{{"constraint_name": "c", "constraint_type": "p", "definition": "PRIMARY KEY"}}, "constraint"},
+		"dangling foreign key": {table, attributes, details, []sqlclient.Row{{"constraint_name": "f", "constraint_type": "f", "definition": "FOREIGN KEY (a) REFERENCES t(b)"}}, "does not report"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := tableCatalogFrom(test.table, test.attributes, test.details, test.constraints, nil)
 			require.ErrorContains(t, err, test.message)
 		})
 	}
+
 	_, _, err = tableReconcile(tableEventsModel(), tableCatalog{owner: "admin", distStyle: "KEY", columns: catalog.columns})
 	require.ErrorContains(t, err, "without a distribution key")
 }
@@ -665,16 +702,19 @@ func TestTableCatalogParsing(t *testing.T) {
 // tableFakeCatalog reads a fake table into a catalog, as read does.
 func tableFakeCatalog(t *testing.T, table tableFakeTable) tableCatalog {
 	t.Helper()
+
 	fake := &tableFake{tables: map[string]*tableFakeTable{"serving.events": &table}}
-	read := func(sql string) []dataapi.Row {
-		result, handled, err := fake.query(nil, dataapi.Connection{}, sql, map[string]string{"schema": "serving", "name": "events"})
+	read := func(sql string) []sqlclient.Row {
+		result, handled, err := fake.query(nil, sqlclient.Connection{}, sql, map[string]string{"schema": "serving", "name": "events"})
 		require.True(t, handled)
 		require.NoError(t, err)
+
 		return result
 	}
 	catalog, err := tableCatalogFrom(read("SELECT c.relname AS table_name")[0], read("SELECT a.attnum AS position"), read("SELECT column_name, column_default"),
 		read("SELECT con.conname"), read("SELECT sortkey1 FROM svv_table_info"))
 	require.NoError(t, err)
+
 	return catalog
 }
 
@@ -720,6 +760,7 @@ func TestTableReadBlockPopulation(t *testing.T) {
 	auto := tableFakeEvents()
 	auto.distStyle, auto.autoDistStyle, auto.autoSortKey = "9", "12", true
 	omitted := tableWith(tableEventsModel(), tableAuto("id", "id"))
+
 	explicitAuto := tableWith(omitted, func(m *tableModel) {
 		m.Distribution, m.SortKey = tableTestDistribution("AUTO", ""), tableTestSortKey("AUTO")
 	})
@@ -745,10 +786,11 @@ func TestTableReadBlockPopulation(t *testing.T) {
 		}, tableTestDistribution("ALL", ""), types.ObjectNull(tableSortKeyAttributeTypes)},
 	} {
 		t.Run(name, func(t *testing.T) {
-			table := *auto.clone()
+			table := *cloneTableFake(auto)
 			if test.table != nil {
 				test.table(&table)
 			}
+
 			observed, _, err := tableReconcile(test.prior, tableFakeCatalog(t, table))
 			require.NoError(t, err)
 			assert.Equal(t, test.distribution, observed.Distribution)
@@ -761,15 +803,18 @@ func TestTableReadBlockPopulation(t *testing.T) {
 // SVV_TABLE_INFO, and falls back to the configured sort key style when the view does not list the table.
 func TestTableEffectiveFromCatalog(t *testing.T) {
 	auto := func(change func(*tableFakeTable)) tableFakeTable {
-		table := *tableFakeEvents().clone()
+		table := *cloneTableFake(tableFakeEvents())
+
 		table.distStyle, table.autoDistStyle, table.autoSortKey = "9", "12", true
 		if change != nil {
 			change(&table)
 		}
+
 		return table
 	}
 	omitted := tableWith(tableEventsModel(), tableAuto("id", "id"))
 	none := tableWith(omitted, func(m *tableModel) { m.SortKey = tableTestSortKey("NONE") })
+
 	unsorted := func(table *tableFakeTable) { table.columns[0].sortKey = 0 }
 	for name, test := range map[string]struct {
 		prior        tableModel
@@ -777,7 +822,7 @@ func TestTableEffectiveFromCatalog(t *testing.T) {
 		distribution types.Object
 		sortKey      types.Object
 	}{
-		"explicit":           {tableEventsModel(), *tableFakeEvents().clone(), tableEffectiveDistributionValue("KEY", "id", false), tableEffectiveSortKeyValue("COMPOUND", []string{"id"}, false)},
+		"explicit":           {tableEventsModel(), *cloneTableFake(tableFakeEvents()), tableEffectiveDistributionValue("KEY", "id", false), tableEffectiveSortKeyValue("COMPOUND", []string{"id"}, false)},
 		"chosen by Redshift": {omitted, auto(nil), tableEffectiveDistributionValue("KEY", "id", true), tableEffectiveSortKeyValue("COMPOUND", []string{"id"}, true)},
 		"auto even": {omitted, auto(func(table *tableFakeTable) {
 			table.autoDistStyle = "11"
@@ -820,6 +865,7 @@ func TestTableConverged(t *testing.T) {
 	reordered := base
 	reordered.columns = []tableColumnSpec{base.columns[1], base.columns[0]}
 	require.NoError(t, tableConverged(base, reordered), "columns match by name")
+
 	for name, change := range map[string]func(*tableSpec){
 		"column count": func(s *tableSpec) { s.columns = s.columns[:1] },
 		"column name":  func(s *tableSpec) { s.columns[1].name = "other" },
@@ -851,29 +897,33 @@ func TestTableConverged(t *testing.T) {
 
 // TestTableReadErrors reports catalog failures and inconsistent rows instead of dropping the table from state.
 func TestTableReadErrors(t *testing.T) {
-	for name, rows := range map[string]func(sql string) ([]dataapi.Row, error){
-		"ambiguous table": func(sql string) ([]dataapi.Row, error) {
+	for name, rows := range map[string]func(sql string) ([]sqlclient.Row, error){
+		"ambiguous table": func(sql string) ([]sqlclient.Row, error) {
 			if strings.HasPrefix(sql, "SELECT c.relname") {
-				return []dataapi.Row{{"owner": "a", "diststyle": "9"}, {"owner": "b", "diststyle": "9"}}, nil
+				return []sqlclient.Row{{"owner": "a", "diststyle": "9"}, {"owner": "b", "diststyle": "9"}}, nil
 			}
+
 			return nil, nil
 		},
-		"columns disappear": func(sql string) ([]dataapi.Row, error) {
+		"columns disappear": func(sql string) ([]sqlclient.Row, error) {
 			if strings.HasPrefix(sql, "SELECT c.relname") {
-				return []dataapi.Row{{"owner": "a", "diststyle": "9"}}, nil
+				return []sqlclient.Row{{"owner": "a", "diststyle": "9"}}, nil
 			}
+
 			return nil, nil
 		},
-		"sort key view denied": func(sql string) ([]dataapi.Row, error) {
+		"sort key view denied": func(sql string) ([]sqlclient.Row, error) {
 			if strings.HasPrefix(sql, "SELECT sortkey1") {
 				return nil, errors.New("permission denied for relation svv_table_info")
 			}
+
 			c := fullCatalog()
-			return c.Query(context.Background(), dataapi.Connection{Database: "admin"}, sql, map[string]string{"schema": "serving", "name": "events"})
+
+			return c.Query(context.Background(), sqlclient.Connection{Database: "admin"}, sql, map[string]string{"schema": "serving", "name": "events"})
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			r := &tableResource{testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+			r := &tableResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 				return rows(sql)
 			}))}
 			data := tableEventsModel()
@@ -889,6 +939,7 @@ func TestTableUpdateRefusesReplacementChanges(t *testing.T) {
 	c := fullCatalog()
 	r := newTableResource()
 	configureTestResource(t, r, c)
+
 	planned := tableWith(tableEventsModel(), func(m *tableModel) {
 		m.Column = tableTestColumns(
 			tableTestColumn("id", "bigint", tableEncoded("AZ64"), tableNullable(false), tableIdentity(1, 1, false)),
@@ -906,8 +957,10 @@ func TestTableUpdateRefusesReplacementChanges(t *testing.T) {
 func TestTableUpdateRefusesStaleDrops(t *testing.T) {
 	c := fullCatalog()
 	tableFakeNote(fakeState[*tableFake](c, "table").tables["serving.events"])
+
 	r := newTableResource()
 	configureTestResource(t, r, c)
+
 	planned := tableWith(tableEventsModel(), func(m *tableModel) { m.Owner = types.StringValue("analyst") })
 	_, diagnostics := applyOperation(t, r, "update", tableEventsModel(), planned, nil)
 	require.True(t, diagnostics.HasError())
@@ -923,6 +976,7 @@ func TestTableUpdateRefreshFailures(t *testing.T) {
 		m.Column = tableTestColumns(append(tableTestColumnsOf(t, m.Column), note)...)
 	})
 	planned := tableWith(prior, func(m *tableModel) { m.SortKey = tableTestSortKey("COMPOUND", "id", "note") })
+
 	for name, test := range map[string]struct {
 		after   func(c *catalog)
 		failure error
@@ -937,18 +991,22 @@ func TestTableUpdateRefreshFailures(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			c := fullCatalog()
 			tableFakeNote(fakeState[*tableFake](c, "table").tables["serving.events"])
+
 			sorted := false
-			r := &tableResource{testResourceClient(queryFunc(func(ctx context.Context, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+			r := &tableResource{testResourceClient(queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if sorted && test.failure != nil {
 					return nil, test.failure
 				}
+
 				rows, err := c.Query(ctx, connection, sql, parameters)
 				if strings.Contains(sql, "ALTER COMPOUND SORTKEY") {
 					sorted = true
+
 					if test.after != nil {
 						test.after(c)
 					}
 				}
+
 				return rows, err
 			}))}
 			_, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
@@ -962,8 +1020,10 @@ func TestTableUpdateRefreshFailures(t *testing.T) {
 // tableTestColumnsOf decodes a column list for tests that extend it.
 func tableTestColumnsOf(t *testing.T, list types.List) []tableColumnModel {
 	t.Helper()
+
 	var columns []tableColumnModel
 	require.False(t, list.ElementsAs(context.Background(), &columns, false).HasError())
+
 	return columns
 }
 
@@ -982,6 +1042,7 @@ func TestTableCreateRejectsInvalidDefinitions(t *testing.T) {
 func TestTableCreateDetectsDivergence(t *testing.T) {
 	c := fullCatalog()
 	delete(fakeState[*tableFake](c, "table").tables, "serving.events")
+
 	r := newTableResource()
 	configureTestResource(t, r, c)
 	_, diagnostics := applyOperation(t, r, "create", nil, tableWith(tableEventsModel(), func(m *tableModel) { m.Distribution = tableTestDistribution("EVEN", "") }), nil)
@@ -1103,14 +1164,15 @@ func TestTableDeleteDoesNotReadDefinition(t *testing.T) {
 	spec := tableSpec{schema: model.Schema.ValueString(), name: model.Name.ValueString()}
 	lookup, _, err := readTableQuery(spec).Build()
 	require.NoError(t, err)
+
 	dropped := false
 	r := newTableResource()
-	configureTestResource(t, r, queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+	configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		switch sql {
 		case lookup:
 			assert.False(t, dropped, "successful synchronous DROP needs no readback")
 			// Identity is enough to delete even when the rest of the catalog metadata is unavailable.
-			return []dataapi.Row{{}}, nil
+			return []sqlclient.Row{{}}, nil
 		case dropTableStatement(spec):
 			dropped = true
 			return nil, nil
@@ -1127,20 +1189,23 @@ func TestTableDeleteDoesNotReadDefinition(t *testing.T) {
 func TestTableReadRejectsInconsistentDistribution(t *testing.T) {
 	c := fullCatalog()
 	r := &tableResource{}
-	configureTestResource(t, r, queryFunc(func(ctx context.Context, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+	configureTestResource(t, r, queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		rows, err := c.Query(ctx, connection, sql, parameters)
 		if strings.Contains(sql, "c.reldiststyle AS diststyle") {
 			for _, row := range rows {
 				row["diststyle"] = "1"
 			}
 		}
+
 		if strings.Contains(sql, "svv_redshift_columns") {
 			for _, row := range rows {
 				row["distkey"] = "false"
 			}
 		}
+
 		return rows, err
 	}))
+
 	model := tableEventsModel()
 	found, _, err := r.read(context.Background(), &model)
 	assert.False(t, found)
@@ -1152,6 +1217,7 @@ func TestTableUpdateValidatesBeforeSQL(t *testing.T) {
 	c := fullCatalog()
 	r := &tableResource{}
 	configureTestResource(t, r, c)
+
 	prior := tableEventsModel()
 	plan := prior
 	plan.Schema = types.StringValue("")

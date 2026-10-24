@@ -18,9 +18,11 @@ func TestProviderProtocolSchema(t *testing.T) {
 	require.NoError(t, err)
 	response, err := protocol.GetProviderSchema(context.Background(), &tfprotov6.GetProviderSchemaRequest{})
 	require.NoError(t, err)
+
 	for _, diagnostic := range response.Diagnostics {
 		assert.NotEqual(t, tfprotov6.DiagnosticSeverityError, diagnostic.Severity, "%s: %s", diagnostic.Summary, diagnostic.Detail)
 	}
+
 	assert.NotNil(t, response.Provider)
 	assert.NotEmpty(t, response.ResourceSchemas)
 	assert.NotEmpty(t, response.DataSourceSchemas)

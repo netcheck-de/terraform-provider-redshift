@@ -38,6 +38,7 @@ func TestDefaultPrivilegesObjectTypes(t *testing.T) {
 			assert.NotContains(t, target.query.parameters, "schema", "Data API parameters cannot contain empty strings")
 		}
 	}
+
 	_, err := r.prepare(privilegeObject(t, r, map[string]string{"grantee_type": "invalid"}))
 	require.Error(t, err)
 }
@@ -45,18 +46,22 @@ func TestDefaultPrivilegesObjectTypes(t *testing.T) {
 // TestDefaultPrivilegesAllowlist lists the privileges each object type accepts and defers an unknown type.
 func TestDefaultPrivilegesAllowlist(t *testing.T) {
 	r := newDefaultPrivilegesResource().(*privilegeResource)
+
 	for kind, count := range map[string]int{"TABLES": 7, "FUNCTIONS": 1, "PROCEDURES": 1, "VIEWS": 0} {
 		t.Run(kind, func(t *testing.T) {
 			data := privilegeObject(t, r, map[string]string{"object_type": kind})
+
 			allowed, err := defaultPrivilegesConfigAllowed(data)
 			if count == 0 {
 				require.ErrorContains(t, err, "unsupported default object_type")
 				return
 			}
+
 			require.NoError(t, err)
 			assert.Len(t, allowed, count)
 		})
 	}
+
 	data := privilegeObject(t, r, nil)
 	attributes := data.Attributes()
 	attributes["object_type"] = types.StringUnknown()

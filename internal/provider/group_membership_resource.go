@@ -44,6 +44,7 @@ func (r *groupMembershipResource) Schema(_ context.Context, _ resource.SchemaReq
 		"group": schema.StringAttribute{Required: true, MarkdownDescription: "SQL group name.", PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
 		"user":  schema.StringAttribute{Required: true, MarkdownDescription: "SQL user name.", PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}},
 	}}
+	foldNames(&resp.Schema, "group")
 }
 
 // read checks whether the selected user belongs to the group.
@@ -51,7 +52,9 @@ func (r *groupMembershipResource) read(ctx context.Context, data groupMembership
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, r.database.ValueString(), readGroupMembershipQuery(data))
+
 	return len(rows) != 0, err
 }
 
@@ -61,17 +64,21 @@ func (r *groupMembershipResource) reconcile(ctx context.Context, data groupMembe
 	if err != nil || found == desired {
 		return err
 	}
+
 	statement := dropGroupMembershipStatement(data)
 	if desired {
 		statement = createGroupMembershipStatement(data)
 	}
+
 	if err := r.exec(ctx, r.database.ValueString(), statement); err != nil {
 		return err
 	}
+
 	found, err = r.read(ctx, data)
 	if err == nil && found != desired {
 		return fmt.Errorf("group membership did not converge")
 	}
+
 	return err
 }
 
@@ -79,11 +86,14 @@ func (r *groupMembershipResource) reconcile(ctx context.Context, data groupMembe
 func (r *groupMembershipResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data groupMembershipModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	data.ID = r.identity(r.database.ValueString(), map[string]string{"group": data.Group.ValueString(), "user": data.User.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if err := r.reconcile(ctx, data, true); err != nil {
 		resp.Diagnostics.AddError("Create group membership", err.Error())
 	}
@@ -93,18 +103,22 @@ func (r *groupMembershipResource) Create(ctx context.Context, req resource.Creat
 func (r *groupMembershipResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data groupMembershipModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read group membership", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -112,13 +126,16 @@ func (r *groupMembershipResource) Read(ctx context.Context, req resource.ReadReq
 func (r *groupMembershipResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data groupMembershipModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.reconcile(ctx, data, true); err != nil {
 		resp.Diagnostics.AddError("Update group membership", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -126,9 +143,11 @@ func (r *groupMembershipResource) Update(ctx context.Context, req resource.Updat
 func (r *groupMembershipResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data groupMembershipModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.reconcile(ctx, data, false); err != nil {
 		resp.Diagnostics.AddError("Delete group membership", err.Error())
 	}

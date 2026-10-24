@@ -59,7 +59,7 @@ Other grants of the role are never read.
 
 In Terraform 1.5 and later, use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_role_grant/import-by-string-id.tf" }}
+{{ tffile "examples/resources/redshift_role_grant/import.tf" }}
 
 The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
 cluster, or with `endpoint` (`host:port`) for a direct password connection; see

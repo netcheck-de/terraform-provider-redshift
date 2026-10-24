@@ -19,16 +19,20 @@ func templateTestModel(name, format, argument string, parameters map[string]stri
 	if format != "" {
 		model.Format = types.StringValue(format)
 	}
+
 	if argument != "" {
 		model.FormatArgument = types.StringValue(argument)
 	}
+
 	if parameters != nil {
 		elements := map[string]attr.Value{}
 		for key, value := range parameters {
 			elements[key] = types.StringValue(value)
 		}
+
 		model.Parameters = types.MapValueMust(types.StringType, elements)
 	}
+
 	return model
 }
 
@@ -144,6 +148,7 @@ func TestTemplateDefinitionParsing(t *testing.T) {
 		require.NoError(t, err, text)
 		assert.Equal(t, expected, definition, text)
 	}
+
 	for _, text := range []string{
 		`SELECT 1`,
 		`CREATE TABLE t (id INTEGER)`,
@@ -173,6 +178,7 @@ func TestTemplateDefinitionText(t *testing.T) {
 	text, err = templateDefinitionText(sqlclient.Row{"name": "x", "ddl": " create or replace template x for copy as csv"})
 	require.NoError(t, err)
 	assert.Equal(t, " create or replace template x for copy as csv", text)
+
 	_, err = templateDefinitionText(sqlclient.Row{"name": "x", "id": "1"})
 	require.Error(t, err)
 }

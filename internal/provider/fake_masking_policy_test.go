@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // maskingFakeFamily names the masking family in every fake catalog.
@@ -47,6 +47,7 @@ func maskingFakeName(sql string) string {
 	if match == nil {
 		return ""
 	}
+
 	return strings.ReplaceAll(match[1], `""`, `"`)
 }
 
@@ -57,42 +58,50 @@ func maskingFakeExpression(sql string) string {
 }
 
 // query answers masking catalog reads and applies masking DDL; other SQL passes to the next family.
-func (f *maskingFake) query(_ *catalog, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+func (f *maskingFake) query(_ *catalog, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	switch {
 	case strings.HasPrefix(sql, "SELECT ") && strings.Contains(sql, " FROM svv_masking_policy"):
 		if !f.policy || parameters["name"] != "" && parameters["name"] != f.name {
 			return nil, true, nil
 		}
+
 		database := parameters["database"]
 		if database == "" {
 			database = connection.Database
 		}
+
 		expression, _ := json.Marshal([]map[string]string{{"expr": f.expression, "type": "character varying(256)"}})
-		return []dataapi.Row{{"policy_database": database, "policy_name": f.name, "input_columns": `[{"colname":"email","type":"character varying(256)"}]`, "policy_expression": string(expression)}}, true, nil
+
+		return []sqlclient.Row{{"policy_database": database, "policy_name": f.name, "input_columns": `[{"colname":"email","type":"character varying(256)"}]`, "policy_expression": string(expression)}}, true, nil
 	case strings.HasPrefix(sql, "SELECT ") && strings.Contains(sql, " FROM svv_attached_masking_policy"):
 		if !f.policy || !f.attached || parameters["policy"] != f.name {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{"policy_name": f.name, "schema_name": parameters["schema"], "table_name": parameters["relation"], "grantee": "example_readers", "grantee_type": "role", "priority": strconv.FormatInt(f.priority, 10), "input_columns": `["email"]`, "output_columns": `["email"]`}}, true, nil
+
+		return []sqlclient.Row{{"policy_name": f.name, "schema_name": parameters["schema"], "table_name": parameters["relation"], "grantee": "example_readers", "grantee_type": "role", "priority": strconv.FormatInt(f.priority, 10), "input_columns": `["email"]`, "output_columns": `["email"]`}}, true, nil
 	case strings.HasPrefix(sql, "CREATE MASKING POLICY "):
 		if f.policy {
 			return nil, true, errors.New("masking policy already exists")
 		}
+
 		f.policy, f.name, f.expression = true, maskingFakeName(sql), maskingFakeExpression(sql)
 	case strings.HasPrefix(sql, "ALTER MASKING POLICY "):
 		if !f.policy {
 			return nil, true, errors.New("masking policy does not exist")
 		}
+
 		f.expression = maskingFakeExpression(sql)
 	case strings.HasPrefix(sql, "DROP MASKING POLICY "):
 		if !f.policy || f.attached {
 			return nil, true, errors.New("masking policy is absent or still attached")
 		}
+
 		f.policy = false
 	case strings.HasPrefix(sql, "ATTACH MASKING POLICY "):
 		if !f.policy || f.attached {
 			return nil, true, errors.New("masking policy is absent or already attached")
 		}
+
 		f.attached, f.priority = true, 0
 		if match := maskingFakePriority.FindStringSubmatch(sql); match != nil {
 			f.priority, _ = strconv.ParseInt(match[1], 10, 64)
@@ -101,9 +110,11 @@ func (f *maskingFake) query(_ *catalog, connection dataapi.Connection, sql strin
 		if !f.attached {
 			return nil, true, errors.New("masking policy is not attached")
 		}
+
 		f.attached = false
 	default:
 		return nil, false, nil
 	}
+
 	return nil, true, nil
 }

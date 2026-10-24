@@ -65,7 +65,7 @@ output "events_layout" {
 
 Read-Only:
 
-- `default` (String) DEFAULT expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default, and a change replaces the table.
+- `default` (String) DEFAULT expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default.
 - `encoding` (String) Compression encoding: `AZ64`, `BYTEDICT`, `DELTA`, `DELTA32K`, `LZO`, `MOSTLY8`, `MOSTLY16`, `MOSTLY32`, `RAW`, `RUNLENGTH`, `TEXT255`, `TEXT32K`, or `ZSTD`. Omit it to let Redshift choose; the chosen encoding is reported. A sort key change can re-encode columns of the old and new key, for example to `RAW`: their omitted encodings are then known after apply, and configured ones are applied again.
 - `identity` (Attributes) Makes an INTEGER or BIGINT column an `IDENTITY(seed, step)` column, which is always NOT NULL. (see [below for nested schema](#nestedatt--column--identity))
 - `name` (String) Column name, in lowercase.

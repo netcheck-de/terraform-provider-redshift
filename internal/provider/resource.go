@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -31,11 +32,13 @@ func (r *resourceClient) Configure(_ context.Context, req resource.ConfigureRequ
 	if req.ProviderData == nil {
 		return
 	}
+
 	data, ok := req.ProviderData.(providerData)
 	if !ok {
 		resp.Diagnostics.AddError("Unexpected provider client", fmt.Sprintf("Expected provider connection data, got %T.", req.ProviderData))
 		return
 	}
+
 	r.client, r.warehouse, r.database = data.client, data.warehouse, data.database
 	r.datashareARN = data.datashareARN
 }
@@ -53,6 +56,7 @@ func (r *resourceClient) connection(database string) (sqlclient.Connection, erro
 	if r.warehouse.value.IsUnknown() || r.warehouse.value.IsNull() || r.warehouse.value.ValueString() == "" || database == "" {
 		return sqlclient.Connection{}, fmt.Errorf("provider %s and database must be known before executing SQL", r.warehouse.field)
 	}
+
 	return sqlclient.Connection{Database: database}, nil
 }
 
@@ -67,6 +71,7 @@ func (r *resourceClient) queryDatabase(ctx context.Context, database, sql string
 	if err != nil {
 		return nil, err
 	}
+
 	return r.client.Query(ctx, target, sql, parameters)
 }
 
@@ -78,6 +83,7 @@ func (r *resourceClient) exec(ctx context.Context, database string, statements .
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -87,6 +93,7 @@ func (r *resourceClient) selectRows(ctx context.Context, database string, query 
 	if err != nil {
 		return nil, err
 	}
+
 	return r.queryDatabase(ctx, database, sql, parameters)
 }
 
@@ -95,7 +102,9 @@ func (r *resourceClient) localDatabaseExists(ctx context.Context, database strin
 	if database == r.database.ValueString() {
 		return true, nil
 	}
+
 	rows, err := r.selectRows(ctx, r.database.ValueString(), localDatabaseQuery(database))
+
 	return len(rows) > 0, err
 }
 
@@ -104,6 +113,7 @@ func (r *resourceClient) identity(database string, fields map[string]string) typ
 	fields[r.warehouse.field] = r.warehouse.value.ValueString()
 	fields["database"] = database
 	encoded, _ := json.Marshal(fields) // String maps are always JSON-serializable.
+
 	return types.StringValue(string(encoded))
 }
 
@@ -112,13 +122,16 @@ func (r *resourceClient) bound(id types.String, database string) error {
 	if id.IsNull() || id.IsUnknown() {
 		return nil
 	}
+
 	var fields map[string]string
 	if err := json.Unmarshal([]byte(id.ValueString()), &fields); err != nil {
 		return fmt.Errorf("invalid resource identity: %w", err)
 	}
+
 	if fields[r.warehouse.field] != r.warehouse.value.ValueString() || fields["database"] != database {
 		return fmt.Errorf("provider warehouse or database differs from the resource identity; migrate explicitly")
 	}
+
 	return nil
 }
 
@@ -129,24 +142,35 @@ func importIdentity(ctx context.Context, req resource.ImportStateRequest, resp *
 		resp.Diagnostics.AddError("Invalid import identity", "Expected a JSON object: "+err.Error())
 		return
 	}
+
 	bindings := 0
+
 	for _, field := range []string{"workgroup_name", "cluster_identifier", "endpoint"} {
 		if values[field] != "" {
 			bindings++
 		}
 	}
+
 	if bindings != 1 {
 		resp.Diagnostics.AddError("Invalid warehouse identity", "Import requires exactly one nonempty workgroup_name, cluster_identifier, or endpoint.")
 		return
 	}
+
 	for _, field := range append([]string{"database"}, fields...) {
 		if values[field] == "" {
 			resp.Diagnostics.AddError("Invalid import identity", "Missing nonempty field "+field+".")
 			return
 		}
 	}
+
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+
 	for _, field := range fields {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root(field), values[field])...)
 	}
+}
+
+// privateState reads provider private state, which plan modifier, import, and update requests and responses share.
+type privateState interface {
+	GetKey(ctx context.Context, key string) ([]byte, diag.Diagnostics)
 }

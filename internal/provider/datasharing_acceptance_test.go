@@ -27,23 +27,26 @@ func TestAccDatasharing(t *testing.T) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	execute := func(target, sql string) error {
 		_, err := client.Query(ctx, sqlclient.Connection{Database: target}, sql, nil)
 		return err
 	}
+
 	t.Cleanup(func() {
 		// Terraform destroys the objects; these statements only remove leftovers of a failed run.
 		for _, cleanup := range []struct{ database, sql string }{
-			{name, "DROP DATASHARE " + sqlclient.Identifier(name)},
-			{database, "DROP ROLE " + sqlclient.Identifier(name)},
-			{database, "DROP DATABASE " + sqlclient.Identifier(name)},
+			{name, sqlclient.Stmt("DROP DATASHARE").Ident(name).String()},
+			{database, sqlclient.Stmt("DROP ROLE").Ident(name).String()},
+			{database, sqlclient.Stmt("DROP DATABASE").Ident(name).String()},
 		} {
 			if err := execute(cleanup.database, cleanup.sql); err != nil {
 				t.Logf("fixture cleanup %q: %v", cleanup.sql, err)
 			}
 		}
 	})
+
 	lakeFormation := ""
 	if account := os.Getenv("REDSHIFT_ACC_LAKE_FORMATION_ACCOUNT"); account != "" {
 		lakeFormation = fmt.Sprintf(`
@@ -54,6 +57,7 @@ resource "redshift_datashare_grant" "lake_formation" {
   via_data_catalog = true
 }`, account)
 	}
+
 	configuration := fmt.Sprintf(`
 provider "redshift" {
   region = %q
@@ -101,7 +105,7 @@ data "redshift_datashares" "named" {
 			{ResourceName: "redshift_datashare_privilege.operators", ImportState: true, ImportStateVerify: true},
 			{Config: configuration, PlanOnly: true},
 			{Config: configuration, PreConfig: func() {
-				require.NoError(t, execute(name, "REVOKE SHARE ON DATASHARE "+sqlclient.Identifier(name)+" FROM ROLE "+sqlclient.Identifier(name)))
+				require.NoError(t, execute(name, sqlclient.Stmt("REVOKE SHARE ON DATASHARE").Ident(name).Kw("FROM ROLE").Ident(name).String()))
 			}, Check: resource.TestCheckResourceAttr("redshift_datashare_privilege.operators", "privileges.#", "2")},
 		},
 	})

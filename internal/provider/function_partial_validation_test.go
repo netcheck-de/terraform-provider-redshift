@@ -23,6 +23,7 @@ func TestFunctionFamiliesPartialKnownValidation(t *testing.T) {
 	rls := rlsPolicyLifecycleModel()
 	rls.Name, rls.Predicate = types.StringUnknown(), types.StringValue("x; DROP TABLE t")
 	masking := maskingLifecyclePolicy
+
 	masking.Name, masking.Expression = types.StringUnknown(), types.StringValue("x; DROP TABLE t")
 	for _, test := range []struct {
 		name string
@@ -38,6 +39,7 @@ func TestFunctionFamiliesPartialKnownValidation(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			r := test.new()
+
 			var response resource.ValidateConfigResponse
 			r.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, test.data))}, &response)
 			assert.True(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)

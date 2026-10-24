@@ -45,39 +45,51 @@ func (c *privilegeCatalog) Query(_ context.Context, _ sqlclient.Connection, sql 
 	if strings.HasPrefix(sql, "SELECT usesuper FROM pg_user") {
 		return []sqlclient.Row{{"usesuper": "true"}}, nil
 	}
+
 	if parameters["all_arn"] != "" {
 		// These single-tuple fixtures have no independent ON ALL grant; overlap tests supply their own catalog.
 		return nil, nil
 	}
+
 	if parameters["ambiguous_name"] != "" || parameters["collision_schema"] != "" {
 		return nil, nil
 	}
+
 	if strings.HasPrefix(sql, "SHOW GRANTS") || strings.Contains(sql, " AS privilege_type") || strings.HasPrefix(sql, "SELECT privilege_type") {
 		rows := []sqlclient.Row{}
+
 		for value := range c.values {
 			admin := c.admin
 			if c.options[value] {
 				admin = "t"
 			}
+
 			rows = append(rows, sqlclient.Row{"privilege_type": value, "identity_name": c.grantee, "identity_type": c.kind, "privilege_scope": c.scope, "admin_option": admin})
 		}
+
 		return rows, nil
 	}
+
 	if strings.HasPrefix(sql, "SELECT") {
 		if c.missing {
 			return nil, nil
 		}
+
 		return []sqlclient.Row{{"name": "exists"}}, nil
 	}
+
 	c.writes = append(c.writes, sql)
 	if c.stuck {
 		return nil, nil
 	}
+
 	verb := "GRANT"
 	if strings.Contains(sql, "REVOKE ") {
 		verb = "REVOKE"
 	}
+
 	_, value, _ := strings.Cut(sql, verb+" ")
+
 	value, optionOnly := strings.CutPrefix(value, "GRANT OPTION FOR ")
 	if strings.HasPrefix(value, "ASSUMEROLE") {
 		_, value, _ = strings.Cut(value, " FOR ")
@@ -86,6 +98,7 @@ func (c *privilegeCatalog) Query(_ context.Context, _ sqlclient.Connection, sql 
 		value, _, _ = strings.Cut(value, " TO ")
 		value, _, _ = strings.Cut(value, " FROM ")
 	}
+
 	switch {
 	case verb == "GRANT":
 		c.values[value] = true
@@ -93,6 +106,7 @@ func (c *privilegeCatalog) Query(_ context.Context, _ sqlclient.Connection, sql 
 			if c.options == nil {
 				c.options = map[string]bool{}
 			}
+
 			c.options[value] = true
 		}
 	case optionOnly:
@@ -101,39 +115,50 @@ func (c *privilegeCatalog) Query(_ context.Context, _ sqlclient.Connection, sql 
 		delete(c.values, value)
 		delete(c.options, value)
 	}
+
 	return nil, nil
 }
 
 // privilegeObject builds a typed permission model using its concrete resource schema.
 func privilegeObject(t *testing.T, r *privilegeResource, fields map[string]string, privileges ...string) types.Object {
 	t.Helper()
+
 	var schema resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &schema)
+
 	attributes, attributeTypes := map[string]attr.Value{}, map[string]attr.Type{}
 	for name, attribute := range schema.Schema.Attributes {
 		attributeTypes[name] = attribute.GetType()
+
 		attributes[name] = types.StringNull()
 		if attribute.GetType().Equal(types.BoolType) {
 			attributes[name] = types.BoolNull()
 		}
+
 		if set, ok := attribute.GetType().(types.SetType); ok {
 			attributes[name] = types.SetValueMust(set.ElemType, nil)
 		}
+
 		if value, ok := fields[name]; ok {
 			attributes[name] = types.StringValue(value)
 		}
 	}
+
 	attributes["privileges"] = types.SetValueMust(types.StringType, nil)
+
 	return withPrivileges(types.ObjectValueMust(attributeTypes, attributes), privileges)
 }
 
 // exercisePrivilege verifies lifecycle error paths, exact-set reconciliation, binding, and imports.
 func exercisePrivilege(t *testing.T, factory func() resource.Resource, fields map[string]string, privileges []string) {
 	t.Helper()
+
 	r := factory().(*privilegeResource)
+
 	var metadata resource.MetadataResponse
 	r.Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
 	assert.Equal(t, "redshift_"+r.name, metadata.TypeName)
+
 	data := privilegeObject(t, r, fields, privileges[0])
 	for _, operation := range []string{"create", "read", "update", "delete"} {
 		t.Run(operation, func(t *testing.T) {
@@ -146,36 +171,52 @@ func exercisePrivilege(t *testing.T, factory func() resource.Resource, fields ma
 					if calls == failAt {
 						return nil, errors.New("injected query failure")
 					}
+
 					return c.Query(ctx, connection, sql, parameters)
 				})
 				r := factory().(*privilegeResource)
 				r.resourceClient = testResourceClient(client)
+
 				diagnostics := invoke(t, r, operation, data)
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 					queries = calls
 				} else {
 					require.True(t, diagnostics.HasError(), "failure %d: %v", failAt, diagnostics)
 				}
 			}
+
 			r := factory().(*privilegeResource)
 			r.resourceClient = testResourceClient(&privilegeCatalog{missing: true})
 			diagnostics := invoke(t, r, operation, data)
 			assert.Equal(t, operation == "create" || operation == "update", diagnostics.HasError(), "%v", diagnostics)
 		})
 	}
+
 	c := &privilegeCatalog{values: map[string]bool{privileges[0]: true}, grantee: fields["grantee"], kind: strings.ToLower(fields["grantee_type"]), scope: fields["object_type"]}
 	r.resourceClient = testResourceClient(c)
 	require.NoError(t, r.reconcile(context.Background(), data))
-	assert.Empty(t, c.writes, "already-converged grants must not mutate")
+
+	if strings.HasPrefix(fields["object_type"], "ALL ") {
+		// A snapshot cannot see privileges held on only some objects, so it revokes every undesired one regardless.
+		for _, write := range c.writes {
+			assert.True(t, strings.HasPrefix(write, "REVOKE "), "a converged snapshot only revokes: %s", write)
+		}
+	} else {
+		assert.Empty(t, c.writes, "already-converged grants must not mutate")
+	}
+
 	_, _, err := r.read(context.Background(), &data)
 	require.NoError(t, err)
+
 	for _, invalid := range []string{"admin", "catalog privilege", "desired privilege", "stuck", "binding", "configuration"} {
 		t.Run(invalid, func(t *testing.T) {
 			c := &privilegeCatalog{values: map[string]bool{privileges[1]: true}, grantee: fields["grantee"], kind: strings.ToLower(fields["grantee_type"]), scope: fields["object_type"]}
 			r := factory().(*privilegeResource)
 			r.resourceClient = testResourceClient(c)
 			data := privilegeObject(t, r, fields, privileges[0])
+
 			switch invalid {
 			case "admin":
 				c.admin = "t"
@@ -192,9 +233,11 @@ func exercisePrivilege(t *testing.T, factory func() resource.Resource, fields ma
 			case "configuration":
 				r.warehouse.value = types.StringUnknown()
 			}
+
 			require.Error(t, r.reconcile(context.Background(), data))
 		})
 	}
+
 	for _, id := range []string{"invalid JSON", `{}`, r.identity("admin", fields).ValueString()} {
 		state := testState(t, r, data)
 		resp := resource.ImportStateResponse{State: state}
@@ -206,11 +249,13 @@ func exercisePrivilege(t *testing.T, factory func() resource.Resource, fields ma
 // TestPrincipalValidation checks SQL grantee kinds and explicit PUBLIC naming.
 func TestPrincipalValidation(t *testing.T) {
 	r := newObjectGrantResource().(*privilegeResource)
+
 	for _, kind := range []string{"USER", "GROUP", "PUBLIC", "invalid"} {
 		fields := map[string]string{"grantee_type": kind, "grantee": "public"}
 		_, _, err := principal(privilegeObject(t, r, fields))
 		assert.Equal(t, kind == "invalid", err != nil)
 	}
+
 	_, _, err := principal(privilegeObject(t, r, map[string]string{"grantee_type": "PUBLIC", "grantee": "other"}))
 	require.Error(t, err)
 	assert.Empty(t, objectString(privilegeObject(t, r, nil), "absent"))
@@ -225,12 +270,14 @@ func TestPrivilegeReadHandlesPublicAndCatalogAliases(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, types.SetValueMust(types.StringType, []attr.Value{types.StringValue("EXTERNAL FUNCTION")}), data.Attributes()["privileges"])
+
 	r = newObjectGrantResource().(*privilegeResource)
 	r.resourceClient = testResourceClient(&privilegeCatalog{values: map[string]bool{"TEMP": true}, grantee: "reader", kind: "user", scope: "DATABASE"})
 	data = privilegeObject(t, r, map[string]string{"database_name": "warehouse", "object_type": "DATABASE", "grantee_type": "USER", "grantee": "reader"})
 	_, _, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
 	assert.Equal(t, types.SetValueMust(types.StringType, []attr.Value{types.StringValue("TEMPORARY")}), data.Attributes()["privileges"])
+
 	r.resourceClient = testResourceClient(&privilegeCatalog{values: map[string]bool{"TEMP": true}, grantee: "other", kind: "user", scope: "DATABASE"})
 	_, _, err = r.read(context.Background(), &data)
 	require.NoError(t, err)
@@ -253,9 +300,11 @@ func TestPrivilegeCreateRejectsInvalidTupleBeforeState(t *testing.T) {
 			r.resourceClient = testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 				return nil, fmt.Errorf("unexpected SQL %q", sql)
 			}))
+
 			var schemaResponse resource.SchemaResponse
 			r.Schema(context.Background(), resource.SchemaRequest{}, &schemaResponse)
 			objectType := schemaResponse.Schema.Type().(basetypes.ObjectType)
+
 			values := map[string]attr.Value{}
 			for key := range objectType.AttrTypes {
 				values[key] = types.StringNull()
@@ -263,16 +312,19 @@ func TestPrivilegeCreateRejectsInvalidTupleBeforeState(t *testing.T) {
 					values[key] = types.SetValueMust(set.ElemType, nil)
 				}
 			}
+
 			values["privileges"] = types.SetValueMust(types.StringType, nil)
 			values["database_name"], values["object_type"] = types.StringValue("analytics"), types.StringValue("DATABASE")
 			values["grantee"], values["grantee_type"] = types.StringValue("readers"), types.StringValue("ROLE")
 			mutate(values)
+
 			plan := tfsdk.Plan{Schema: schemaResponse.Schema}
 			require.False(t, plan.Set(context.Background(), types.ObjectValueMust(objectType.AttrTypes, values)).HasError())
 			resp := resource.CreateResponse{State: tfsdk.State{Schema: plan.Schema, Raw: tftypes.NewValue(plan.Raw.Type(), nil)}}
 			r.Create(context.Background(), resource.CreateRequest{Plan: plan}, &resp)
 			require.True(t, resp.Diagnostics.HasError())
 			assert.True(t, resp.State.Raw.IsNull(), "invalid tuple must not be recorded in state")
+
 			var validated resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(plan)}, &validated)
 			assert.True(t, validated.Diagnostics.HasError(), "invalid tuple must be reported during planning")

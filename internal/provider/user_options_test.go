@@ -31,14 +31,20 @@ func userCreated(r *userResource, data userModel) userModel {
 // runUserState runs a lifecycle operation and returns its diagnostics and the resulting state.
 func runUserState(t *testing.T, r *userResource, operation string, plan, previous userModel, secret string) (userModel, diag.Diagnostics) {
 	t.Helper()
+
 	ctx := context.Background()
 	config := plan
+
 	config.Password = types.StringNull()
 	if secret != "" {
 		config.Password = types.StringValue(secret)
 	}
-	var state tfsdk.State
-	var diagnostics diag.Diagnostics
+
+	var (
+		state       tfsdk.State
+		diagnostics diag.Diagnostics
+	)
+
 	switch operation {
 	case "create":
 		resp := resource.CreateResponse{State: emptyState(t, r)}
@@ -55,10 +61,12 @@ func runUserState(t *testing.T, r *userResource, operation string, plan, previou
 		r.Read(ctx, resource.ReadRequest{State: prior}, &resp)
 		state, diagnostics = resp.State, resp.Diagnostics
 	}
+
 	var data userModel
 	if !diagnostics.HasError() && !state.Raw.IsNull() {
 		diagnostics.Append(state.Get(ctx, &data)...)
 	}
+
 	return data, diagnostics
 }
 
@@ -74,6 +82,7 @@ func TestUserOptionsLifecycle(t *testing.T) {
 	})
 	state, diagnostics := runUserState(t, r, "create", planned, planned, "")
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	family := fakeState[*userFamily](c, "user")
 	assert.True(t, family.disabled)
 	assert.Equal(t, `Ext"ID`, family.externalID)
@@ -148,6 +157,7 @@ func TestUserCreateValidatesBeforeSQL(t *testing.T) {
 			assert.True(t, state.Name.IsNull(), "no state is written")
 		})
 	}
+
 	c := &catalog{}
 	r := &userResource{testResourceClient(c)}
 	disabled := userWith(grafanaUser(), func(data *userModel) { data.PasswordDisabled = types.BoolValue(true) })
@@ -191,6 +201,7 @@ func TestUserVerifiesOptionConvergence(t *testing.T) {
 				if strings.HasPrefix(sql, "ALTER USER") {
 					return nil, nil
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			})
 			r := &userResource{testResourceClient(client)}
@@ -275,6 +286,7 @@ func TestUserCatalogDecoding(t *testing.T) {
 		data := grafanaUser()
 		require.Error(t, userInfo(&data, []sqlclient.Row{row}), name)
 	}
+
 	data := grafanaUser()
 	require.NoError(t, userInfo(&data, []sqlclient.Row{{"connection_limit": "", "session_timeout": "", "syslog_access": "", "external_user_id": "abc"}}))
 	assert.Equal(t, types.Int64Value(-1), data.ConnectionLimit)
@@ -295,40 +307,87 @@ func TestUserOptionFailures(t *testing.T) {
 		data.SearchPath, data.SessionDefaults = userStrings("analytics"), types.MapNull(types.StringType)
 		data.ConnectionLimit, data.PasswordVersion, data.Password = types.Int64Value(3), types.Int64Value(1), types.StringNull()
 	})
+
 	for _, operation := range []string{"create", "read", "update", "delete"} {
 		t.Run(operation, func(t *testing.T) {
 			queries := 0
 			for failAt := 0; failAt <= queries; failAt++ {
 				c := &catalog{}
 				setup := &userResource{testResourceClient(c)}
+
 				prior := userCreated(setup, base)
 				if operation != "create" {
 					require.False(t, runUser(t, setup, "create", base, base, "Secret123").HasError())
 				}
+
 				calls := 0
 				client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 					calls++
 					if calls == failAt {
 						return nil, errors.New("injected API failure")
 					}
+
 					return c.Query(ctx, target, sql, parameters)
 				})
 				r := &userResource{testResourceClient(client)}
+
 				plan := base
 				if operation == "update" {
 					plan = userCreated(r, changed)
 				}
+
 				diagnostics := runUser(t, r, operation, plan, prior, "Secret456")
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 					queries = calls
 				} else {
 					require.True(t, diagnostics.HasError(), "query %d failure must be reported", failAt)
 				}
 			}
+
 			assert.GreaterOrEqual(t, queries, 2, "the read alone queries pg_user and svv_user_info")
 		})
 	}
+}
+
+// TestUserCreateRecordsUserWhenDefaultsFail keeps a user whose CREATE USER succeeded in state, without unknown
+// values, when a later stored default fails, so Terraform replaces the tainted user instead of failing to create it
+// again.
+func TestUserCreateRecordsUserWhenDefaultsFail(t *testing.T) {
+	ctx := context.Background()
+	c := &catalog{}
+	failing := true
+	r := &userResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		if failing && strings.HasPrefix(sql, "ALTER USER ") && strings.Contains(sql, " SET ") {
+			return nil, errors.New("invalid value for parameter")
+		}
+
+		return c.Query(ctx, target, sql, parameters)
+	}))}
+	plan := userWith(grafanaUser(), userAllOptions)
+	userObservedOptions(&plan)
+	config := plan
+	config.Password = types.StringValue("Secret123")
+	resp := resource.CreateResponse{State: emptyState(t, r)}
+	r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan(testState(t, r, plan)), Config: tfsdk.Config(testState(t, r, config))}, &resp)
+	require.True(t, resp.Diagnostics.HasError())
+	assert.Equal(t, "Configure Redshift user", resp.Diagnostics.Errors()[0].Summary())
+	assert.True(t, resp.State.Raw.IsFullyKnown(), "state cannot hold unknown values")
+
+	var recorded userModel
+	require.False(t, resp.State.Get(ctx, &recorded).HasError())
+	assert.Equal(t, userCreated(r, plan).ID, recorded.ID, "the created user is tracked")
+	require.True(t, c.user)
+
+	// Terraform replaces the tainted user: Delete drops it, and a new Create succeeds.
+	failing = false
+
+	require.False(t, runUser(t, r, "delete", recorded, recorded, "").HasError())
+	assert.False(t, c.user)
+	created, diagnostics := runUserState(t, r, "create", plan, plan, "Secret123")
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	assert.Equal(t, userWith(grafanaUser(), userAllOptions).SessionDefaults, created.SessionDefaults)
 }
 
 // TestUserOptionTranscripts records the SQL conversation of users with options, the IdP-linked form, and
@@ -348,12 +407,14 @@ func TestUserOptionTranscripts(t *testing.T) {
 		c := &catalog{}
 		r := &userResource{testResourceClient(c)}
 		require.False(t, runUser(t, r, "create", options, options, "Secret123").HasError())
+
 		return c
 	}
 	existing := func(c *catalog) func() sqlclient.Client { return func() sqlclient.Client { return c } }
 	disabledCatalog := func() sqlclient.Client {
 		c := &catalog{user: true}
 		fakeState[*userFamily](c, "user").disabled = true
+
 		return c
 	}
 	secret := func(model userModel, password string) userModel {
@@ -384,8 +445,10 @@ func TestUserImportMatchesDefaults(t *testing.T) {
 	read := resource.ReadResponse{State: imported.State}
 	r.Read(ctx, resource.ReadRequest{State: imported.State}, &read)
 	require.False(t, read.Diagnostics.HasError(), "%v", read.Diagnostics)
+
 	var state userModel
 	require.False(t, read.State.Get(ctx, &state).HasError())
+
 	planned := userWith(grafanaUser(), func(data *userModel) {
 		data.ID, data.ConnectionLimit, data.SessionTimeout = created.ID, types.Int64Value(-1), types.Int64Value(0)
 		data.SyslogAccess = types.StringValue("RESTRICTED")

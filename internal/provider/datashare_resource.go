@@ -64,6 +64,7 @@ func datashareText(value string) types.String {
 	if value = strings.TrimSpace(value); value == "" {
 		return types.StringNull()
 	}
+
 	return types.StringValue(value)
 }
 
@@ -78,8 +79,10 @@ func datashareRowMetadata(row sqlclient.Row) (datashareMetadata, error) {
 		if err != nil {
 			return metadata, fmt.Errorf("decode datashare ID: %w", err)
 		}
+
 		metadata.shareID = types.Int64Value(parsed)
 	}
+
 	return metadata, nil
 }
 
@@ -143,6 +146,7 @@ func (r *datashareResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "name")
 }
 
 // read verifies outbound share ownership and refreshes public accessibility.
@@ -151,31 +155,39 @@ func (r *datashareResource) read(ctx context.Context, data *datashareModel) (boo
 	if err != nil {
 		return false, err
 	}
+
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readDatashareQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
+
 	row := rows[0]
 	if len(rows) != 1 || strings.TrimSpace(row["source_database"]) != target.Database || strings.TrimSpace(row["managed_by"]) != "" {
 		return false, fmt.Errorf("datashare %q is bound to another database or managed by another service", data.Name.ValueString())
 	}
+
 	public, err := strconv.ParseBool(row["is_publicaccessible"])
 	if err != nil {
 		return false, fmt.Errorf("decode datashare public accessibility: %w", err)
 	}
+
 	metadata, err := datashareRowMetadata(row)
 	if err != nil {
 		return false, err
 	}
+
 	data.Name = types.StringValue(strings.TrimSpace(row["share_name"]))
 	data.PublicAccessible = types.BoolValue(public)
 	metadata.apply(data)
+
 	return true, nil
 }
 
@@ -183,26 +195,32 @@ func (r *datashareResource) read(ctx context.Context, data *datashareModel) (boo
 func (r *datashareResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data datashareModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), createDatashareStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Create datashare", err.Error())
 		return
 	}
+
 	data.ID = r.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
 	data.clearObserved()
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	expected := data.PublicAccessible
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify datashare", err.Error())
 		return
 	}
+
 	if !found || !data.PublicAccessible.Equal(expected) {
 		resp.Diagnostics.AddError("Verify datashare", "The datashare is absent or its accessibility differs after creation.")
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -210,18 +228,22 @@ func (r *datashareResource) Create(ctx context.Context, req resource.CreateReque
 func (r *datashareResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data datashareModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read datashare", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -229,27 +251,34 @@ func (r *datashareResource) Read(ctx context.Context, req resource.ReadRequest, 
 func (r *datashareResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data datashareModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update datashare", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), alterDatashareStatement(data)); err != nil {
 		resp.Diagnostics.AddError("Update datashare", err.Error())
 		return
 	}
+
 	expected := data.PublicAccessible
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify datashare", err.Error())
 		return
 	}
+
 	if !found || !data.PublicAccessible.Equal(expected) {
 		resp.Diagnostics.AddError("Verify datashare", "The datashare is absent or its accessibility differs after updating.")
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -257,13 +286,16 @@ func (r *datashareResource) Update(ctx context.Context, req resource.UpdateReque
 func (r *datashareResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data datashareModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropDatashareStatement(data))
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete datashare", err.Error())
 	}

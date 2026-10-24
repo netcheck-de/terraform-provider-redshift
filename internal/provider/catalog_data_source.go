@@ -43,6 +43,7 @@ type catalogSpec struct {
 type catalogDataSource struct {
 	// dataSourceClient provides transport-neutral catalog execution.
 	dataSourceClient
+
 	// spec is the lookup's resource pairing, identity contract, and catalog read.
 	spec catalogSpec
 	// attributes contains identity inputs and computed catalog outputs.
@@ -66,6 +67,7 @@ func lookupDescription(description string) string {
 	if !strings.HasPrefix(description, "At least one ") {
 		return description
 	}
+
 	return requiredBlockNote.ReplaceAllString(description, "")
 }
 
@@ -85,17 +87,21 @@ func lookupExcluded(name string, attribute resourceschema.Attribute) bool {
 // computed, become read-only outputs, while the others stay inputs with their validators.
 func lookupAttributes(source map[string]resourceschema.Attribute, observeAll bool, computed []string) map[string]schema.Attribute {
 	attributes := map[string]schema.Attribute{}
+
 	for name, attribute := range source {
 		if lookupExcluded(name, attribute) {
 			continue
 		}
+
 		description := lookupDescription(attribute.GetMarkdownDescription())
 		if name == "privileges" {
 			description = privilegesLookupDescription
 		}
+
 		observed := observeAll || attribute.IsComputed() || slices.Contains(computed, name)
 		attributes[name] = lookupAttribute(attribute, observed, description)
 	}
+
 	return attributes
 }
 
@@ -109,42 +115,49 @@ func lookupAttribute(attribute resourceschema.Attribute, observed bool, descript
 		if !observed {
 			value.Validators = attribute.Validators
 		}
+
 		return value
 	case resourceschema.BoolAttribute:
 		value := schema.BoolAttribute{Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
 		if !observed {
 			value.Validators = attribute.Validators
 		}
+
 		return value
 	case resourceschema.Int64Attribute:
 		value := schema.Int64Attribute{Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
 		if !observed {
 			value.Validators = attribute.Validators
 		}
+
 		return value
 	case resourceschema.ListAttribute:
 		value := schema.ListAttribute{ElementType: attribute.ElementType, Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
 		if !observed {
 			value.Validators = attribute.Validators
 		}
+
 		return value
 	case resourceschema.SetAttribute:
 		value := schema.SetAttribute{ElementType: attribute.ElementType, Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
 		if !observed {
 			value.Validators = attribute.Validators
 		}
+
 		return value
 	case resourceschema.MapAttribute:
 		value := schema.MapAttribute{ElementType: attribute.ElementType, Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
 		if !observed {
 			value.Validators = attribute.Validators
 		}
+
 		return value
 	case resourceschema.SingleNestedAttribute:
 		value := schema.SingleNestedAttribute{Attributes: lookupAttributes(attribute.Attributes, observed, nil), Required: required, Optional: optional, Computed: observed, Sensitive: attribute.Sensitive, CustomType: attribute.CustomType, MarkdownDescription: description}
 		if !observed {
 			value.Validators = attribute.Validators
 		}
+
 		return value
 	default:
 		// A newly used attribute kind must fail at schema construction
@@ -158,6 +171,7 @@ func lookupAttribute(attribute resourceschema.Attribute, observed bool, descript
 func lookupSchemaAttributes(attributes map[string]resourceschema.Attribute, blocks map[string]resourceschema.Block, observeAll bool, computed []string) map[string]schema.Attribute {
 	converted := lookupAttributes(attributes, observeAll, computed)
 	maps.Copy(converted, lookupBlocks(blocks))
+
 	return converted
 }
 
@@ -166,10 +180,12 @@ func lookupSchemaAttributes(attributes map[string]resourceschema.Attribute, bloc
 // operations, has no catalog counterpart, and is left out.
 func lookupBlocks(blocks map[string]resourceschema.Block) map[string]schema.Attribute {
 	attributes := map[string]schema.Attribute{}
+
 	for name, block := range blocks {
 		if name == timeoutsBlockName {
 			continue
 		}
+
 		description := lookupDescription(block.GetMarkdownDescription())
 		switch block := block.(type) {
 		case resourceschema.ListNestedBlock:
@@ -183,6 +199,7 @@ func lookupBlocks(blocks map[string]resourceschema.Block) map[string]schema.Attr
 			panic("lookupBlocks: unsupported resource block type for " + name)
 		}
 	}
+
 	return attributes
 }
 
@@ -194,8 +211,10 @@ func lookupBlockObject(object resourceschema.NestedBlockObject) schema.NestedAtt
 // newCatalogDataSource reuses a resource's identity schema while making observed values read-only.
 func newCatalogDataSource(spec catalogSpec) datasource.DataSource {
 	var source resource.SchemaResponse
+
 	paired := spec.factory()
 	paired.Schema(context.Background(), resource.SchemaRequest{}, &source)
+
 	for _, name := range spec.computed {
 		if _, ok := source.Schema.Attributes[name]; !ok {
 			// A stale entry would otherwise hide that the spec no longer matches the resource; blocks are always
@@ -203,6 +222,7 @@ func newCatalogDataSource(spec catalogSpec) datasource.DataSource {
 			panic("newCatalogDataSource: computed " + name + " is not a resource attribute")
 		}
 	}
+
 	attributes := lookupSchemaAttributes(source.Schema.Attributes, source.Schema.Blocks, false, spec.computed)
 	if spec.exists {
 		if _, ok := attributes["exists"]; ok {
@@ -211,19 +231,24 @@ func newCatalogDataSource(spec catalogSpec) datasource.DataSource {
 		// Added before the selectors so a selector named exists collides instead of being replaced.
 		attributes["exists"] = schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether this explicit relationship exists. False also covers missing parents."}
 	}
+
 	for name, selector := range spec.selectors {
 		if _, ok := attributes[name]; ok || name == "id" {
 			// A selector shadowing a paired output or the lookup's own id would hide that value, or be replaced by it.
 			panic("newCatalogDataSource: selector " + name + " is a resource attribute, block, or lookup output")
 		}
+
 		attributes[name] = selector
 	}
+
 	if _, ok := attributes["id"]; ok {
 		attributes["id"] = dataSourceIDAttribute()
 	}
+
 	if r, ok := paired.(*privilegeResource); ok && spec.identityFields == nil {
 		spec.identityFields = r.fields
 	}
+
 	return &catalogDataSource{spec: spec, attributes: attributes}
 }
 
@@ -233,6 +258,7 @@ func newCatalogDataSource(spec catalogSpec) datasource.DataSource {
 func lookupDescriptions(source datasource.DataSource, descriptions map[string]string) datasource.DataSource {
 	lookup := source.(*catalogDataSource)
 	lookup.attributes = describedOutputs(lookup.attributes, descriptions)
+
 	return lookup
 }
 
@@ -242,6 +268,7 @@ func describedOutputs(attributes map[string]schema.Attribute, descriptions map[s
 	for name, description := range descriptions {
 		attributes = describedAttributes(attributes, strings.Split(name, "."), name, description)
 	}
+
 	return attributes
 }
 
@@ -253,14 +280,17 @@ func describedAttributes(attributes map[string]schema.Attribute, path []string, 
 		// A misspelled or removed output must fail at schema construction rather than keep the resource text.
 		panic("lookupDescriptions: missing attribute " + name)
 	}
+
 	attributes = maps.Clone(attributes)
 	attributes[path[0]] = describedAttribute(attribute, path[1:], name, description)
+
 	return attributes
 }
 
 // describedAttribute replaces the description of attribute, or of the nested attribute at rest.
 func describedAttribute(attribute schema.Attribute, rest []string, name, description string) schema.Attribute {
 	nested := len(rest) > 0
+
 	switch attribute := attribute.(type) {
 	case schema.ListNestedAttribute:
 		if nested {
@@ -268,6 +298,7 @@ func describedAttribute(attribute schema.Attribute, rest []string, name, descrip
 		} else {
 			attribute.MarkdownDescription = description
 		}
+
 		return attribute
 	case schema.SetNestedAttribute:
 		if nested {
@@ -275,6 +306,7 @@ func describedAttribute(attribute schema.Attribute, rest []string, name, descrip
 		} else {
 			attribute.MarkdownDescription = description
 		}
+
 		return attribute
 	case schema.SingleNestedAttribute:
 		if nested {
@@ -282,11 +314,14 @@ func describedAttribute(attribute schema.Attribute, rest []string, name, descrip
 		} else {
 			attribute.MarkdownDescription = description
 		}
+
 		return attribute
 	}
+
 	if nested {
 		panic("lookupDescriptions: " + name + " descends into an attribute without nested attributes")
 	}
+
 	switch attribute := attribute.(type) {
 	case schema.StringAttribute:
 		attribute.MarkdownDescription = description
@@ -314,18 +349,22 @@ func describedAttribute(attribute schema.Attribute, rest []string, name, descrip
 // observedID matches the paired resource's identity keys and ownership database, not its SQL query route.
 func (d *catalogDataSource) observedID(data types.Object) types.String {
 	fields := map[string]string{}
+
 	for _, field := range d.spec.identityFields {
 		if value := identityText(data, field); value != "" {
 			fields[field] = value
 		}
 	}
+
 	if d.spec.adjust != nil {
 		d.spec.adjust(fields)
 	}
+
 	database := d.database.ValueString()
 	if d.spec.identityDatabase != "" {
 		database = objectString(data, d.spec.identityDatabase)
 	}
+
 	return d.identity(database, fields)
 }
 
@@ -336,8 +375,10 @@ func identityText(data types.Object, field string) string {
 		if flag.ValueBool() {
 			return "true"
 		}
+
 		return ""
 	}
+
 	return objectString(data, field)
 }
 
@@ -355,24 +396,29 @@ func (d *catalogDataSource) Schema(_ context.Context, _ datasource.SchemaRequest
 func (d *catalogDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data types.Object
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := d.spec.lookup(ctx, &d.resourceClient, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read "+d.spec.name, err.Error())
 		return
 	}
+
 	if d.spec.exists {
 		lookupValue(&data, "exists", types.BoolValue(found))
 	} else if !found {
 		resp.Diagnostics.AddError("Lookup target not found", "The selected object or receiving identity for "+d.spec.name+" does not exist.")
 		return
 	}
+
 	id := types.StringNull()
 	if found {
 		id = d.observedID(data)
 	}
+
 	lookupValue(&data, "id", id)
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
@@ -380,11 +426,13 @@ func (d *catalogDataSource) Read(ctx context.Context, req datasource.ReadRequest
 // newPrivilegeDataSource observes a permission resource's catalog contract without its mutation restrictions.
 func newPrivilegeDataSource(factory func() resource.Resource) datasource.DataSource {
 	r := factory().(*privilegeResource)
+
 	return newCatalogDataSource(catalogSpec{name: r.name, factory: factory, computed: []string{"privileges"}, adjust: r.canonical, lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
 		reader := *r
 		reader.resourceClient = *client
 		observed := *data
 		lookupValue(&observed, "id", types.StringNull())
+
 		_, found, err := reader.readPrivileges(ctx, &observed, false)
 		if err == nil && found {
 			for _, name := range []string{"privileges", "grant_option_privileges"} {
@@ -394,6 +442,7 @@ func newPrivilegeDataSource(factory func() resource.Resource) datasource.DataSou
 				}
 			}
 		}
+
 		return found, err
 	}})
 }

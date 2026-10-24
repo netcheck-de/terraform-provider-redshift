@@ -15,6 +15,7 @@ var _ = registerParity(parityCase{source: newDatashareDataSource, resource: newD
 func TestDatashareLookup(t *testing.T) {
 	state, diagnostics := readSource(t, newDatashareDataSource(), datashareData{Name: types.StringValue("producer"), Database: types.StringValue("admin")}, &catalog{share: true, public: true})
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var data datashareData
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.True(t, data.PublicAccessible.ValueBool())
@@ -25,6 +26,7 @@ func TestDatashareLookup(t *testing.T) {
 func TestDatashareLookupObservesCatalogMetadata(t *testing.T) {
 	state, diagnostics := readSource(t, newDatashareDataSource(), datashareData{Name: types.StringValue("producer"), Database: types.StringValue("admin")}, fullCatalog())
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var data datashareData
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.Equal(t, types.StringValue("admin"), data.Owner)

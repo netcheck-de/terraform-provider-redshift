@@ -75,10 +75,11 @@ because they must be ready before the warehouse creates the external schema and 
 
 ## Run it
 
-Requirements: Terraform 1.14 or later, an AWS account/credentials with permission to create the listed resources and IAM
+Requirements: Terraform 1.16 or later, an AWS account/credentials with permission to create the listed resources and IAM
 roles, a region with RA3/Serverless capacity and at least three available AZs, and the installed Redshift provider. The
-default region is `eu-central-1`, the producer is single-node `ra3.xlplus`, and the consumer has fixed base/max capacity
-of 8 RPUs. Account quotas and regional availability apply.
+default region is `eu-central-1`, the producer is single-node `ra3.large`, and the consumer has fixed base/max capacity
+of 4 RPUs, the smallest sizes; the example only runs small catalog statements. Account quotas and regional availability
+apply.
 
 Deployment credentials need AWS provisioning and `iam:PassRole` permissions, Data API execute/describe/result access,
 and Secrets Manager access to the two managed administrator secrets and the created reader secret. IAM permission and

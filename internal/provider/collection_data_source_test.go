@@ -20,6 +20,7 @@ import (
 func testSchemaListing() datasource.DataSource {
 	element := collectionElement(newSchemaResource, "database", "name", "owner")
 	element["tables"] = schema.Int64Attribute{Computed: true, MarkdownDescription: "Number of tables."}
+
 	return newCollectionDataSource(collectionSpec{
 		name:        "test_schemas",
 		description: "Lists schemas.",
@@ -33,15 +34,19 @@ func testSchemaListing() datasource.DataSource {
 			if selected := objectString(filters, "database"); selected != "" {
 				database = selected
 			}
+
 			query := sqlclient.Select("nspname", "usename").From("pg_namespace").OptEq("usename", "owner", objectString(filters, "owner"))
+
 			rows, err := client.selectRows(ctx, database, query)
 			if err != nil {
 				return nil, err
 			}
+
 			var items []map[string]attr.Value
 			for _, row := range rows {
 				items = append(items, map[string]attr.Value{"database": types.StringValue(database), "name": types.StringValue(row["nspname"]), "owner": types.StringValue(row["usename"]), "tables": types.Int64Value(2)})
 			}
+
 			return items, nil
 		},
 	})
@@ -56,19 +61,23 @@ func collectionConfig(t *testing.T, source datasource.DataSource, filters map[st
 // TestCollectionDataSourceSchema checks the filter, identity, and element shape shared by all listings.
 func TestCollectionDataSourceSchema(t *testing.T) {
 	source := testSchemaListing()
+
 	var metadata datasource.MetadataResponse
 	source.Metadata(context.Background(), datasource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
 	assert.Equal(t, "redshift_test_schemas", metadata.TypeName)
 	assertCollectionParity(t, parityCase{source: testSchemaListing, filters: []string{"database", "owner"}, collection: true})
+
 	resourceShaped := func() datasource.DataSource {
 		return newCollectionDataSource(collectionSpec{name: "test_schemas", element: collectionElement(newSchemaResource, "database", "name", "owner"), filters: map[string]schema.Attribute{"owner": schema.StringAttribute{Optional: true}}})
 	}
 	assertCollectionParity(t, parityCase{source: resourceShaped, resource: newSchemaResource, filters: []string{"owner"}, collection: true})
 	assert.Panics(t, func() { collectionElement(newSchemaResource, "missing") })
+
 	var response datasource.SchemaResponse
 	source.Schema(context.Background(), datasource.SchemaRequest{}, &response)
 	assert.Contains(t, response.Schema.Attributes, "test_schemas", "the result is named after the data source")
 	assert.NotContains(t, response.Schema.Attributes, "items")
+
 	for _, reserved := range []string{"test_schemas", "id"} {
 		assert.Panics(t, func() {
 			newCollectionDataSource(collectionSpec{name: "test_schemas", filters: map[string]schema.Attribute{reserved: schema.StringAttribute{Optional: true}}})
@@ -88,6 +97,7 @@ func TestCollectionElementFromBlocks(t *testing.T) {
 		return newCollectionDataSource(collectionSpec{name: "block_tests", element: element})
 	}
 	assertCollectionParity(t, parityCase{source: listing, resource: newBlockTestResource, collection: true})
+
 	column := element["column"].(schema.ListNestedAttribute)
 	assert.True(t, column.Computed)
 	assert.IsType(t, schema.SingleNestedAttribute{}, column.NestedObject.Attributes["identity"])
@@ -100,9 +110,11 @@ func TestCollectionID(t *testing.T) {
 	data := collectionConfig(t, source, map[string]string{"database": "analytics", "owner": "etl"})
 	id := source.collectionID(data)
 	assertLookupIdentity(t, id, "analytics", map[string]string{"owner": "etl"})
+
 	for range 20 {
 		assert.Equal(t, id, source.collectionID(data))
 	}
+
 	lookupValue(&data, "database", types.StringUnknown())
 	lookupValue(&data, "owner", types.StringNull())
 	assertLookupIdentity(t, source.collectionID(data), "admin", map[string]string{})
@@ -110,14 +122,20 @@ func TestCollectionID(t *testing.T) {
 
 // TestCollectionDataSourceRead checks filtered and unfiltered listings, empty results, and failures.
 func TestCollectionDataSourceRead(t *testing.T) {
-	var target sqlclient.Connection
-	var parameters map[string]string
-	var rows []sqlclient.Row
+	var (
+		target     sqlclient.Connection
+		parameters map[string]string
+		rows       []sqlclient.Row
+	)
+
 	client := queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
 		require.Contains(t, sql, "SELECT nspname, usename FROM pg_namespace")
+
 		target, parameters = connection, params
+
 		return rows, nil
 	})
+
 	for _, test := range []struct {
 		name     string
 		filters  map[string]string
@@ -135,17 +153,22 @@ func TestCollectionDataSourceRead(t *testing.T) {
 			state, diagnostics := readSource(t, source, collectionConfig(t, source, test.filters), client)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			assert.Equal(t, test.database, target.Database)
+
 			if owner, ok := test.filters["owner"]; ok {
 				assert.Equal(t, map[string]string{"owner": owner}, parameters)
 			}
+
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
+
 			var identity map[string]string
 			require.NoError(t, json.Unmarshal([]byte(observed.Attributes()["id"].(types.String).ValueString()), &identity))
 			assert.Equal(t, test.identity, identity)
+
 			items := collectionResult(source, observed)
 			require.False(t, items.IsNull(), "an empty listing is an empty list, not null")
 			require.Len(t, items.Elements(), len(test.rows))
+
 			for index, row := range test.rows {
 				item := items.Elements()[index].(types.Object).Attributes()
 				assert.Equal(t, types.StringValue(row["nspname"]), item["name"])
@@ -155,11 +178,13 @@ func TestCollectionDataSourceRead(t *testing.T) {
 			}
 		})
 	}
+
 	source := testSchemaListing()
 	_, diagnostics := readSource(t, source, collectionConfig(t, source, nil), queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return nil, errors.New("catalog unavailable")
 	}))
 	assert.True(t, diagnostics.HasError(), "catalog failures are errors")
+
 	malformed := newCollectionDataSource(collectionSpec{name: "test_schemas", element: map[string]schema.Attribute{"name": schema.StringAttribute{Computed: true}}, list: func(context.Context, *resourceClient, types.Object) ([]map[string]attr.Value, error) {
 		return []map[string]attr.Value{{"unknown": types.StringValue("x")}}, nil
 	}})

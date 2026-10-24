@@ -39,13 +39,18 @@ func TestPlaceholdersMatchTransportBinding(t *testing.T) {
 // TestLexBoundaries checks lexeme kinds, exact spans and open constructs under both backslash readings.
 func TestLexBoundaries(t *testing.T) {
 	sql := "SELECT E'a\\'b', 'c\\', \"d\"\"e\" -- f\n/* g /* h */ */ $t$ i $t$ x::int :p"
-	var kinds []lexemeKind
-	var texts []string
+
+	var (
+		kinds []lexemeKind
+		texts []string
+	)
+
 	for _, item := range lex(sql, transportReading) {
 		kinds = append(kinds, item.kind)
 		texts = append(texts, item.text)
 		assert.False(t, item.open, item.text)
 	}
+
 	assert.Equal(t, []lexemeKind{
 		lexCode, lexString, lexCode, lexString, lexCode, lexQuotedIdentifier, lexCode, lexLineComment,
 		lexBlockComment, lexCode, lexDollarQuote, lexCode, lexOperator, lexCode, lexParameter,

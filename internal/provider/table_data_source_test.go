@@ -15,15 +15,19 @@ var _ = registerParity(parityCase{source: newTableDataSource, resource: newTable
 // readTableLookup runs the table data source against the fake catalog after change adjusts serving.events.
 func readTableLookup(t *testing.T, name string, change func(*tableFakeTable)) (tableModel, diag.Diagnostics) {
 	t.Helper()
+
 	c := fullCatalog()
 	if change != nil {
 		change(fakeState[*tableFake](c, "table").tables["serving.events"])
 	}
+
 	state, diagnostics := readSource(t, newTableDataSource(), tableNullModel(types.StringValue("admin"), types.StringValue("serving"), types.StringValue(name)), c)
+
 	var data tableModel
 	if !diagnostics.HasError() {
 		require.False(t, state.Get(context.Background(), &data).HasError())
 	}
+
 	return data, diagnostics
 }
 

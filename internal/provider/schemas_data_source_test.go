@@ -34,6 +34,7 @@ func TestSchemasDataSource(t *testing.T) {
 	assert.True(t, items[0]["owner"].IsNull(), "a shared schema's producer owner is not resolved")
 
 	var target sqlclient.Connection
+
 	_, identity, diagnostics := discoveryRead(t, newSchemasDataSource, map[string]string{"database": "analytics"}, queryFunc(func(_ context.Context, connection sqlclient.Connection, _ string, _ map[string]string) ([]sqlclient.Row, error) {
 		target = connection
 		return nil, nil

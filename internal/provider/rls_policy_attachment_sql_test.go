@@ -19,6 +19,7 @@ func TestRlsPolicyAttachmentSQL(t *testing.T) {
 	with := func(change func(*rlsPolicyAttachmentModel)) rlsPolicyAttachmentModel {
 		data := rlsPolicyAttachmentSample()
 		change(&data)
+
 		return data
 	}
 	user := with(func(d *rlsPolicyAttachmentModel) {

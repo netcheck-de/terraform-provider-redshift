@@ -49,7 +49,7 @@ data "redshift_external_table" "sales" {
 - `partition_key` (Attributes List) `PARTITIONED BY` columns in key order; null for an unpartitioned table. (see [below for nested schema](#nestedatt--partition_key))
 - `serde` (String) `ROW FORMAT SERDE` class, such as `org.openx.data.jsonserde.JsonSerDe` or `org.apache.hadoop.hive.serde2.OpenCSVSerde`. Conflicts with the delimiters.
 - `serde_properties` (Map of String) `WITH SERDEPROPERTIES` pairs for `serde`, such as `{ "strip.outer.array" = "true" }`.
-- `stored_as` (String) File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; switching from name to position mapping also requires the `column` blocks to follow catalog order. Other changes replace the table.
+- `stored_as` (String) File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; switching from name to position mapping also requires the `column` blocks to follow catalog order.
 - `table_properties` (Map of String) Table properties reported by `SHOW EXTERNAL TABLE`, including properties set outside Terraform.
 
 <a id="nestedatt--column"></a>
