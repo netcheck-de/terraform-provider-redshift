@@ -98,6 +98,8 @@ func (r *groupResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 	data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	// Verification can fail after CREATE succeeds; the saved identity must not carry unknown computed values.
+	data.GroupID, data.Members = types.Int64Null(), types.SetNull(types.StringType)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	found, err := r.read(ctx, &data)
 	if err != nil {
