@@ -12,8 +12,7 @@ import (
 // and svv_role_grants has no admin_option column to verify it.
 var errRoleGrantAdminOption = errors.New("admin_option requires to_user; Redshift grants WITH ADMIN OPTION only to users")
 
-// adminOption reports whether the grant should carry WITH ADMIN OPTION; null, as in state written before the
-// attribute existed, means no.
+// adminOption reports whether the grant should carry WITH ADMIN OPTION; null or unknown means no.
 func (data roleGrantModel) adminOption() bool {
 	return knownBool(data.AdminOption) != nil && data.AdminOption.ValueBool()
 }

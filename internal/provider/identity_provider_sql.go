@@ -25,8 +25,8 @@ const (
 // sent with any parameter change, and the plan never carries write-only values.
 var errIdentityProviderSecret = errors.New("client_secret_wo is required to create an AZURE identity provider and whenever issuer, client_id, audience, or client_secret_wo_version change, because PARAMETERS replaces every parameter")
 
-// identityProviderType returns the configured type in its canonical spelling, defaulting to AWSIDC like the schema;
-// state written before the attribute existed is null.
+// identityProviderType returns the configured type in its canonical spelling, defaulting to AWSIDC like the schema
+// when the type is null or unknown.
 func identityProviderType(data identityProviderModel) string {
 	if value := knownString(data.Type); value != "" {
 		return strings.ToUpper(value)

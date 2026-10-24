@@ -11,8 +11,8 @@ type alterStep[M any] struct {
 	value func(M) attr.Value
 	// render returns the statements that move the object from prev to plan.
 	render func(prev, plan M) []string
-	// skipNullPrior leaves the attribute alone when the prior value is null, for example state written before
-	// the attribute existed, where nothing is known about the object to change from.
+	// skipNullPrior leaves the attribute alone when the prior value is null, for example after an import,
+	// where nothing is known about the object to change from.
 	skipNullPrior bool
 }
 

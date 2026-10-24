@@ -87,7 +87,7 @@ func connectionSchema() schema.SingleNestedBlock {
 // queryTimeoutEnv supplies query_timeout when the argument is omitted.
 const queryTimeoutEnv = "REDSHIFT_QUERY_TIMEOUT"
 
-// Defaults and limits of the transport-wide settings; the default timeout keeps the behavior of earlier releases.
+// Defaults and limits of the transport-wide settings.
 const (
 	// defaultQueryTimeout bounds one SQL statement.
 	defaultQueryTimeout = "5m"
@@ -313,7 +313,7 @@ func (data providerModel) deferred() bool {
 	return connection.IAM != nil && connection.IAM.DBUser.IsUnknown()
 }
 
-// binding identifies the warehouse independently of transport while retaining legacy Serverless IDs verbatim.
+// binding identifies the warehouse independently of transport; a workgroup keeps its configured name or ARN verbatim.
 func (data providerModel) binding() warehouseBinding {
 	workgroup, cluster := data.Workgroup, data.ClusterIdentifier
 	if data.Connection != nil {

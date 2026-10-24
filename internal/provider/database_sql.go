@@ -124,7 +124,7 @@ var databaseAlterSteps = []alterStep[databaseModel]{
 }
 
 // alterDatabaseStatements renders the in-place changes from prev to plan. A null plan value means the option
-// is not managed (a shared database, or state written before the option existed), so it never renders a reset.
+// is not managed (a shared database), so it never renders a reset.
 func alterDatabaseStatements(prev, plan databaseModel) ([]string, error) {
 	if _, _, err := databaseOptions(plan); err != nil {
 		return nil, err

@@ -304,8 +304,8 @@ func userRendered(statement sqlclient.Statement) []string {
 	return []string{statement.String()}
 }
 
-// userAlterSteps change one option per statement. Null priors come from import or from state written before the
-// attribute existed, which must not assign a password or grant a capability implicitly.
+// userAlterSteps change one option per statement. Null priors come from import, which must not assign a password or
+// grant a capability implicitly.
 var userAlterSteps = []alterStep[userModel]{
 	{
 		attribute: "password_disabled",
