@@ -1,93 +1,30 @@
 # AGENTS.md
 
-Terraform provider `netcheck-de/redshift` (terraform-plugin-framework, protocol 6) that manages Redshift SQL objects
-through the Data API or a direct TLS connection.
+Terraform provider `netcheck-de/redshift`: terraform-plugin-framework, protocol 6, Redshift Data API or direct TLS.
+
+Read and follow [DEVELOPMENT.md](DEVELOPMENT.md) as the project's instruction set for workflows, conventions, and releases.
 
 ## Layout
 
-- `internal/provider`: resources, data sources, provider config (`provider.go`, `connection*.go`).
-- `internal/sqlclient`: transport-neutral `Client` interface, statement and catalog query builders, mutation
-  serialization.
+- `internal/provider`: resources, data sources, and provider wiring; `internal/sqlclient`: SQL builders and client interface.
 - `internal/redshiftdata`, `internal/redshiftconn`: Data API and direct pgx transports.
-- `templates/`, `examples/{provider,resources,data-sources}`: sources for the generated `docs/`.
-- `examples/complete`: end-to-end example that uses every resource and data source; `tests/` holds mocked
-  `terraform test` runs.
+- `templates/` and `examples/`: sources for generated `docs/`; `examples/complete/tests/`: mocked composition tests.
 
 ## Commands
 
-- `task check`: Go lint, actionlint, yamllint, markdownlint, Markdown format check, race tests with coverage, docs
-  check. Run before finishing. yamllint and markdownlint are not Go tools: `brew install yamllint markdownlint-cli`.
-- `task lint` / `task lint-fix` download and use the golangci-lint release pinned in `.golangci-lint-version`.
-- `task docs`: regenerate `docs/`. `task terraform-check` and `task terraform-test`: validate and test the examples.
-- Tools (`tfplugindocs`, `mdox`, `actionlint`) are `tool` directives in `go.mod`; run them with `go tool <name>`.
+- Run `task check` before finishing; also run `task terraform-check` and `task terraform-test` when examples change.
+- Run `task docs` after changing documentation sources.
 
-## Rules
+## Guardrails
 
-- Never edit `docs/` by hand. Change schema `MarkdownDescription`, `templates/`, or `examples/`, then run `task docs`.
-- Resource code talks to Redshift only through `sqlclient.Client`; depguard forbids importing transports or AWS
-  service clients outside `provider.go` and `connection.go`.
-- Build statements with `sqlclient.Stmt`/`Fragment` and catalog reads with `sqlclient.Select(...).Build()`; never
-  concatenate SQL. Unquoted text is a `Keyword` (a constant, `OneOf`, `TypeName`, `ColumnType`, `Signature`, or a
-  `//sql:trusted` conversion); configured SQL is `UserSQL` from `CheckUserSQL`. `trusted_sql_test.go` enforces this.
-- Follow the AWS Redshift SQL reference for syntax and catalog behavior; catalog privilege names may differ from
-  configuration names (see `normalizePrivilege`).
-- Validate a tuple before the first `State.Set` in Create, and expose the same check in `ValidateConfig`.
-- Create and Update re-read the catalog to verify convergence; Read calls `RemoveResource` when the object or its parent
-  is gone, and returns errors only for real failures.
-- Ordinary synchronous DROP operations need no post-delete refresh. Use only the identity and parent/existence checks
-  needed to delete safely; retain convergence checks for permission reconciliation and asynchronous operations.
-- Resource IDs are provider-relative JSON objects encoded by `identity(fields)`; include only object scope, not
-  connection selectors or administration-only databases. `bound` validates legacy bindings before normalization;
-  imports accept only provider-relative IDs.
-- Nested configuration uses blocks with singular names; a required block validates with `listvalidator.IsRequired()`,
-  `setvalidator.IsRequired()`, or `objectvalidator.IsRequired()` (plus `SizeAtLeast(1)` for lists and sets) and its
-  description starts with "At least one … is required". Lists of plain values stay plural attributes. Data sources
-  never declare blocks, and a listing's result attribute is named after the data source. See "Schema conventions" in
-  `DEVELOPMENT.md`.
-- Comments explain why, not what.
-
-## Tests
-
-- testify only: `require` for preconditions and errors, `assert` for independent checks.
-- Offline tests fake SQL with `queryFunc` (`resource_test.go`) or the `catalog` fake (`fake_catalog_test.go`).
-- Golden files under `testdata/sql/` pin rendered SQL (`checkSQL`) and mutation ordering worth preserving
-  (`runTranscripts`). Do not pin routine refresh/import query sequences merely for completeness. `task golden`
-  rewrites them, and every changed file needs a reason.
-- Test provider behavior, not framework internals: check schema wiring for built-in modifiers and use focused tests
-  for custom planning, unknown values, ownership, and partial-failure recovery. Do not accommodate invalid synthetic
-  schemas in production code to satisfy generic tests.
-- Acceptance tests use `resource.Test`, gated by `testAccPreCheck`/`testAccWorkgroup` (`acc_test.go`) and `TF_ACC=1`.
-
-## Adding a resource or data source
-
-New types only add files; the frozen shared files are listed in `DEVELOPMENT.md`, and a missing hook there is a
-separate foundation change.
-
-1. Register the type in its own file: `var _ = registerResource(newX)` or `registerDataSource(newX)`.
-2. Put pure renderers in `<type>_sql.go` (`create<X>Statement`, `alter<X>Statements` via `alterStep`,
-   `drop<X>Statement`, `read<X>Query`). Pin them in `<type>_sql_test.go` with `checkSQL` goldens under
-   `testdata/sql/<type>/`; record with `task golden` and check each file against the AWS page.
-3. In the type's tests, call `registerReplacementPolicy`, `registerParity` (or its exemption), and
-   `registerLifecycleCase`; teach the `catalog` fake with `registerFakeFamily` in `fake_<type>_test.go`.
-4. Add `templates/<kind>/<name>.md.tmpl`, plus `examples/resources/redshift_<name>/{resource.tf,import.sh}` or
-   `examples/data-sources/redshift_<name>/data-source.tf`, then run `task docs`. After the introduction, the template
-   has a `## SQL Statements` heading (data sources: `## Catalog Query`) with a ```sql block of simplified statements
-   (statement kind, identifying names, `...` for options; data sources: the catalog source), as described in
-   `DEVELOPMENT.md`.
-   A resource template also needs a `## Reconciliation` section before `## Import` whose `| Change | Result |` table
-   names every argument and block field, true to the code (see "Documentation" in `DEVELOPMENT.md`).
-5. In `examples/complete`, use it in the block's own `<block>.tf`, expose each data source in `outputs_<block>.tf`, and
-   assert it in `tests/<block>.tftest.hcl`, which declares the shared mocks from `tests/mocks/`.
-6. Add the type to the tables and, where it shares an object with other types, the ownership matrix in
-   `templates/index.md.tmpl`. Registration/documentation tests check completeness without pinned type counts.
-   In parallel block work the integration step does this.
-
-## Changes and releases
-
-- PR titles (the squash-merge subject) must follow Conventional Commits (`feat:`, `fix:`, `docs:`, `test:`, `ci:`,
-  `chore:`, …; `!` for breaking changes); use the same style for commits. They become the release notes, so describe
-  the user-visible effect.
-- Keep `TODO.md` current and limited to open work: add what a change leaves open, and remove an item once it is done
-  or verified. No history or verification notes; keep each item short.
-- Versions come only from `vX.Y.Z` tags; follow "Versioning and releases" in `DEVELOPMENT.md`. Never tag or push
-  unless asked.
+- Never hand-edit generated `docs/`; change schemas, templates, or examples.
+- Resources use only `sqlclient.Client`; transport and AWS service clients belong in provider wiring.
+- Build SQL with `sqlclient.Stmt`/`Fragment` and `Select(...).Build()`, never concatenation. Follow the AWS Redshift
+  reference, not PostgreSQL assumptions.
+- Validate tuples before the first `State.Set` in Create; expose the same check in `ValidateConfig`.
+- Create/Update verify catalog convergence. Read removes state when the object or parent is gone; genuine failures
+  remain errors.
+- Synchronous DROP needs no post-delete refresh. Keep only checks needed for safe deletion; retain convergence checks
+  for permissions and asynchronous operations.
+- Test provider behavior, not framework internals. Do not weaken production code to accommodate invalid synthetic tests.
+- Keep `TODO.md` limited to open work. Never tag or push unless explicitly asked.
