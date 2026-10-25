@@ -23,7 +23,7 @@ terraform {
   required_providers {
     redshift = {
       source  = "netcheck-de/redshift"
-      version = "~> 0.4"
+      version = "~> 0.5"
     }
   }
 }
