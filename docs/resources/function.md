@@ -115,7 +115,7 @@ read back, so a change to them alone outside Terraform is not detected.
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

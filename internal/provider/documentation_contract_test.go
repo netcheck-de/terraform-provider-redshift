@@ -180,7 +180,7 @@ var blockHeader = regexp.MustCompile(`^\s*[a-z_]+(\s+"[^"]*")*\s*\{\s*$`)
 
 const (
 	// importBlockIntroduction makes the modern workflow the first example on every resource page.
-	importBlockIntroduction = "In Terraform 1.5 and later, use an `import` block with a JSON identity:"
+	importBlockIntroduction = "Use an `import` block with a JSON identity:"
 	// importCLIIntroduction introduces the equivalent CLI command after the block example.
 	importCLIIntroduction = "Alternatively, use `terraform import`:"
 )

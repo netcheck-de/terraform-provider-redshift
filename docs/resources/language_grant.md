@@ -165,7 +165,7 @@ SELECT privilege_type, admin_option FROM svv_language_privileges WHERE language_
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

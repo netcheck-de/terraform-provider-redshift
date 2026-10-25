@@ -222,7 +222,7 @@ SELECT privilege_type, admin_option FROM svv_default_privileges WHERE owner_name
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

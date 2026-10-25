@@ -150,7 +150,7 @@ ATTACH MASKING POLICY "mask_email" ON "public"."customers" ("email") TO ROLE "ex
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

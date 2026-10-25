@@ -108,7 +108,7 @@ whose database is gone, is removed from state, and the next plan creates it agai
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

@@ -76,7 +76,7 @@ update fails when the partition disappeared after the plan; refresh and plan aga
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

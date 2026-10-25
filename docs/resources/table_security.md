@@ -119,7 +119,7 @@ ALTER TABLE "public"."events" ROW LEVEL SECURITY OFF FOR DATASHARES;
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

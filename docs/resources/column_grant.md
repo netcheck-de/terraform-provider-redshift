@@ -139,7 +139,7 @@ GRANT UPDATE ("note") ON TABLE "warehouse"."serving"."events" TO ROLE "example:r
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

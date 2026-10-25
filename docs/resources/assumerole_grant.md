@@ -176,7 +176,7 @@ SELECT command_type AS privilege_type FROM svv_iam_privileges WHERE iam_arn = :a
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

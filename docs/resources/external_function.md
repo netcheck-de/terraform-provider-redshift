@@ -118,7 +118,7 @@ outside Terraform are not detected, and an import leaves them unset until the fi
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

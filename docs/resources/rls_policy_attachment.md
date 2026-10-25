@@ -102,7 +102,7 @@ next plan creates the attachment again. Other attachments of the policy or the r
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

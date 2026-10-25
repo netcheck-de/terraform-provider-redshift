@@ -202,7 +202,7 @@ SELECT n.nspname AS schemaname, s.eskind, s.databasename, s.esoptions, u.usename
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

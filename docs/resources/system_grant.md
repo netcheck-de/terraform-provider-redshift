@@ -114,7 +114,7 @@ SELECT system_privilege AS privilege_type FROM svv_system_privileges WHERE ident
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

@@ -123,7 +123,7 @@ owner. A dropped model or database is removed from state, and the next plan crea
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

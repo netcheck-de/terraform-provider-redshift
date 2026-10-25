@@ -640,7 +640,7 @@ ALTER TABLE "serving"."events" ALTER DISTSTYLE KEY DISTKEY "id";
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {

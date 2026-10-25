@@ -178,7 +178,7 @@ ALTER IDENTITY PROVIDER "oauth_standard" PARAMETERS '{"issuer":"https://sts.wind
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
