@@ -14,58 +14,55 @@ and SQL identity provider. The connection configurations are in `providers.tf`, 
 
 ## Architecture
 
-```text
-                         Developer / CI runner
-                    Terraform + AWS credentials
-                              |
-          AWS control-plane APIs + Redshift Data API (HTTPS)
-          No laptop-to-VPC SQL connection needed by default
-                 |                              |
-       +---------v----------------+   +---------v----------------+
-       | Producer VPC: 3 AZs      |   | Consumer VPC: 3 AZs      |
-       | Private, no NAT          |   | Private, no NAT          |
-       |                          |   |                          |
-       | Encrypted RA3 cluster    |   | Serverless namespace /   |
-       | - admin DB + secret ARN  |   | workgroup                |
-       | - owned source database  |   | - admin DB + secret ARN  |
-       | - public.fixture rows    |   | - shared DB WITH         |
-       | - external schema        |   |   PERMISSIONS            |
-       | - outbound datashares    |===| - local DB, schema, view |
-       |                          |   | - reader/loader users    |
-       | S3 gateway + Glue        |   | - roles / group / grants |
-       | interface endpoint       |   |                          |
-       +------------+-------------+   | S3 gateway + Glue        |
-                    |                 | interface endpoint       |
-                    | Spectrum        +------------+-------------+
-                    v                              |
-       +--------------------------+                | SELECT as reader
-       | Owned S3 / Glue fixtures |                v
-       | - two-row CSV object     |       Shared data verification
-       | - catalog DB + table     |       (Data API, two expected rows)
-       +--------------------------+
-
-       === Read-only datasharing, not a VPC TCP link or peering
-           Same account: SQL grant to consumer namespace
-           Different accounts: account grant + AWS authorization/association
-
-       Optional Identity Center instance ARN
-                    |
-       Managed Redshift application + directory groups / assignments
-                    |
-       SQL identity provider + namespaced group roles
-                    |
-       Ordinary reader/operator roles and their existing grants
-
-       Optional direct SQL: TLS port 5439 from a reachable client
-       Private connectivity, or explicit public access + restricted client CIDRs
+```mermaid
+---
+config:
+  look: classic
+---
+flowchart TB
+  runner["<b>Developer / CI runner</b><br/>Terraform + AWS credentials"]
+  api["<b>AWS APIs + Redshift Data API</b><br/>No client-to-VPC SQL connection needed"]
+  direct["<b>Optional direct SQL</b><br/>TLS / TCP 5439<br/>Requires endpoint connectivity"]
+  producer["<div style='text-align:left;white-space:nowrap'><b>Producer VPC</b>
+    3 AZs · private, no NAT by default<br/>
+    <b>Encrypted RA3 cluster</b>
+    • Admin DB + managed secret
+    • Owned source database
+    • Two-row fixture table
+    • External schema
+    • Outbound datashares</div>"]
+  consumer["<div style='text-align:left;white-space:nowrap'><b>Consumer VPC</b>
+    3 AZs · private, no NAT by default<br/>
+    <b>Redshift Serverless</b>
+    • Namespace + workgroup
+    • Admin DB + managed secret
+    • Shared DB WITH PERMISSIONS
+    • Local DB, schema + SQL objects
+    • Users, roles, group + grants</div>"]
+  fixtures["<div style='text-align:left;white-space:nowrap'><b>Owned S3 / Glue fixtures</b><br/>
+    • Two-row CSV object
+    • Catalog database + table</div>"]
+  runner -->|HTTPS| api
+  runner -.-> direct
+  api --> producer
+  api --> consumer
+  direct -.-> producer
+  direct -.-> consumer
+  producer ==>|"Read-only datasharing<br/>No peering or VPC TCP link"| consumer
+  producer -->|"Private S3 / Glue endpoints"| fixtures
+  consumer -->|"Private S3 / Glue endpoints"| fixtures
+  classDef control fill:#eff6ff,stroke:#2563eb,color:#1e3a8a
+  classDef database fill:#f0fdf4,stroke:#16a34a,color:#14532d
+  class runner,api control
+  class producer,consumer database
 ```
 
 Both VPCs are created by this root. Keeping them separate also supports profiles in different AWS accounts. Datasharing
 does not need peering or SQL ingress between the warehouses. Private S3/Glue endpoints support the data fixtures; SSO
 additionally creates consumer-side `sso-oauth` and `identitystore` endpoints when enabled.
 
-The setup uses pinned `terraform-aws-modules` modules: `vpc/aws` and its `vpc-endpoints` submodule (`6.7.3`),
-`s3-bucket/aws` (`5.17.0`), and `secrets-manager/aws` (`2.2.0`). Each module receives the appropriate producer or consumer
+The setup uses `terraform-aws-modules` modules: `vpc/aws` and its `vpc-endpoints` submodule,
+`s3-bucket/aws`, and `secrets-manager/aws`. Each module receives the appropriate producer or consumer
 AWS provider. The VPCs use three isolated subnets by default, or three public subnets when public SQL is enabled;
 neither mode provisions NAT gateways or assigns public IPs to instances on launch.
 
@@ -78,8 +75,8 @@ because they must be ready before the warehouse creates the external schema and 
 Requirements: Terraform 1.16 or later, an AWS account/credentials with permission to create the listed resources and IAM
 roles, a region with RA3/Serverless capacity and at least three available AZs, and the installed Redshift provider. The
 default region is `eu-central-1`, the producer is single-node `ra3.large`, and the consumer has fixed base/max capacity
-of 4 RPUs, the smallest sizes; the example only runs small catalog statements. Account quotas and regional availability
-apply.
+of 4 RPUs, the smallest sizes. The example creates SQL objects, seeds small fixtures, and runs verification queries.
+Account quotas and regional availability apply.
 
 Deployment credentials need AWS provisioning and `iam:PassRole` permissions, Data API execute/describe/result access,
 and Secrets Manager access to the two managed administrator secrets and the created reader secret. IAM permission and
@@ -103,16 +100,6 @@ task terraform -- apply
 task terraform -- output -json warehouses
 task terraform -- output -json verification
 ```
-
-Local builds normally derive their version from the latest Git tag. Before `v0.4.0` is tagged, add `VERSION=0.4.0`
-to each Task invocation so the local mirror satisfies the example's `~> 0.4` constraint, for example:
-
-```sh
-task terraform VERSION=0.4.0 -- init -backend=false
-task terraform VERSION=0.4.0 -- apply
-```
-
-Use the same override for `task terraform-check` and `task terraform-test`; it does not create or publish a release.
 
 No variable file is required for the default. Use the normal AWS credential chain or copy `terraform.tfvars.example`
 to `terraform.tfvars` and set `profile`, `region`, or other inputs. The random name suffix isolates AWS resource names.
@@ -157,7 +144,7 @@ documented beside the resources; they are not a production security baseline.
 | `copy.tf`                  | COPY templates, a template grant, an optional COPY JOB with its S3 event integration, and lookups.   |
 | `diagnostics.tf`           | Configuration parameter lookups, an optional reader lockout listing, and an optional DEBUG grant.    |
 | `discovery.tf`             | Catalog listings of databases, schemas, tables, columns, and constraints, and a constraint comment.  |
-| `models.tf`                | Optional Bedrock model, its EXECUTE grant and lookups, and the schema's model listing.               |
+| `models.tf`                | Optional Bedrock model, role/group/delegated-user grants, PUBLIC lockdown, and lookups.              |
 | `s3.tf`                    | Private fixture bucket module, TLS/cross-account policy, and CSV object.                             |
 | `spectrum.tf`              | Glue catalog resources/policy, SQL external schema, external table and partition, and lookups.       |
 | `secrets.tf`               | Reader credential secret module.                                                                     |
@@ -170,13 +157,13 @@ documented beside the resources; they are not a production security baseline.
 | `variables.tf`             | Deployment inputs and validation.                                                                    |
 | `outputs*.tf`              | Warehouse/fixture metadata, catalog observations, connection checks, query identities.               |
 | `tests/`                   | Mocked `terraform test` suites per feature area and their shared mocks (no AWS access).              |
-| `terraform.tfvars.example` | Every input with its default; copy to `terraform.tfvars` and adjust.                                 |
+| `terraform.tfvars.example` | Inputs with defaults and opt-in examples; copy to `terraform.tfvars` and adjust.                     |
 
-The example exercises each resource's documented variants where a single-account deployment allows it: all comment
-targets (database, schema, table, column, view, constraint), object grants to users, roles, groups, and PUBLIC, scoped
-grants for every scope including routines and datashare recipients, default privileges per schema and for routines, user
-capability flags, and every provider connection mode. Resources also build on each other the way a deployment would: a
-view, a column grant, and a constraint comment on a managed table; RLS and masking policies on managed tables that read
+The example covers every resource and data-source type, with representative variants rather than every option:
+all comment targets (database, schema, table, column, view, constraint), object grants to users, roles, groups, and PUBLIC,
+scoped grants for every scope including routines and datashare recipients, default privileges per schema and for routines,
+user capability flags, and every provider connection mode. Resources also build on each other the way a deployment would:
+a view, a column grant, and a constraint comment on a managed table; RLS and masking policies on managed tables that read
 managed lookup tables through policy grants; and an object grant on a managed function overload. Not covered by a live
 apply: `with_permissions = false` on a second consumer database, a direct-connection `ca_cert_file`, real cross-account
 sharing (mocked in `tests/`), and Identity Center without an existing instance.
@@ -298,6 +285,10 @@ variable, only the configuration lookups run.
 `user_lockouts = true` adds the reader's row from `SHOW USER LOCKOUT`. It is off by default, because warehouses that
 do not support account lockout reject the command.
 
+`session_context_variable` optionally reads a dotted context variable through `redshift_configuration`. Set it only
+when the variable exists in newly opened consumer-provider administrator sessions; a `SET` in another session does not
+persist into those sessions.
+
 ## Connection methods
 
 The default lifecycle uses managed-secret Data API authentication for both warehouse types. Additional probes read the
@@ -355,6 +346,13 @@ account: use a separate configuration directory/state and a fresh deployment.
 The cross-account fixture owns the producer account's Glue catalog resource policy. Use a disposable account without a
 pre-existing Glue policy, or integrate that policy deliberately rather than letting this example replace unrelated policy.
 
+### Optional Lake Formation consumer
+
+Set `lake_formation_account_id` to grant the separate `example_share_grants` datashare to that account with
+`VIA DATA CATALOG` and create AWS authorization for its `DataCatalog/<account ID>` consumer identifier. This is separate
+from the main consumer's namespace/account sharing path; it does not configure Lake Formation permissions or query data
+through Lake Formation.
+
 ## Cleanup and bootstrap semantics
 
 ```sh
@@ -383,11 +381,14 @@ configurations; create a new state/configuration directory rather than applying 
 bedrock_model_id = "anthropic.claude-3-haiku-20240307-v1:0"
 ```
 
-Setting a model ID creates `redshift_external_model` in the consumer-local schema with the consumer's default IAM role,
-an inline policy that lets that role invoke the model, and an `EXECUTE` grant on the model for the readers role. The
-model must already be enabled in Amazon Bedrock for the consumer account and region; Terraform does not request model
-access. Creation does not call Amazon Bedrock, but the first call of the inference function does. Without the variable,
-only the model listing of the local schema runs.
+Setting a model ID creates `redshift_external_model` in the consumer-local schema with the consumer's default IAM role
+and an inline policy allowing model invocation. It grants `EXECUTE` to the readers role and group, creates an IAM-only
+delegate user with `EXECUTE` and its grant option, and manages an empty PUBLIC privilege set to revoke outside PUBLIC
+grants. Paired lookups expose these permissions.
+
+The model must already be enabled in Amazon Bedrock for the consumer account and region; Terraform does not request
+model access. Creation does not call Amazon Bedrock, but the first call of the inference function does. Without the
+variable, only the model listing of the local schema runs.
 
 ## Configuration tests
 
