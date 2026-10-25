@@ -9,12 +9,6 @@ description: Lists local and datashare databases, optionally filtered by type an
 Lists the warehouse's local databases and the databases created from datashares, with their owners and isolation
 levels. See AWS [SVV_REDSHIFT_DATABASES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_DATABASES.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_redshift_databases WHERE database_type = '...' AND database_name LIKE '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -52,6 +46,17 @@ Read-Only:
 - `name` (String) Database name.
 - `owner` (String) SQL user owning the database; null when the owner is not a local user.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List databases matching the configured filters.
+SELECT ... FROM svv_redshift_databases WHERE database_type = '...' AND database_name LIKE '...';
+```
+
+## Read Behavior
 
 The read runs in the provider's `database`. `id` is the listing's provider-relative JSON identity containing the
 configured filters. Items are ordered by name; a filter that matches nothing returns an

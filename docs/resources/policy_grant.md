@@ -11,13 +11,6 @@ policy needs when its expression reads the table. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-row-level-security) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-role-level).
 
-## SQL Statements
-
-```sql
-GRANT SELECT ON TABLE ... TO { RLS | MASKING } POLICY policy_name;
-REVOKE SELECT ON TABLE ... FROM { RLS | MASKING } POLICY policy_name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -49,6 +42,18 @@ resource "redshift_policy_grant" "exempt_lookup" {
 
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Allow a policy to read a lookup table.
+GRANT SELECT ON TABLE ... TO { RLS | MASKING } POLICY policy_name;
+
+-- Revoke a policy's access to a lookup table.
+REVOKE SELECT ON TABLE ... FROM { RLS | MASKING } POLICY policy_name;
+```
 
 ## Lifecycle and Ownership
 

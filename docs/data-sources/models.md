@@ -9,12 +9,6 @@ description: Lists the machine learning models of one database.
 Lists the machine learning models of one database, trained and external models alike, optionally narrowed to one
 schema. See AWS [SHOW MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_MODEL.html).
 
-## Catalog Query
-
-```sql
-SHOW MODEL ALL;
-```
-
 ## Example Usage
 
 ```terraform
@@ -51,6 +45,17 @@ Read-Only:
 - `name` (String) Model name.
 - `schema` (String) Schema containing the model and its prediction or inference function.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List visible models in the selected database.
+SHOW MODEL ALL;
+```
+
+## Read Behavior
 
 `database` defaults to the provider's `database`; `SHOW MODEL ALL` covers only the database it runs in, so the listing
 runs in the listed database. `id` combines the listed database and configured filters within the warehouse.

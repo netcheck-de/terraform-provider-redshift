@@ -10,13 +10,6 @@ Attaches one row-level security policy to one table or view for one user, role, 
 [ATTACH RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_ATTACH_RLS_POLICY.html) and
 [DETACH RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_DETACH_RLS_POLICY.html).
 
-## SQL Statements
-
-```sql
-ATTACH RLS POLICY policy ON schema.relation TO grantee;
-DETACH RLS POLICY policy ON schema.relation FROM grantee;
-```
-
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_rls_policy_attachment/resource.tf" }}
@@ -24,6 +17,18 @@ DETACH RLS POLICY policy ON schema.relation FROM grantee;
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Apply the row-level security policy to a relation for a grantee.
+ATTACH RLS POLICY policy ON schema.relation TO grantee;
+
+-- Remove the row-level security policy attachment.
+DETACH RLS POLICY policy ON schema.relation FROM grantee;
+```
 
 ## Lifecycle and Ownership
 

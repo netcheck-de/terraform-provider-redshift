@@ -10,13 +10,6 @@ Looks up the definition of an external table in an external schema, including ta
 AWS [SVV_EXTERNAL_TABLES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_TABLES.html) and
 [SVV_EXTERNAL_COLUMNS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_COLUMNS.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_external_tables WHERE schemaname = 'schema' AND tablename = 'name';
-SELECT ... FROM svv_external_columns WHERE schemaname = 'schema' AND tablename = 'name';
-```
-
 ## Example Usage
 
 ```terraform
@@ -69,6 +62,20 @@ Read-Only:
 - `name` (String) Column name. The external catalog stores names in lowercase, so names differing only in case are the same column.
 - `type` (String) Data type: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `REAL`, `DOUBLE PRECISION`, `BOOLEAN`, `CHAR(n)`, `VARCHAR(n)`, `DATE`, or `TIMESTAMP`, including their aliases such as `INT4` or `NUMERIC`, in any case. Spellings of the same type, such as `INT` and `INTEGER`, are equivalent. A refresh or import reports the uppercase name, and Glue types the provider cannot declare, such as `STRING`, with uppercase type names.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read external table storage settings and properties.
+SELECT ... FROM svv_external_tables WHERE schemaname = 'schema' AND tablename = 'name';
+
+-- Read external table columns and partition keys.
+SELECT ... FROM svv_external_columns WHERE schemaname = 'schema' AND tablename = 'name';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed table's JSON identity, using the same warehouse, database, schema, and name keys
 as the paired resource.

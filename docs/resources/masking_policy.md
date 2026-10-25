@@ -12,14 +12,6 @@ Attach it to columns with `redshift_masking_policy_attachment`, and give it acce
 [CREATE MASKING POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_MASKING_POLICY.html) and
 [Dynamic data masking](https://docs.aws.amazon.com/redshift/latest/dg/t_ddm.html).
 
-## SQL Statements
-
-```sql
-CREATE MASKING POLICY name WITH (...) USING (expression);
-ALTER MASKING POLICY name USING (expression);
-DROP MASKING POLICY name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -79,6 +71,21 @@ Required:
 - `name` (String) Input column name used in `expression`; it does not have to match the masked column's name.
 - `type` (String) Redshift data type, such as `VARCHAR(256)` or `INTEGER`. A type without length gets the length a column would get, so `VARCHAR` means `VARCHAR(256)`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the masking policy.
+CREATE MASKING POLICY name WITH (...) USING (expression);
+
+-- Update the masking expression.
+ALTER MASKING POLICY name USING (expression);
+
+-- Delete the masking policy.
+DROP MASKING POLICY name;
+```
 
 ## Lifecycle and Ownership
 

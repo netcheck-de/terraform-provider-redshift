@@ -8,13 +8,6 @@ description: Looks up a stored procedure overload.
 
 Looks up one existing stored procedure overload by schema, name, and input argument types without managing it.
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_proc_info WHERE proname = 'name' AND oidvectortypes(proargtypes) = '...';
-SHOW PARAMETERS OF PROCEDURE schema.name (...);
-```
-
 ## Example Usage
 
 ```terraform
@@ -65,6 +58,20 @@ Read-Only:
 - `name` (String) Argument name; `null` when the catalog does not keep it, as for an unnamed argument.
 - `type` (String) Argument data type without length or precision, such as `INTEGER` or `CHARACTER VARYING`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the selected procedure overload.
+SELECT ... FROM pg_proc_info WHERE proname = 'name' AND oidvectortypes(proargtypes) = '...';
+
+-- Read argument types and modes.
+SHOW PARAMETERS OF PROCEDURE schema.name (...);
+```
+
+## Read Behavior
 
 `arguments` selects the overload by its `IN` and `INOUT` types, as the `arguments` key of the paired resource's import
 identity holds them, and is returned unchanged. A managed procedure's types come from its `argument` blocks with

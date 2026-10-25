@@ -14,14 +14,6 @@ or, when set, the `timeouts.create` duration. See AWS
 [CREATE DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATABASE.html) and
 [ALTER DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATABASE.html).
 
-## SQL Statements
-
-```sql
-CREATE DATABASE name ...;
-ALTER DATABASE name ...;
-DROP DATABASE name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -120,6 +112,21 @@ Optional:
 - `delete` (String) Maximum time for dropping the object and verifying that it is gone. Applies only when the value was saved to state by an earlier apply before the destroy.
 - `update` (String) Maximum time for an in-place update, including the catalog reads before and after the change.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the database.
+CREATE DATABASE name ...;
+
+-- Update database settings.
+ALTER DATABASE name ...;
+
+-- Delete the database.
+DROP DATABASE name;
+```
 
 ## Local Database Options
 

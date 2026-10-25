@@ -13,14 +13,6 @@ otherwise Redshift fails with "Cannot find integration for bucket". The AWS prov
 [auto-copy](https://docs.aws.amazon.com/redshift/latest/dg/loading-data-copy-job.html), and
 [SYS_COPY_JOB](https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html).
 
-## SQL Statements
-
-```sql
-COPY schema.table FROM 's3://...' IAM_ROLE '...' ... JOB CREATE name AUTO ...;
-COPY JOB ALTER name AUTO ...;
-COPY JOB DROP name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -93,6 +85,21 @@ Optional:
 - `name` (String) Target table; required in the block.
 - `schema` (String) Schema of the target table; required in the block.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the COPY job.
+COPY schema.table FROM 's3://...' IAM_ROLE '...' ... JOB CREATE name AUTO ...;
+
+-- Change automatic loading for the job.
+COPY JOB ALTER name AUTO ...;
+
+-- Delete the COPY job.
+COPY JOB DROP name;
+```
 
 ## Parameters
 

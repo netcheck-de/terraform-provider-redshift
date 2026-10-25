@@ -9,13 +9,6 @@ description: Manages explicit table or view membership in a datashare.
 Manages one existing table or view membership in a producer datashare schema. See AWS
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
-## SQL Statements
-
-```sql
-ALTER DATASHARE datashare ADD TABLE schema.table;
-ALTER DATASHARE datashare REMOVE TABLE schema.table;
-```
-
 ## Example Usage
 
 ```terraform
@@ -43,6 +36,18 @@ resource "redshift_datashare_table" "view" {
 
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Add the table to the datashare.
+ALTER DATASHARE datashare ADD TABLE schema.table;
+
+-- Remove the table from the datashare.
+ALTER DATASHARE datashare REMOVE TABLE schema.table;
+```
 
 ## Lifecycle and Ownership
 

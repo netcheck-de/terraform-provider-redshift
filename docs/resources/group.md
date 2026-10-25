@@ -10,13 +10,6 @@ Manages a SQL user group. Groups contain database users; they are distinct from 
 [CREATE GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_GROUP.html) and
 [DROP GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_GROUP.html).
 
-## SQL Statements
-
-```sql
-CREATE GROUP name;
-DROP GROUP name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -39,6 +32,18 @@ resource "redshift_group" "readers" {
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `members` (Set of String) Names of the users currently in the group, read from `pg_group`. Informational only: this resource never changes membership, which `redshift_group_membership` manages, and refresh records members added elsewhere.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the group.
+CREATE GROUP name;
+
+-- Delete the group.
+DROP GROUP name;
+```
 
 ## Lifecycle and Ownership
 

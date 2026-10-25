@@ -11,14 +11,6 @@ objects have separate ownership. See AWS
 [CREATE SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_SCHEMA.html) and
 [ALTER SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_SCHEMA.html).
 
-## SQL Statements
-
-```sql
-CREATE SCHEMA name ...;
-ALTER SCHEMA name ...;
-DROP SCHEMA name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -49,6 +41,21 @@ resource "redshift_schema" "serving" {
 
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the schema.
+CREATE SCHEMA name ...;
+
+-- Update schema settings.
+ALTER SCHEMA name ...;
+
+-- Delete the schema.
+DROP SCHEMA name;
+```
 
 ## Owner and Quota
 

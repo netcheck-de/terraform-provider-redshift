@@ -9,12 +9,6 @@ description: Checks whether a masking policy is attached to columns of a relatio
 Checks one masking policy attachment and reads its input mapping and priority. See AWS
 [SVV_ATTACHED_MASKING_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ATTACHED_MASKING_POLICY.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_attached_masking_policy WHERE policy_name = '...' AND schema_name = '...' AND table_name = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -50,6 +44,17 @@ data "redshift_masking_policy_attachment" "email_analysts" {
 - `input_columns` (List of String) Ordered relation columns passed to the policy's input columns (`USING`). Defaults to `columns`, as Redshift does.
 - `priority` (Number) Priority among the policies that apply to a column; the highest wins, and two different policies on one column cannot share a priority even for different recipients. Defaults to `0`. Redshift has no command to change it, so an update first checks that no other policy holds the new priority on these columns, then detaches and re-attaches the policy: until the second statement completes, the recipient sees the column under the next applicable policy, or unmasked if there is none. If the re-attach fails, the update restores the previous attachment and reports the error.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Check the masking policy attachment on the selected relation.
+SELECT ... FROM svv_attached_masking_policy WHERE policy_name = '...' AND schema_name = '...' AND table_name = '...';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the attachment's JSON identity, using the paired resource's warehouse, `database`, `policy`,
 `schema`, `relation`, `columns` (a JSON list), `grantee`, and `grantee_type` keys. It is null when `exists` is false,

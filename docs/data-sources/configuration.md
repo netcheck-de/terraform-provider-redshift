@@ -10,12 +10,6 @@ Reads the current value of one configuration parameter, such as `search_path`, `
 `enable_case_sensitive_identifier`, with `SHOW`. See AWS
 [SHOW](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW.html) and the [configuration reference](https://docs.aws.amazon.com/redshift/latest/dg/cm_chap_ConfigurationRef.html).
 
-## Catalog Query
-
-```sql
-SHOW name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -49,6 +43,17 @@ output "provider_session_settings" {
 - `id` (String) JSON identity containing `name` within the configured warehouse.
 - `value` (String) Value `SHOW` reports for the provider's session, as text.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the session parameter or context variable.
+SHOW name;
+```
+
+## Read Behavior
 
 `value` is the value of the provider's own session in its administration database: the workgroup or cluster default,
 changed by the parameter group and by `ALTER USER ... SET` defaults of the provider's user. The provider never runs

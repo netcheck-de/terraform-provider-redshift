@@ -10,14 +10,6 @@ Manages one database role, its owner, and its identity-provider external ID, ind
 See AWS [CREATE ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_ROLE.html) and
 [ALTER ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_ROLE.html).
 
-## SQL Statements
-
-```sql
-CREATE ROLE name ...;
-ALTER ROLE name ...;
-DROP ROLE name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -56,6 +48,21 @@ resource "redshift_role" "entra_finance" {
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `role_id` (Number) Catalog role ID (`svv_roles.role_id`).
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the role.
+CREATE ROLE name ...;
+
+-- Update role settings.
+ALTER ROLE name ...;
+
+-- Delete the role.
+DROP ROLE name;
+```
 
 ## Lifecycle and Ownership
 

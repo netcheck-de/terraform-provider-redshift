@@ -9,13 +9,6 @@ description: Manages one user-to-group relationship.
 Owns one database user's membership in one SQL group. See AWS
 [ALTER GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_GROUP.html).
 
-## SQL Statements
-
-```sql
-ALTER GROUP group ADD USER user;
-ALTER GROUP group DROP USER user;
-```
-
 ## Example Usage
 
 ```terraform
@@ -38,6 +31,18 @@ resource "redshift_group_membership" "reader" {
 
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Add a user to the group.
+ALTER GROUP group ADD USER user;
+
+-- Remove a user from the group.
+ALTER GROUP group DROP USER user;
+```
 
 ## Lifecycle and Ownership
 

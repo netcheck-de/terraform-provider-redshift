@@ -9,12 +9,6 @@ description: Lists COPY JOBs with their AUTO setting and IAM role.
 Lists copy jobs with their AUTO setting and IAM role. See AWS
 [SYS_COPY_JOB](https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM sys_copy_job;
-```
-
 ## Example Usage
 
 {{ tffile "examples/data-sources/redshift_copy_jobs/data-source.tf" }}
@@ -22,6 +16,17 @@ SELECT ... FROM sys_copy_job;
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List visible COPY jobs.
+SELECT ... FROM sys_copy_job;
+```
+
+## Read Behavior
 
 Items are ordered by name. Superusers see every job; other users see only their own. `SYS_COPY_JOB` has no database
 column, so `database` selects where the view is queried and is reported for every item. `id` contains that database

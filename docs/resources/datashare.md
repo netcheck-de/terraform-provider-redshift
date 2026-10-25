@@ -12,14 +12,6 @@ object from the
 datashare authorization and consumer association are managed with the AWS provider. See AWS
 [CREATE DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATASHARE.html).
 
-## SQL Statements
-
-```sql
-CREATE DATASHARE name ...;
-ALTER DATASHARE name ...;
-DROP DATASHARE name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -51,6 +43,21 @@ resource "redshift_datashare" "analytics" {
 - `producer_namespace` (String) Producer namespace UUID; with `producer_account` and `name` it identifies the datashare ARN.
 - `share_id` (Number) Numeric datashare ID reported by `SVV_DATASHARES`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the datashare.
+CREATE DATASHARE name ...;
+
+-- Update datashare settings.
+ALTER DATASHARE name ...;
+
+-- Delete the datashare.
+DROP DATASHARE name;
+```
 
 ## Lifecycle and Ownership
 

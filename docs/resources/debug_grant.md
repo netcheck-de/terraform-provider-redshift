@@ -14,17 +14,6 @@ account. See AWS [GRANT DEBUG](https://docs.aws.amazon.com/redshift/latest/dg/r_
 [usage notes](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT-usage-notes.html#r_GRANT-usage-notes-debug), and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 
-## SQL Statements
-
-```sql
-GRANT DEBUG ON DATABASE database TO ...;
-REVOKE DEBUG ON DATABASE database FROM ...;
-SHOW GRANTS ON DATABASE database;
-SHOW GRANTS FOR ... FROM DATABASE database;
-SHOW DATABASES LIKE 'database';
-SELECT TRIM(auth_method) ... FROM sys_connection_log WHERE session_id = pg_backend_pid() ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -68,6 +57,32 @@ resource "redshift_debug_grant" "producer_admins" {
 
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Grant database debugging access.
+GRANT DEBUG ON DATABASE database TO ...;
+
+-- Revoke database debugging access.
+REVOKE DEBUG ON DATABASE database FROM ...;
+
+-- Read grants on the database.
+SHOW GRANTS ON DATABASE database;
+
+-- Read a grantee's grants in the database.
+SHOW GRANTS FOR ... FROM DATABASE database;
+
+-- Look up the database.
+SHOW DATABASES LIKE 'database';
+
+-- Check the current session's authentication method.
+SELECT TRIM(auth_method) ... FROM sys_connection_log WHERE session_id = pg_backend_pid() ...;
+```
+
+## Grantees
 
 `grantee_type` selects the grantee form:
 

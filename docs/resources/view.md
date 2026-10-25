@@ -11,15 +11,6 @@ Manages an ordinary or late-binding view in a local schema. See AWS
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html), and
 [DROP VIEW](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_VIEW.html).
 
-## SQL Statements
-
-```sql
-CREATE VIEW schema.name AS query ...;
-CREATE OR REPLACE VIEW schema.name AS query ...;
-ALTER TABLE schema.name OWNER TO owner;
-DROP VIEW schema.name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -66,6 +57,24 @@ resource "redshift_view" "all_sales" {
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed outside literals, quoted identifiers, and comments; detects definition changes made outside Terraform.
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the view.
+CREATE VIEW schema.name AS query ...;
+
+-- Update the view definition.
+CREATE OR REPLACE VIEW schema.name AS query ...;
+
+-- Transfer ownership.
+ALTER TABLE schema.name OWNER TO owner;
+
+-- Delete the view.
+DROP VIEW schema.name;
+```
 
 ## Lifecycle and Ownership
 

@@ -45,7 +45,8 @@ func TestDocsExistForEveryRegisteredType(t *testing.T) {
 		{"resources", resources, []string{"resource.tf", "import.tf", "import.sh"}},
 		{"data-sources", dataSources, []string{"data-source.tf"}},
 	} {
-		heading := sqlSummaryHeadings[category.dir]
+		const heading = "## SQL Statements"
+
 		pages, err := filepath.Glob(filepath.Join(root, "docs", category.dir, "*.md"))
 		require.NoError(t, err)
 		assert.Len(t, pages, len(category.types), "docs/%s must contain exactly one page per registered type", category.dir)
@@ -67,7 +68,30 @@ func TestDocsExistForEveryRegisteredType(t *testing.T) {
 
 			template, err := os.ReadFile(filepath.Join(root, "templates", category.dir, name+".md.tmpl"))
 			if assert.NoError(t, err) {
-				assert.Contains(t, string(template), heading+"\n\n```sql\n", "%s must introduce its SQL summary with %q", typeName, heading)
+				introduction := heading + "\n\n"
+				if category.dir == "resources" {
+					introduction += "Simplified SQL used by the provider to manage this resource.\n\n"
+				} else {
+					introduction += "Simplified SQL used by the provider to read this data source.\n\n"
+				}
+
+				assert.Contains(t, string(template), introduction+"```sql\n", "%s must introduce its SQL summary with %q", typeName, heading)
+
+				assert.Contains(t, string(template), "<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->\n\n"+heading+"\n",
+					"%s must place its SQL summary immediately after the schema", typeName)
+
+				_, summary, found := strings.Cut(string(template), introduction+"```sql\n")
+				if found {
+					summary, _, _ = strings.Cut(summary, "\n```")
+
+					lines := strings.Split(summary, "\n")
+					for i, line := range lines {
+						if line != "" && !strings.HasPrefix(line, "-- ") {
+							assert.True(t, i > 0 && strings.HasPrefix(lines[i-1], "-- "),
+								"%s SQL statement needs a purpose comment: %s", typeName, line)
+						}
+					}
+				}
 
 				if category.dir == "resources" {
 					_, section, found := strings.Cut(string(template), "\n## Import\n")
@@ -181,12 +205,6 @@ const (
 	// importCLIIntroduction introduces the equivalent CLI command after the block example.
 	importCLIIntroduction = "Alternatively, use `terraform import`:"
 )
-
-// sqlSummaryHeadings names the section that holds each page kind's simplified SQL block, so readers know what it shows.
-var sqlSummaryHeadings = map[string]string{
-	"resources":    "## SQL Statements",
-	"data-sources": "## Catalog Query",
-}
 
 // TestReconciliationSectionDocumentsEveryInput requires each resource template to explain, before its import
 // section, how every configurable argument and block reconciles, so a new argument cannot ship without saying whether

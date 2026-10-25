@@ -9,12 +9,6 @@ description: Lists relation columns with their position, type, nullability, and 
 Lists the columns of one database's tables, views, and external tables. See AWS
 [SVV_ALL_COLUMNS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ALL_COLUMNS.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_all_columns WHERE database_name = '...' AND schema_name = '...' AND table_name = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -62,6 +56,17 @@ Read-Only:
 - `schema` (String) Schema containing the relation.
 - `table` (String) Relation containing the column.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List columns matching the configured filters.
+SELECT ... FROM svv_all_columns WHERE database_name = '...' AND schema_name = '...' AND table_name = '...';
+```
+
+## Read Behavior
 
 `database` defaults to the provider's `database`; the read runs in the provider's database. `id` combines the
 listed database and configured filters within the warehouse. Items are ordered by schema, table, and

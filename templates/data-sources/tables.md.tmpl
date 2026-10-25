@@ -11,13 +11,6 @@ Lists the relations of one database with their type, owner, and comment. See AWS
 [SVV_REDSHIFT_TABLES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_TABLES.html), and
 [SVV_MV_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MV_INFO.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_all_tables LEFT JOIN svv_redshift_tables ... WHERE database_name = '...';
-SELECT ... FROM svv_mv_info WHERE database_name = '...';
-```
-
 ## Example Usage
 
 {{ tffile "examples/data-sources/redshift_tables/data-source.tf" }}
@@ -25,6 +18,20 @@ SELECT ... FROM svv_mv_info WHERE database_name = '...';
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List relations and their available ownership metadata.
+SELECT ... FROM svv_all_tables LEFT JOIN svv_redshift_tables ... WHERE database_name = '...';
+
+-- Identify materialized views among the listed relations.
+SELECT ... FROM svv_mv_info WHERE database_name = '...';
+```
+
+## Read Behavior
 
 `database` defaults to the provider's `database`; both reads run in the provider's database. `id` combines the
 listed database and configured filters within the warehouse. Items are ordered by schema and name; no match

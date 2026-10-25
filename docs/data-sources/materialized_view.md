@@ -9,13 +9,6 @@ description: Reads a materialized view's definition, refresh setting, and owner.
 Reads an existing materialized view without managing it. See AWS
 [SVV_MV_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MV_INFO.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_views WHERE schemaname = '...' AND viewname = '...';
-SELECT autorefresh FROM svv_mv_info WHERE ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -63,6 +56,20 @@ Read-Only:
 
 - `columns` (List of String) Compound sort key columns in order.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the materialized view definition and owner.
+SELECT ... FROM pg_views WHERE schemaname = '...' AND viewname = '...';
+
+-- Read the automatic refresh setting.
+SELECT autorefresh FROM svv_mv_info WHERE ...;
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed view's JSON identity, using the same warehouse, database, schema, and name keys
 as the paired resource.

@@ -9,12 +9,6 @@ description: Checks one user's explicit SQL group membership without managing it
 Reads explicit SQL user-to-group membership. See AWS
 [ALTER GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_GROUP.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_group JOIN pg_user ... WHERE ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -38,6 +32,17 @@ data "redshift_group_membership" "reader" {
 - `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Check whether the user belongs to the group.
+SELECT ... FROM pg_group JOIN pg_user ... WHERE ...;
+```
+
+## Read Behavior
 
 `id` (String, computed) is the membership's JSON identity, using the same warehouse, provider database, group, and user
 keys as the paired resource. It is null when `exists` is false.

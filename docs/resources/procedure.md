@@ -12,14 +12,6 @@ configuration, and owner. See AWS
 [ALTER PROCEDURE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_PROCEDURE.html), and
 [DROP PROCEDURE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_PROCEDURE.html).
 
-## SQL Statements
-
-```sql
-CREATE [ OR REPLACE ] PROCEDURE schema.name (arguments) ... AS $$ body $$ LANGUAGE PLPGSQL ...;
-ALTER PROCEDURE schema.name (arguments) OWNER TO owner;
-DROP PROCEDURE schema.name (arguments);
-```
-
 ## Example Usage
 
 ```terraform
@@ -87,6 +79,21 @@ Optional:
 - `mode` (String) `IN` (when omitted), `OUT`, or `INOUT`. `OUT` arguments are returned by `CALL` and are not part of the signature.
 - `name` (String) Argument name used in `body`; omit to reference the argument as `$n`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the procedure or update its definition.
+CREATE [ OR REPLACE ] PROCEDURE schema.name (arguments) ... AS $$ body $$ LANGUAGE PLPGSQL ...;
+
+-- Transfer ownership.
+ALTER PROCEDURE schema.name (arguments) OWNER TO owner;
+
+-- Delete the procedure.
+DROP PROCEDURE schema.name (arguments);
+```
 
 ## Lifecycle and Ownership
 

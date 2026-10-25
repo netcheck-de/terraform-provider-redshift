@@ -11,14 +11,6 @@ Manages one partition of a partitioned
 See AWS [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html) and
 [Partitioning Redshift Spectrum external tables](https://docs.aws.amazon.com/redshift/latest/dg/c-spectrum-external-tables.html#c-spectrum-external-tables-partitioning).
 
-## SQL Statements
-
-```sql
-ALTER TABLE schema.table ADD PARTITION (values...) LOCATION ...;
-ALTER TABLE schema.table PARTITION (values...) SET LOCATION ...;
-ALTER TABLE schema.table DROP PARTITION (values...);
-```
-
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_external_partition/resource.tf" }}
@@ -26,6 +18,21 @@ ALTER TABLE schema.table DROP PARTITION (values...);
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Add the external table partition.
+ALTER TABLE schema.table ADD PARTITION (values...) LOCATION ...;
+
+-- Change the partition's data location.
+ALTER TABLE schema.table PARTITION (values...) SET LOCATION ...;
+
+-- Remove the external table partition.
+ALTER TABLE schema.table DROP PARTITION (values...);
+```
 
 ## Lifecycle and Ownership
 

@@ -11,14 +11,6 @@ and owner. See AWS [CREATE FUNCTION](https://docs.aws.amazon.com/redshift/latest
 [ALTER FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_FUNCTION.html), and
 [DROP FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_FUNCTION.html).
 
-## SQL Statements
-
-```sql
-CREATE [ OR REPLACE ] FUNCTION schema.name (arguments) RETURNS return_type ... AS $$ body $$ LANGUAGE sql;
-ALTER FUNCTION schema.name (arguments) OWNER TO owner;
-DROP FUNCTION schema.name (arguments);
-```
-
 ## Example Usage
 
 ```terraform
@@ -60,6 +52,21 @@ resource "redshift_function" "greater" {
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `signature` (String) Canonical input argument types without modifiers, as `ALTER FUNCTION`, `DROP FUNCTION`, and `GRANT ... ON FUNCTION` identify the overload, for example `INTEGER, CHARACTER VARYING`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the function or update its definition.
+CREATE [ OR REPLACE ] FUNCTION schema.name (arguments) RETURNS return_type ... AS $$ body $$ LANGUAGE sql;
+
+-- Transfer ownership.
+ALTER FUNCTION schema.name (arguments) OWNER TO owner;
+
+-- Delete the function.
+DROP FUNCTION schema.name (arguments);
+```
 
 ## Lifecycle and Ownership
 

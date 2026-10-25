@@ -8,12 +8,6 @@ description: Looks up an existing SQL role, its owner, and its external ID.
 
 Looks up an existing database role, its owner, and its identity-provider external ID without taking ownership of it.
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_roles WHERE role_name = 'name';
-```
-
 ## Example Usage
 
 ```terraform
@@ -37,6 +31,17 @@ data "redshift_role" "readers" {
 - `owner` (String) User that owns the role (`svv_roles.role_owner`).
 - `role_id` (Number) Catalog role ID (`svv_roles.role_id`).
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the selected role.
+SELECT ... FROM svv_roles WHERE role_name = 'name';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed role's JSON identity, using the same warehouse, provider database, and name keys
 as the paired resource.

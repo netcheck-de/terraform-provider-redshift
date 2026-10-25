@@ -11,12 +11,6 @@ Looks up an existing SQL identity provider of type `awsidc` or `azure`, with the
 [DESC IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_DESC_IDENTITY_PROVIDER.html) report. Only
 superusers can read them.
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_identity_providers WHERE name = 'name';
-```
-
 ## Example Usage
 
 ```terraform
@@ -51,6 +45,17 @@ data "redshift_identity_provider" "this" {
 - `provider_id` (Number) Catalog ID of the identity provider (`svv_identity_providers.uid`).
 - `type` (String) Identity provider type: `AWSIDC` or `AZURE`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read identity provider metadata and recorded parameters.
+SELECT ... FROM svv_identity_providers WHERE name = 'name';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed identity provider's JSON identity, using the same warehouse, provider database,
 and name keys as the paired resource.

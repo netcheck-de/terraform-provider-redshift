@@ -13,13 +13,6 @@ it, which sends prompts to Amazon Bedrock from SQL. See AWS
 [SHOW MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_MODEL.html), and
 [Amazon Redshift ML integration with Amazon Bedrock](https://docs.aws.amazon.com/redshift/latest/dg/machine-learning-br.html).
 
-## SQL Statements
-
-```sql
-CREATE EXTERNAL MODEL schema.name FUNCTION function IAM_ROLE ... MODEL_TYPE BEDROCK SETTINGS (...);
-DROP MODEL schema.name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -73,6 +66,18 @@ resource "redshift_object_grant" "summarizer" {
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `owner` (String) SQL user owning the model, as `SHOW MODEL` reports it; null when it is not reported.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the external model and its inference function.
+CREATE EXTERNAL MODEL schema.name FUNCTION function IAM_ROLE ... MODEL_TYPE BEDROCK SETTINGS (...);
+
+-- Delete the external model.
+DROP MODEL schema.name;
+```
 
 ## Request and Response Formats
 

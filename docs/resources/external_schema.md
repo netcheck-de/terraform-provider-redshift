@@ -14,15 +14,6 @@ The namespace must already have the IAM role the source form needs. See AWS
 [CREATE EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_SCHEMA.html) and
 [ALTER EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_EXTERNAL_SCHEMA.html).
 
-## SQL Statements
-
-```sql
-CREATE EXTERNAL SCHEMA name FROM ...;
-ALTER EXTERNAL SCHEMA name ...;
-ALTER SCHEMA name OWNER TO ...;
-DROP SCHEMA name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -93,6 +84,24 @@ resource "redshift_external_schema" "clicks" {
 
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the external schema.
+CREATE EXTERNAL SCHEMA name FROM ...;
+
+-- Update external schema settings.
+ALTER EXTERNAL SCHEMA name ...;
+
+-- Transfer ownership.
+ALTER SCHEMA name OWNER TO ...;
+
+-- Delete the external schema.
+DROP SCHEMA name;
+```
 
 ## Source Forms
 

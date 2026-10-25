@@ -12,14 +12,6 @@ AWS [CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html), and
 [DROP TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_TABLE.html).
 
-## SQL Statements
-
-```sql
-CREATE TABLE schema.name (columns ...) ...;
-ALTER TABLE schema.name ...;
-DROP TABLE schema.name;
-```
-
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_table/resource.tf" }}
@@ -28,6 +20,21 @@ DROP TABLE schema.name;
 
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the table.
+CREATE TABLE schema.name (columns ...) ...;
+
+-- Update the table definition or settings.
+ALTER TABLE schema.name ...;
+
+-- Delete the table.
+DROP TABLE schema.name;
+```
 
 ## Distribution and Sort Key
 
@@ -40,7 +47,23 @@ with `style = "AUTO"` declare the same layout.
 else; any update shows it as known after apply, because Redshift may change it on its own at any time, for example from
 `AUTO(ALL)` to `AUTO(EVEN)` as the table grows.
 
-## Catalog Reads
+## Lifecycle and Ownership
+
+Terraform owns the table definition, never its rows. Replacement **drops all of its rows**. Protect tables that hold data:
+
+```terraform
+lifecycle {
+  prevent_destroy = true
+}
+```
+
+Replacement and deletion run `DROP TABLE` without `CASCADE`: views, foreign keys of other tables, and other dependent
+objects keep the table, and the deletion fails until they are removed.
+
+The resource never reads or changes comments, row-level security, masking, grants, or datashare membership of the
+table; use `redshift_comment`, the permission resources, and the datashare resources for those.
+
+### Catalog Reads
 
 The definition is read from `pg_class` (owner and declared distribution style), `PG_CLASS_INFO` (the distribution
 Redshift applies), `pg_attribute` (column order, `format_type()` types, and nullability), `SVV_REDSHIFT_COLUMNS`
@@ -65,9 +88,6 @@ match the catalog. Distribution and sort key columns must have a type that
 Configuration validation rejects known invalid column definitions, duplicate names, identity options, and key or
 constraint settings even when unrelated nested values are unknown. Only checks that depend on an unknown value are
 deferred; creation still validates the complete definition before issuing SQL.
-
-The resource never reads or changes comments, row-level security, masking, grants, or datashare membership of the
-table; use `redshift_comment`, the permission resources, and the datashare resources for those.
 
 ## Timeouts
 
@@ -94,17 +114,7 @@ state. Refreshes are bounded only by `query_timeout`. A change to the values alo
 
 Refresh reads the table definition from the catalog; an update reads it again, runs one `ALTER TABLE` statement per
 change starting from what the catalog holds, and re-reads the catalog to verify the result; every other change
-replaces the table, which **drops all of its rows**. Terraform owns the table definition, never its rows. Protect
-tables that hold data:
-
-```terraform
-lifecycle {
-  prevent_destroy = true
-}
-```
-
-Replacement and deletion run `DROP TABLE` without `CASCADE`: views, foreign keys of other tables, and other dependent
-objects keep the table, and the deletion fails until they are removed.
+replaces the table, which **drops all of its rows**.
 
 | Change                                                                                                                                                                       | Result                                                                                                                                                                                                                                                                                                                      |
 |------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|

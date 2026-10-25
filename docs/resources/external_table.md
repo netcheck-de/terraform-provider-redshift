@@ -12,14 +12,6 @@ and whose data stays in Amazon S3. See AWS
 [CREATE EXTERNAL TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_TABLE.html) and
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html).
 
-## SQL Statements
-
-```sql
-CREATE EXTERNAL TABLE schema.name (...) ... STORED AS ... LOCATION ...;
-ALTER TABLE schema.name ...;
-DROP TABLE schema.name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -150,6 +142,21 @@ Required:
 - `name` (String) Column name. The external catalog stores names in lowercase, so names differing only in case are the same column.
 - `type` (String) Data type: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `REAL`, `DOUBLE PRECISION`, `BOOLEAN`, `CHAR(n)`, `VARCHAR(n)`, `DATE`, or `TIMESTAMP`, including their aliases such as `INT4` or `NUMERIC`, in any case. Spellings of the same type, such as `INT` and `INTEGER`, are equivalent. A refresh or import reports the uppercase name, and Glue types the provider cannot declare, such as `STRING`, with uppercase type names.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the external table.
+CREATE EXTERNAL TABLE schema.name (...) ... STORED AS ... LOCATION ...;
+
+-- Update the external table definition or settings.
+ALTER TABLE schema.name ...;
+
+-- Delete the external table.
+DROP TABLE schema.name;
+```
 
 ## Lifecycle and Ownership
 

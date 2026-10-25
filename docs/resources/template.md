@@ -14,19 +14,6 @@ commands reference instead of repeating them. Grant `USAGE`, `ALTER`, or `DROP` 
 [DROP TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_TEMPLATE.html), and
 [SHOW TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_TEMPLATE.html).
 
-## SQL Statements
-
-```sql
-CREATE TEMPLATE schema.name FOR COPY AS ...;
-CREATE OR REPLACE TEMPLATE schema.name FOR COPY AS ...;
-ALTER TEMPLATE schema.name RENAME TO name;
-ALTER TEMPLATE schema.name ADD ...;
-ALTER TEMPLATE schema.name DROP ...;
-ALTER TEMPLATE schema.name SET ... TO ...;
-ALTER TEMPLATE schema.name OWNER TO owner;
-DROP TEMPLATE schema.name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -91,6 +78,36 @@ resource "redshift_template" "shapefile" {
 
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the COPY options template.
+CREATE TEMPLATE schema.name FOR COPY AS ...;
+
+-- Replace the template definition when the data format changes.
+CREATE OR REPLACE TEMPLATE schema.name FOR COPY AS ...;
+
+-- Rename the template.
+ALTER TEMPLATE schema.name RENAME TO name;
+
+-- Add COPY parameters.
+ALTER TEMPLATE schema.name ADD ...;
+
+-- Remove COPY parameters.
+ALTER TEMPLATE schema.name DROP ...;
+
+-- Change COPY parameter values.
+ALTER TEMPLATE schema.name SET ... TO ...;
+
+-- Transfer ownership.
+ALTER TEMPLATE schema.name OWNER TO owner;
+
+-- Delete the template.
+DROP TEMPLATE schema.name;
+```
 
 ## Parameters
 

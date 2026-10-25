@@ -12,14 +12,6 @@ integration IAM role, role attachment to the namespace, and group assignments wi
 [CREATE IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_IDENTITY_PROVIDER.html) and
 [ALTER IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_IDENTITY_PROVIDER.html).
 
-## SQL Statements
-
-```sql
-CREATE IDENTITY PROVIDER name ...;
-ALTER IDENTITY PROVIDER name ...;
-DROP IDENTITY PROVIDER name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -84,6 +76,21 @@ resource "redshift_identity_provider" "entra" {
 - `instance_id` (String) Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `AWSIDC` and the tenant ID for `AZURE`.
 - `provider_id` (Number) Catalog ID of the identity provider (`svv_identity_providers.uid`).
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the identity provider.
+CREATE IDENTITY PROVIDER name ...;
+
+-- Update identity provider settings.
+ALTER IDENTITY PROVIDER name ...;
+
+-- Delete the identity provider.
+DROP IDENTITY PROVIDER name;
+```
 
 ## Lifecycle and Ownership
 

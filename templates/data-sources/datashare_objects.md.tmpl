@@ -11,12 +11,6 @@ statements or `INCLUDENEW`, without taking ownership. Omit `database` to use the
 to observe every outbound share there. See AWS
 [SVV_DATASHARE_OBJECTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARE_OBJECTS.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND share_name = '...';
-```
-
 ## Example Usage
 
 {{ tffile "examples/data-sources/redshift_datashare_objects/data-source.tf" }}
@@ -25,6 +19,15 @@ SELECT ... FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND share_na
 
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List current outbound datashare members.
+SELECT ... FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND share_name = '...';
+```
 
 ## Membership and Ownership
 

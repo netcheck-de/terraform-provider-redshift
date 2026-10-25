@@ -9,12 +9,6 @@ description: Reads a COPY JOB's definition, AUTO setting and IAM role.
 Reads a copy job's definition, whether it loads files automatically, and which IAM role its COPY command uses. See AWS
 [SYS_COPY_JOB](https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM sys_copy_job WHERE job_name = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -58,6 +52,17 @@ Read-Only:
 - `name` (String) Target table; required in the block.
 - `schema` (String) Schema of the target table; required in the block.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the selected COPY job.
+SELECT ... FROM sys_copy_job WHERE job_name = '...';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the job's JSON identity, using the paired resource's warehouse, `database`, and `name` keys.
 `SYS_COPY_JOB` shows superusers every job and other users only their own; for others, and for a missing database or

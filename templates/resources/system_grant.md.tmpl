@@ -9,15 +9,6 @@ description: Manages explicit SQL system capabilities for one role.
 Owns the exact explicit system privilege set for one SQL role. This permits granular capabilities instead of assigning a
 complete system role. See AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
 
-## SQL Statements
-
-```sql
-GRANT privilege TO ROLE role;
-REVOKE privilege FROM ROLE role;
-```
-
-Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
-
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_system_grant/resource.tf" }}
@@ -25,6 +16,20 @@ Deleting the resource revokes the privileges it owns; see [Reconciliation](#reco
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Grant system privileges to a role.
+GRANT privilege TO ROLE role;
+
+-- Revoke system privileges from a role.
+REVOKE privilege FROM ROLE role;
+```
+
+## Supported Privileges
 
 Supported privileges cover user/schema/table/role/datashare administration; function, external-function, procedure,
 view, model and library creation/deletion; `ALTER DEFAULT PRIVILEGES`, `ACCESS CATALOG`, `ACCESS SYSTEM TABLE`,
@@ -34,6 +39,8 @@ syntax and the [RBAC system permissions](https://docs.aws.amazon.com/redshift/la
 table. `ALL` is deliberately not accepted; declare explicit privileges.
 
 ## Lifecycle and Ownership
+
+Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
 
 Reads `svv_system_privileges` for permissions granted directly to the role. Use custom roles; this resource does not
 redefine built-in role capabilities.

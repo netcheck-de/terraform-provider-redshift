@@ -9,12 +9,6 @@ description: Lists user-defined scalar functions, including Lambda UDFs.
 Lists the user-defined scalar functions of one database without managing them: SQL, Python, and Lambda UDFs (language
 `exfunc`). See AWS [PG_PROC_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_PROC_INFO.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_proc_info WHERE prokind = 'f' AND nspname = '...' AND proname = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -57,6 +51,17 @@ Read-Only:
 - `schema` (String) Schema containing the function.
 - `volatility` (String) `VOLATILE`, `STABLE`, or `IMMUTABLE`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List function overloads matching the configured filters.
+SELECT ... FROM pg_proc_info WHERE prokind = 'f' AND nspname = '...' AND proname = '...';
+```
+
+## Read Behavior
 
 The listing reads the catalog of the selected database, so it shows only functions the provider's SQL identity can see.
 Built-in functions in `pg_*` schemas and `information_schema` are excluded. An empty `functions` list means that nothing

@@ -11,16 +11,6 @@ and object-specific grants are independent. An empty `privileges` set revokes th
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 
-## SQL Statements
-
-```sql
-GRANT privilege ... TO ...;
-REVOKE privilege ... FROM ...;
-REVOKE GRANT OPTION ... FROM ...;
-```
-
-Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
-
 ## Example Usage
 
 ```terraform
@@ -60,6 +50,21 @@ resource "redshift_grant" "readers" {
 
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Grant privileges.
+GRANT privilege ... TO ...;
+
+-- Revoke privileges.
+REVOKE privilege ... FROM ...;
+
+-- Revoke permission to grant privileges to others.
+REVOKE GRANT OPTION ... FROM ...;
+```
 
 ## Scopes and Privileges
 
@@ -130,16 +135,6 @@ resource "redshift_grant" "reader_templates" {
 }
 ```
 
-## Lifecycle and Ownership
-
-A role's grants are read with `SHOW GRANTS FOR ROLE … FROM DATABASE`. A user's grants are read with
-`SHOW GRANTS ON DATABASE … FOR` or `SHOW GRANTS ON SCHEMA … FOR`, which report `admin_option`, so grant options are
-observed instead of being folded into plain privileges. Local databases are read in the target database and shared
-databases through the administration database. Direct system privileges belong to
-[system grants](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/system_grant).
-
-Reference managed role, user, and database names to establish creation order.
-
 ## Datashare Grants
 
 For a producer datashare, use `datashare` instead of `role`. `SCHEMA` supports `USAGE`; `TABLES` supports `SELECT`. Both
@@ -165,6 +160,18 @@ resource "redshift_grant" "share_tables" {
   depends_on    = [redshift_grant.share_schema]
 }
 ```
+
+## Lifecycle and Ownership
+
+Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
+
+A role's grants are read with `SHOW GRANTS FOR ROLE … FROM DATABASE`. A user's grants are read with
+`SHOW GRANTS ON DATABASE … FOR` or `SHOW GRANTS ON SCHEMA … FOR`, which report `admin_option`, so grant options are
+observed instead of being folded into plain privileges. Local databases are read in the target database and shared
+databases through the administration database. Direct system privileges belong to
+[system grants](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/system_grant).
+
+Reference managed role, user, and database names to establish creation order.
 
 ## Reconciliation
 

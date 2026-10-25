@@ -9,12 +9,6 @@ description: Lists dynamic data masking policies.
 Lists masking policies with their inputs and expressions, optionally of one database. See AWS
 [SVV_MASKING_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MASKING_POLICY.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_masking_policy WHERE policy_database = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -59,6 +53,17 @@ Read-Only:
 - `name` (String) Input column name used in `expression`; it does not have to match the masked column's name.
 - `type` (String) Data type in the canonical form the catalog reports, in uppercase, such as `CHARACTER VARYING(256)` for a configured `VARCHAR(256)`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List visible masking policies in the selected database.
+SELECT ... FROM svv_masking_policy WHERE policy_database = '...';
+```
+
+## Read Behavior
 
 Items are ordered by database and name. Only superusers and `sys:secadmin` members see policies; for other identities
 the list is empty. `id` contains the `database` filter when configured; without it, the identity is an empty JSON object.

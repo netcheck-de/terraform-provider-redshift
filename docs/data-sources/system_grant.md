@@ -9,12 +9,6 @@ description: Reads explicitly granted system capabilities for one SQL role.
 Reads explicit SQL system permissions, excluding capabilities inherited from other roles. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_system_privileges WHERE identity_name = 'role';
-```
-
 ## Example Usage
 
 ```terraform
@@ -36,6 +30,17 @@ data "redshift_system_grant" "operators" {
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `privileges` (Set of String) Current explicit privileges for the selected tuple; inherited privileges are excluded.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read system privileges granted directly to the role.
+SELECT ... FROM svv_system_privileges WHERE identity_name = 'role';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the permission tuple's JSON identity, using the same warehouse, provider database, and role
 keys as the paired resource. An existing role with no explicit system privileges still has an ID.

@@ -9,12 +9,6 @@ description: Lists the inbound and outbound datashares of the provider's namespa
 Lists the inbound and outbound datashares visible in the provider's namespace, optionally narrowed by type or name. See
 AWS [SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_datashares ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -60,6 +54,17 @@ Read-Only:
 - `share_id` (Number) Numeric datashare ID reported by `SVV_DATASHARES`.
 - `share_type` (String) `OUTBOUND` for a share this namespace produces, `INBOUND` for one it consumes.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List visible datashares matching the configured filters.
+SELECT ... FROM svv_datashares ...;
+```
+
+## Read Behavior
 
 `datashares` is empty when nothing matches; it is ordered by share type and name. Outbound shares report their producer
 `database` and `owner`. Inbound shares report the `consumer_database` created from them, while `producer_account` and

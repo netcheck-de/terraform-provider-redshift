@@ -10,13 +10,6 @@ Lists what `SHOW GRANTS` reports, without taking ownership: either every grant o
 (including views), or every grant of one user or role in one database. See AWS
 [SHOW GRANTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_GRANTS.html).
 
-## Catalog Query
-
-```sql
-SHOW GRANTS ON { DATABASE | SCHEMA | TABLE } ...;
-SHOW GRANTS FOR [ROLE] ... FROM DATABASE ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -75,6 +68,20 @@ Read-Only:
 - `privilege_scope` (String) Scope of the grant, such as `TABLE`, `SCHEMA`, `DATABASE`, or `TABLES` for a scoped grant on all tables.
 - `schema_name` (String) Schema of the granted object; null for database grants.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List grants on the selected object.
+SHOW GRANTS ON { DATABASE | SCHEMA | TABLE } ...;
+
+-- List a user's or role's grants in the database.
+SHOW GRANTS FOR [ROLE] ... FROM DATABASE ...;
+```
+
+## Read Behavior
 
 Set `object_type` to list the grants on that object; `grantee` and `grantee_type` then narrow the rows, which also
 covers groups and `PUBLIC`. Without `object_type`, `grantee` and `grantee_type` (`USER` or `ROLE`) select

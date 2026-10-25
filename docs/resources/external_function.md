@@ -12,15 +12,6 @@ Manages a scalar Lambda user-defined function (UDF) that Redshift runs by invoki
 [DROP FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_FUNCTION.html), and
 [Scalar Lambda UDFs](https://docs.aws.amazon.com/redshift/latest/dg/udf-creating-a-lambda-sql-udf.html).
 
-## SQL Statements
-
-```sql
-CREATE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;
-CREATE OR REPLACE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;
-ALTER FUNCTION schema.name(arguments) OWNER TO owner;
-DROP FUNCTION schema.name(arguments);
-```
-
 ## Example Usage
 
 ```terraform
@@ -65,6 +56,24 @@ resource "redshift_external_function" "upper" {
 
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the external function.
+CREATE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;
+
+-- Update the external function definition.
+CREATE OR REPLACE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;
+
+-- Transfer ownership.
+ALTER FUNCTION schema.name(arguments) OWNER TO owner;
+
+-- Delete the external function.
+DROP FUNCTION schema.name(arguments);
+```
 
 ## Lifecycle and Ownership
 

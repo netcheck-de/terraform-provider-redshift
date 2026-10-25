@@ -9,12 +9,6 @@ description: Reads the row-level security settings of a table or view.
 Reads whether row-level security is on for one table or view, its conjunction type, and its datashare setting. See AWS
 [SVV_RLS_RELATION](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_RELATION.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_rls_relation WHERE relschema = 'schema' AND relname = 'relation';
-```
-
 ## Example Usage
 
 ```terraform
@@ -42,6 +36,17 @@ data "redshift_table_security" "orders" {
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `row_level_security` (Boolean) Whether row-level security is on. While it is on, users see only the rows an attached policy permits, and no rows when no policy applies to them; superusers and `sys:secadmin` holders are exempt.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read row-level security settings for the relation.
+SELECT ... FROM svv_rls_relation WHERE relschema = 'schema' AND relname = 'relation';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the relation's JSON identity, using the same warehouse, database, schema, and relation keys
 as the paired resource.

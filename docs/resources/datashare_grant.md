@@ -11,13 +11,6 @@ one of `account_id` and `namespace_id`. Cross-account sharing also requires AWS
 authorization in the producer account and association in the consumer account. See AWS
 [GRANT USAGE ON DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax).
 
-## SQL Statements
-
-```sql
-GRANT USAGE ON DATASHARE datashare TO ...;
-REVOKE USAGE ON DATASHARE datashare FROM ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -41,6 +34,8 @@ resource "aws_redshift_data_share_consumer_association" "consumer" {
   consumer_arn   = var.consumer_namespace_arn
 }
 ```
+
+Exactly one consumer selector is required; `via_data_catalog` defaults to `false`.
 
 For a namespace in the same AWS account, grant usage directly to its UUID:
 
@@ -96,7 +91,17 @@ resource "aws_redshift_data_share_authorization" "lake_formation" {
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
-Exactly one consumer selector is required; `via_data_catalog` defaults to `false`.
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Grant a consumer access to the datashare.
+GRANT USAGE ON DATASHARE datashare TO ...;
+
+-- Revoke a consumer's access to the datashare.
+REVOKE USAGE ON DATASHARE datashare FROM ...;
+```
 
 ## Lifecycle and Ownership
 

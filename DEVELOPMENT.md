@@ -157,8 +157,9 @@ hand-aligned tables and prose within 120 columns; `task markdown-fmt` does not f
 
 Templates must contain:
 
-- After the introduction, `## SQL Statements` with simplified SQL: one line per statement kind, identifying names,
-  `...` for options. Data sources use `## Catalog Query` and name the catalog source.
+- Immediately after the schema, `## SQL Statements` with simplified SQL: one line per statement kind, identifying names,
+  `...` for options. Add a short SQL comment before each statement explaining its purpose.
+  Data sources name the catalog source.
 - For resources, `## Reconciliation` immediately before `## Import`: a summary, a `| Change | Result |` table covering
   every argument and nested `block.field` in backticks, and a **Drift.** paragraph. Name the SQL operation, "no SQL", or
   replacement conditions. Keep ownership details under `## Lifecycle and Ownership`.

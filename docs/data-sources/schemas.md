@@ -9,12 +9,6 @@ description: Lists the local, external, and datashare schemas of one database.
 Lists the schemas of one database with their owner and type. See AWS
 [SVV_ALL_SCHEMAS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ALL_SCHEMAS.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_all_schemas WHERE database_name = '...' AND schema_type = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -53,6 +47,17 @@ Read-Only:
 - `schema_type` (String) `LOCAL`, `EXTERNAL`, or `SHARED`.
 - `source_database` (String) Source database of an external schema, such as its AWS Glue database; null otherwise.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List schemas matching the configured filters.
+SELECT ... FROM svv_all_schemas WHERE database_name = '...' AND schema_type = '...';
+```
+
+## Read Behavior
 
 `database` defaults to the provider's `database`. The read always runs in the provider's database, because
 `SVV_ALL_SCHEMAS` spans every database of the warehouse, so datashare databases can be listed without connecting to

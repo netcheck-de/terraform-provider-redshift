@@ -11,12 +11,6 @@ without unlocking anyone. See AWS
 [SHOW USER LOCKOUT](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_USER_LOCKOUT.html) and
 [max_failed_login_attempts](https://docs.aws.amazon.com/redshift/latest/dg/max_failed_login_attempts.html).
 
-## Catalog Query
-
-```sql
-SHOW USER LOCKOUT;
-```
-
 ## Example Usage
 
 ```terraform
@@ -57,6 +51,17 @@ Read-Only:
 - `locked_by` (Number) User ID of the superuser who locked the user; null for an automatic lockout.
 - `user_name` (String) Database user name.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List user account lockout records.
+SHOW USER LOCKOUT;
+```
+
+## Read Behavior
 
 `SHOW USER LOCKOUT` requires a superuser, so the read fails for any other provider identity. A warehouse without account
 lockout support rejects the command with "account lockout security is not supported", and the read fails too. Federated

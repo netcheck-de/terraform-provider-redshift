@@ -10,15 +10,6 @@ Owns the exact column-level privileges of one grantee on one table, view, or mat
 `SELECT` and which hold `UPDATE`. See AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-column-level)
 and [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-column-level).
 
-## SQL Statements
-
-```sql
-GRANT privilege (column, ...) ON TABLE database_name.schema_name.object_name TO ...;
-REVOKE privilege (column, ...) ON TABLE database_name.schema_name.object_name FROM ...;
-```
-
-Deleting the resource revokes the column privileges it owns; see [Reconciliation](#reconciliation) for changes.
-
 ## Example Usage
 
 ```terraform
@@ -53,11 +44,25 @@ resource "redshift_column_grant" "events" {
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Grant column privileges.
+GRANT privilege (column, ...) ON TABLE database_name.schema_name.object_name TO ...;
+
+-- Revoke column privileges.
+REVOKE privilege (column, ...) ON TABLE database_name.schema_name.object_name FROM ...;
+```
+
+## Lifecycle and Ownership
+
+Deleting the resource revokes the column privileges it owns; see [Reconciliation](#reconciliation) for changes.
+
 One resource owns all columns of one grantee on one relation, because `SVV_COLUMN_PRIVILEGES` reports each column,
 privilege, and grantee exactly. Column names are quoted identifiers, so write them as the catalog stores them (lower
 case unless case-sensitive identifiers are enabled).
-
-## Lifecycle and Ownership
 
 The resource checks that the grantee, the local database, and the relation exist, then reads
 [SVV_COLUMN_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_COLUMN_PRIVILEGES.html) in that database.
