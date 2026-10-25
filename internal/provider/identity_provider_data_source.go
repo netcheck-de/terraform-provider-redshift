@@ -93,19 +93,24 @@ func (d *identityProviderDataSource) Schema(_ context.Context, _ datasource.Sche
 func (d *identityProviderDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data identityProviderData
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	provider := identityProviderModel{Name: data.Name}
+
 	found, err := (&identityProviderResource{d.resourceClient}).read(ctx, &provider)
 	if err != nil {
 		resp.Diagnostics.AddError("Read identity provider", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("Identity provider not found", "No SQL identity provider named "+data.Name.ValueString()+" exists.")
 		return
 	}
+
 	data = identityProviderData{
 		Name: provider.Name, Type: provider.Type, Namespace: provider.Namespace, ApplicationARN: provider.ApplicationARN,
 		IAMRoleARN: provider.IAMRoleARN, Issuer: provider.Issuer, ClientID: provider.ClientID, Audience: provider.Audience,
@@ -113,6 +118,6 @@ func (d *identityProviderDataSource) Read(ctx context.Context, req datasource.Re
 		Enabled: provider.Enabled, ProviderID: provider.ProviderID, InstanceID: provider.InstanceID,
 		IdentityCenterInstanceARN: provider.IdentityCenterInstanceARN,
 	}
-	data.ID = d.identity(d.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

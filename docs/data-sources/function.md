@@ -8,12 +8,6 @@ description: Looks up a SQL user-defined function overload.
 
 Looks up one existing function overload by schema, name, and input types without managing it.
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_proc_info WHERE proname = 'name' AND oidvectortypes(proargtypes) = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -50,6 +44,17 @@ data "redshift_function" "greater" {
 - `signature` (String) Canonical input argument types without modifiers, as `ALTER FUNCTION`, `DROP FUNCTION`, and `GRANT ... ON FUNCTION` identify the overload, for example `INTEGER, CHARACTER VARYING`.
 - `volatility` (String) Optimizer volatility: `VOLATILE` (default), `STABLE`, or `IMMUTABLE`. Changed in place with `CREATE OR REPLACE FUNCTION`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the selected function overload.
+SELECT ... FROM pg_proc_info WHERE proname = 'name' AND oidvectortypes(proargtypes) = '...';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed function's JSON identity, using the same warehouse, database, schema, name, and
 `arguments` keys as the paired resource. `body` is the catalog text.

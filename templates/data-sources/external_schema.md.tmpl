@@ -9,12 +9,6 @@ description: Looks up an external schema mapping and its source.
 Looks up an existing external schema in a local Redshift database with its source form, recorded options, and owner. See
 AWS [SVV_EXTERNAL_SCHEMAS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_SCHEMAS.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_external_schemas WHERE schemaname = 'name';
-```
-
 ## Example Usage
 
 {{ tffile "examples/data-sources/redshift_external_schema/data-source.tf" }}
@@ -22,6 +16,17 @@ SELECT ... FROM svv_external_schemas WHERE schemaname = 'name';
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the external schema's source and options.
+SELECT ... FROM svv_external_schemas WHERE schemaname = 'name';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed external schema's JSON identity, using the same warehouse, owning database, and
 name keys as the paired resource.

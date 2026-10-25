@@ -17,9 +17,11 @@ func TestRoleSQL(t *testing.T) {
 		if owner != "" {
 			model.Owner = types.StringValue(owner)
 		}
+
 		if external != "" {
 			model.ExternalID = types.StringValue(external)
 		}
+
 		return model
 	}
 	built := func(query sqlclient.Query) func() (string, error) {

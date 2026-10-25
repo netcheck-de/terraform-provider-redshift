@@ -17,10 +17,12 @@ import (
 // Lambda function; REDSHIFT_ACC_LAMBDA_ROLE optionally names an associated role ARN instead of the default role.
 func TestAccExternalFunctionLifecycle(t *testing.T) {
 	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_LAMBDA_FUNCTION")
+
 	role := os.Getenv("REDSHIFT_ACC_LAMBDA_ROLE")
 	if role == "" {
 		role = "DEFAULT"
 	}
+
 	name := "acc_exfunc_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(retryTimeout int, volatility string) string {
 		return fmt.Sprintf(`

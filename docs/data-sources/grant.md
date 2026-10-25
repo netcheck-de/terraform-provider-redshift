@@ -9,12 +9,6 @@ description: Reads explicit role, user, or datashare permissions within one data
 Reads an explicit scoped privilege set, excluding inherited role access and other scopes. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-scoped-syntax).
 
-## Catalog Query
-
-```sql
-SHOW GRANTS ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -48,6 +42,17 @@ data "redshift_grant" "readers" {
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `privileges` (Set of String) Current explicit privileges for the selected tuple; inherited privileges are excluded.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read privileges for the selected recipient and scope.
+SHOW GRANTS ...;
+```
+
+## Read Behavior
 
 `id` (String, computed) is the permission tuple's JSON identity in the paired resource format. It includes the
 warehouse, provider database, `database_name`, `scope`, and the selected `role`, `user`, or `datashare`; `schema_name`

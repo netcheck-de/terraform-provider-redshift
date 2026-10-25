@@ -24,6 +24,7 @@ func TestAccDirectIAMQueries(t *testing.T) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &redshiftconn.Client{IAM: &redshiftconn.IAM{Workgroup: workgroup, Serverless: redshiftserverless.NewFromConfig(cfg)}, CACertFile: testAccCACertFile(), SSLMode: testAccSSLMode(), Timeout: 30 * time.Second}
 	rows, err := client.Query(ctx, sqlclient.Connection{Database: database}, "SELECT current_user AS username, CAST(:value AS VARCHAR) AS value, true AS enabled, CAST(NULL AS VARCHAR) AS empty", map[string]string{"value": "O'Reilly"})
 	require.NoError(t, err)
@@ -43,6 +44,7 @@ func TestAccTransportSwitchLifecycle(t *testing.T) {
 		if direct {
 			selector = fmt.Sprintf("direct_connection {\n %s iam { workgroup_name = %q }\n}", testAccSSLModeHCL(), workgroup)
 		}
+
 		return fmt.Sprintf(`
 provider "redshift" {
   region = %q

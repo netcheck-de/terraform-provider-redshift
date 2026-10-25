@@ -45,9 +45,11 @@ func functionLanguage(data functionModel) error {
 	if strings.EqualFold(language, "plpythonu") {
 		return errFunctionPython
 	}
+
 	if language != "" && !strings.EqualFold(language, functionLanguageSQL) {
 		return fmt.Errorf("language %q is not supported; only SQL is", language)
 	}
+
 	return nil
 }
 
@@ -56,44 +58,56 @@ func newFunctionSpec(data functionModel) (functionSpec, error) {
 	if err := functionLanguage(data); err != nil {
 		return functionSpec{}, err
 	}
+
 	spec := functionSpec{schema: knownString(data.Schema), name: knownString(data.Name), body: knownString(data.Body)}
 	if spec.schema == "" || spec.name == "" {
 		return functionSpec{}, errors.New("schema and name must be nonempty")
 	}
+
 	arguments := routineStrings(data.Arguments)
 	if len(arguments) > routineMaxArguments {
 		return functionSpec{}, fmt.Errorf("a function accepts at most %d arguments, got %d", routineMaxArguments, len(arguments))
 	}
+
 	for i, argument := range arguments {
 		name, err := routineType(argument)
 		if err == nil {
 			err = routineRejectedType(routineBaseType(name), "function")
 		}
+
 		if err != nil {
 			return functionSpec{}, fmt.Errorf("argument %d: %w", i+1, err)
 		}
+
 		spec.arguments = append(spec.arguments, name)
 	}
+
 	var err error
 	if spec.signature, err = routineSignature(arguments); err != nil {
 		return functionSpec{}, err
 	}
+
 	if spec.returns, err = routineType(knownString(data.ReturnType)); err == nil {
 		err = routineRejectedType(routineBaseType(spec.returns), "function")
 	}
+
 	if err != nil {
 		return functionSpec{}, fmt.Errorf("return_type: %w", err)
 	}
+
 	volatility := knownString(data.Volatility)
 	if volatility == "" {
 		volatility = "VOLATILE"
 	}
+
 	if spec.volatility, err = sqlclient.OneOf(volatility, "VOLATILE", "STABLE", "IMMUTABLE"); err != nil {
 		return functionSpec{}, fmt.Errorf("volatility: %w", err)
 	}
+
 	if strings.TrimSpace(spec.body) == "" {
 		return functionSpec{}, errors.New("body must contain a SELECT clause")
 	}
+
 	return spec, nil
 }
 
@@ -103,6 +117,7 @@ func functionArguments(argumentTypes []sqlclient.Keyword) []sqlclient.Statement 
 	for i, name := range argumentTypes {
 		items[i] = sqlclient.Kw(name)
 	}
+
 	return items
 }
 
@@ -141,6 +156,7 @@ func functionAlterSteps(spec functionSpec) []alterStep[functionModel] {
 			return routineDeclaredTypes(data.ReturnType.IsUnknown(), data.ReturnType.ValueString())
 		}},
 	)
+
 	return append(steps, functionOwnerStep)
 }
 
@@ -154,6 +170,7 @@ func alterFunctionStatements(prev, plan functionModel) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return alterStatements(prev, plan, functionAlterSteps(spec)), nil
 }
 
@@ -164,6 +181,7 @@ func dropFunctionStatement(data functionModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return functionTarget("DROP FUNCTION", data.Schema.ValueString(), data.Name.ValueString(), signature).String(), nil
 }
 

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 var _ = registerFakeFamily("user", func() fakeFamily { return newUserFamily() })
@@ -60,21 +60,27 @@ func (f *userFamily) options(clause string) error {
 	if match := userFakeValidUntil.FindStringSubmatch(clause); match != nil {
 		f.validUntil = commentUnescaper.Replace(match[1])
 	}
+
 	if match := userFakeLimit.FindStringSubmatch(clause); match != nil {
 		f.connectionLimit = match[1]
 	}
+
 	if match := userFakeTimeout.FindStringSubmatch(clause); match != nil {
 		f.sessionTimeout = match[1]
 	}
+
 	if match := userFakeSyslog.FindStringSubmatch(clause); match != nil {
 		f.syslog = match[1]
 	}
+
 	if match := userFakeExternal.FindStringSubmatch(clause); match != nil {
 		if !f.disabled {
 			return errors.New("EXTERNALID requires a disabled password")
 		}
+
 		f.externalID = strings.ReplaceAll(match[1], `""`, `"`)
 	}
+
 	return nil
 }
 
@@ -86,6 +92,7 @@ func (f *userFamily) setting(name, value string, remove bool) {
 			kept = append(kept, entry)
 		}
 	}
+
 	f.config = kept
 	if !remove {
 		f.config = append(f.config, name+"="+value)
@@ -95,13 +102,16 @@ func (f *userFamily) setting(name, value string, remove bool) {
 // userFakeSearchPath renders SET search_path literals the way Redshift stores them, quoting names that need it.
 func userFakeSearchPath(values string) string {
 	var names []string
+
 	for _, match := range literals.FindAllStringSubmatch(values, -1) {
 		name := commentUnescaper.Replace(match[1])
 		if !userFakeIdentifier.MatchString(name) {
 			name = `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 		}
+
 		names = append(names, name)
 	}
+
 	return strings.Join(names, ", ")
 }
 
@@ -112,6 +122,7 @@ func (f *userFamily) alter(c *catalog, clause string) error {
 		if c.superuser {
 			return errors.New("cannot disable the password of a superuser")
 		}
+
 		f.disabled = true
 	case strings.HasPrefix(clause, "PASSWORD '"):
 		f.disabled = false
@@ -119,6 +130,7 @@ func (f *userFamily) alter(c *catalog, clause string) error {
 		if f.disabled {
 			return errors.New("a superuser needs a password")
 		}
+
 		c.superuser = true
 	case clause == "NOCREATEUSER":
 		c.superuser = false
@@ -130,6 +142,7 @@ func (f *userFamily) alter(c *catalog, clause string) error {
 		f.sessionTimeout = "0"
 	case userFakeSet.MatchString(clause):
 		match := userFakeSet.FindStringSubmatch(clause)
+
 		value := match[2]
 		if match[1] == userSearchPathParameter {
 			value = userFakeSearchPath(value)
@@ -138,25 +151,29 @@ func (f *userFamily) alter(c *catalog, clause string) error {
 			if err != nil {
 				return err
 			}
+
 			value = commentUnescaper.Replace(unquoted)
 		}
+
 		f.setting(match[1], value, false)
 	case userFakeReset.MatchString(clause):
 		f.setting(userFakeReset.FindStringSubmatch(clause)[1], "", true)
 	default:
 		return f.options(clause)
 	}
+
 	return nil
 }
 
 // query answers the user reads and applies CREATE, ALTER, and DROP USER.
-func (f *userFamily) query(c *catalog, _ dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+func (f *userFamily) query(c *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	switch {
 	case strings.HasPrefix(sql, "SELECT usename, usesuper, usecreatedb, valuntil"):
 		if !c.user {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{
+
+		return []sqlclient.Row{{
 			"usename": parameters["name"], "usesuper": strconv.FormatBool(c.superuser), "usecreatedb": strconv.FormatBool(c.createDB),
 			"valuntil": f.validUntil, "useconfig": strings.Join(f.config, userConfigSeparator),
 		}}, true, nil
@@ -164,42 +181,53 @@ func (f *userFamily) query(c *catalog, _ dataapi.Connection, sql string, paramet
 		if !c.user || f.infoHidden {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{"connection_limit": f.connectionLimit, "syslog_access": f.syslog, "session_timeout": f.sessionTimeout, "external_user_id": f.externalID}}, true, nil
+
+		return []sqlclient.Row{{"connection_limit": f.connectionLimit, "syslog_access": f.syslog, "session_timeout": f.sessionTimeout, "external_user_id": f.externalID}}, true, nil
 	case strings.HasPrefix(sql, "CREATE USER"):
 		if c.user {
 			return nil, true, errors.New("user already exists")
 		}
+
 		fresh := newUserFamily()
 		fresh.infoHidden = f.infoHidden
 		fresh.disabled = strings.Contains(sql, " PASSWORD DISABLE ")
+
 		superuser := strings.Contains(sql, " CREATEUSER")
 		if fresh.disabled && superuser {
 			return nil, true, errors.New("cannot disable the password of a superuser")
 		}
+
 		if err := fresh.options(sql); err != nil {
 			return nil, true, err
 		}
+
 		*f = *fresh
 		c.user, c.superuser, c.createDB = true, superuser, strings.Contains(sql, " CREATEDB")
+
 		return nil, true, nil
 	case strings.HasPrefix(sql, "ALTER USER"):
 		match := userFakeAlter.FindStringSubmatch(sql)
 		if match == nil {
 			return nil, true, errors.New("fake catalog cannot parse " + sql)
 		}
+
 		if !c.user {
 			return nil, true, errors.New("user does not exist")
 		}
+
 		return nil, true, f.alter(c, match[1])
 	case strings.HasPrefix(sql, "DROP USER"):
 		if c.userGrant {
 			return nil, true, errors.New("user still has role grants")
 		}
+
 		hidden := f.infoHidden
 		*f = *newUserFamily()
 		f.infoHidden = hidden
 		c.user = false
+
 		return nil, true, nil
 	}
+
 	return nil, false, nil
 }

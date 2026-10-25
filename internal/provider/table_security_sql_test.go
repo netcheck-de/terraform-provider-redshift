@@ -20,6 +20,7 @@ func TestTableSecuritySQL(t *testing.T) {
 	with := func(change func(*tableSecurityModel)) tableSecurityModel {
 		data := tableSecuritySample()
 		change(&data)
+
 		return data
 	}
 	create := func(data tableSecurityModel) func() ([]string, error) {

@@ -42,12 +42,14 @@ func copyJobTarget(table types.Object) copyJobTable {
 	if table.IsNull() || table.IsUnknown() {
 		return copyJobTable{}
 	}
+
 	target := copyJobTable{schema: objectString(table, "schema"), name: objectString(table, "name")}
 	if columns, ok := table.Attributes()["columns"].(types.List); ok && !columns.IsNull() && !columns.IsUnknown() {
 		for _, column := range columns.Elements() {
 			target.columns = append(target.columns, column.(types.String).ValueString())
 		}
 	}
+
 	return target
 }
 
@@ -59,6 +61,7 @@ func copyJobValidate(data copyJobModel) error {
 	if !data.Name.IsUnknown() && !copyJobName.MatchString(data.Name.ValueString()) {
 		return fmt.Errorf("name %q must be 1 to 127 lowercase letters, digits, or underscores, starting with a letter or underscore; COPY JOB names cannot contain hyphens", data.Name.ValueString())
 	}
+
 	if !data.Table.IsUnknown() && !data.Table.IsNull() {
 		for _, name := range []string{"schema", "name"} {
 			value := data.Table.Attributes()[name].(types.String)
@@ -66,6 +69,7 @@ func copyJobValidate(data copyJobModel) error {
 				return fmt.Errorf("the table block needs a nonempty schema and name")
 			}
 		}
+
 		if columns, ok := data.Table.Attributes()["columns"].(types.List); ok {
 			for _, column := range columns.Elements() {
 				if !column.IsUnknown() && (column.IsNull() || column.(types.String).ValueString() == "") {
@@ -74,12 +78,15 @@ func copyJobValidate(data copyJobModel) error {
 			}
 		}
 	}
+
 	if !data.Source.IsUnknown() && !copyJobSourcePattern.MatchString(data.Source.ValueString()) {
 		return fmt.Errorf("source %q must be an s3:// prefix", data.Source.ValueString())
 	}
+
 	if !data.IAMRole.IsUnknown() && !copyJobRolePattern.MatchString(data.IAMRole.ValueString()) {
 		return fmt.Errorf("iam_role %q must be an IAM role ARN; COPY JOB does not support the default role", data.IAMRole.ValueString())
 	}
+
 	return copyValidateKnown(data.Format, data.FormatArgument, data.Parameters, true)
 }
 
@@ -101,13 +108,16 @@ func createCopyJobStatement(data copyJobModel) (string, error) {
 	if data.Name.IsUnknown() || data.Source.IsUnknown() || data.IAMRole.IsUnknown() || !copyOptionsKnown(data.Format, data.FormatArgument, data.Parameters) {
 		return "", fmt.Errorf("the COPY job definition must be known before apply")
 	}
+
 	if data.Table.IsNull() || data.Table.IsUnknown() {
 		return "", fmt.Errorf("the table block needs a nonempty schema and name")
 	}
+
 	for _, value := range data.Table.Attributes() {
 		if value.IsUnknown() {
 			return "", fmt.Errorf("the COPY job table must be known before apply")
 		}
+
 		if columns, ok := value.(types.List); ok {
 			for _, column := range columns.Elements() {
 				if column.IsUnknown() {
@@ -116,18 +126,23 @@ func createCopyJobStatement(data copyJobModel) (string, error) {
 			}
 		}
 	}
+
 	if err := copyJobValidate(data); err != nil {
 		return "", err
 	}
+
 	target := copyJobTarget(data.Table)
+
 	format, err := copyFormatFragment(knownString(data.Format), knownString(data.FormatArgument))
 	if err != nil {
 		return "", err
 	}
+
 	parameters, err := copyParameterFragments(knownMap(data.Parameters), true)
 	if err != nil {
 		return "", err
 	}
+
 	statement := sqlclient.Stmt("COPY").Qualified(target.schema, target.name).
 		When(len(target.columns) > 0, func(s sqlclient.Statement) sqlclient.Statement {
 			return s.Paren(sqlclient.Fragment().Idents(target.columns...))
@@ -135,6 +150,7 @@ func createCopyJobStatement(data copyJobModel) (string, error) {
 		KwLit("FROM", data.Source.ValueString()).KwLit("IAM_ROLE", data.IAMRole.ValueString()).
 		Append(format).Append(parameters...).Kw("JOB CREATE", copyJobKeyword(data.Name.ValueString()))
 	statement = copyJobAuto(statement, data.Auto)
+
 	return statement.String(), statement.Err()
 }
 
@@ -152,6 +168,7 @@ func alterCopyJobStatements(prev, plan copyJobModel) ([]string, error) {
 	if !copyJobName.MatchString(plan.Name.ValueString()) {
 		return nil, fmt.Errorf("invalid copy job name %q", plan.Name.ValueString())
 	}
+
 	return alterStatements(prev, plan, copyJobAlterSteps), nil
 }
 
@@ -160,6 +177,7 @@ func dropCopyJobStatement(data copyJobModel) (string, error) {
 	if !copyJobName.MatchString(data.Name.ValueString()) {
 		return "", fmt.Errorf("invalid copy job name %q", data.Name.ValueString())
 	}
+
 	return sqlclient.Stmt("COPY JOB DROP").Kw(copyJobKeyword(data.Name.ValueString())).String(), nil
 }
 
@@ -188,6 +206,7 @@ func copyJobAutoValue(text string) (bool, error) {
 	case "0", "f", "false":
 		return false, nil
 	}
+
 	return false, fmt.Errorf("unexpected SYS_COPY_JOB.is_auto %q", text)
 }
 
@@ -195,9 +214,11 @@ func copyJobAutoValue(text string) (bool, error) {
 // than its 128-character column, and otherwise reports the catalog role.
 func copyJobRoleValue(configured types.String, catalog string) types.String {
 	catalog = strings.TrimSpace(catalog)
+
 	role := knownString(configured)
 	if role == catalog || len(role) > copyJobRoleLength && role[:copyJobRoleLength] == catalog {
 		return configured
 	}
+
 	return types.StringValue(catalog)
 }

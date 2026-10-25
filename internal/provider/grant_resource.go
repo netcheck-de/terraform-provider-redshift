@@ -28,7 +28,7 @@ type grantResource struct {
 
 // grantModel is the Terraform state for one recipient/database/scope permission tuple.
 type grantModel struct {
-	// ID records the administration binding and permission tuple.
+	// ID records the permission tuple within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// DatabaseName receives the scoped permissions.
 	DatabaseName types.String `tfsdk:"database_name"`
@@ -112,6 +112,7 @@ func (r *grantResource) Schema(_ context.Context, _ resource.SchemaRequest, resp
 			"grant_option_privileges": grantOptionAttribute(),
 		},
 	}
+	foldNames(&resp.Schema, "database_name", "schema_name", "datashare")
 }
 
 // validate checks scope, recipient, privilege, and grant option rules without issuing SQL.
@@ -120,27 +121,35 @@ func (data grantModel) validate() error {
 	if _, ok := grantScopePrivileges[scope]; !ok && !data.Scope.IsUnknown() {
 		return fmt.Errorf("unsupported scope %q", scope)
 	}
+
 	if !data.Scope.IsUnknown() && !data.SchemaName.IsUnknown() && ((scope == "SCHEMA" && schemaName == "") || (schemaName != "" && !slices.Contains(grantSchemaScopes, scope))) {
 		return fmt.Errorf("schema_name is required for SCHEMA and only valid with SCHEMA, TABLES, FUNCTIONS, PROCEDURES, or TEMPLATES scope")
 	}
+
 	kind, _, err := data.recipient()
+
 	recipientKnown := !data.Role.IsUnknown() && !data.User.IsUnknown() && !data.Datashare.IsUnknown()
 	if err != nil && recipientKnown {
 		return err
 	}
+
 	if knownString(data.Datashare) != "" && ((!data.SchemaName.IsUnknown() && schemaName == "") || (!data.Scope.IsUnknown() && scope != "SCHEMA" && scope != "TABLES")) {
 		return fmt.Errorf("datashare grants require a local database, schema_name, SCHEMA or TABLES scope, and no role")
 	}
+
 	allowed := data.allowed()
+
 	privileges := knownStrings(data.Privileges)
 	for _, privilege := range privileges {
 		if !data.Scope.IsUnknown() && !privilegeAllowed(allowed, privilege) {
 			if kind == "DATASHARE" {
 				return fmt.Errorf("datashare %s grants support only %s", scope, allowed[0])
 			}
+
 			return fmt.Errorf("%s grants support only %s, not %q", scope, strings.Join(privilegeNames(allowed), ", "), privilege)
 		}
 	}
+
 	return validateGrantOptions(data.Privileges, data.GrantOptionPrivileges, recipientKnown, kind == "USER")
 }
 
@@ -151,15 +160,19 @@ func (r *grantResource) read(ctx context.Context, data *grantModel) (string, boo
 	if err := data.validateTuple(); err != nil {
 		return "", false, err
 	}
+
 	admin := r.database.ValueString()
 	if err := r.bound(data.ID, admin); err != nil {
 		return admin, false, err
 	}
+
 	rows, err := r.selectRows(ctx, admin, grantDatabaseTypeQuery(data.DatabaseName.ValueString()))
 	if err != nil || len(rows) == 0 {
 		return admin, false, err
 	}
+
 	target := admin
+
 	switch rows[0]["database_type"] {
 	case "local":
 		target = data.DatabaseName.ValueString()
@@ -167,18 +180,23 @@ func (r *grantResource) read(ctx context.Context, data *grantModel) (string, boo
 	default:
 		return target, false, fmt.Errorf("scoped grants require a local or shared database")
 	}
+
 	kind, identity, _ := data.recipient()
 	parentDatabase := admin
+
 	if kind == "DATASHARE" {
 		if rows[0]["database_type"] != "local" {
 			return target, false, fmt.Errorf("datashare grants require a local database, schema_name, SCHEMA or TABLES scope, and no role")
 		}
+
 		identity, parentDatabase = "ds:"+identity, target
 	}
+
 	parents, err := r.selectRows(ctx, parentDatabase, grantRecipientQuery(*data))
 	if err != nil || len(parents) == 0 {
 		return target, false, err
 	}
+
 	if schemaName != "" && rows[0]["database_type"] == "local" {
 		// A schema dropped outside Terraform removes the grant instead of failing every refresh.
 		schemas, err := r.selectRows(ctx, admin, privilegeSchemaQuery(data.DatabaseName.ValueString(), schemaName))
@@ -186,37 +204,48 @@ func (r *grantResource) read(ctx context.Context, data *grantModel) (string, boo
 			return target, false, err
 		}
 	}
+
 	rows, err = r.queryDatabase(ctx, target, readGrantStatement(*data), nil)
 	if err != nil {
 		return target, false, err
 	}
+
 	privileges, options := map[string]bool{}, map[string]bool{}
+
 	for _, row := range rows {
 		if !data.grantRowMatches(row, identity) {
 			continue
 		}
+
 		name := normalizePrivilege(row["privilege_type"])
 		privileges[name] = true
 		// Another grantor's plain grant can report the same privilege, so one row with the option is enough.
 		options[name] = options[name] || row["admin_option"] == "true" || row["admin_option"] == "t"
 	}
+
 	data.Privileges, data.GrantOptionPrivileges = grantSet(privileges, nil), grantSet(privileges, options)
+	data.ID = normalizeLegacyIdentity(data.ID, false)
+
 	return target, true, nil
 }
 
 // grantSet returns the sorted names of values, limited to those selected when selected is not nil.
 func grantSet(values, selected map[string]bool) types.Set {
 	var names []string
+
 	for name := range values {
 		if selected == nil || selected[name] {
 			names = append(names, name)
 		}
 	}
+
 	sort.Strings(names)
+
 	elements := make([]attr.Value, 0, len(names))
 	for _, name := range names {
 		elements = append(elements, types.StringValue(name))
 	}
+
 	return types.SetValueMust(types.StringType, elements)
 }
 
@@ -224,6 +253,7 @@ func grantSet(values, selected map[string]bool) types.Set {
 func (data grantModel) validateTuple() error {
 	tuple := data
 	tuple.Privileges, tuple.GrantOptionPrivileges = types.SetNull(types.StringType), types.SetNull(types.StringType)
+
 	return tuple.validate()
 }
 
@@ -232,25 +262,32 @@ func (r *grantResource) reconcile(ctx context.Context, data grantModel) error {
 	if err := data.validate(); err != nil {
 		return err
 	}
+
 	actual := data
+
 	target, found, err := r.read(ctx, &actual)
 	if err != nil {
 		return err
 	}
+
 	if !found {
 		return fmt.Errorf("target database or receiving identity does not exist")
 	}
+
 	allowed := data.allowed()
+
 	current := knownStrings(actual.Privileges)
 	for _, name := range current {
 		if !privilegeAllowed(allowed, name) {
 			return fmt.Errorf("unsupported catalog privilege %q", name)
 		}
 	}
+
 	spec, err := data.spec()
 	if err != nil {
 		return err
 	}
+
 	desiredOptions := knownStrings(data.GrantOptionPrivileges)
 	// Removals run before additions; each operation is retryable.
 	statements, err := privilegeOptionStatements(spec, allowed,
@@ -259,13 +296,16 @@ func (r *grantResource) reconcile(ctx context.Context, data grantModel) error {
 	if err != nil {
 		return err
 	}
+
 	if err := r.exec(ctx, target, statements...); err != nil {
 		return err
 	}
+
 	_, found, err = r.read(ctx, &actual)
 	if err == nil && (!found || !slices.Equal(knownStrings(actual.Privileges), knownStrings(data.Privileges)) || !slices.Equal(knownStrings(actual.GrantOptionPrivileges), desiredOptions)) {
 		err = fmt.Errorf("scoped privileges did not converge after reconciliation")
 	}
+
 	return err
 }
 
@@ -273,6 +313,7 @@ func (r *grantResource) reconcile(ctx context.Context, data grantModel) error {
 func (r *grantResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data grantModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -281,15 +322,18 @@ func (r *grantResource) Create(ctx context.Context, req resource.CreateRequest, 
 		resp.Diagnostics.AddError("Create scoped grant", err.Error())
 		return
 	}
+
 	kind, name, _ := data.recipient()
 	// Grants are idempotent; retain ownership even after a partially applied set.
 	fields := map[string]string{"database_name": data.DatabaseName.ValueString(), "scope": data.Scope.ValueString(), grantRecipientField[kind]: name}
 	if schemaName := knownString(data.SchemaName); schemaName != "" {
 		fields["schema_name"] = schemaName
 	}
-	data.ID = r.identity(r.database.ValueString(), fields)
+
+	data.ID = identity(fields)
 	data.GrantOptionPrivileges = types.SetValueMust(types.StringType, grantStringValues(knownStrings(data.GrantOptionPrivileges)))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if err := r.reconcile(ctx, data); err != nil {
 		resp.Diagnostics.AddError("Create scoped grant", err.Error())
 	}
@@ -304,6 +348,7 @@ func grantStringValues(names []string) []attr.Value {
 	for _, name := range names {
 		values = append(values, types.StringValue(name))
 	}
+
 	return values
 }
 
@@ -311,9 +356,11 @@ func grantStringValues(names []string) []attr.Value {
 func (r *grantResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data grantModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := data.validate(); err != nil {
 		resp.Diagnostics.AddError("Invalid scoped grant", err.Error())
 	}
@@ -323,18 +370,22 @@ func (r *grantResource) ValidateConfig(ctx context.Context, req resource.Validat
 func (r *grantResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data grantModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	_, found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read scoped grant", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -342,13 +393,16 @@ func (r *grantResource) Read(ctx context.Context, req resource.ReadRequest, resp
 func (r *grantResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data grantModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.reconcile(ctx, data); err != nil {
 		resp.Diagnostics.AddError("Update scoped grant", err.Error())
 		return
 	}
+
 	data.GrantOptionPrivileges = types.SetValueMust(types.StringType, grantStringValues(knownStrings(data.GrantOptionPrivileges)))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -357,17 +411,21 @@ func (r *grantResource) Update(ctx context.Context, req resource.UpdateRequest, 
 func (r *grantResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data grantModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	_, found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read scoped grant", err.Error())
 		return
 	}
+
 	if !found {
 		return
 	}
+
 	data.Privileges, data.GrantOptionPrivileges = types.SetValueMust(types.StringType, nil), types.SetValueMust(types.StringType, nil)
 	if err := r.reconcile(ctx, data); err != nil {
 		resp.Diagnostics.AddError("Delete scoped grant", err.Error())
@@ -378,7 +436,9 @@ func (r *grantResource) Delete(ctx context.Context, req resource.DeleteRequest, 
 // schema binding.
 func (r *grantResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	var values map[string]string
+
 	recipient := "role"
+
 	if json.Unmarshal([]byte(req.ID), &values) == nil {
 		for _, field := range []string{"user", "datashare"} {
 			if values[field] != "" {
@@ -386,10 +446,13 @@ func (r *grantResource) ImportState(ctx context.Context, req resource.ImportStat
 			}
 		}
 	}
+
 	importIdentity(ctx, req, resp, "database_name", recipient, "scope")
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if values["schema_name"] != "" {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("schema_name"), values["schema_name"])...)
 	}

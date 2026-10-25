@@ -38,13 +38,16 @@ func TestRlsPolicyLookupDescriptions(t *testing.T) {
 		var response datasource.SchemaResponse
 		source().Schema(context.Background(), datasource.SchemaRequest{}, &response)
 		descriptions := nestedDescriptions(response.Schema.Attributes)
+
 		prefix := ""
 		if _, ok := response.Schema.Attributes["rls_policies"]; ok {
 			prefix = "rls_policies."
 		}
+
 		for path, expected := range rlsPolicyLookupDescriptions {
 			assert.Equal(t, expected, descriptions[prefix+path], prefix+path)
 		}
+
 		for path, description := range descriptions {
 			assert.NotContains(t, description, "replace_triggered_by", path)
 			assert.NotContains(t, description, "block", path)
@@ -72,15 +75,20 @@ func TestTableSecurityLookup(t *testing.T) {
 
 // TestRlsPoliciesListing lists every policy of the selected database and binds the identity to it.
 func TestRlsPoliciesListing(t *testing.T) {
-	var target sqlclient.Connection
-	var parameters map[string]string
+	var (
+		target     sqlclient.Connection
+		parameters map[string]string
+	)
+
 	rows := []sqlclient.Row{
 		{"poldb": "analytics", "polname": "open", "polalias": "", "polatts": "[]", "polqual": "true"},
 		{"poldb": "analytics", "polname": "region_filter", "polalias": "t", "polatts": rlsFakeColumns, "polqual": `"t"."region" = current_user`},
 	}
 	client := queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
 		require.Contains(t, sql, "FROM svv_rls_policy")
+
 		target, parameters = connection, params
+
 		return rows, nil
 	})
 	source := newRlsPoliciesDataSource()
@@ -88,11 +96,14 @@ func TestRlsPoliciesListing(t *testing.T) {
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.Equal(t, "analytics", target.Database)
 	assert.Equal(t, map[string]string{"database": "analytics"}, parameters)
+
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
+
 	var identity map[string]string
 	require.NoError(t, json.Unmarshal([]byte(observed.Attributes()["id"].(types.String).ValueString()), &identity))
-	assert.Equal(t, map[string]string{"workgroup_name": "warehouse", "database": "analytics"}, identity)
+	assert.Equal(t, map[string]string{"database": "analytics"}, identity)
+
 	items := collectionResult(source, observed).Elements()
 	require.Len(t, items, 2)
 	open, filtered := items[0].(types.Object).Attributes(), items[1].(types.Object).Attributes()

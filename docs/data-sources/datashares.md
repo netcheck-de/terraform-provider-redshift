@@ -9,12 +9,6 @@ description: Lists the inbound and outbound datashares of the provider's namespa
 Lists the inbound and outbound datashares visible in the provider's namespace, optionally narrowed by type or name. See
 AWS [SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_datashares ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -41,7 +35,7 @@ output "outbound_datashare_names" {
 ### Read-Only
 
 - `datashares` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--datashares))
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 
 <a id="nestedatt--datashares"></a>
 ### Nested Schema for `datashares`
@@ -61,12 +55,22 @@ Read-Only:
 - `share_type` (String) `OUTBOUND` for a share this namespace produces, `INBOUND` for one it consumes.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List visible datashares matching the configured filters.
+SELECT ... FROM svv_datashares ...;
+```
+
+## Read Behavior
+
 `datashares` is empty when nothing matches; it is ordered by share type and name. Outbound shares report their producer
 `database` and `owner`. Inbound shares report the `consumer_database` created from them, while `producer_account` and
 `producer_namespace` identify the producer; their `database` and `owner` are null.
 
-`id` (String, computed) is the listing's JSON identity: the warehouse binding, the provider database, and the configured
-filters.
+`id` (String, computed) is the listing's provider-relative JSON identity containing the configured filters.
 
 `SVV_DATASHARES` shows rows only to superusers, share owners, and users with `ALTER` or `USAGE` on a share, so the
 listing is limited to what the provider user can see. Only read-only SQL is executed.

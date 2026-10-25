@@ -16,6 +16,7 @@ import (
 func tableSecurityLifecycleModel() tableSecurityModel {
 	data := tableSecuritySample()
 	data.Database = types.StringValue("admin")
+
 	return data
 }
 
@@ -43,11 +44,13 @@ var (
 		invalid: func() tableSecurityModel {
 			data := tableSecurityLifecycleModel()
 			data.Schema = types.StringValue("")
+
 			return data
 		}(),
 		unknown: func() tableSecurityModel {
 			data := tableSecurityLifecycleModel()
 			data.Schema = types.StringUnknown()
+
 			return data
 		}(),
 	})
@@ -89,13 +92,16 @@ func TestTableSecurityTranscripts(t *testing.T) {
 // tableSecurityOperation runs one lifecycle RPC and decodes the resulting state.
 func tableSecurityOperation(t *testing.T, client sqlclient.Client, operation string, prior, planned any) (tableSecurityModel, bool) {
 	t.Helper()
+
 	r := newTableSecurityResource()
 	configureTestResource(t, r, client)
 	state, diagnostics := applyOperation(t, r, operation, prior, planned, nil)
+
 	var data tableSecurityModel
 	if !state.Raw.IsNull() {
 		require.False(t, state.Get(context.Background(), &data).HasError())
 	}
+
 	return data, diagnostics.HasError()
 }
 
@@ -111,7 +117,7 @@ func TestTableSecurityLifecycle(t *testing.T) {
 	assert.True(t, f.rlsOn)
 	assert.Equal(t, types.StringValue("OR"), created.ConjunctionType, "an unset conjunction keeps the padded catalog value")
 	assert.Equal(t, types.BoolValue(false), created.DatashareRowLevelSecurity, "an unset datashare setting keeps the catalog value")
-	assertLookupIdentity(t, created.ID, "admin", map[string]string{"schema": "public", "relation": "events"})
+	assertLookupIdentity(t, created.ID, map[string]string{"database": "admin", "schema": "public", "relation": "events"})
 
 	f.rlsOn = false
 	drifted, failed := tableSecurityOperation(t, c, "read", created, nil)
@@ -136,6 +142,7 @@ func TestTableSecurityUnlistedRelationDefaults(t *testing.T) {
 		if strings.HasPrefix(sql, "SELECT c.relname") {
 			return []sqlclient.Row{{"relname": "events"}}, nil
 		}
+
 		return nil, nil
 	})
 	r := &tableSecurityResource{testResourceClient(client)}
@@ -161,6 +168,7 @@ func TestTableSecurityRejectsMalformedCatalog(t *testing.T) {
 				if strings.HasPrefix(sql, "SELECT c.relname") {
 					return []sqlclient.Row{{"relname": "events"}}, nil
 				}
+
 				return rows, nil
 			})
 			data := tableSecurityLifecycleModel()
@@ -185,6 +193,7 @@ func TestTableSecurityVerifiesConvergence(t *testing.T) {
 				case strings.HasPrefix(sql, "SELECT is_rls_on"):
 					return []sqlclient.Row{row}, nil
 				}
+
 				return nil, nil
 			})
 			r := newTableSecurityResource()
@@ -205,6 +214,7 @@ func TestTableSecurityRejectsInvalidPlansBeforeSQL(t *testing.T) {
 	configureTestResource(t, r, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return nil, errors.New("no SQL expected")
 	}))
+
 	invalid := tableSecurityLifecycleModel()
 	invalid.Relation = types.StringValue("")
 	state, diagnostics := applyOperation(t, r, "create", nil, invalid, nil)
@@ -212,4 +222,28 @@ func TestTableSecurityRejectsInvalidPlansBeforeSQL(t *testing.T) {
 	assert.True(t, state.Raw.IsNull())
 	_, diagnostics = applyOperation(t, r, "update", tableSecurityLifecycleModel(), invalid, nil)
 	require.True(t, diagnostics.HasError())
+}
+
+// TestTableSecurityCreateRecordsStateWhenDatashareStatementFails keeps the relation in state once row-level security is
+// on, so removing the resource from configuration later turns it off again.
+func TestTableSecurityCreateRecordsStateWhenDatashareStatementFails(t *testing.T) {
+	c := fullCatalog()
+	f := rlsFakeOf(c)
+	f.rlsOn, f.datashare = false, false
+	client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		if strings.HasSuffix(sql, " FOR DATASHARES") {
+			return nil, errors.New("datashare row-level security refused")
+		}
+
+		return c.Query(ctx, target, sql, parameters)
+	})
+	planned := tableSecurityLifecycleModel()
+	planned.DatashareRowLevelSecurity = types.BoolValue(true)
+	recorded, failed := tableSecurityOperation(t, client, "create", nil, planned)
+	require.True(t, failed)
+	assert.False(t, recorded.ID.IsNull(), "the relation whose row-level security is on is tracked")
+	assert.True(t, f.rlsOn)
+	_, failed = tableSecurityOperation(t, c, "delete", recorded, nil)
+	require.False(t, failed)
+	assert.False(t, f.rlsOn, "destroy turns row-level security off again")
 }

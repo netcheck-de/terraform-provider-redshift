@@ -124,6 +124,7 @@ data "redshift_grant" "schema" {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	connection := sqlclient.Connection{Database: database}
 
@@ -142,10 +143,12 @@ data "redshift_grant" "schema" {
 				if err != nil {
 					return err
 				}
+
 				if len(rows) != 0 {
 					return fmt.Errorf("%s still exists after destroy", check.name)
 				}
 			}
+
 			return nil
 		},
 		Steps: []resource.TestStep{
@@ -177,7 +180,7 @@ data "redshift_grant" "schema" {
 			{
 				Config: configSQL(`["USAGE", "CREATE"]`), PlanOnly: true, ExpectNonEmptyPlan: true,
 				PreConfig: func() {
-					_, err := client.Query(ctx, sqlclient.Connection{Database: dbName}, "REVOKE CREATE ON SCHEMA "+sqlclient.Identifier(dbName)+"."+sqlclient.Identifier(schemaName)+" FROM ROLE "+sqlclient.Identifier(roleName), nil)
+					_, err := client.Query(ctx, sqlclient.Connection{Database: dbName}, sqlclient.Stmt("REVOKE CREATE ON SCHEMA").Qualified(dbName, schemaName).Kw("FROM ROLE").Ident(roleName).String(), nil)
 					require.NoError(t, err)
 				},
 			},

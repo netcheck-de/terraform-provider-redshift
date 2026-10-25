@@ -17,6 +17,7 @@ func newCopyJobDataSource() datasource.DataSource {
 		lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
 			attributes := data.Attributes()
 			model := copyJobModel{Database: attributes["database"].(types.String), Name: attributes["name"].(types.String), IAMRole: types.StringNull(), Parameters: types.MapNull(types.StringType)}
+
 			found, err := readCopyJob(ctx, client, &model)
 			if err == nil && found {
 				lookupValue(data, "iam_role", model.IAMRole)
@@ -27,6 +28,7 @@ func newCopyJobDataSource() datasource.DataSource {
 				lookupValue(data, "format_argument", model.FormatArgument)
 				lookupValue(data, "parameters", model.Parameters)
 			}
+
 			return found, err
 		},
 	}), copyJobOutputDescriptions)

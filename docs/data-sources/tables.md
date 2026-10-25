@@ -11,13 +11,6 @@ Lists the relations of one database with their type, owner, and comment. See AWS
 [SVV_REDSHIFT_TABLES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_TABLES.html), and
 [SVV_MV_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MV_INFO.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_all_tables LEFT JOIN svv_redshift_tables ... WHERE database_name = '...';
-SELECT ... FROM svv_mv_info WHERE database_name = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -44,7 +37,7 @@ output "materialized_views" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `tables` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--tables))
 
 <a id="nestedatt--tables"></a>
@@ -60,8 +53,22 @@ Read-Only:
 - `table_type` (String) Relation type in upper case: `TABLE`, `VIEW`, `MATERIALIZED VIEW`, `EXTERNAL TABLE`, or another type the catalog reports, such as `SHARED TABLE`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List relations and their available ownership metadata.
+SELECT ... FROM svv_all_tables LEFT JOIN svv_redshift_tables ... WHERE database_name = '...';
+
+-- Identify materialized views among the listed relations.
+SELECT ... FROM svv_mv_info WHERE database_name = '...';
+```
+
+## Read Behavior
+
 `database` defaults to the provider's `database`; both reads run in the provider's database. `id` combines the
-warehouse binding, the listed database, and the configured filters. Items are ordered by schema and name; no match
+listed database and configured filters within the warehouse. Items are ordered by schema and name; no match
 returns an empty `tables` list.
 
 `SVV_ALL_TABLES` reports materialized views as views. The listing reclassifies every view that `SVV_MV_INFO` knows as

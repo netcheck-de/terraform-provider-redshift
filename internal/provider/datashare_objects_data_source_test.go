@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -13,6 +14,8 @@ import (
 
 var _ = registerParity(parityCase{source: newDatashareObjectsDataSource, collection: true, filters: []string{"database", "datashare", "object_type"}})
 
+// TestDatashareObjectsList filters members by datashare and object type, defaults to the provider database, and reports
+// include_new only for schemas.
 func TestDatashareObjectsList(t *testing.T) {
 	for _, test := range []struct {
 		name, share, kind string
@@ -28,27 +31,37 @@ func TestDatashareObjectsList(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			c := fullCatalog()
 			source := newDatashareObjectsDataSource()
+
 			filters := map[string]string{"database": "admin", "datashare": test.share}
 			if test.share == "" {
 				delete(filters, "datashare")
 			}
+
 			if test.name == "defaults" {
 				delete(filters, "database")
 			}
+
 			if test.kind != "" {
 				filters["object_type"] = test.kind
 			}
+
 			state, diagnostics := readSource(t, source, collectionConfig(t, source, filters), c)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			assert.Empty(t, c.writes)
+
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
-			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", filters)
+
+			expected := map[string]string{"database": "admin"}
+			maps.Copy(expected, filters)
+			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), expected)
 			items := collectionResult(source, observed).Elements()
 			require.Len(t, items, test.count)
+
 			for _, item := range items {
 				attributes := item.(types.Object).Attributes()
 				assert.Equal(t, types.StringValue("producer"), attributes["datashare"])
+
 				if attributes["object_type"] == types.StringValue("schema") {
 					assert.Equal(t, types.BoolValue(true), attributes["include_new"])
 				} else {
@@ -59,6 +72,8 @@ func TestDatashareObjectsList(t *testing.T) {
 	}
 }
 
+// TestDatashareObjectsOpaqueNamesAndFailures returns member names verbatim without parsing them, and fails on an
+// invalid include_new value or a catalog error.
 func TestDatashareObjectsOpaqueNamesAndFailures(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -77,10 +92,13 @@ func TestDatashareObjectsOpaqueNamesAndFailures(t *testing.T) {
 				if _, ok := params["share"]; !ok {
 					return c.Query(ctx, connection, sql, params)
 				}
+
 				assert.Equal(t, "admin", connection.Database)
+
 				return []sqlclient.Row{test.row}, test.err
 			}))
 			require.Equal(t, test.invalid, diagnostics.HasError(), "%v", diagnostics)
+
 			if !test.invalid {
 				var observed types.Object
 				require.False(t, state.Get(context.Background(), &observed).HasError())
@@ -92,6 +110,7 @@ func TestDatashareObjectsOpaqueNamesAndFailures(t *testing.T) {
 	}
 }
 
+// TestDatashareObjectsMissingDatabase returns an empty listing for a missing database without querying it for members.
 func TestDatashareObjectsMissingDatabase(t *testing.T) {
 	source := newDatashareObjectsDataSource()
 	state, diagnostics := readSource(t, source, collectionConfig(t, source, map[string]string{"database": "missing", "datashare": "producer"}), queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
@@ -99,8 +118,9 @@ func TestDatashareObjectsMissingDatabase(t *testing.T) {
 		return nil, nil
 	}))
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	assert.Empty(t, collectionResult(source, observed).Elements())
-	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "missing", map[string]string{"database": "missing", "datashare": "producer"})
+	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), map[string]string{"database": "missing", "datashare": "producer"})
 }

@@ -11,14 +11,6 @@ Manages one partition of a partitioned
 See AWS [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html) and
 [Partitioning Redshift Spectrum external tables](https://docs.aws.amazon.com/redshift/latest/dg/c-spectrum-external-tables.html#c-spectrum-external-tables-partitioning).
 
-## SQL Statements
-
-```sql
-ALTER TABLE schema.table ADD PARTITION (values...) LOCATION ...;
-ALTER TABLE schema.table PARTITION (values...) SET LOCATION ...;
-ALTER TABLE schema.table DROP PARTITION (values...);
-```
-
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_external_partition/resource.tf" }}
@@ -26,6 +18,21 @@ ALTER TABLE schema.table DROP PARTITION (values...);
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Add the external table partition.
+ALTER TABLE schema.table ADD PARTITION (values...) LOCATION ...;
+
+-- Change the partition's data location.
+ALTER TABLE schema.table PARTITION (values...) SET LOCATION ...;
+
+-- Remove the external table partition.
+ALTER TABLE schema.table DROP PARTITION (values...);
+```
 
 ## Lifecycle and Ownership
 
@@ -55,17 +62,14 @@ update fails when the partition disappeared after the plan; refresh and plan aga
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity. The `values` field holds the partition values as
-a JSON-encoded string, because identity fields are strings:
+Use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_external_partition/import-by-string-id.tf" }}
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
+{{ tffile "examples/resources/redshift_external_partition/import.tf" }}
 
 Alternatively, use `terraform import`:
 
 {{ codefile "shell" "examples/resources/redshift_external_partition/import.sh" }}
+
+The `values` field holds the partition values as a JSON-encoded string, because identity fields are strings.
 
 The location is read from the catalog on refresh.

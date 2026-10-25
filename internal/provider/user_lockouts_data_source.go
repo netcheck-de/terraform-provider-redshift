@@ -36,6 +36,7 @@ func newUserLockoutsDataSource() datasource.DataSource {
 			if err != nil {
 				return nil, err
 			}
+
 			return userLockoutsItems(objectString(data, "user_name"), rows)
 		},
 	})

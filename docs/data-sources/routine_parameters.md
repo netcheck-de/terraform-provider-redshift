@@ -11,13 +11,6 @@ overload, without managing them. See AWS
 [SHOW PARAMETERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_PARAMETERS.html) and
 [PG_PROC_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_PROC_INFO.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_proc_info WHERE prokind IN ('f', 'p') AND nspname = '...' AND proname = '...';
-SHOW PARAMETERS OF { FUNCTION | PROCEDURE } database.schema.routine_name(arguments);
-```
-
 ## Example Usage
 
 ```terraform
@@ -46,7 +39,7 @@ output "upper_inputs" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `routine_parameters` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--routine_parameters))
 
 <a id="nestedatt--routine_parameters"></a>
@@ -64,6 +57,20 @@ Read-Only:
 - `routine_type` (String) `FUNCTION` or `PROCEDURE`.
 - `schema` (String) Schema containing the routine.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Find routine overloads matching the configured filters.
+SELECT ... FROM pg_proc_info WHERE prokind IN ('f', 'p') AND nspname = '...' AND proname = '...';
+
+-- Read each overload's parameters.
+SHOW PARAMETERS OF { FUNCTION | PROCEDURE } database.schema.routine_name(arguments);
+```
+
+## Read Behavior
 
 The listing first finds the matching overloads in `pg_proc_info` and then runs `SHOW PARAMETERS` once per overload, so
 narrow it with `schema` and `routine_name`. Functions add a `RETURN` row at position `0` for their result. Viewing a

@@ -11,14 +11,6 @@ database user can inherit `sys:monitor`. A user can also receive the role `WITH 
 See AWS [GRANT ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles) and
 [REVOKE ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-roles).
 
-## SQL Statements
-
-```sql
-GRANT ROLE role TO ...;
-REVOKE ROLE role FROM ...;
-REVOKE ADMIN OPTION FOR ROLE role FROM ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -56,8 +48,25 @@ resource "redshift_role_grant" "team_lead" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Grant role membership.
+GRANT ROLE role TO ...;
+
+-- Revoke role membership.
+REVOKE ROLE role FROM ...;
+
+-- Revoke permission to grant the role to others.
+REVOKE ADMIN OPTION FOR ROLE role FROM ...;
+```
+
+## Recipients and Admin Option
 
 Specify exactly one of `to_role` and `to_user`. `admin_option = true` requires `to_user`, because Redshift documents
 `WITH ADMIN OPTION` only for user recipients. Redshift documents no other recipient for roles: the role syntax lists no
@@ -89,29 +98,23 @@ Other grants of the role are never read.
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_role_grant.operators
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    role           = "sys:dba"
-    to_role        = "ncidc:analytics-operators"
+    role    = "sys:dba"
+    to_role = "ncidc:analytics-operators"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_role_grant.operators \
-  '{"workgroup_name":"warehouse","database":"admin","role":"sys:dba","to_role":"ncidc:analytics-operators"}'
+  '{"role":"sys:dba","to_role":"ncidc:analytics-operators"}'
 ```
 
 To import Grafana's role grant, use `"role":"sys:monitor","to_user":"grafana"` in the JSON identity. The next refresh

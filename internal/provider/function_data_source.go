@@ -28,16 +28,19 @@ func newFunctionDataSource() datasource.DataSource {
 				Arguments: attributes["arguments"].(types.List), ID: types.StringNull(), Owner: types.StringNull(),
 				ReturnType: types.StringNull(), Body: types.StringNull(), DefinitionFingerprint: types.StringNull(),
 			}
+
 			found, err := (&functionResource{*client}).read(ctx, &model)
 			if err != nil || !found {
 				return found, err
 			}
+
 			for name, value := range map[string]types.String{
 				"signature": model.Signature, "return_type": model.ReturnType, "volatility": model.Volatility, "language": model.Language,
 				"body": model.Body, "definition_fingerprint": model.DefinitionFingerprint, "owner": model.Owner,
 			} {
 				lookupValue(data, name, value)
 			}
+
 			return true, nil
 		},
 	}), map[string]string{"definition_fingerprint": viewLookupFingerprintDescription})

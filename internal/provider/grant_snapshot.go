@@ -27,6 +27,8 @@ type privilegeSnapshot struct {
 	optionUnion []string
 }
 
+// grantCatalogVisibilityQuery reports whether the session is a superuser, whose catalog reads are not
+// privilege-filtered.
 func grantCatalogVisibilityQuery() sqlclient.Query {
 	return sqlclient.Select("usesuper").From("pg_user").Where("usename = current_user")
 }
@@ -38,63 +40,82 @@ func (r *privilegeResource) privilegeRows(ctx context.Context, target privilegeT
 		rows, err := r.queryDatabase(ctx, database, target.query.sql, target.query.parameters)
 		return rows, true, err
 	}
+
 	snapshot := target.snapshot
 	snapshot.optionUnion = nil
 	snapshot.mutations = nil
+
 	members, err := r.queryDatabase(ctx, database, snapshot.members.sql, snapshot.members.parameters)
 	if err == nil && snapshot.filterMembers != nil {
 		members, err = snapshot.filterMembers(members)
 	}
+
 	if err != nil || len(members) == 0 {
 		return nil, false, err
 	}
+
 	var common map[string]sqlclient.Row
+
 	options := map[string]bool{}
+
 	for _, member := range members {
 		if member["object_name"] == "" {
 			return nil, false, fmt.Errorf("snapshot catalog returned an empty object_name")
 		}
+
 		if snapshot.grant != nil {
 			snapshot.mutations = append(snapshot.mutations, snapshot.grant(member))
 		}
+
 		query := snapshot.query(member)
+
 		rows, err := r.queryDatabase(ctx, database, query.sql, query.parameters)
 		if err != nil {
 			return nil, false, err
 		}
+
 		strongest := map[string]sqlclient.Row{}
+
 		for _, row := range rows {
 			if target.filter != nil && !target.filter(row) {
 				continue
 			}
+
 			name := normalizePrivilege(row["privilege_type"])
 			option := row["admin_option"] == "true" || row["admin_option"] == "t" || strongest[name]["admin_option"] == "true"
 			strongest[name] = maps.Clone(row)
 			strongest[name]["admin_option"] = strconv.FormatBool(option)
 			options[name] = options[name] || option
 		}
+
 		if common == nil {
 			common = strongest
 			continue
 		}
+
 		for name, held := range common {
 			other, ok := strongest[name]
 			if !ok {
 				delete(common, name)
 				continue
 			}
+
 			held["admin_option"] = strconv.FormatBool(held["admin_option"] == "true" && other["admin_option"] == "true")
 		}
 	}
+
 	rows := make([]sqlclient.Row, 0, len(common))
 	for _, row := range common {
 		rows = append(rows, row)
 	}
+
 	for name, option := range options {
 		if option {
 			snapshot.optionUnion = append(snapshot.optionUnion, name)
 		}
 	}
+
 	slices.Sort(snapshot.optionUnion)
+
 	return rows, true, nil
 }

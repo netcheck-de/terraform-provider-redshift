@@ -14,6 +14,7 @@ func roleGrantFixture(role, toRole, toUser string, admin bool) roleGrantModel {
 	} else {
 		data.ToRole = types.StringValue(toRole)
 	}
+
 	return data
 }
 
@@ -26,10 +27,12 @@ func TestRoleGrantSQL(t *testing.T) {
 			if err != nil {
 				return nil, err
 			}
+
 			create, err := createRoleGrantStatement(data)
 			if err != nil {
 				return nil, err
 			}
+
 			return []string{read, create, dropRoleGrantStatement(data)}, nil
 		}
 	}

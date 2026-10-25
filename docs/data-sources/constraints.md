@@ -10,12 +10,6 @@ Lists the key constraints of one database's tables. Redshift does not enforce th
 them. See AWS [Defining table constraints](https://docs.aws.amazon.com/redshift/latest/dg/t_Defining_constraints.html)
 and [Querying the catalog tables](https://docs.aws.amazon.com/redshift/latest/dg/c_join_PG.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_constraint WHERE contype IN ('p', 'u', 'f') ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -52,7 +46,7 @@ resource "redshift_comment" "orders_key" {
 ### Read-Only
 
 - `constraints` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--constraints))
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 
 <a id="nestedatt--constraints"></a>
 ### Nested Schema for `constraints`
@@ -71,9 +65,20 @@ Read-Only:
 - `table` (String) Table the constraint belongs to.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List primary key, unique, and foreign key constraints.
+SELECT ... FROM pg_constraint WHERE contype IN ('p', 'u', 'f') ...;
+```
+
+## Read Behavior
+
 `database` defaults to the provider's `database`. `PG_CONSTRAINT` only covers the database a statement runs in, so
-the read connects to the listed database, which must be a local database. `id` combines the warehouse binding, the
-listed database, and the configured filters. Items are ordered by schema, table, and constraint name; no match returns
+the read connects to the listed database, which must be a local database. `id` combines the listed database and
+configured filters within the warehouse. Items are ordered by schema, table, and constraint name; no match returns
 an empty `constraints` list.
 
 Key columns are parsed from `pg_get_constraintdef`, because the catalog's column-number arrays are not readable through

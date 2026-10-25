@@ -45,6 +45,7 @@ var _ = registerValidateConfigCase("masking_policy", validateConfigCase{
 	unknown: func() maskingPolicyModel {
 		model := maskingLifecyclePolicy
 		model.Expression = types.StringUnknown()
+
 		return model
 	}(),
 })
@@ -55,9 +56,11 @@ func maskingPolicyCatalogClient(rows ...sqlclient.Row) sqlclient.Client {
 		if strings.Contains(sql, "FROM svv_masking_policy") {
 			return rows, nil
 		}
+
 		if strings.HasPrefix(sql, "CREATE MASKING POLICY") {
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("unexpected SQL %q", sql)
 	})
 }
@@ -92,6 +95,7 @@ func TestMaskingPolicyTranscripts(t *testing.T) {
 func TestMaskingPolicyReadReconcilesDefinition(t *testing.T) {
 	catalogText := `CAST('***' AS TEXT)`
 	row := maskingPolicyRow(`[{"colname":"email","type":"character varying(256)"}]`, `[{"expr":"CAST('***' AS TEXT)","type":"text"}]`)
+
 	for _, test := range []struct {
 		name        string
 		fingerprint types.String
@@ -104,12 +108,14 @@ func TestMaskingPolicyReadReconcilesDefinition(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			r := newMaskingPolicyResource()
 			configureTestResource(t, r, maskingPolicyCatalogClient(row))
+
 			model := maskingLifecyclePolicy
 			model.DefinitionFingerprint = test.fingerprint
 			state := testState(t, r, model)
 			resp := resource.ReadResponse{State: state}
 			r.Read(context.Background(), resource.ReadRequest{State: state}, &resp)
 			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 			var observed maskingPolicyModel
 			require.False(t, resp.State.Get(context.Background(), &observed).HasError())
 			assert.Equal(t, test.expression, observed.Expression.ValueString())
@@ -117,12 +123,14 @@ func TestMaskingPolicyReadReconcilesDefinition(t *testing.T) {
 			assert.True(t, observed.InputColumn.Equal(maskingLifecyclePolicy.InputColumn), "equivalent type spellings keep the configured one")
 		})
 	}
+
 	r := newMaskingPolicyResource()
 	configureTestResource(t, r, maskingPolicyCatalogClient(maskingPolicyRow(`[{"colname":"email","type":"integer"}]`, catalogText)))
 	state := testState(t, r, maskingLifecyclePolicy)
 	resp := resource.ReadResponse{State: state}
 	r.Read(context.Background(), resource.ReadRequest{State: state}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 	var observed maskingPolicyModel
 	require.False(t, resp.State.Get(context.Background(), &observed).HasError())
 	assert.Equal(t, []maskingPolicyColumn{{Name: "email", Type: "INTEGER"}}, maskingPolicyColumns(observed.InputColumn), "changed inputs surface to plan a replacement")
@@ -153,6 +161,7 @@ func TestMaskingPolicyCreateRejectsInvalidBeforeState(t *testing.T) {
 	configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		return nil, fmt.Errorf("unexpected SQL %q", sql)
 	}))
+
 	model := maskingLifecyclePolicy
 	model.Expression = types.StringValue("'***'; DROP TABLE users")
 	plan := tfsdk.Plan(testState(t, r, model))
@@ -170,8 +179,10 @@ func TestMaskingPolicyAbsentInputsReportedOnce(t *testing.T) {
 	configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		return nil, fmt.Errorf("unexpected SQL %q", sql)
 	}))
+
 	model := maskingLifecyclePolicy
 	model.InputColumn = types.ListNull(maskingPolicyColumnType)
+
 	var validated resource.ValidateConfigResponse
 	r.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, model))}, &validated)
 	assert.False(t, validated.Diagnostics.HasError(), "%v", validated.Diagnostics)
@@ -185,13 +196,14 @@ func TestMaskingPolicyAbsentInputsReportedOnce(t *testing.T) {
 func TestMaskingPolicyImport(t *testing.T) {
 	r := newMaskingPolicyResource()
 	for id, valid := range map[string]bool{
-		`{"workgroup_name":"warehouse","database":"analytics","name":"mask_email"}`: true,
-		`{"workgroup_name":"warehouse","database":"analytics"}`:                     false,
-		`mask_email`: false,
+		`{"database":"analytics","name":"mask_email"}`: true,
+		`{"database":"analytics"}`:                     false,
+		`mask_email`:                                   false,
 	} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
 		assert.Equal(t, valid, !resp.Diagnostics.HasError(), "%s: %v", id, resp.Diagnostics)
+
 		if valid {
 			var name types.String
 			require.False(t, resp.State.GetAttribute(context.Background(), path.Root("name"), &name).HasError())
@@ -208,12 +220,13 @@ func TestMaskingPolicyInputsReplacement(t *testing.T) {
 	r := newMaskingPolicyResource()
 	configureTestResource(t, r, catalogWith()())
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
-	id := r.(*maskingPolicyResource).identity("admin", map[string]string{"name": "mask_email"}).ValueString()
+	id := identity(map[string]string{"database": "admin", "name": "mask_email"}).ValueString()
 	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: id}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
 	refreshed := resource.ReadResponse{State: imported.State}
 	r.Read(ctx, resource.ReadRequest{State: imported.State}, &refreshed)
 	require.False(t, refreshed.Diagnostics.HasError(), "%v", refreshed.Diagnostics)
+
 	var state maskingPolicyModel
 	require.False(t, refreshed.State.Get(ctx, &state).HasError())
 	require.Equal(t, []maskingPolicyColumn{{Name: "email", Type: "CHARACTER VARYING(256)"}}, maskingPolicyColumns(state.InputColumn))
@@ -221,6 +234,7 @@ func TestMaskingPolicyInputsReplacement(t *testing.T) {
 	var response resource.SchemaResponse
 	r.Schema(ctx, resource.SchemaRequest{}, &response)
 	modifiers := response.Schema.Blocks["input_column"].(schema.ListNestedBlock).PlanModifiers
+
 	unknownType := types.ObjectValueMust(maskingPolicyColumnType.AttrTypes, map[string]attr.Value{"name": types.StringValue("email"), "type": types.StringUnknown()})
 	for name, test := range map[string]struct {
 		planned types.List
@@ -237,22 +251,26 @@ func TestMaskingPolicyInputsReplacement(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			planned := state
 			planned.InputColumn, planned.Expression = test.planned, maskingLifecyclePolicy.Expression
+
 			plan := tfsdk.Plan(testState(t, r, planned))
 			if test.planned.IsUnknown() || name == "unknown type" {
 				// testState cannot encode unknown values, and RequiresReplaceIf reads only the attribute values.
 				plan = tfsdk.Plan(testState(t, r, state))
 			}
+
 			request := planmodifier.ListRequest{
 				Path: path.Root("input_column"), State: refreshed.State, Plan: plan,
 				StateValue: state.InputColumn, PlanValue: test.planned, ConfigValue: test.planned,
 			}
 			replace := false
+
 			for _, modifier := range modifiers {
 				resp := planmodifier.ListResponse{PlanValue: test.planned}
 				modifier.PlanModifyList(ctx, request, &resp)
 				require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 				replace = replace || resp.RequiresReplace
 			}
+
 			assert.Equal(t, test.replace, replace)
 		})
 	}
@@ -260,14 +278,17 @@ func TestMaskingPolicyInputsReplacement(t *testing.T) {
 	statements, err := alterMaskingPolicyStatements(state, func() maskingPolicyModel {
 		planned := state
 		planned.InputColumn = maskingLifecyclePolicy.InputColumn
+
 		return planned
 	}())
 	require.NoError(t, err)
 	assert.Empty(t, statements)
+
 	planned := state
 	planned.InputColumn = maskingLifecyclePolicy.InputColumn
 	updated, diagnostics := applyOperation(t, r, "update", state, planned, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed maskingPolicyModel
 	require.False(t, updated.Get(ctx, &observed).HasError())
 	assert.True(t, observed.InputColumn.Equal(maskingLifecyclePolicy.InputColumn), "the update records the configured spelling")
@@ -280,6 +301,7 @@ func TestPolicyValidationWithUnknownExpressions(t *testing.T) {
 	masking.InputColumn = maskingPolicyColumnList([]maskingPolicyColumn{{Name: "value", Type: "anyelement"}})
 	rls := rlsPolicyLifecycleModel()
 	rls.Predicate = types.StringUnknown()
+
 	rls.Column = types.ListValueMust(rlsPolicyColumnType, []attr.Value{types.ObjectValueMust(rlsPolicyColumnType.AttrTypes, map[string]attr.Value{"name": types.StringValue("value"), "type": types.StringValue("money")})})
 	for _, test := range []struct {
 		r     resource.Resource
@@ -291,10 +313,12 @@ func TestPolicyValidationWithUnknownExpressions(t *testing.T) {
 		test.r.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, test.r, test.model))}, &response)
 		require.True(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
 	}
+
 	unknown := types.ListValueMust(maskingPolicyColumnType, []attr.Value{types.ObjectUnknown(maskingPolicyColumnType.AttrTypes)})
 	assert.Empty(t, maskingPolicyColumns(unknown))
 	assert.Empty(t, rlsPolicyCatalogColumnsOf(types.ListUnknown(rlsPolicyColumnType)))
 	assert.Empty(t, rlsPolicyCatalogColumnsOf(types.ListValueMust(rlsPolicyColumnType, []attr.Value{types.ObjectUnknown(rlsPolicyColumnType.AttrTypes)})))
+
 	_, err := maskingPolicyInputs([]maskingPolicyColumn{{Name: "value", Type: "anyelement"}})
 	require.ErrorContains(t, err, "input column")
 	_, err = maskingPolicyUsing(types.StringValue("x; DROP TABLE t"))

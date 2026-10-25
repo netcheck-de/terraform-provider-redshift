@@ -19,10 +19,12 @@ func newColumnGrantDataSource() datasource.DataSource {
 			ObjectName: attributes["object_name"].(types.String), Grantee: attributes["grantee"].(types.String),
 			GranteeType: attributes["grantee_type"].(types.String),
 		}
+
 		_, found, err := (&columnGrantResource{*client}).read(ctx, &model, false)
 		if err == nil && found {
 			lookupValue(data, "privileges", model.Privileges)
 		}
+
 		return found, err
 	}})
 }

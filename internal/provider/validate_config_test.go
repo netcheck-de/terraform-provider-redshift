@@ -34,18 +34,22 @@ func registerValidateConfigCase(name string, test validateConfigCase) bool {
 func TestValidateConfigRejectsInvalidTuplesAtPlanTime(t *testing.T) {
 	require.Empty(t, validateConfigCases.duplicates, "duplicate ValidateConfig cases")
 	require.NotEmpty(t, validateConfigCases.entries)
+
 	for _, name := range validateConfigCases.keys() {
 		test := validateConfigCases.entries[name]
 		t.Run(name, func(t *testing.T) {
 			r := test.new()
 			validator, ok := r.(resource.ResourceWithValidateConfig)
 			require.True(t, ok, "resource does not implement ValidateConfig")
+
 			for invalid, model := range map[bool]any{false: test.valid, true: test.invalid} {
 				var resp resource.ValidateConfigResponse
 				validator.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, model))}, &resp)
 				assert.Equal(t, invalid, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 			}
+
 			config := tfsdk.Config(testState(t, r, test.unknown))
+
 			var resp resource.ValidateConfigResponse
 			validator.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: config}, &resp)
 			assert.False(t, resp.Diagnostics.HasError(), "unknown configuration must be validated later")

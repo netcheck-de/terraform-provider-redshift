@@ -21,6 +21,8 @@ type collectionSpec struct {
 	// filters are optional inputs narrowing the listing; a filter named database also selects the database
 	// recorded in the identity.
 	filters map[string]schema.Attribute
+	// databaseField is the filter that defaults to the provider database; empty denotes no database default.
+	databaseField string
 	// element defines the computed attributes of each listed object.
 	element map[string]schema.Attribute
 	// list returns the matching objects, keyed by element attribute, without executing mutations. Filters
@@ -32,6 +34,7 @@ type collectionSpec struct {
 type collectionDataSource struct {
 	// dataSourceClient provides transport-neutral catalog execution.
 	dataSourceClient
+
 	// spec is the listing's schema and catalog read.
 	spec collectionSpec
 }
@@ -44,6 +47,7 @@ func newCollectionDataSource(spec collectionSpec) datasource.DataSource {
 			panic("newCollectionDataSource: filter " + reserved + " collides with a computed attribute of " + spec.name)
 		}
 	}
+
 	return &collectionDataSource{spec: spec}
 }
 
@@ -54,13 +58,16 @@ func collectionElement(factory func() resource.Resource, names ...string) map[st
 	factory().Schema(context.Background(), resource.SchemaRequest{}, &source)
 	observed := lookupSchemaAttributes(source.Schema.Attributes, source.Schema.Blocks, true, nil)
 	element := map[string]schema.Attribute{}
+
 	for _, name := range names {
 		attribute, ok := observed[name]
 		if !ok {
 			panic("collectionElement: resource has no readable attribute " + name)
 		}
+
 		element[name] = attribute
 	}
+
 	return element
 }
 
@@ -80,7 +87,8 @@ func (d *collectionDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 	if attributes == nil {
 		attributes = map[string]schema.Attribute{}
 	}
-	attributes["id"] = schema.StringAttribute{Computed: true, MarkdownDescription: "JSON identity of this listing: the warehouse binding, the database, and the configured filters."}
+
+	attributes["id"] = schema.StringAttribute{Computed: true, MarkdownDescription: "JSON identity of this listing within the configured warehouse: its database scope and configured filters."}
 	attributes[d.spec.name] = schema.ListNestedAttribute{
 		Computed: true, MarkdownDescription: "Matching objects; empty when nothing matches.",
 		NestedObject: schema.NestedAttributeObject{Attributes: d.spec.element},
@@ -88,56 +96,68 @@ func (d *collectionDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 	resp.Schema = schema.Schema{MarkdownDescription: d.spec.description, Attributes: attributes}
 }
 
-// collectionID binds the listing to its warehouse, database, and filters, so two differently filtered
+// collectionID includes the listing's database scope and filters, so two differently filtered
 // listings never share an identity.
 func (d *collectionDataSource) collectionID(data types.Object) types.String {
 	fields := map[string]string{}
+
 	attributes := data.Attributes()
 	for name := range d.spec.filters {
 		value := attributes[name]
 		if value == nil || value.IsNull() || value.IsUnknown() {
 			continue
 		}
+
 		if text, ok := value.(types.String); ok {
 			fields[name] = text.ValueString()
 		} else {
 			fields[name] = value.String()
 		}
 	}
-	database := d.database.ValueString()
-	if selected, ok := fields["database"]; ok {
-		database = selected
+
+	if field := d.spec.databaseField; field != "" && fields[field] == "" {
+		fields[field] = d.database.ValueString()
 	}
-	return d.identity(database, fields)
+
+	return identity(fields)
 }
 
 // Read lists the matching objects; no match yields an empty list.
 func (d *collectionDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data types.Object
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	rows, err := d.spec.list(ctx, &d.resourceClient, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read "+d.spec.name, err.Error())
 		return
 	}
+
 	elementType := d.elementType()
+
 	items := make([]attr.Value, 0, len(rows))
 	for _, row := range rows {
 		item, diagnostics := types.ObjectValue(elementType.AttrTypes, row)
 		resp.Diagnostics.Append(diagnostics...)
+
 		if resp.Diagnostics.HasError() {
 			return
 		}
+
 		items = append(items, item)
 	}
+
 	list, diagnostics := types.ListValue(elementType, items)
 	resp.Diagnostics.Append(diagnostics...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	lookupValue(&data, d.spec.name, list)
 	lookupValue(&data, "id", d.collectionID(data))
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)

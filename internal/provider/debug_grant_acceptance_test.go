@@ -26,7 +26,9 @@ func TestAccDebugGrantFederated(t *testing.T) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+
 	for _, test := range []struct{ kind, flag string }{
 		{"USER", "REDSHIFT_ACC_DEBUG_USER"},
 		{"ROLE", "REDSHIFT_ACC_DEBUG_ROLE"},
@@ -37,24 +39,30 @@ func TestAccDebugGrantFederated(t *testing.T) {
 			if grantee == "" {
 				t.Skipf("set %s to a dedicated federated recipient", test.flag)
 			}
+
 			model := debugGrantFixture(target, grantee, test.kind)
 			if err := model.validateRemote(); err != nil {
 				t.Skip(err.Error())
 			}
+
 			recipient, _, err := debugRecipient(grantee, test.kind)
 			require.NoError(t, err)
+
 			reader := &debugGrantResource{testResourceClient(client)}
 			reader.database = types.StringValue(database)
 			found, err := reader.read(ctx, model)
 			require.NoError(t, err)
+
 			if found {
 				t.Skip("recipient already has DEBUG; refusing to take ownership of an existing grant")
 			}
+
 			t.Cleanup(func() {
 				statement := sqlclient.Stmt("REVOKE DEBUG ON DATABASE").Ident(target).Kw("FROM").Append(recipient).String()
 				_, err := client.Query(ctx, sqlclient.Connection{Database: database}, statement, nil)
 				require.NoError(t, err, "remove the test-owned DEBUG grant")
 			})
+
 			configuration := fmt.Sprintf(`
 provider "redshift" {
   region = %q

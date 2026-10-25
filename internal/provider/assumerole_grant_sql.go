@@ -53,6 +53,7 @@ func assumeroleGrantKeyword(role string) sqlclient.Keyword {
 	if err != nil {
 		return ""
 	}
+
 	return keyword
 }
 
@@ -78,10 +79,12 @@ func assumeroleGrantRole(role string) (sqlclient.Statement, string, error) {
 	case "ALL":
 		return sqlclient.Kw(keyword), assumeroleGrantAllRoles, nil
 	}
+
 	parsed, err := arn.Parse(role)
 	if err != nil || parsed.Service != "iam" || parsed.AccountID == "" || len(parsed.Resource) < 6 || parsed.Resource[:5] != "role/" {
 		return sqlclient.Statement{}, "", fmt.Errorf("iam_role_arn must be an IAM role ARN, DEFAULT, or ALL")
 	}
+
 	return sqlclient.Lit(role), role, nil
 }
 
@@ -94,15 +97,19 @@ func assumeroleGrantTarget(data types.Object) (privilegeTarget, error) {
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	role := objectString(data, "iam_role_arn")
+
 	sqlRole, catalogRole, err := assumeroleGrantRole(role)
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	query, err := newCatalogCheck(readAssumeroleGrantQuery(catalogRole, objectString(data, "grantee"), objectString(data, "grantee_type")))
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	target := privilegeTarget{
 		checks:  []catalogCheck{check},
 		query:   query,
@@ -111,16 +118,20 @@ func assumeroleGrantTarget(data types.Object) (privilegeTarget, error) {
 			if grant {
 				return sqlclient.Stmt("GRANT ASSUMEROLE ON").Append(sqlRole).Kw("TO").Append(grantee).Kw("FOR", command).String()
 			}
+
 			return sqlclient.Stmt("REVOKE ASSUMEROLE ON").Append(sqlRole).Kw("FROM").Append(grantee).Kw("FOR", command).String()
 		}},
 	}
+
 	if assumeroleGrantKeyword(role) != "ALL" {
 		guard, err := newCatalogCheck(assumeroleGrantOverlapQuery(objectString(data, "grantee"), objectString(data, "grantee_type")))
 		if err != nil {
 			return privilegeTarget{}, err
 		}
+
 		target.mutationGuard = &guard
 		target.mutationConflict = "the grantee also holds ASSUMEROLE ON ALL; manage this grantee through ON ALL, or revoke its ON ALL grant before managing individual ARN or DEFAULT tuples. A specific-role REVOKE cannot remove access supplied by ON ALL"
 	}
+
 	return target, nil
 }

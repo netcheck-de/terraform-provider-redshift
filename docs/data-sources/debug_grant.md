@@ -11,15 +11,6 @@ database in a warehouse with federated permissions, as `SHOW GRANTS` reports it.
 [GRANT DEBUG](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-debug-syntax) and
 [SHOW GRANTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_GRANTS.html).
 
-## Catalog Query
-
-```sql
-SHOW GRANTS ON DATABASE database;
-SHOW GRANTS FOR ... FROM DATABASE database;
-SHOW DATABASES LIKE 'database';
-SELECT TRIM(auth_method) ... FROM sys_connection_log WHERE session_id = pg_backend_pid() ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -50,6 +41,26 @@ output "producer_admins_see_unredacted_logs" {
 - `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read grants on the database.
+SHOW GRANTS ON DATABASE database;
+
+-- Read a grantee's grants in the database.
+SHOW GRANTS FOR ... FROM DATABASE database;
+
+-- Look up the database.
+SHOW DATABASES LIKE 'database';
+
+-- Check the current session's authentication method.
+SELECT TRIM(auth_method) ... FROM sys_connection_log WHERE session_id = pg_backend_pid() ...;
+```
+
+## Read Behavior
 
 `exists` is true when a `DEBUG` row with the grantee's identity type (`global_user`, `global_group`, or
 `admins_of_account`) names the grantee, compared without case. A missing grant, or a database that `SHOW GRANTS`

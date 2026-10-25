@@ -29,6 +29,7 @@ func newRlsPolicyDataSource() datasource.DataSource {
 	return lookupDescriptions(newCatalogDataSource(catalogSpec{name: "rls_policy", factory: newRlsPolicyResource, computed: []string{"alias", "predicate"}, identityFields: []string{"name"}, identityDatabase: "database", lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
 		attributes := data.Attributes()
 		model := rlsPolicyModel{Database: attributes["database"].(types.String), Name: attributes["name"].(types.String), Column: types.ListNull(rlsPolicyColumnType), Alias: types.StringNull(), Predicate: types.StringNull()}
+
 		found, predicate, err := (&rlsPolicyResource{*client}).read(ctx, &model)
 		if err == nil && found {
 			model.Predicate, model.DefinitionFingerprint = reconcileDefinition(model.Predicate, types.StringNull(), predicate)
@@ -37,6 +38,7 @@ func newRlsPolicyDataSource() datasource.DataSource {
 			lookupValue(data, "predicate", model.Predicate)
 			lookupValue(data, "definition_fingerprint", model.DefinitionFingerprint)
 		}
+
 		return found, err
 	}}), rlsPolicyLookupDescriptions)
 }
@@ -44,8 +46,9 @@ func newRlsPolicyDataSource() datasource.DataSource {
 // newRlsPoliciesDataSource lists the RLS policies of one database.
 func newRlsPoliciesDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
-		name:        "rls_policies",
-		description: "Lists the row-level security policies of one database from `svv_rls_policy`, including policies Terraform does not manage. Only superusers and `sys:secadmin` holders see every policy.",
+		name:          "rls_policies",
+		databaseField: "database",
+		description:   "Lists the row-level security policies of one database from `svv_rls_policy`, including policies Terraform does not manage. Only superusers and `sys:secadmin` holders see every policy.",
 		filters: map[string]schema.Attribute{
 			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database whose policies are listed; defaults to the provider database."},
 		},
@@ -55,21 +58,25 @@ func newRlsPoliciesDataSource() datasource.DataSource {
 			if selected := objectString(filters, "database"); selected != "" {
 				database = selected
 			}
+
 			rows, err := client.selectRows(ctx, database, listRlsPoliciesQuery(database))
 			if err != nil {
 				return nil, err
 			}
+
 			items := make([]map[string]attr.Value, 0, len(rows))
 			for _, row := range rows {
 				policy, err := rlsPolicyFromRow(row)
 				if err != nil {
 					return nil, err
 				}
+
 				items = append(items, map[string]attr.Value{
 					"database": policy.Database, "name": policy.Name, "column": policy.Column, "alias": policy.Alias,
 					"predicate": policy.Predicate, "definition_fingerprint": policy.DefinitionFingerprint,
 				})
 			}
+
 			return items, nil
 		},
 	})

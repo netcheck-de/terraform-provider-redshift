@@ -17,6 +17,7 @@ func newFunctionsDataSource() datasource.DataSource {
 	element := routineListingElement("name", "function")
 	element["return_type"] = schema.StringAttribute{Computed: true, MarkdownDescription: "Result type, as the catalog reports it without length or precision but in uppercase, such as `INTEGER`."}
 	element["volatility"] = schema.StringAttribute{Computed: true, MarkdownDescription: "`VOLATILE`, `STABLE`, or `IMMUTABLE`."}
+
 	return newCollectionDataSource(collectionSpec{
 		name:        "functions",
 		description: "Lists user-defined scalar functions in one database, including SQL, Python, and Lambda (`EXFUNC`) UDFs, without managing them. Built-in functions in `pg_*` schemas and `information_schema` are excluded.",
@@ -27,16 +28,19 @@ func newFunctionsDataSource() datasource.DataSource {
 			if err != nil {
 				return nil, err
 			}
+
 			items := make([]map[string]attr.Value, 0, len(rows))
 			for _, row := range rows {
 				volatility, err := externalFunctionVolatility(row["volatility"])
 				if err != nil {
 					return nil, err
 				}
+
 				item := routineListingItem(database, "name", row)
 				item["return_type"], item["volatility"] = types.StringValue(sqlclient.CatalogType(row["return_type"])), types.StringValue(volatility)
 				items = append(items, item)
 			}
+
 			return items, nil
 		},
 	})

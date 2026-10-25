@@ -17,7 +17,9 @@ import (
 // imported table keeps the catalog's matching properties in place.
 func TestContractExternalTablePropertiesPlan(t *testing.T) {
 	t.Parallel()
+
 	const address = "redshift_external_table.events"
+
 	gzip := `table_properties = { compression_type = "gzip" }`
 	providers := func(c *catalog) map[string]func() (tfprotov6.ProviderServer, error) {
 		return map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})}
@@ -31,10 +33,13 @@ func TestContractExternalTablePropertiesPlan(t *testing.T) {
 			table := externalTableFakeOf(c)
 			c.mu.Lock()
 			defer c.mu.Unlock()
+
 			assert.Equal(t, value, table.parameters[key])
+
 			return nil
 		}
 	}
+
 	t.Run("created without properties", func(t *testing.T) {
 		c := fullCatalog()
 		delete(fakeState[*externalTableFamily](c, "external_table").tables, "events")
@@ -47,6 +52,7 @@ func TestContractExternalTablePropertiesPlan(t *testing.T) {
 			},
 		})
 	})
+
 	for name, test := range map[string]struct {
 		properties string
 		action     plancheck.ResourceActionType
@@ -59,13 +65,14 @@ func TestContractExternalTablePropertiesPlan(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			c := fullCatalog()
 			externalTableFakeOf(c).parameters["compression_type"] = "gzip"
+
 			t.Parallel()
 			testresource.UnitTest(t, testresource.TestCase{
 				ProtoV6ProviderFactories: providers(c),
 				Steps: []testresource.TestStep{
 					{
 						Config: externalTableProviderConfig(""), ResourceName: address, ImportState: true, ImportStatePersist: true,
-						ImportStateId: `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","name":"events"}`,
+						ImportStateId: `{"database":"admin","schema":"example_external","name":"events"}`,
 					},
 					{Config: externalTableProviderConfig(""), PlanOnly: true},
 					{Config: externalTableProviderConfig(test.properties), ConfigPlanChecks: expect(test.action), Check: parameter(c, test.key, test.value)},
@@ -81,7 +88,9 @@ func TestContractExternalTablePropertiesPlan(t *testing.T) {
 // position mapping stays in place only while the blocks follow the catalog order.
 func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 	t.Parallel()
+
 	const address = "redshift_external_table.events"
+
 	providers := func(c *catalog) map[string]func() (tfprotov6.ProviderServer, error) {
 		return map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})}
 	}
@@ -94,22 +103,27 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 			table := externalTableFakeOf(c)
 			c.mu.Lock()
 			defer c.mu.Unlock()
+
 			var physical []string
 			for _, column := range table.columns {
 				physical = append(physical, column.name)
 			}
+
 			assert.Equal(t, names, physical)
 			assert.Equal(t, writes, c.writes)
 			c.writes = nil
+
 			return nil
 		}
 	}
 	empty := func() *catalog {
 		c := fullCatalog()
 		delete(fakeState[*externalTableFamily](c, "external_table").tables, "events")
+
 		return c
 	}
 	alter := `ALTER TABLE "example_external"."events" `
+
 	for _, format := range []string{"ORC", "PARQUET"} {
 		t.Run(format+" maps by name", func(t *testing.T) {
 			c := empty()
@@ -117,6 +131,7 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 			inserted := externalTableOrderConfig(format, "", "id", "INTEGER", "amount", "DECIMAL(8,2)", "label", "VARCHAR(64)")
 			reordered := externalTableOrderConfig(format, "", "label", "VARCHAR(64)", "amount", "DECIMAL(8,2)", "id", "INTEGER")
 			dropped := externalTableOrderConfig(format, "", "label", "VARCHAR(64)", "id", "INTEGER")
+
 			t.Parallel()
 			testresource.UnitTest(t, testresource.TestCase{
 				ProtoV6ProviderFactories: providers(c),
@@ -135,15 +150,18 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 			})
 		})
 	}
+
 	for _, inOrder := range []bool{false, true} {
 		t.Run(fmt.Sprintf("parquet to textfile in catalog order %t", inOrder), func(t *testing.T) {
 			c := empty()
 			switched := externalTableOrderConfig("TEXTFILE", "", "id", "INTEGER", "amount", "DECIMAL(8,2)", "label", "VARCHAR(64)")
 			action := plancheck.ResourceActionDestroyBeforeCreate
+
 			if inOrder {
 				switched = externalTableOrderConfig("TEXTFILE", "", "id", "INTEGER", "label", "VARCHAR(64)", "amount", "DECIMAL(8,2)")
 				action = plancheck.ResourceActionUpdate
 			}
+
 			t.Parallel()
 			testresource.UnitTest(t, testresource.TestCase{ProtoV6ProviderFactories: providers(c), Steps: []testresource.TestStep{
 				{Config: externalTableOrderConfig("PARQUET", "", "id", "INTEGER", "label", "VARCHAR(64)")},
@@ -152,8 +170,10 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 			}})
 		})
 	}
+
 	t.Run("textfile maps by position", func(t *testing.T) {
 		inserted := externalTableOrderConfig("TEXTFILE", "", "id", "INTEGER", "amount", "DECIMAL(8,2)", "label", "VARCHAR(64)")
+
 		t.Parallel()
 		testresource.UnitTest(t, testresource.TestCase{
 			ProtoV6ProviderFactories: providers(empty()),
@@ -169,24 +189,28 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 		table.inputFormat, table.serde, table.partitionKeys, table.partitions = externalTableFileFormats["ORC"], externalTableImpliedSerdes["ORC"], nil, nil
 		table.serdeParameters, table.parameters = map[string]string{}, map[string]string{"EXTERNAL": "TRUE", "orc.schema.resolution": "position"}
 		imported := externalTableOrderConfig("ORC", "", "id", "INTEGER", "label", "VARCHAR(64)")
+
 		t.Parallel()
 		testresource.UnitTest(t, testresource.TestCase{
 			ProtoV6ProviderFactories: providers(c),
 			Steps: []testresource.TestStep{
 				{
 					Config: imported, ResourceName: address, ImportState: true, ImportStatePersist: true,
-					ImportStateId: `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","name":"events"}`,
+					ImportStateId: `{"database":"admin","schema":"example_external","name":"events"}`,
 				},
 				{Config: imported, PlanOnly: true},
 				{Config: externalTableOrderConfig("ORC", "", "label", "VARCHAR(64)", "id", "INTEGER"), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
 			},
 		})
 	})
+
 	position := `table_properties = { "orc.schema.resolution" = "position" }`
 	create := `CREATE EXTERNAL TABLE "example_external"."events" ("id" INTEGER, "label" VARCHAR(64)) STORED AS ORC LOCATION 's3://example-bucket/events/'`
+
 	t.Run("orc switching to position out of catalog order", func(t *testing.T) {
 		c := empty()
 		switched := externalTableOrderConfig("ORC", position, "id", "INTEGER", "amount", "DECIMAL(8,2)", "label", "VARCHAR(64)")
+
 		t.Parallel()
 		testresource.UnitTest(t, testresource.TestCase{
 			ProtoV6ProviderFactories: providers(c),
@@ -203,6 +227,7 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 	t.Run("orc switching to position in catalog order", func(t *testing.T) {
 		c := empty()
 		switched := externalTableOrderConfig("ORC", position, "id", "INTEGER", "label", "VARCHAR(64)", "amount", "DECIMAL(8,2)")
+
 		t.Parallel()
 		testresource.UnitTest(t, testresource.TestCase{
 			ProtoV6ProviderFactories: providers(c),
@@ -224,13 +249,14 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 			table.inputFormat, table.serde, table.partitionKeys, table.partitions = externalTableFileFormats["ORC"], externalTableImpliedSerdes["ORC"], nil, nil
 			table.serdeParameters, table.parameters = map[string]string{}, map[string]string{"EXTERNAL": "TRUE", "orc.schema.resolution": "position"}
 			managed := `table_properties = { numRows = "7" }`
+
 			t.Parallel()
 			testresource.UnitTest(t, testresource.TestCase{
 				ProtoV6ProviderFactories: providers(c),
 				Steps: []testresource.TestStep{
 					{
 						Config: externalTableOrderConfig("ORC", "", "id", "INTEGER", "label", "VARCHAR(64)"), ResourceName: address, ImportState: true, ImportStatePersist: true,
-						ImportStateId: `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","name":"events"}`,
+						ImportStateId: `{"database":"admin","schema":"example_external","name":"events"}`,
 					},
 					{Config: externalTableOrderConfig("ORC", managed, "id", "INTEGER", "label", "VARCHAR(64)"), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate)},
 					{Config: externalTableOrderConfig("ORC", managed, edited...), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
@@ -238,8 +264,10 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 			})
 		})
 	}
+
 	t.Run("orc set to position outside terraform", func(t *testing.T) {
 		c := empty()
+
 		t.Parallel()
 		testresource.UnitTest(t, testresource.TestCase{
 			ProtoV6ProviderFactories: providers(c),
@@ -250,6 +278,7 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 						table := externalTableFakeOf(c)
 						c.mu.Lock()
 						defer c.mu.Unlock()
+
 						table.parameters["orc.schema.resolution"] = "position"
 					},
 					Config: externalTableOrderConfig("ORC", "", "label", "VARCHAR(64)", "id", "INTEGER"), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate),

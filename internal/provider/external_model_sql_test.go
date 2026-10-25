@@ -25,6 +25,7 @@ func TestExternalModelSQL(t *testing.T) {
 	with := func(change func(*externalModelModel)) externalModelModel {
 		data := testExternalModelModel()
 		change(&data)
+
 		return data
 	}
 	create := func(data externalModelModel) func() (string, error) {
@@ -85,6 +86,7 @@ func TestShowModelParsing(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, []showModelEntry{{"public", "customer_churn"}, {"serving", "alpha"}, {"serving", "zeta"}}, models)
+
 	_, err = parseShowModels([]sqlclient.Row{{"Schema Name": "serving"}})
 	require.Error(t, err)
 
@@ -112,6 +114,7 @@ func TestObserveExternalModel(t *testing.T) {
 	observeExternalModel(&data, map[string]string{
 		"owner": "admin", "function_name": `serving.f_summarize`, "iam_role": "default", "model_id": fakeModelID, "request_type": "UNIFIED",
 	})
+
 	expected := testExternalModelModel()
 	expected.RequestType, expected.Owner = types.StringValue("unified"), types.StringValue("admin")
 	assert.Equal(t, expected, data)

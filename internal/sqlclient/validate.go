@@ -22,10 +22,12 @@ func OneOf(value string, allowed ...Keyword) (Keyword, error) {
 			return keyword, nil
 		}
 	}
+
 	names := make([]string, len(allowed))
 	for i, keyword := range allowed {
 		names[i] = string(keyword)
 	}
+
 	return "", fmt.Errorf("%q is not one of %s", value, strings.Join(names, ", "))
 }
 
@@ -82,6 +84,7 @@ var typeRules = func() map[string]typeRule {
 	// BPCHAR is the same type, but a column declared as BPCHAR becomes CHAR(256) rather than CHAR(1).
 	character.columnDefault = "(256)"
 	rules["bpchar"] = character
+
 	add(typeRule{canonical: "CHARACTER VARYING", modifier: lengthModifier, maximum: maxVarcharLength, columnDefault: "(256)"}, "varchar", "nvarchar", "text")
 	add(typeRule{canonical: "DATE"})
 	add(typeRule{canonical: "TIMESTAMP WITHOUT TIME ZONE"}, "timestamp")
@@ -91,9 +94,11 @@ var typeRules = func() map[string]typeRule {
 	add(typeRule{canonical: "INTERVAL YEAR TO MONTH"})
 	add(typeRule{canonical: "INTERVAL DAY TO SECOND", modifier: fractionModifier})
 	add(typeRule{canonical: "VARBYTE", modifier: lengthModifier, maximum: maxVarbyteLength, columnDefault: "(64000)"}, "varbinary", "binary varying")
+
 	for _, name := range []string{"GEOMETRY", "GEOGRAPHY", "HLLSKETCH", "SUPER", "ANYELEMENT", "REFCURSOR"} {
 		add(typeRule{canonical: name})
 	}
+
 	return rules
 }()
 
@@ -103,36 +108,45 @@ var typeRules = func() map[string]typeRule {
 // routine arguments are reported; column definitions use ColumnType, which adds the server's default modifier.
 func TypeName(value string) (Keyword, error) {
 	normalized := normalizeTypeName(value)
+
 	base, arguments, hasArguments := normalized, "", false
 	if open := strings.IndexByte(normalized, '('); open >= 0 {
 		if !strings.HasSuffix(normalized, ")") {
 			return "", fmt.Errorf("data type %q has unbalanced parentheses", value)
 		}
+
 		base, arguments, hasArguments = strings.TrimSpace(normalized[:open]), normalized[open+1:len(normalized)-1], true
 	}
+
 	rule, found := typeRules[base]
 	if !found {
 		return "", fmt.Errorf("unsupported Redshift data type %q", value)
 	}
+
 	if !hasArguments {
 		return Keyword(rule.canonical), nil
 	}
+
 	parts := strings.Split(arguments, ",")
 	for i := range parts {
 		parts[i] = strings.TrimSpace(parts[i])
 	}
+
 	numbers := make([]int64, len(parts))
 	for i, part := range parts {
 		if rule.modifier == lengthModifier && len(parts) == 1 && part == "max" {
 			numbers[i] = rule.maximum
 			continue
 		}
+
 		number, err := strconv.ParseInt(part, 10, 64)
 		if err != nil || part != strconv.FormatInt(number, 10) {
 			return "", fmt.Errorf("data type %q has an invalid modifier %q", value, part)
 		}
+
 		numbers[i] = number
 	}
+
 	switch {
 	case rule.modifier == lengthModifier && len(numbers) == 1 && numbers[0] >= 1 && numbers[0] <= rule.maximum:
 		return Keyword(fmt.Sprintf("%s(%d)", rule.canonical, numbers[0])), nil
@@ -144,6 +158,7 @@ func TypeName(value string) (Keyword, error) {
 	case rule.modifier == fractionModifier && len(numbers) == 1 && numbers[0] >= 0 && numbers[0] <= 6:
 		return Keyword(fmt.Sprintf("%s(%d)", rule.canonical, numbers[0])), nil
 	}
+
 	return "", fmt.Errorf("data type %q has unsupported modifiers", value)
 }
 
@@ -156,9 +171,11 @@ func ColumnType(value string) (Keyword, error) {
 	if err != nil {
 		return "", err
 	}
+
 	if rule := typeRules[normalizeTypeName(value)]; rule.columnDefault != "" {
 		return name + Keyword(rule.columnDefault), nil
 	}
+
 	return name, nil
 }
 
@@ -169,9 +186,11 @@ func CatalogType(value string) string {
 	if name, err := TypeName(value); err == nil {
 		return string(name)
 	}
+
 	if strings.Contains(value, `"`) {
 		return strings.TrimSpace(value)
 	}
+
 	return strings.ToUpper(strings.TrimSpace(value))
 }
 
@@ -188,8 +207,10 @@ func Signature(argTypes ...string) (Keyword, error) {
 		if err != nil {
 			return "", fmt.Errorf("argument %d: %w", i+1, err)
 		}
+
 		names[i] = string(name)
 	}
+
 	return Keyword(strings.Join(names, ", ")), nil
 }
 
@@ -202,18 +223,23 @@ func CheckUserSQL(text string) (UserSQL, error) {
 	if strings.TrimSpace(text) == "" {
 		return "", fmt.Errorf("SQL text is empty")
 	}
+
 	for _, view := range readings {
 		depth := 0
+
 		for _, item := range lex(text, view) {
 			if item.open && item.kind != lexLineComment {
 				return "", fmt.Errorf("SQL text has an unterminated %s", lexemeNames[item.kind])
 			}
+
 			if item.kind == lexParameter {
 				return "", fmt.Errorf("SQL text must not contain the parameter placeholder %s, because it runs without parameters", item.text)
 			}
+
 			if item.kind != lexCode {
 				continue
 			}
+
 			for _, char := range item.text {
 				switch char {
 				case ';':
@@ -228,10 +254,12 @@ func CheckUserSQL(text string) (UserSQL, error) {
 				}
 			}
 		}
+
 		if depth != 0 {
 			return "", fmt.Errorf("SQL text has an unmatched '('")
 		}
 	}
+
 	return UserSQL(text), nil
 }
 

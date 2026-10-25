@@ -8,12 +8,6 @@ description: Looks up an existing outbound datashare.
 
 Looks up an existing outbound datashare in its producer database.
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_datashares WHERE share_name = 'name' ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -42,6 +36,17 @@ data "redshift_datashare" "analytics" {
 - `publicly_accessible` (Boolean) Whether public workgroups may consume the share.
 - `share_id` (Number) Numeric datashare ID reported by `SVV_DATASHARES`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the selected outbound datashare.
+SELECT ... FROM svv_datashares WHERE share_name = 'name' ...;
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed datashare's JSON identity, using the same warehouse, producer database, and name
 keys as the paired resource.

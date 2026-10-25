@@ -28,6 +28,7 @@ func TestExternalPartitionSQL(t *testing.T) {
 			if err != nil {
 				return "", err
 			}
+
 			return statement(built), nil
 		}
 	}
@@ -44,8 +45,10 @@ func TestExternalPartitionSQL(t *testing.T) {
 			if err != nil {
 				return nil, err
 			}
+
 			next := prev
 			next.location = location
+
 			return alterExternalPartitionStatements(prev, next), nil
 		}
 	}
@@ -79,6 +82,7 @@ func TestExternalPartitionSQL(t *testing.T) {
 			require.NoError(t, err)
 			sql, parameters, err := readExternalPartitionsQuery(built).Build()
 			assert.Equal(t, map[string]string{"schema": `Lake"Schema`, "table": `Odd"Table`}, parameters)
+
 			return sql, err
 		}},
 	})
@@ -98,6 +102,7 @@ func TestExternalPartitionValuesMatch(t *testing.T) {
 	match, err = externalPartitionValuesMatch(spec, `["101", "2008-01"]`)
 	require.NoError(t, err)
 	assert.False(t, match)
+
 	_, err = externalPartitionValuesMatch(spec, `2008-01`)
 	require.Error(t, err)
 	assert.JSONEq(t, `{"a":"1","b":"2"}`, externalPartitionIDValues(map[string]string{"b": "2", "a": "1"}))

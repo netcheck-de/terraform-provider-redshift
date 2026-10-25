@@ -11,12 +11,6 @@ statements or `INCLUDENEW`, without taking ownership. Omit `database` to use the
 to observe every outbound share there. See AWS
 [SVV_DATASHARE_OBJECTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARE_OBJECTS.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND share_name = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -43,7 +37,7 @@ data "redshift_datashare_objects" "example" {
 ### Read-Only
 
 - `datashare_objects` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--datashare_objects))
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 
 <a id="nestedatt--datashare_objects"></a>
 ### Nested Schema for `datashare_objects`
@@ -55,6 +49,15 @@ Read-Only:
 - `object_name` (String) Object name exactly as reported by the catalog, including schema qualification. No parsing or overload-signature inference is performed.
 - `object_type` (String) Catalog object type.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List current outbound datashare members.
+SELECT ... FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND share_name = '...';
+```
 
 ## Membership and Ownership
 

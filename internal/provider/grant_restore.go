@@ -18,16 +18,20 @@ func restoreGrantDefault(data types.Object, eligible bool, privilege string) ([]
 	if !ok || !value.ValueBool() {
 		return nil, nil
 	}
+
 	if !eligible {
 		return nil, fmt.Errorf("restore_default_on_destroy requires a PUBLIC language grant or database-wide PUBLIC FUNCTIONS default privileges")
 	}
+
 	return []string{privilege}, nil
 }
 
+// languageGrantDestroyPrivileges restores PUBLIC's default USAGE on destroy when requested.
 func languageGrantDestroyPrivileges(data types.Object) ([]string, error) {
 	return restoreGrantDefault(data, objectString(data, "grantee_type") == "PUBLIC", "USAGE")
 }
 
+// defaultPrivilegesDestroyPrivileges restores PUBLIC's implicit default EXECUTE on destroy when requested.
 func defaultPrivilegesDestroyPrivileges(data types.Object) ([]string, error) {
 	return restoreGrantDefault(data, defaultPrivilegesImplicit(data), "EXECUTE")
 }

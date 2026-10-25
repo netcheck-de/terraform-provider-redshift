@@ -15,8 +15,9 @@ var _ = registerDataSource(newConstraintsDataSource)
 // newConstraintsDataSource lists primary key, unique, and foreign key constraints.
 func newConstraintsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
-		name:        "constraints",
-		description: "Lists the primary key, unique, and foreign key constraints of one database's tables from `PG_CONSTRAINT`, with key columns in key order. Redshift does not enforce these constraints, but the query planner relies on them.",
+		name:          "constraints",
+		databaseField: "database",
+		description:   "Lists the primary key, unique, and foreign key constraints of one database's tables from `PG_CONSTRAINT`, with key columns in key order. Redshift does not enforce these constraints, but the query planner relies on them.",
 		filters: map[string]schema.Attribute{
 			"database":        discoveryDatabaseFilter("constraints"),
 			"schema":          discoveryFilter("Only constraints of tables in this schema."),
@@ -42,25 +43,31 @@ func newConstraintsDataSource() datasource.DataSource {
 // constraintsList reads constraints inside the selected database, because pg_constraint is per database.
 func constraintsList(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
 	database := discoveryDatabase(client, filters)
+
 	query, err := readConstraintsQuery(objectString(filters, "schema"), objectString(filters, "table"), objectString(filters, "constraint_type"))
 	if err != nil {
 		return nil, err
 	}
+
 	rows, err := client.selectRows(ctx, database, query)
 	if err != nil {
 		return nil, err
 	}
+
 	items := make([]map[string]attr.Value, 0, len(rows))
 	for _, row := range rows {
 		kind := row["constraint_type"]
 		if _, ok := constraintsTypes[kind]; !ok || row["schema_name"] == "" || row["table_name"] == "" || row["constraint_name"] == "" {
 			return nil, fmt.Errorf("pg_constraint returned an incomplete constraint row in database %q", database)
 		}
+
 		foreign := kind == "FOREIGN KEY"
+
 		columns, referenced, err := constraintsKeyColumns(row["definition"], foreign)
 		if err != nil {
 			return nil, err
 		}
+
 		item := map[string]attr.Value{
 			"database":           types.StringValue(database),
 			"schema":             types.StringValue(row["schema_name"]),
@@ -77,8 +84,10 @@ func constraintsList(ctx context.Context, client *resourceClient, filters types.
 			item["referenced_schema"], item["referenced_table"] = discoveryText(row["referenced_schema"]), discoveryText(row["referenced_table"])
 			item["referenced_columns"] = constraintsStrings(referenced)
 		}
+
 		items = append(items, item)
 	}
+
 	return items, nil
 }
 
@@ -88,5 +97,6 @@ func constraintsStrings(names []string) types.List {
 	for _, name := range names {
 		values = append(values, types.StringValue(name))
 	}
+
 	return types.ListValueMust(types.StringType, values)
 }

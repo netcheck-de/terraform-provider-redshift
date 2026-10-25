@@ -71,6 +71,7 @@ func maskingAttachmentClient(rows ...sqlclient.Row) sqlclient.Client {
 		case strings.HasPrefix(sql, "ATTACH "), strings.HasPrefix(sql, "DETACH "):
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("unexpected SQL %q", sql)
 	})
 }
@@ -105,16 +106,20 @@ func TestMaskingPolicyAttachmentConvergence(t *testing.T) {
 			configureTestResource(t, r, maskingAttachmentClient(test.row))
 			state, diagnostics := applyOperation(t, r, test.operation, test.model, test.model, nil)
 			require.Equal(t, test.fails, diagnostics.HasError(), "%v", diagnostics)
+
 			if test.fails {
 				return
 			}
+
 			var observed maskingPolicyAttachmentModel
 			require.False(t, state.Get(context.Background(), &observed).HasError())
 			assert.Equal(t, int64(10), observed.Priority.ValueInt64())
+
 			expected := []string{"email"}
 			if !test.model.InputColumns.IsNull() {
 				expected = maskingAttachmentNames(test.model.InputColumns)
 			}
+
 			assert.Equal(t, expected, maskingAttachmentNames(observed.InputColumns))
 		})
 	}
@@ -126,6 +131,7 @@ func TestMaskingPolicyAttachmentCreateRejectsInvalidBeforeState(t *testing.T) {
 	configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		return nil, fmt.Errorf("unexpected SQL %q", sql)
 	}))
+
 	model := maskingTestAttachment(func(m *maskingPolicyAttachmentModel) { m.GranteeType = types.StringValue("PUBLIC") })
 	resp := resource.CreateResponse{State: emptyState(t, r)}
 	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(testState(t, r, model))}, &resp)
@@ -137,16 +143,18 @@ func TestMaskingPolicyAttachmentCreateRejectsInvalidBeforeState(t *testing.T) {
 func TestMaskingPolicyAttachmentImport(t *testing.T) {
 	r := newMaskingPolicyAttachmentResource()
 	configureTestResource(t, r, maskingAttachmentClient())
-	id := r.(*maskingPolicyAttachmentResource).identity("analytics", maskingAttachmentIdentity(maskingTestAttachment(nil))).ValueString()
+
+	id := identity(maskingAttachmentIdentity(maskingTestAttachment(nil))).ValueString()
 	for candidate, valid := range map[string]bool{
 		id: true,
-		`{"workgroup_name":"warehouse","database":"analytics","policy":"p","schema":"s","relation":"r","grantee":"g","grantee_type":"ROLE","columns":"email"}`: false,
-		`{"workgroup_name":"warehouse","database":"analytics","policy":"p","schema":"s","relation":"r","grantee":"g","grantee_type":"ROLE","columns":"[]"}`:    false,
-		`{"workgroup_name":"warehouse","database":"analytics","policy":"p","schema":"s","relation":"r","grantee":"g","columns":"[\"email\"]"}`:                 false,
+		`{"database":"analytics","policy":"p","schema":"s","relation":"r","grantee":"g","grantee_type":"ROLE","columns":"email"}`: false,
+		`{"database":"analytics","policy":"p","schema":"s","relation":"r","grantee":"g","grantee_type":"ROLE","columns":"[]"}`:    false,
+		`{"database":"analytics","policy":"p","schema":"s","relation":"r","grantee":"g","columns":"[\"email\"]"}`:                 false,
 	} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: candidate}, &resp)
 		require.Equal(t, valid, !resp.Diagnostics.HasError(), "%s: %v", candidate, resp.Diagnostics)
+
 		if valid {
 			var columns types.List
 			require.False(t, resp.State.GetAttribute(context.Background(), path.Root("columns"), &columns).HasError())
@@ -163,6 +171,7 @@ func TestMaskingPolicyAttachmentPriorityUpdateSafety(t *testing.T) {
 	planned := maskingTestAttachment(func(m *maskingPolicyAttachmentModel) { m.Priority = types.Int64Value(20) })
 	ownRow := maskingAttachmentRowWith("5", `["email"]`)
 	competitor := sqlclient.Row{"policy_name": "mask_partial", "schema_name": "public", "table_name": "customers", "grantee": "analyst", "grantee_type": "user", "priority": "20", "input_columns": `["email"]`, "output_columns": `["email"]`}
+
 	restore := `ATTACH MASKING POLICY "mask_email" ON "public"."customers" ("email") USING ("email") TO ROLE "example_readers" PRIORITY 5`
 	for name, test := range map[string]struct {
 		peers []sqlclient.Row
@@ -193,6 +202,7 @@ func TestMaskingPolicyAttachmentPriorityUpdateSafety(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			var writes []string
+
 			attaches := 0
 			r := newMaskingPolicyAttachmentResource()
 			configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
@@ -203,15 +213,18 @@ func TestMaskingPolicyAttachmentPriorityUpdateSafety(t *testing.T) {
 					return test.peers, nil
 				case strings.HasPrefix(sql, "ATTACH "):
 					writes = append(writes, sql)
+
 					attaches++
 					if attaches <= test.failures {
 						return nil, fmt.Errorf("injected ATTACH failure %d", attaches)
 					}
+
 					return nil, nil
 				case strings.HasPrefix(sql, "DETACH "):
 					writes = append(writes, sql)
 					return nil, nil
 				}
+
 				return nil, fmt.Errorf("unexpected SQL %q", sql)
 			}))
 			_, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
@@ -239,6 +252,7 @@ func TestPolicyAttachmentKnownConfig(t *testing.T) {
 			require.ErrorContains(t, maskingAttachmentKnownConfig(maskingTestAttachment(test.change)), test.message)
 		})
 	}
+
 	rls := rlsPolicyAttachmentLifecycleModel()
 	rls.Policy = types.StringValue("")
 	require.ErrorContains(t, rlsPolicyAttachmentKnownConfig(rls), "nonempty")
@@ -255,6 +269,7 @@ func TestMaskingPolicyAttachmentPartialCreateKeepsKnownState(t *testing.T) {
 	model := maskingTestAttachment(func(m *maskingPolicyAttachmentModel) { m.InputColumns = types.ListUnknown(types.StringType) })
 	state, diagnostics := applyOperation(t, r, "create", nil, model, nil)
 	require.True(t, diagnostics.HasError())
+
 	var actual maskingPolicyAttachmentModel
 	require.False(t, state.Get(context.Background(), &actual).HasError())
 	assert.False(t, actual.ID.IsNull())

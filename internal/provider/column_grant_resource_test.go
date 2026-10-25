@@ -46,6 +46,7 @@ func columnGrantClient(c *catalog) sqlclient.Client {
 		if strings.HasPrefix(sql, "SELECT usename FROM pg_user") {
 			return []sqlclient.Row{{"usename": parameters["name"]}}, nil
 		}
+
 		return c.Query(ctx, connection, sql, parameters)
 	})
 }
@@ -64,9 +65,11 @@ func TestColumnGrantTranscripts(t *testing.T) {
 			c := fullCatalog()
 			c.localDB = true
 			clear(fakeState[*columnGrantFake](c, "column_grant").grants)
+
 			if setup != nil {
 				setup(c)
 			}
+
 			return columnGrantClient(c)
 		}
 	}
@@ -108,17 +111,21 @@ func TestColumnGrantCreateRejectsInvalidTupleBeforeState(t *testing.T) {
 			r.Create(context.Background(), resource.CreateRequest{Plan: plan}, &resp)
 			require.True(t, resp.Diagnostics.HasError())
 			assert.True(t, resp.State.Raw.IsNull(), "invalid tuple must not be recorded in state")
+
 			var validated resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(plan)}, &validated)
 			assert.True(t, validated.Diagnostics.HasError(), "invalid tuple must be reported during planning")
 		})
 	}
+
 	r := newColumnGrantResource()
 	unknown := columnGrantTestModel(columnGrantBaseFields, nil)
 	unknown.Grantee = types.StringUnknown()
+
 	var validated resource.ValidateConfigResponse
 	r.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, unknown))}, &validated)
 	assert.False(t, validated.Diagnostics.HasError(), "unknown values are validated once known")
+
 	unknownColumns := columnGrantTestModel(columnGrantBaseFields, nil)
 	unknownColumns.Privileges = types.MapValueMust(types.SetType{ElemType: types.StringType}, map[string]attr.Value{"SELECT": types.SetUnknown(types.StringType)})
 	require.NoError(t, validateColumnGrant(unknownColumns))
@@ -132,19 +139,24 @@ func TestColumnGrantFailurePaths(t *testing.T) {
 		c := fullCatalog()
 		c.localDB = true
 		clear(fakeState[*columnGrantFake](c, "column_grant").grants)
+
 		if mutate != nil {
 			mutate(c)
 		}
+
 		r := newColumnGrantResource().(*columnGrantResource)
 		r.resourceClient = testResourceClient(c)
+
 		return r, c
 	}
+
 	t.Run("superseded", func(t *testing.T) {
 		r, c := setup(nil)
 		r.resourceClient = testResourceClient(queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 			if strings.HasPrefix(sql, "GRANT ") {
 				return nil, nil // A table-level grant makes Redshift accept and ignore the column grant.
 			}
+
 			return c.Query(ctx, connection, sql, parameters)
 		}))
 		err := r.reconcile(context.Background(), model)
@@ -171,6 +183,7 @@ func TestColumnGrantFailurePaths(t *testing.T) {
 			if strings.HasPrefix(sql, "GRANT ") {
 				fakeState[*columnGrantFake](c, "column_grant").relation = false
 			}
+
 			return rows, err
 		}))
 		err := r.reconcile(context.Background(), model)
@@ -183,6 +196,7 @@ func TestColumnGrantFailurePaths(t *testing.T) {
 		})
 		require.ErrorContains(t, r.reconcile(context.Background(), model), "unsupported catalog column privilege")
 		assert.Empty(t, c.writes)
+
 		observed := model
 		_, found, err := r.read(context.Background(), &observed, false)
 		require.NoError(t, err)
@@ -191,7 +205,7 @@ func TestColumnGrantFailurePaths(t *testing.T) {
 	})
 	t.Run("relation dropped", func(t *testing.T) {
 		r, _ := setup(func(c *catalog) { fakeState[*columnGrantFake](c, "column_grant").relation = false })
-		state := testState(t, r, withID(model, r.identity("admin", map[string]string{"x": "y"})))
+		state := testState(t, r, withID(model, identity(map[string]string{"x": "y"})))
 		resp := resource.ReadResponse{State: state}
 		r.Read(context.Background(), resource.ReadRequest{State: state}, &resp)
 		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
@@ -212,15 +226,17 @@ func TestColumnGrantImport(t *testing.T) {
 	r := newColumnGrantResource().(*columnGrantResource)
 	r.resourceClient = testResourceClient(nil)
 	fields := maps.Clone(columnGrantBaseFields)
-	valid := r.identity("admin", fields).ValueString()
+	valid := identity(fields).ValueString()
 	incomplete := maps.Clone(fields)
 	delete(incomplete, "object_name")
 	encoded, err := json.Marshal(incomplete)
 	require.NoError(t, err)
+
 	for id, failure := range map[string]bool{valid: false, "invalid JSON": true, string(encoded): true} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
 		assert.Equal(t, failure, resp.Diagnostics.HasError(), "%s: %v", id, resp.Diagnostics)
+
 		if !failure {
 			var imported columnGrantModel
 			require.False(t, resp.State.Get(context.Background(), &imported).HasError())
@@ -241,6 +257,7 @@ func TestColumnGrantPartialPrincipal(t *testing.T) {
 	require.NoError(t, validateColumnGrant(m))
 	m.Privileges = types.MapUnknown(types.SetType{ElemType: types.StringType})
 	require.NoError(t, validateColumnGrant(m))
+
 	r := &columnGrantResource{}
 	m.GranteeType = types.StringValue("INVALID")
 	require.Error(t, r.reconcile(context.Background(), m))

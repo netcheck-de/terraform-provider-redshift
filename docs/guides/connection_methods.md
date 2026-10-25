@@ -1,7 +1,7 @@
 ---
 subcategory: Configuration
 page_title: Connection methods and authentication
-description: Configure Serverless/provisioned Data API or direct TLS password/IAM connections and preserve warehouse identity.
+description: Configure Serverless/provisioned Data API or direct TLS password/IAM connections.
 ---
 
 # Connection methods and authentication
@@ -112,7 +112,7 @@ provider "redshift" {
 
 Endpoint discovery uses `DescribeClusters`. `GetClusterCredentials` authenticates the existing `db_user` with
 `AutoCreate = false` and no session group assignment. IAM permissions and SQL privileges are separate requirements.
-Unknown warehouse/endpoint values are allowed during planning; SQL waits until the binding and authentication are known.
+Unknown warehouse/endpoint values are allowed during planning; SQL waits until the connection and authentication are known.
 
 ## TLS and routing
 
@@ -144,39 +144,11 @@ provider page.
 
 ## Imports and transport switching
 
-All JSON import IDs contain an administration `database`, exactly one warehouse key, and resource-specific fields:
+The [provider import guide](../index.md#importing-existing-resources) explains `import` blocks, CLI import, provider
+aliases, and JSON fields. Each resource page shows its block example first and CLI example second. IDs identify objects
+within the configured warehouse and include their containing database where applicable, not connection selectors or an
+administration-only database.
 
-| Method                          | Warehouse key        | Example                                |
-|---------------------------------|----------------------|----------------------------------------|
-| Serverless Data API/direct IAM  | `workgroup_name`     | `"analytics"` or its configured ARN    |
-| Provisioned Data API/direct IAM | `cluster_identifier` | `"analytics-cluster"`                  |
-| Direct password                 | `endpoint`           | `"redshift.internal.example.com:5439"` |
-
-Existing Serverless IDs remain unchanged. Switching Data API to direct IAM for the same selector spelling preserves
-resource identity and needs no import or replacement. Name and ARN spellings are deliberately not treated as equivalent;
-changing the spelling requires explicit re-importing. Password endpoint identities normalize DNS case/trailing dots and
-include the port. Switching between AWS identity and password endpoint identity requires explicit re-importing.
-
-```sh
-terraform import redshift_role.readers \
-  '{"cluster_identifier":"analytics-cluster","database":"analytics","name":"readers"}'
-
-terraform import redshift_role.readers \
-  '{"endpoint":"redshift.internal.example.com:5439","database":"analytics","name":"readers"}'
-```
-
-The same identity works in an `import` block (Terraform 1.5 and later):
-
-```terraform
-import {
-  to = redshift_role.readers
-  id = jsonencode({
-    cluster_identifier = "analytics-cluster"
-    database           = "analytics"
-    name               = "readers"
-  })
-}
-```
-
-Do not destroy/recreate SQL objects merely to switch bindings. Re-import the same objects under the intended
-configuration and inspect the next plan. Read-only data sources never need imports.
+Switching between Data API, direct IAM, and direct password connections to the same warehouse preserves resource IDs
+and needs no import or replacement. A workgroup name and its ARN likewise produce the same resource IDs. Read-only
+data sources never need imports.

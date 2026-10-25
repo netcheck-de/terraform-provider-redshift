@@ -37,8 +37,10 @@ func newGrantsDataSource() datasource.DataSource {
 		MarkdownDescription: "`DATABASE`, `SCHEMA`, or `TABLE` (including views) lists `SHOW GRANTS ON` that object, named by `database_name`, `schema_name`, and `object_name`. " +
 			"Omit it to list `SHOW GRANTS FOR` the `USER` or `ROLE` named by `grantee` and `grantee_type`.",
 	}
+
 	return newCollectionDataSource(collectionSpec{
-		name: "grants",
+		name:          "grants",
+		databaseField: "database_name",
 		description: "Lists the grants `SHOW GRANTS` reports on one database, schema, or table, or for one user or role in one database, without taking ownership. " +
 			"Rows include scoped (`privilege_scope`) grants; `SHOW GRANTS` documents no column for grants inherited through roles, so none is exposed.",
 		filters: filters,
@@ -56,14 +58,17 @@ func newGrantsDataSource() datasource.DataSource {
 		},
 		list: func(ctx context.Context, client *resourceClient, data types.Object) ([]map[string]attr.Value, error) {
 			filters := grantsFiltersFrom(data, client.database.ValueString())
+
 			statement, err := readGrantsStatement(filters)
 			if err != nil {
 				return nil, err
 			}
+
 			rows, err := client.queryDatabase(ctx, filters.database, statement, nil)
 			if err != nil {
 				return nil, err
 			}
+
 			return grantsItems(filters, rows), nil
 		},
 	})

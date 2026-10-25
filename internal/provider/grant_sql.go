@@ -35,6 +35,7 @@ var grantSchemaScopes = []string{"SCHEMA", "TABLES", "FUNCTIONS", "PROCEDURES", 
 // grantScopeNames lists every privilege keyword that some scope accepts, for the schema validator.
 func grantScopeNames() []string {
 	var names []string
+
 	for _, scope := range grantScopes {
 		for _, name := range privilegeNames(grantScopePrivileges[scope]) {
 			if !slices.Contains(names, name) {
@@ -42,21 +43,25 @@ func grantScopeNames() []string {
 			}
 		}
 	}
+
 	return names
 }
 
 // recipient returns the configured recipient kind and name: ROLE, USER, or DATASHARE.
 func (data grantModel) recipient() (kind, name string, err error) {
 	var kinds []string
+
 	for _, candidate := range []struct{ kind, name string }{{"ROLE", knownString(data.Role)}, {"USER", knownString(data.User)}, {"DATASHARE", knownString(data.Datashare)}} {
 		if candidate.name != "" {
 			kind, name = candidate.kind, candidate.name
 			kinds = append(kinds, candidate.kind)
 		}
 	}
+
 	if len(kinds) != 1 {
 		return "", "", fmt.Errorf("configure exactly one nonempty role, user, or datashare")
 	}
+
 	return kind, name, nil
 }
 
@@ -70,9 +75,11 @@ func grantRecipientQuery(data grantModel) sqlclient.Query {
 	if share := knownString(data.Datashare); share != "" {
 		return sqlclient.Select("share_name").From("svv_datashares").Where("share_type = 'OUTBOUND'").Where("share_name = :share", sqlclient.Bind("share", share))
 	}
+
 	if user := knownString(data.User); user != "" {
 		return privilegeUserQuery(user)
 	}
+
 	return sqlclient.Select("role_name").From("svv_roles").Where("role_name = :role", sqlclient.Bind("role", data.Role.ValueString()))
 }
 
@@ -84,12 +91,15 @@ func readGrantStatement(data grantModel) string {
 	if knownString(data.Datashare) != "" {
 		return sqlclient.Stmt("SHOW GRANTS ON SCHEMA").Ident(data.SchemaName.ValueString()).String()
 	}
+
 	if user := knownString(data.User); user != "" {
 		if schema := knownString(data.SchemaName); schema != "" {
 			return sqlclient.Stmt("SHOW GRANTS ON SCHEMA").Qualified(data.DatabaseName.ValueString(), schema).KwIdent("FOR", user).String()
 		}
+
 		return sqlclient.Stmt("SHOW GRANTS ON DATABASE").Ident(data.DatabaseName.ValueString()).KwIdent("FOR", user).String()
 	}
+
 	return sqlclient.Stmt("SHOW GRANTS FOR ROLE").Ident(data.Role.ValueString()).KwIdent("FROM DATABASE", data.DatabaseName.ValueString()).String()
 }
 
@@ -97,16 +107,20 @@ func readGrantStatement(data grantModel) string {
 // every identity and omit object_type, so the identity type and the empty object type are accepted there.
 func (data grantModel) grantRowMatches(row sqlclient.Row, identity string) bool {
 	schemaName, scope := knownString(data.SchemaName), data.Scope.ValueString()
+
 	objectType := "DATABASE"
 	if schemaName != "" {
 		objectType = "SCHEMA"
 	}
+
 	routine := func(value string) bool { return value == "FUNCTIONS" || value == "PROCEDURES" }
 	matchingScope := row["privilege_scope"] == scope || (routine(scope) && routine(row["privilege_scope"]))
+
 	matchingObject := row["object_type"] == objectType
 	if knownString(data.User) != "" {
 		matchingObject = (row["object_type"] == "" || matchingObject) && strings.EqualFold(row["identity_type"], "user")
 	}
+
 	return row["identity_name"] == identity && row["database_name"] == data.DatabaseName.ValueString() && matchingObject && matchingScope && (schemaName == "" || row["schema_name"] == schemaName) && (schemaName != "" || row["schema_name"] == "")
 }
 
@@ -119,12 +133,15 @@ func (data grantModel) spec() (grantSpec, error) {
 		if scope == "TABLES" {
 			object = sqlclient.Fragment().KwIdent("FOR TABLES IN SCHEMA", schemaName)
 		}
+
 		return grantSpec{object: object, grantee: sqlclient.Fragment().KwIdent("DATASHARE", share)}, nil
 	}
+
 	spec := grantSpec{grantee: sqlclient.Fragment().KwIdent("ROLE", data.Role.ValueString())}
 	if user := knownString(data.User); user != "" {
 		spec.grantee = sqlclient.Ident(user)
 	}
+
 	switch {
 	case schemaName == "" && scope == "DATABASE":
 		spec.object = sqlclient.Fragment().KwIdent("ON DATABASE", database)
@@ -135,6 +152,7 @@ func (data grantModel) spec() (grantSpec, error) {
 		if err != nil {
 			return grantSpec{}, err
 		}
+
 		spec.object, spec.optionRevoke = sqlclient.Kw("FOR", keyword), scopedOptionRevoke
 		if schemaName != "" {
 			spec.object = spec.object.KwIdent("IN SCHEMA", schemaName).KwIdent("DATABASE", database)
@@ -142,6 +160,7 @@ func (data grantModel) spec() (grantSpec, error) {
 			spec.object = spec.object.KwIdent("IN DATABASE", database)
 		}
 	}
+
 	return spec, nil
 }
 
@@ -151,7 +170,9 @@ func (data grantModel) allowed() []sqlclient.Keyword {
 		if data.Scope.ValueString() == "TABLES" {
 			return []sqlclient.Keyword{"SELECT"}
 		}
+
 		return []sqlclient.Keyword{"USAGE"}
 	}
+
 	return grantScopePrivileges[data.Scope.ValueString()]
 }

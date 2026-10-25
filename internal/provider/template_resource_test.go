@@ -39,6 +39,7 @@ var _ = registerValidateConfigCase("template", validateConfigCase{
 	unknown: func() templateModel {
 		model := templateTestModel("csv_load", "", "", nil)
 		model.Parameters = types.MapUnknown(types.StringType)
+
 		return model
 	}(),
 })
@@ -72,22 +73,57 @@ func TestTemplateTranscripts(t *testing.T) {
 	})
 }
 
+// TestTemplateRenameRecordedWhenLaterStepFails keeps the new name in state when a statement after the rename fails, so
+// the next refresh finds the renamed template instead of dropping it from state.
+func TestTemplateRenameRecordedWhenLaterStepFails(t *testing.T) {
+	prior := templateLifecycleModel
+	prior.Owner = types.StringValue("admin")
+	planned := prior
+	planned.Name, planned.Owner = types.StringValue("csv_import"), types.StringValue("loader")
+	c := catalogWith()()
+	r := newTemplateResource().(*templateResource)
+	configureTestResource(t, r, queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		if strings.Contains(sql, " OWNER TO ") {
+			return nil, errors.New("user loader does not exist")
+		}
+
+		return c.Query(ctx, target, sql, parameters)
+	}))
+
+	prior.ID = identity(map[string]string{"database": "admin", "schema": prior.Schema.ValueString(), "name": prior.Name.ValueString()})
+	state, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
+	require.True(t, diagnostics.HasError())
+
+	var recorded templateModel
+	require.False(t, state.Get(context.Background(), &recorded).HasError())
+	assert.Equal(t, "csv_import", recorded.Name.ValueString())
+	assert.Equal(t, identity(map[string]string{"database": "admin", "schema": prior.Schema.ValueString(), "name": "csv_import"}), recorded.ID)
+	assert.Equal(t, "admin", recorded.Owner.ValueString(), "the failed owner change is not recorded")
+	refreshed, diagnostics := applyOperation(t, r, "read", recorded, nil, nil)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	assert.False(t, refreshed.Raw.IsNull(), "refresh finds the renamed template")
+}
+
 // TestTemplateReadReconciles keeps configured spellings the catalog reports canonically, surfaces outside changes,
 // and removes state when the schema is gone.
 func TestTemplateReadReconciles(t *testing.T) {
 	read := func(t *testing.T, c *catalog, model templateModel) (templateModel, bool) {
 		t.Helper()
+
 		r := newTemplateResource()
 		configureTestResource(t, r, c)
 		state := testState(t, r, model)
 		resp := resource.ReadResponse{State: state}
 		r.Read(context.Background(), resource.ReadRequest{State: state}, &resp)
 		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 		if resp.State.Raw.IsNull() {
 			return templateModel{}, false
 		}
+
 		var observed templateModel
 		require.False(t, resp.State.Get(context.Background(), &observed).HasError())
+
 		return observed, true
 	}
 	spelled := templateTestModel("csv_load", "csv", "", map[string]string{"IGNOREHEADER": "01", "DELIMITER": ","})
@@ -126,10 +162,12 @@ func TestTemplateCatalogFailures(t *testing.T) {
 			case strings.HasPrefix(sql, "SHOW TEMPLATE "):
 				return definitions, nil
 			}
+
 			return nil, fmt.Errorf("unexpected SQL %q", sql)
 		})
 	}
 	row := sqlclient.Row{"template_name": "csv_load", "template_owner": "admin"}
+
 	good := sqlclient.Row{"statement": "CREATE OR REPLACE TEMPLATE admin.serving.csv_load FOR COPY AS CSV"}
 	for name, client := range map[string]sqlclient.Client{
 		"ambiguous":         respond([]sqlclient.Row{row, row}, []sqlclient.Row{good}),
@@ -144,6 +182,7 @@ func TestTemplateCatalogFailures(t *testing.T) {
 			assert.True(t, invoke(t, r, "read", templateLifecycleModel).HasError())
 		})
 	}
+
 	r := newTemplateResource()
 	configureTestResource(t, r, respond([]sqlclient.Row{{"template_name": "csvxload", "template_owner": "admin"}}, nil))
 	assert.False(t, invoke(t, r, "read", templateLifecycleModel).HasError(), "a name the LIKE pattern also matches is not the template")
@@ -163,10 +202,12 @@ func TestTemplateConvergence(t *testing.T) {
 				if strings.HasPrefix(sql, "ALTER TEMPLATE") {
 					change(fakeState[*templateFake](c, templateFakeFamily))
 				}
+
 				return rows, err
 			})
 			r := newTemplateResource()
 			configureTestResource(t, r, client)
+
 			prior := templateLifecycleModel
 			prior.Owner = types.StringValue("admin")
 			planned := prior
@@ -175,6 +216,7 @@ func TestTemplateConvergence(t *testing.T) {
 			assert.True(t, diagnostics.HasError())
 		})
 	}
+
 	r := newTemplateResource()
 	configureTestResource(t, r, catalogWith(templateFakeChange(func(f *templateFake) { f.exists = false }))())
 	_, diagnostics := applyOperation(t, r, "update", templateLifecycleModel, templateLifecycleModel, nil)
@@ -187,6 +229,7 @@ func TestTemplateCreateRejectsInvalidBeforeState(t *testing.T) {
 	configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		return nil, fmt.Errorf("unexpected SQL %q", sql)
 	}))
+
 	model := templateTestModel("csv_load", "CSV", "", map[string]string{"MAXERROR": "many"})
 	resp := resource.CreateResponse{State: emptyState(t, r)}
 	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(testState(t, r, model))}, &resp)
@@ -199,13 +242,14 @@ func TestTemplateCreateRejectsInvalidBeforeState(t *testing.T) {
 func TestTemplateImport(t *testing.T) {
 	r := newTemplateResource()
 	for id, valid := range map[string]bool{
-		`{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"csv_load"}`: true,
-		`{"workgroup_name":"warehouse","database":"admin","name":"csv_load"}`:                    false,
-		`csv_load`: false,
+		`{"database":"admin","schema":"serving","name":"csv_load"}`: true,
+		`{"database":"admin","name":"csv_load"}`:                    false,
+		`csv_load`:                                                  false,
 	} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
 		assert.Equal(t, valid, !resp.Diagnostics.HasError(), "%s: %v", id, resp.Diagnostics)
+
 		if valid {
 			var schemaName types.String
 			require.False(t, resp.State.GetAttribute(context.Background(), path.Root("schema"), &schemaName).HasError())
@@ -228,16 +272,19 @@ func TestTemplateLifecycleEdges(t *testing.T) {
 	templateIdentity{}.PlanModifyString(ctx, planmodifier.StringRequest{StateValue: types.StringValue("identity"), PlanValue: types.StringUnknown(), State: state, Plan: tfsdk.Plan(state)}, &response)
 	require.False(t, response.Diagnostics.HasError())
 	assert.Equal(t, types.StringValue("identity"), response.PlanValue)
+
 	for _, operation := range []string{"create", "update"} {
 		t.Run(operation, func(t *testing.T) {
 			c := fullCatalog()
 			if operation == "create" {
 				fakeState[*templateFake](c, templateFakeFamily).exists = false
 			}
+
 			r := &templateResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if strings.HasPrefix(sql, "ALTER TEMPLATE") {
 					return nil, errors.New("alter denied")
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			}))}
 			planned := templateLifecycleModel

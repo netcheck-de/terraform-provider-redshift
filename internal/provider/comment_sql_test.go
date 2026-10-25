@@ -15,6 +15,7 @@ func TestCommentSQL(t *testing.T) {
 	constraint := func(schema, name, constraint string) commentModel {
 		data := target("CONSTRAINT", schema, name, "")
 		data.ConstraintName = types.StringValue(constraint)
+
 		return data
 	}
 	withConstraint := func(data commentModel) commentModel {
@@ -27,7 +28,9 @@ func TestCommentSQL(t *testing.T) {
 			if err != nil {
 				return "", err
 			}
+
 			sql, _, err := query.Build()
+
 			return sql, err
 		}
 	}
@@ -44,7 +47,9 @@ func TestCommentSQL(t *testing.T) {
 			if err != nil {
 				return "", err
 			}
+
 			sql, _, err := query.Build()
+
 			return sql, err
 		}
 	}

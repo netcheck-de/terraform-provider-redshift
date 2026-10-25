@@ -11,15 +11,7 @@ user-defined functions and `USAGE ON LANGUAGE plpgsql` to create stored procedur
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 
-## SQL Statements
-
-```sql
-GRANT USAGE ON LANGUAGE language_name TO ... [WITH GRANT OPTION];
-REVOKE [GRANT OPTION FOR] USAGE ON LANGUAGE language_name FROM ...;
-```
-
-Deleting the resource revokes what it owns unless `restore_default_on_destroy` opts into restoring PUBLIC's default;
-see [Reconciliation](#reconciliation) for changes.
+`plpythonu` is not supported, because Redshift no longer supports Python UDFs.
 
 ## Example Usage
 
@@ -75,12 +67,25 @@ resource "redshift_language_grant" "public_procedures" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
-`plpythonu` is not supported, because Redshift no longer supports Python UDFs.
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Grant language usage, optionally with permission to grant it to others.
+GRANT USAGE ON LANGUAGE language_name TO ... [WITH GRANT OPTION];
+
+-- Revoke language usage or permission to grant it to others.
+REVOKE [GRANT OPTION FOR] USAGE ON LANGUAGE language_name FROM ...;
+```
 
 ## Lifecycle and Ownership
+
+Deleting the resource revokes what it owns unless `restore_default_on_destroy` opts into restoring PUBLIC's default;
+see [Reconciliation](#reconciliation) for changes.
 
 The resource checks the grantee and the local database, then reads
 [SVV_LANGUAGE_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_LANUGAGE_PRIVILEGES.html) in that
@@ -98,7 +103,17 @@ grants `USAGE` back on destroy (also replacement), verifying the catalog afterwa
 default, not
 historical grants, and deliberately widens access after Terraform releases ownership. Without it, the existing
 `removed` block workaround remains available: apply `privileges = ["USAGE"]`, then remove the resource with
-`lifecycle { destroy = false }`.
+a `removed` block whose `lifecycle` sets `destroy = false`:
+
+```terraform
+removed {
+  from = redshift_language_grant.example
+
+  lifecycle {
+    destroy = false
+  }
+}
+```
 
 ## Reconciliation
 
@@ -165,29 +180,23 @@ SELECT privilege_type, admin_option FROM svv_language_privileges WHERE language_
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_language_grant.procedures
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    database_name  = "analytics"
-    language_name  = "PLPGSQL"
-    grantee        = "developers"
-    grantee_type   = "ROLE"
+    database_name = "analytics"
+    language_name = "PLPGSQL"
+    grantee       = "developers"
+    grantee_type  = "ROLE"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_language_grant.procedures \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","language_name":"plpgsql","grantee":"developers","grantee_type":"ROLE"}'
+  '{"database_name":"analytics","language_name":"PLPGSQL","grantee":"developers","grantee_type":"ROLE"}'
 ```

@@ -9,12 +9,6 @@ description: Lists COPY templates of a schema or database.
 Lists visible COPY templates with their owners, for one schema or a database. See AWS
 [SYS_REDSHIFT_TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/SYS_REDSHIFT_TEMPLATE.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM sys_redshift_template WHERE database_name = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -40,7 +34,7 @@ output "staging_templates" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `templates` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--templates))
 
 <a id="nestedatt--templates"></a>
@@ -54,6 +48,17 @@ Read-Only:
 - `schema` (String) Existing schema containing the template.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List visible COPY templates in the selected database.
+SELECT ... FROM sys_redshift_template WHERE database_name = '...';
+```
+
+## Read Behavior
+
 Items are ordered by schema and name. Superusers see all templates; regular users see only their own, even if they
 have `USAGE` on other templates. Listing does not probe schemas or require `USAGE` on every schema. Explicit `schema`
-filters use the same catalog visibility. `id` combines the warehouse binding with the filters.
+filters use the same catalog visibility. `id` contains the target database and configured filters within the warehouse.

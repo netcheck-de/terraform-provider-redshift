@@ -16,8 +16,9 @@ var _ = registerDataSource(newColumnsDataSource)
 // newColumnsDataSource lists relation columns with their types, nullability, and defaults.
 func newColumnsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
-		name:        "columns",
-		description: "Lists the columns of the tables, views, and external tables of one database visible to the provider's SQL identity, from `SVV_ALL_COLUMNS`, ordered by schema, table, and position.",
+		name:          "columns",
+		databaseField: "database",
+		description:   "Lists the columns of the tables, views, and external tables of one database visible to the provider's SQL identity, from `SVV_ALL_COLUMNS`, ordered by schema, table, and position.",
 		filters: map[string]schema.Attribute{
 			"database": discoveryDatabaseFilter("columns"),
 			"schema":   discoveryFilter("Only columns of relations in this schema."),
@@ -44,18 +45,22 @@ func newColumnsDataSource() datasource.DataSource {
 // columnsList reads the columns of the selected database from the administration database.
 func columnsList(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
 	database := discoveryDatabase(client, filters)
+
 	rows, err := client.selectRows(ctx, client.database.ValueString(), readColumnsQuery(database, objectString(filters, "schema"), objectString(filters, "table")))
 	if err != nil {
 		return nil, err
 	}
+
 	items := make([]map[string]attr.Value, 0, len(rows))
 	for _, row := range rows {
 		item, err := columnsItem(database, row)
 		if err != nil {
 			return nil, err
 		}
+
 		items = append(items, item)
 	}
+
 	return items, nil
 }
 
@@ -64,6 +69,7 @@ func columnsItem(database string, row map[string]string) (map[string]attr.Value,
 	if row["schema_name"] == "" || row["table_name"] == "" || row["column_name"] == "" {
 		return nil, fmt.Errorf("SVV_ALL_COLUMNS returned a column without a schema, table, or name in database %q", database)
 	}
+
 	item := map[string]attr.Value{
 		"database":  types.StringValue(database),
 		"schema":    types.StringValue(row["schema_name"]),
@@ -78,6 +84,7 @@ func columnsItem(database string, row map[string]string) (map[string]attr.Value,
 		if err != nil {
 			return nil, err
 		}
+
 		item[column] = value
 	}
 	// The catalog may report an empty string when it has no nullability information.
@@ -89,5 +96,6 @@ func columnsItem(database string, row map[string]string) (map[string]attr.Value,
 	default:
 		item["nullable"] = types.BoolNull()
 	}
+
 	return item, nil
 }

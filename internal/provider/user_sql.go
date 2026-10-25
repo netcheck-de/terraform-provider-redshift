@@ -66,6 +66,7 @@ func userSessionParameterNames() []string {
 	for i, name := range userSessionParameters {
 		names[i] = string(name)
 	}
+
 	return names
 }
 
@@ -105,6 +106,7 @@ func userValidUntilLiteral(value string) (string, error) {
 	if strings.EqualFold(value, userValidUntilInfinity) {
 		return userValidUntilInfinity, nil
 	}
+
 	instant, err := time.Parse(time.RFC3339, value)
 	if err != nil {
 		return "", fmt.Errorf("valid_until %q must be an RFC 3339 timestamp or %s", value, userValidUntilInfinity)
@@ -113,6 +115,7 @@ func userValidUntilLiteral(value string) (string, error) {
 	if instant.Nanosecond() != 0 {
 		return "", fmt.Errorf("valid_until %q must not have fractional seconds, because Redshift stores whole seconds", value)
 	}
+
 	return instant.UTC().Format("2006-01-02 15:04:05") + "+00", nil
 }
 
@@ -121,6 +124,7 @@ func userConnectionLimit(statement sqlclient.Statement, limit int64) sqlclient.S
 	if limit == userUnlimitedConnections {
 		return statement.Kw("CONNECTION LIMIT UNLIMITED")
 	}
+
 	return statement.KwInt("CONNECTION LIMIT", limit)
 }
 
@@ -130,6 +134,7 @@ func userSessionParameter(name string) (sqlclient.Keyword, error) {
 	if err != nil {
 		return "", fmt.Errorf("session_defaults: %w", err)
 	}
+
 	return parameter, nil
 }
 
@@ -146,25 +151,31 @@ func userTupleError(data userModel, secretSet, checkExternalID bool) error {
 	case checkExternalID && knownString(data.ExternalID) != "" && !data.PasswordDisabled.IsUnknown() && !disabled:
 		return errors.New("external_id requires password_disabled = true")
 	}
+
 	if value := knownString(data.ValidUntil); value != "" {
 		if _, err := userValidUntilLiteral(value); err != nil {
 			return err
 		}
 	}
+
 	if timeout := knownInt64(data.SessionTimeout); timeout != nil && *timeout != 0 && (*timeout < userSessionTimeoutMin || *timeout > userSessionTimeoutMax) {
 		return fmt.Errorf("session_timeout must be 0 or between %d and %d seconds", userSessionTimeoutMin, userSessionTimeoutMax)
 	}
+
 	if limit := knownInt64(data.ConnectionLimit); limit != nil && *limit < userUnlimitedConnections {
 		return errors.New("connection_limit must be -1 (UNLIMITED) or a nonnegative number")
 	}
+
 	if _, err := optOneOf(data.SyslogAccess, userSyslogAccess...); err != nil {
 		return fmt.Errorf("syslog_access: %w", err)
 	}
+
 	for _, name := range slices.Sorted(maps.Keys(knownMap(data.SessionDefaults))) {
 		if _, err := userSessionParameter(name); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -178,12 +189,15 @@ func createUserStatement(data userModel, secret string) (string, error) {
 	} else {
 		statement = statement.KwLit("PASSWORD", secret)
 	}
+
 	statement = statement.Toggle(data.Superuser.ValueBool(), "CREATEUSER", "NOCREATEUSER").
 		Toggle(data.CreateDB.ValueBool(), "CREATEDB", "NOCREATEDB")
+
 	syslog, err := optOneOf(data.SyslogAccess, userSyslogAccess...)
 	if err != nil {
 		return "", fmt.Errorf("syslog_access: %w", err)
 	}
+
 	statement = statement.When(syslog != "", func(s sqlclient.Statement) sqlclient.Statement { return s.Kw("SYSLOG ACCESS", syslog) })
 	// No expiration is the Redshift default, and only superusers may use VALID UNTIL, so infinity is left out.
 	if value := knownString(data.ValidUntil); value != "" && !strings.EqualFold(value, userValidUntilInfinity) {
@@ -191,8 +205,10 @@ func createUserStatement(data userModel, secret string) (string, error) {
 		if err != nil {
 			return "", err
 		}
+
 		statement = statement.KwLit("VALID UNTIL", expiration)
 	}
+
 	if limit := knownInt64(data.ConnectionLimit); limit != nil {
 		statement = userConnectionLimit(statement, *limit)
 	}
@@ -200,7 +216,9 @@ func createUserStatement(data userModel, secret string) (string, error) {
 	if timeout := knownInt64(data.SessionTimeout); timeout != nil && *timeout != 0 {
 		statement = statement.KwInt("SESSION TIMEOUT", *timeout)
 	}
+
 	statement = statement.OptIdent("EXTERNALID", knownString(data.ExternalID))
+
 	return statement.String(), statement.Err()
 }
 
@@ -210,13 +228,16 @@ func createUserStatements(data userModel, secret string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	none := data
 	none.SearchPath = types.ListNull(types.StringType)
 	none.SessionDefaults = types.MapNull(types.StringType)
+
 	defaults, err := userSessionDefaultStatements(none, data)
 	if err != nil {
 		return nil, err
 	}
+
 	return append(append([]string{create}, userSearchPathStatements(none, data)...), defaults...), nil
 }
 
@@ -225,12 +246,15 @@ func userListStrings(value types.List) []string {
 	if value.IsNull() || value.IsUnknown() {
 		return nil
 	}
+
 	var elements []string
+
 	for _, element := range value.Elements() {
 		if text, ok := element.(types.String); ok && !text.IsNull() && !text.IsUnknown() {
 			elements = append(elements, text.ValueString())
 		}
 	}
+
 	return elements
 }
 
@@ -240,17 +264,21 @@ func userSearchPathStatements(prev, plan userModel) []string {
 	if plan.SearchPath.IsUnknown() {
 		return nil
 	}
+
 	schemas := userListStrings(plan.SearchPath)
 	if len(schemas) == 0 {
 		if prev.SearchPath.IsNull() || prev.SearchPath.IsUnknown() {
 			return nil
 		}
+
 		return []string{userAlter(plan).Kw("RESET", userSearchPathParameter).String()}
 	}
+
 	items := make([]sqlclient.Statement, len(schemas))
 	for i, schema := range schemas {
 		items[i] = sqlclient.Lit(schema)
 	}
+
 	return []string{userAlter(plan).Kw("SET", userSearchPathParameter, "TO").List(items...).String()}
 }
 
@@ -260,30 +288,39 @@ func userSessionDefaultStatements(prev, plan userModel) ([]string, error) {
 	if plan.SessionDefaults.IsUnknown() {
 		return nil, nil
 	}
+
 	before, after := knownMap(prev.SessionDefaults), knownMap(plan.SessionDefaults)
+
 	names := slices.Sorted(maps.Keys(before))
 	for name := range after {
 		if _, ok := before[name]; !ok {
 			names = append(names, name)
 		}
 	}
+
 	slices.Sort(names)
+
 	var statements []string
+
 	for _, name := range names {
 		value, keep := after[name]
 		if old, existed := before[name]; keep && existed && old == value {
 			continue
 		}
+
 		parameter, err := userSessionParameter(name)
 		if err != nil {
 			return nil, err
 		}
+
 		if !keep {
 			statements = append(statements, userAlter(plan).Kw("RESET", parameter).String())
 			continue
 		}
+
 		statements = append(statements, userAlter(plan).Kw("SET", parameter, "TO").Lit(value).String())
 	}
+
 	return statements, nil
 }
 
@@ -292,6 +329,7 @@ func userValidUntilValue(data userModel) attr.Value {
 	if data.ValidUntil.IsNull() || strings.EqualFold(data.ValidUntil.ValueString(), userValidUntilInfinity) {
 		return types.StringValue(userValidUntilInfinity)
 	}
+
 	return data.ValidUntil
 }
 
@@ -301,11 +339,12 @@ func userRendered(statement sqlclient.Statement) []string {
 	if statement.Err() != nil {
 		return nil
 	}
+
 	return []string{statement.String()}
 }
 
-// userAlterSteps change one option per statement. Null priors come from import or from state written before the
-// attribute existed, which must not assign a password or grant a capability implicitly.
+// userAlterSteps change one option per statement. Null priors come from import, which must not assign a password or
+// grant a capability implicitly.
 var userAlterSteps = []alterStep[userModel]{
 	{
 		attribute: "password_disabled",
@@ -316,9 +355,11 @@ var userAlterSteps = []alterStep[userModel]{
 			if userPasswordDisabled(plan) {
 				return []string{userAlter(plan).Kw("PASSWORD DISABLE").String()}
 			}
+
 			if prev.PasswordDisabled.IsNull() {
 				return nil
 			}
+
 			return []string{userAlter(plan).KwLit("PASSWORD", plan.Password.ValueString()).String()}
 		},
 	},
@@ -331,6 +372,7 @@ var userAlterSteps = []alterStep[userModel]{
 			if userPasswordDisabled(plan) || userEnables(prev, plan) {
 				return nil
 			}
+
 			return []string{userAlter(plan).KwLit("PASSWORD", plan.Password.ValueString()).String()}
 		},
 	},
@@ -358,6 +400,7 @@ var userAlterSteps = []alterStep[userModel]{
 			if err != nil || level == "" {
 				return nil
 			}
+
 			return []string{userAlter(plan).Kw("SYSLOG ACCESS", level).String()}
 		},
 	},
@@ -369,10 +412,12 @@ var userAlterSteps = []alterStep[userModel]{
 			if value == "" {
 				value = userValidUntilInfinity
 			}
+
 			expiration, err := userValidUntilLiteral(value)
 			if err != nil {
 				return nil
 			}
+
 			return []string{userAlter(plan).KwLit("VALID UNTIL", expiration).String()}
 		},
 	},
@@ -384,6 +429,7 @@ var userAlterSteps = []alterStep[userModel]{
 			if limit == nil {
 				return nil
 			}
+
 			return userRendered(userConnectionLimit(userAlter(plan), *limit))
 		},
 	},
@@ -398,6 +444,7 @@ var userAlterSteps = []alterStep[userModel]{
 			case *timeout == 0:
 				return []string{userAlter(plan).Kw("RESET SESSION TIMEOUT").String()}
 			}
+
 			return []string{userAlter(plan).KwInt("SESSION TIMEOUT", *timeout).String()}
 		},
 	},
@@ -410,6 +457,7 @@ var userAlterSteps = []alterStep[userModel]{
 			if id == "" {
 				return nil
 			}
+
 			return []string{userAlter(plan).KwIdent("EXTERNALID", id).String()}
 		},
 	},
@@ -426,6 +474,7 @@ var userAlterSteps = []alterStep[userModel]{
 			if err != nil {
 				return nil
 			}
+
 			return statements
 		},
 	},
@@ -478,20 +527,25 @@ func alterUserBatches(prev, plan userModel) ([]userBatch, error) {
 	case userRotates(prev, plan) && !userPasswordDisabled(plan) && !userEnables(prev, plan) && knownString(plan.Password) == "":
 		return nil, errUserPasswordRequired
 	}
+
 	if _, err := userSessionDefaultStatements(prev, plan); err != nil {
 		return nil, err
 	}
+
 	if _, err := optOneOf(plan.SyslogAccess, userSyslogAccess...); err != nil {
 		return nil, fmt.Errorf("syslog_access: %w", err)
 	}
+
 	if value := knownString(plan.ValidUntil); value != "" {
 		if _, err := userValidUntilLiteral(value); err != nil {
 			return nil, err
 		}
 	}
+
 	password := userBatch{summary: userPasswordSummary}
 	capabilities := userBatch{summary: userUpdateSummary}
 	settings := userBatch{summary: userUpdateSummary}
+
 	for _, step := range userAlterSteps {
 		statements := alterStatements(prev, plan, []alterStep[userModel]{step})
 		switch step.attribute {
@@ -503,19 +557,23 @@ func alterUserBatches(prev, plan userModel) ([]userBatch, error) {
 			settings.statements = append(settings.statements, statements...)
 		}
 	}
+
 	if userDisables(prev, plan) {
 		return []userBatch{capabilities, password, settings}, nil
 	}
+
 	return []userBatch{password, capabilities, settings}, nil
 }
 
 // alterUserStatements renders every in-place change from prev to plan in execution order.
 func alterUserStatements(prev, plan userModel) ([]string, error) {
 	batches, err := alterUserBatches(prev, plan)
+
 	var statements []string
 	for _, batch := range batches {
 		statements = append(statements, batch.statements...)
 	}
+
 	return statements, err
 }
 

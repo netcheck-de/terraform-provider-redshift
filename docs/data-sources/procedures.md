@@ -9,12 +9,6 @@ description: Lists stored procedures.
 Lists the stored procedures of one database without managing them. See AWS
 [PG_PROC_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_PROC_INFO.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_proc_info WHERE prokind = 'p' AND nspname = '...' AND proname = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -40,7 +34,7 @@ output "definer_procedures" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `procedures` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--procedures))
 
 <a id="nestedatt--procedures"></a>
@@ -56,6 +50,17 @@ Read-Only:
 - `schema` (String) Schema containing the procedure.
 - `security` (String) `DEFINER` when the procedure runs with its owner's privileges, otherwise `INVOKER`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List procedure overloads matching the configured filters.
+SELECT ... FROM pg_proc_info WHERE prokind = 'p' AND nspname = '...' AND proname = '...';
+```
+
+## Read Behavior
 
 The listing reads the catalog of the selected database, so it shows only procedures the provider's SQL identity can
 see. `arguments` holds the input (`IN` and `INOUT`) types that identify each overload; use

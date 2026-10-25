@@ -23,7 +23,7 @@ type viewResource struct {
 
 // viewModel is the Terraform state of one view.
 type viewModel struct {
-	// ID records the warehouse/database/schema/name identity.
+	// ID records the database/schema/name identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database contains the view.
 	Database types.String `tfsdk:"database"`
@@ -97,6 +97,7 @@ func (r *viewResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			"definition_fingerprint": definitionFingerprintAttribute(),
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "name")
 }
 
 // viewCatalogEntry is one pg_views row, classified by its definition text.
@@ -117,15 +118,19 @@ func readViewCatalog(ctx context.Context, client *resourceClient, database, sche
 	if exists, err := client.localDatabaseExists(ctx, database); err != nil || !exists {
 		return viewCatalogEntry{}, false, err
 	}
+
 	rows, err := client.selectRows(ctx, database, viewCatalogQuery(schemaName, name))
 	if err != nil || len(rows) == 0 {
 		return viewCatalogEntry{}, false, err
 	}
+
 	if len(rows) != 1 || rows[0]["viewowner"] == "" || rows[0]["definition"] == "" {
 		return viewCatalogEntry{}, false, fmt.Errorf("view %s.%s has incomplete or ambiguous catalog metadata", schemaName, name)
 	}
+
 	entry := viewCatalogEntry{owner: rows[0]["viewowner"], definition: rows[0]["definition"]}
 	entry.lateBinding, entry.materialized = viewDefinitionKind(entry.definition)
+
 	return entry, true, nil
 }
 
@@ -137,10 +142,12 @@ func (r *viewResource) read(ctx context.Context, data viewModel) (viewCatalogEnt
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return viewCatalogEntry{}, false, err
 	}
+
 	entry, found, err := readViewCatalog(ctx, &r.resourceClient, data.Database.ValueString(), data.Schema.ValueString(), data.Name.ValueString())
 	if err == nil && found && entry.materialized {
 		err = errViewIsMaterialized
 	}
+
 	return entry, found, err
 }
 
@@ -158,8 +165,10 @@ func (r *viewResource) converge(ctx context.Context, data *viewModel, planned vi
 	case knownString(planned.Owner) != "" && entry.owner != planned.Owner.ValueString():
 		return fmt.Errorf("the view is owned by %q after apply, expected %q", entry.owner, planned.Owner.ValueString())
 	}
+
 	data.Owner, data.LateBinding = types.StringValue(entry.owner), types.BoolValue(entry.lateBinding)
 	data.Query, data.DefinitionFingerprint = recordDefinition(planned.Query, entry.definition)
+
 	return nil
 }
 
@@ -167,34 +176,42 @@ func (r *viewResource) converge(ctx context.Context, data *viewModel, planned vi
 func (r *viewResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data viewModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statements, err := createViewStatements(data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid view", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), statements[0]); err != nil {
 		resp.Diagnostics.AddError("Create view", err.Error())
 		return
 	}
+
 	planned := data
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
 	// A failed ownership change or verification must still record the created view in serializable state.
 	if data.Owner.IsUnknown() {
 		data.Owner = types.StringNull()
 	}
+
 	data.DefinitionFingerprint = types.StringNull()
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if err := r.exec(ctx, data.Database.ValueString(), statements[1:]...); err != nil {
 		resp.Diagnostics.AddError("Set view owner", err.Error())
 		return
 	}
+
 	if err := r.converge(ctx, &data, planned); err != nil {
 		resp.Diagnostics.AddError("Verify view", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -202,9 +219,11 @@ func (r *viewResource) Create(ctx context.Context, req resource.CreateRequest, r
 func (r *viewResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data viewModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := validateViewConfig(data.Schema, data.Name, data.Query); err != nil {
 		resp.Diagnostics.AddError("Invalid view", err.Error())
 	}
@@ -214,20 +233,25 @@ func (r *viewResource) ValidateConfig(ctx context.Context, req resource.Validate
 func (r *viewResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data viewModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	entry, found, err := r.read(ctx, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read view", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	data.Owner, data.LateBinding = types.StringValue(entry.owner), types.BoolValue(entry.lateBinding)
 	data.Query, data.DefinitionFingerprint = reconcileDefinition(data.Query, data.DefinitionFingerprint, entry.definition)
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -236,9 +260,11 @@ func (r *viewResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	var data, previous viewModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &previous)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statements, err := alterViewStatements(previous, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid view", err.Error())
@@ -254,14 +280,17 @@ func (r *viewResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		resp.Diagnostics.AddError("Update view", "The view disappeared during the update; refresh the plan.")
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), statements...); err != nil {
 		resp.Diagnostics.AddError("Update view", err.Error())
 		return
 	}
+
 	if err := r.converge(ctx, &data, data); err != nil {
 		resp.Diagnostics.AddError("Verify view", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -269,9 +298,11 @@ func (r *viewResource) Update(ctx context.Context, req resource.UpdateRequest, r
 func (r *viewResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data viewModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	_, found, err := r.read(ctx, data)
 	if err == nil && found {
 		var statement string
@@ -279,6 +310,7 @@ func (r *viewResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 			err = r.exec(ctx, data.Database.ValueString(), statement)
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete view", err.Error())
 	}

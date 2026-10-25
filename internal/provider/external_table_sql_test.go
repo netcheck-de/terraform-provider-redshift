@@ -18,6 +18,7 @@ func externalTableTestColumns(pairs ...string) types.List {
 	for i := 0; i+1 < len(pairs); i += 2 {
 		columns = append(columns, externalTableColumnValue{Name: types.StringValue(pairs[i]), Type: types.StringValue(pairs[i+1])})
 	}
+
 	return externalTableColumnList(columns)
 }
 
@@ -27,6 +28,7 @@ func externalTableTestMap(pairs ...string) types.Map {
 	for i := 0; i+1 < len(pairs); i += 2 {
 		elements[pairs[i]] = types.StringValue(pairs[i+1])
 	}
+
 	return types.MapValueMust(types.StringType, elements)
 }
 
@@ -76,6 +78,7 @@ func TestExternalTableSQL(t *testing.T) {
 	invalid := func(change func(*externalTableModel)) externalTableModel {
 		model := plain
 		change(&model)
+
 		return model
 	}
 	create := func(data externalTableModel) func() (string, error) {
@@ -209,11 +212,13 @@ func TestExternalTableSQL(t *testing.T) {
 		{"read", func() (string, error) {
 			sql, parameters, err := readExternalTableQuery(quoted).Build()
 			assert.Equal(t, map[string]string{"database": "admin", "schema": `Lake"Schema`, "name": `Odd"Table`}, parameters)
+
 			return sql, err
 		}},
 		{"read_columns", func() (string, error) {
 			sql, parameters, err := readExternalTableColumnsQuery("admin", `Lake"Schema`, `Odd"Table`).Build()
 			assert.Equal(t, map[string]string{"database": "admin", "schema": `Lake"Schema`, "table": `Odd"Table`}, parameters)
+
 			return sql, err
 		}},
 	})
@@ -236,10 +241,12 @@ func TestExternalTableTypes(t *testing.T) {
 		require.NoError(t, err, configured)
 		assert.Equal(t, expected, parsed.String(), configured)
 	}
+
 	for _, unsupported := range []string{"timestamptz", "super", "varbyte(10)", "geometry", "time", "string", "struct<a:int>"} {
 		_, err := parseExternalTableType(unsupported)
 		require.Error(t, err, unsupported)
 	}
+
 	for catalog, expected := range map[string]string{
 		"int": "INTEGER", "float": "REAL", "double": "DOUBLE PRECISION", "decimal(8,2)": "DECIMAL(8,2)", "DECIMAL(8, 2)": "DECIMAL(8,2)",
 		"varchar(64)": "VARCHAR(64)", "char(10)": "CHAR(10)", "boolean": "BOOLEAN", "string": "STRING", "array<int>": "ARRAY<INT>",
@@ -248,6 +255,7 @@ func TestExternalTableTypes(t *testing.T) {
 	} {
 		assert.Equal(t, expected, externalTableCatalogType(catalog), catalog)
 	}
+
 	assert.True(t, externalTableTypesEqual("int4", "integer"))
 	assert.True(t, externalTableTypesEqual("varchar", "varchar(256)"))
 	assert.True(t, externalTableTypesEqual("String", "string"))
@@ -258,6 +266,7 @@ func TestExternalTableTypes(t *testing.T) {
 // TestExternalTableLocationsMatch accepts the catalog's trailing-slash and truncation forms only.
 func TestExternalTableLocationsMatch(t *testing.T) {
 	long := "s3://bucket/partition/" + strings.Repeat("x", 200) + "/"
+
 	assert.True(t, externalLocationsMatch("s3://bucket/data/", "s3://bucket/data"))
 	assert.True(t, externalLocationsMatch("s3://bucket/data", "s3://bucket/data/"))
 	assert.True(t, externalLocationsMatch(long, long[:128]))
@@ -273,6 +282,7 @@ func TestExternalTableColumnChanges(t *testing.T) {
 	columns := func(pairs ...string) []externalTableColumnValue {
 		values, known := externalTableColumns(externalTableTestColumns(pairs...))
 		require.True(t, known)
+
 		return values
 	}
 	prev := columns("a", "integer", "b", "date", "c", "varchar(10)")
@@ -280,6 +290,7 @@ func TestExternalTableColumnChanges(t *testing.T) {
 	assert.Equal(t, []string{"b"}, dropped)
 	assert.Equal(t, columns("x", "date", "d", "bigint"), added, "added columns keep the plan order")
 	assert.False(t, retyped)
+
 	for name, test := range map[string]struct {
 		plan               []externalTableColumnValue
 		byPosition, byName bool
@@ -296,6 +307,7 @@ func TestExternalTableColumnChanges(t *testing.T) {
 		assert.Equal(t, test.byPosition, externalTableColumnsInPlace(prev, test.plan, false, false), "%s by position", name)
 		assert.Equal(t, test.byName, externalTableColumnsInPlace(prev, test.plan, true, false), "%s by name", name)
 	}
+
 	assert.True(t, externalTableColumnsInPlace(prev, columns("a", "int4", "b", "date", "c", "varchar(10)"), false, true), "AVRO tables accept spelling changes")
 	assert.False(t, externalTableColumnsInPlace(prev, columns("a", "integer"), true, true), "AVRO tables cannot drop columns")
 	assert.True(t, externalTableColumnsEquivalent(nil, columns()))
@@ -333,10 +345,12 @@ func TestExternalTableMapsByName(t *testing.T) {
 		"parquet with orc input name":            {storedAs: "PARQUET", inputFormat: externalTableFileFormats["ORC"], properties: types.MapNull(types.StringType), byName: true},
 	} {
 		model := externalTableTestModel()
+
 		model.StoredAs, model.InputFormat, model.TableProperties = types.StringValue(test.storedAs), types.StringValue(test.inputFormat), test.properties
 		if test.storedAs == "" {
 			model.StoredAs = types.StringNull()
 		}
+
 		assert.Equal(t, test.byName, externalTableMapsByName(externalTableMappingSpec(model, test.catalog)), name)
 	}
 }
@@ -352,6 +366,7 @@ func TestExternalTableColumnsAlterable(t *testing.T) {
 	reordered := orc
 	reordered.Columns = externalTableTestColumns("label", "varchar(64)", "amount", "decimal(8,2)", "id", "integer")
 	appended := &externalTableLayout{Columns: []string{"id", "label", "amount"}}
+
 	declared := &externalTableLayout{Columns: []string{"ID", "Amount", "label"}}
 	for name, test := range map[string]struct {
 		prev, plan externalTableModel
@@ -369,6 +384,7 @@ func TestExternalTableColumnsAlterable(t *testing.T) {
 		"catalog position, configuration wins": {orc, func() externalTableModel {
 			m := reordered
 			m.TableProperties = externalTableTestMap("orc.schema.resolution", "name")
+
 			return m
 		}(), &externalTableLayout{Parameters: map[string]string{"orc.schema.resolution": "position"}, Columns: []string{"id", "amount", "label"}}, true},
 		"unknown columns":                      {orc, func() externalTableModel { m := orc; m.Columns = types.ListUnknown(externalTableColumnType); return m }(), appended, false},
@@ -395,6 +411,7 @@ func TestExternalTableDelimiters(t *testing.T) {
 	assert.Equal(t, `'\177'`, externalTableDelimiterFragment("\x7f").String())
 	assert.Equal(t, `'|'`, externalTableDelimiterFragment("|").String())
 	assert.Equal(t, `'\\'`, externalTableDelimiterFragment(`\`).String())
+
 	for catalog, expected := range map[string]string{`\t`: "\t", `\n`: "\n", `\r`: "\r", `\001`: "\u0001", `\007`: "\a", ",": ",", `\x`: `\x`, `\999`: `\999`, "\t": "\t"} {
 		assert.Equal(t, expected, externalTableCatalogDelimiter(catalog), catalog)
 	}
@@ -404,6 +421,7 @@ func TestExternalTableDelimiters(t *testing.T) {
 func TestExternalTableUnknownAndIncompleteValues(t *testing.T) {
 	unknownElement := types.ListValueMust(externalTableColumnType, []attr.Value{types.ObjectUnknown(externalTableColumnType.AttrTypes)})
 	unknownName := types.ListValueMust(externalTableColumnType, []attr.Value{types.ObjectValueMust(externalTableColumnType.AttrTypes, map[string]attr.Value{"name": types.StringUnknown(), "type": types.StringValue("date")})})
+
 	for name, change := range map[string]func(*externalTableModel){
 		"unknown columns":    func(m *externalTableModel) { m.Columns = types.ListUnknown(externalTableColumnType) },
 		"unknown element":    func(m *externalTableModel) { m.Columns = unknownElement },
@@ -420,6 +438,7 @@ func TestExternalTableUnknownAndIncompleteValues(t *testing.T) {
 		_, err = alterExternalTableStatements(externalTableTestModel(), model, nil)
 		require.Error(t, err, name)
 	}
+
 	require.EqualError(t, externalTableDiagnosticsError(diag.Diagnostics{diag.NewErrorDiagnostic("summary", "detail")}), "summary: detail")
 }
 
@@ -431,6 +450,7 @@ func TestExternalTableCatalogDecoding(t *testing.T) {
 	values, err = externalTableCatalogMap("parameters", " ")
 	require.NoError(t, err)
 	assert.Empty(t, values)
+
 	_, err = externalTableCatalogMap("parameters", "{broken")
 	require.ErrorContains(t, err, "decode external table parameters")
 	columns, keys, err := externalTableCatalogColumns([]sqlclient.Row{
@@ -442,6 +462,7 @@ func TestExternalTableCatalogDecoding(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []externalTableCatalogColumn{{"a", "STRING", 1}, {"b", "DOUBLE PRECISION", 2}}, columns)
 	assert.Equal(t, []externalTableCatalogColumn{{"x", "DATE", 1}, {"y", "INTEGER", 2}}, keys)
+
 	for _, row := range []sqlclient.Row{
 		{"columnname": "a", "external_type": "int", "columnnum": "x", "part_key": "0"},
 		{"columnname": "a", "external_type": "int", "columnnum": "1", "part_key": ""},

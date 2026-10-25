@@ -10,10 +10,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TestContractTableRenamePlans plans a renamed_from column as an in-place update, keeps the hint in state, and plans
+// removing the hint in place too.
 func TestContractTableRenamePlans(t *testing.T) {
 	t.Parallel()
+
 	c := fullCatalog()
 	delete(fakeState[*tableFake](c, "table").tables, "serving.events")
+
 	before := tableConfig(tableIDColumn+tableLabelColumn, "")
 	after := strings.ReplaceAll(before, `"id"`, `"event_id"`)
 	after = strings.Replace(after, `name     = "event_id"`, "name = \"event_id\"\n    renamed_from = \"id\"", 1)
@@ -28,14 +32,19 @@ func TestContractTableRenamePlans(t *testing.T) {
 	})
 }
 
+// TestContractTableRenameConflictPlans fails the plan without writing when both the rename source and destination
+// columns exist, and lets the prior configuration plan again.
 func TestContractTableRenameConflictPlans(t *testing.T) {
 	t.Parallel()
+
 	c := fullCatalog()
 	delete(fakeState[*tableFake](c, "table").tables, "serving.events")
+
 	before := tableConfig(tableIDColumn+tableLabelColumn, "")
 	after := strings.ReplaceAll(tableConfig(tableIDColumn, ""), `"id"`, `"label"`)
 	after = strings.Replace(after, `name     = "label"`, "name = \"label\"\n    renamed_from = \"id\"", 1)
 	resourceWrites := 0
+
 	testresource.UnitTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: tablePlanProviders(c),
 		Steps: []testresource.TestStep{
@@ -53,13 +62,16 @@ func TestContractTableRenameConflictPlans(t *testing.T) {
 // Treating that state as configuration used to fail decoding and request destructive table replacement.
 func TestContractTableRenameRecreatedSourcePlans(t *testing.T) {
 	t.Parallel()
+
 	c := fullCatalog()
 	delete(fakeState[*tableFake](c, "table").tables, "serving.events")
+
 	before := tableConfig(tableIDColumn+tableLabelColumn, "")
 	after := strings.ReplaceAll(before, `"id"`, `"event_id"`)
 	after = strings.Replace(after, `name     = "event_id"`, "name = \"event_id\"\n    renamed_from = \"id\"", 1)
 	changed := strings.Replace(after, `encoding = "LZO"`, `encoding = "ZSTD"`, 1)
 	writes := 0
+
 	testresource.UnitTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: tablePlanProviders(c),
 		Steps: []testresource.TestStep{
@@ -77,14 +89,17 @@ func TestContractTableRenameRecreatedSourcePlans(t *testing.T) {
 	})
 }
 
+// TestContractTableRenameAfterImportPlans renames a column of an imported table in place; only the test's final destroy
+// drops the table.
 func TestContractTableRenameAfterImportPlans(t *testing.T) {
 	t.Parallel()
+
 	c := fullCatalog()
 	before := tableConfig(tableIDColumn+tableLabelColumn, "")
 	imported := before + `
 import {
   to = redshift_table.events
-  id = jsonencode({ workgroup_name = "warehouse", database = "admin", schema = "serving", name = "events" })
+  id = jsonencode({ database = "admin", schema = "serving", name = "events" })
 }
 `
 	after := strings.ReplaceAll(before, `"id"`, `"event_id"`)

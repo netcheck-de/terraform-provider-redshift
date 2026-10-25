@@ -48,11 +48,13 @@ func (r *debugGrantResource) listed(ctx context.Context, database string) (bool,
 	if err != nil {
 		return false, err
 	}
+
 	for _, row := range rows {
 		if row["database_name"] == database {
 			return true, nil
 		}
 	}
+
 	return false, nil
 }
 
@@ -63,20 +65,25 @@ func (r *debugGrantResource) remoteVisible(ctx context.Context, database string)
 	if err != nil {
 		return fmt.Errorf("cannot verify remote DEBUG authentication context through SYS_CONNECTION_LOG (requires a SQL superuser); use verified IAM authentication or a producer-local provider: %w", err)
 	}
+
 	method := "unknown"
 	if len(rows) == 1 && rows[0]["auth_method"] != "" {
 		method = rows[0]["auth_method"]
 	}
+
 	if method != "IAM AssumeUser" {
 		return fmt.Errorf("remote DEBUG requires a verified IAM AssumeUser authentication context, got %q; password, unavailable, or unverified sessions cannot safely read remote grants. Use supported IAM authentication or a producer-local provider", method)
 	}
+
 	listed, err := r.listed(ctx, database)
 	if err != nil {
 		return fmt.Errorf("cannot verify remote DEBUG database visibility: %w", err)
 	}
+
 	if !listed {
 		return fmt.Errorf("remote DEBUG database %q is not visible to the provider's SQL identity in SHOW DATABASES; use an identity with catalog visibility or a producer-local provider. Refusing to infer grant absence", database)
 	}
+
 	return nil
 }
 
@@ -85,49 +92,60 @@ func (r *debugGrantResource) read(ctx context.Context, data debugGrantModel) (bo
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, err
 	}
+
 	_, identityType, err := data.spec()
 	if err != nil {
 		return false, err
 	}
+
 	database := data.Database.ValueString()
 	if strings.Contains(database, "@") {
 		if err := r.remoteVisible(ctx, database); err != nil {
 			return false, err
 		}
+
 		statement, err := readDebugGrantRemoteStatement(data)
 		if err != nil {
 			return false, err
 		}
+
 		rows, err := r.query(ctx, statement, nil)
 		if err != nil {
 			return false, err
 		}
+
 		for _, row := range rows {
 			if debugGrantRemoteMatches(row, data) {
 				return true, nil
 			}
 		}
+
 		return false, nil
 	}
+
 	rows, err := r.query(ctx, readDebugGrantStatement(database), nil)
 	if err != nil {
 		if listed, listErr := r.listed(ctx, database); listErr == nil && !listed {
 			return false, nil
 		}
+
 		return false, err
 	}
+
 	for _, row := range rows {
 		if debugGrantMatches(row, data.Grantee.ValueString(), identityType) {
 			return true, nil
 		}
 	}
+
 	return false, nil
 }
 
-// fields returns the JSON identity keys besides the binding and the database.
+// fields returns the complete provider-relative JSON identity.
 func (data debugGrantModel) fields() map[string]string {
-	fields := map[string]string{"grantee": data.Grantee.ValueString(), "grantee_type": data.GranteeType.ValueString()}
+	fields := map[string]string{"database": data.Database.ValueString(), "grantee": data.Grantee.ValueString(), "grantee_type": data.GranteeType.ValueString()}
 	debugGrantCanonical(fields)
+
 	return fields
 }
 
@@ -135,18 +153,23 @@ func (data debugGrantModel) fields() map[string]string {
 func (r *debugGrantResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data debugGrantModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if !data.Database.IsUnknown() && data.Database.ValueString() == "" {
 		resp.Diagnostics.AddError("Invalid debug grant", "database must not be empty")
 	}
+
 	if err := data.validateRemote(); err != nil {
 		resp.Diagnostics.AddError("Invalid debug grant", err.Error())
 	}
+
 	if data.Grantee.IsUnknown() || data.GranteeType.IsUnknown() {
 		return
 	}
+
 	if _, _, err := debugRecipient(data.Grantee.ValueString(), data.GranteeType.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Invalid debug grant", err.Error())
 	}
@@ -156,17 +179,21 @@ func (r *debugGrantResource) ValidateConfig(ctx context.Context, req resource.Va
 func (r *debugGrantResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data debugGrantModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statement, err := createDebugGrantStatement(data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid debug grant", err.Error())
 		return
 	}
+
 	if strings.Contains(data.Database.ValueString(), "@") {
 		// Prove both alias visibility and the scoped read's permission before granting access we must verify.
 		preflight := data
+
 		preflight.ID = types.StringNull()
 		if _, err := r.read(ctx, preflight); err != nil {
 			resp.Diagnostics.AddError("Invalid debug grant", err.Error())
@@ -179,8 +206,10 @@ func (r *debugGrantResource) Create(ctx context.Context, req resource.CreateRequ
 		resp.Diagnostics.AddError("Grant Redshift DEBUG", err.Error())
 		return
 	}
-	data.ID = r.identity(data.Database.ValueString(), data.fields())
+
+	data.ID = identity(data.fields())
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	found, err := r.read(ctx, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify Redshift DEBUG grant", err.Error())
@@ -193,9 +222,11 @@ func (r *debugGrantResource) Create(ctx context.Context, req resource.CreateRequ
 func (r *debugGrantResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data debugGrantModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, data)
 	switch {
 	case err != nil:
@@ -203,6 +234,7 @@ func (r *debugGrantResource) Read(ctx context.Context, req resource.ReadRequest,
 	case !found:
 		resp.State.RemoveResource(ctx)
 	default:
+		data.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 }
@@ -211,9 +243,11 @@ func (r *debugGrantResource) Read(ctx context.Context, req resource.ReadRequest,
 func (r *debugGrantResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data debugGrantModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, data)
 	switch {
 	case err != nil:
@@ -229,16 +263,20 @@ func (r *debugGrantResource) Update(ctx context.Context, req resource.UpdateRequ
 func (r *debugGrantResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data debugGrantModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, data)
 	if err == nil && found {
 		var statement string
+
 		statement, err = dropDebugGrantStatement(data)
 		if err == nil {
 			err = r.exec(ctx, r.database.ValueString(), statement)
 		}
+
 		if err == nil {
 			found, err = r.read(ctx, data)
 			if err == nil && found {
@@ -246,6 +284,7 @@ func (r *debugGrantResource) Delete(ctx context.Context, req resource.DeleteRequ
 			}
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Revoke Redshift DEBUG", err.Error())
 	}
@@ -259,6 +298,7 @@ func (r *debugGrantResource) ImportState(ctx context.Context, req resource.Impor
 // debugGrantLookupModel converts a lookup configuration into the resource model the read shares.
 func debugGrantLookupModel(data types.Object) debugGrantModel {
 	attributes := data.Attributes()
+
 	return debugGrantModel{
 		ID: types.StringNull(), Database: attributes["database"].(types.String),
 		Grantee: attributes["grantee"].(types.String), GranteeType: attributes["grantee_type"].(types.String),

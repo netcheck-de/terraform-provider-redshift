@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"testing"
 
@@ -19,30 +20,38 @@ import (
 // computed-only or unknown attribute, or that are listed twice.
 func alterCoverageGaps[M any](t *testing.T, r resource.Resource, steps []alterStep[M], exempt ...string) (missing, unexpected []string) {
 	t.Helper()
+
 	var metadata resource.MetadataResponse
 	r.Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
+
 	var response resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &response)
 	require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
 	inPlace := inPlaceInputs(t, response.Schema, replacementPolicies.entries[metadata.TypeName])
 	covered := map[string]bool{}
+
 	claims := slices.Clone(exempt)
 	for _, step := range steps {
 		claims = append(claims, step.attribute)
 	}
+
 	for _, name := range claims {
 		if !inPlace[name] || covered[name] {
 			unexpected = append(unexpected, name)
 		}
+
 		covered[name] = true
 	}
+
 	for name, updates := range inPlace {
 		if updates && !covered[name] {
 			missing = append(missing, name)
 		}
 	}
+
 	slices.Sort(missing)
 	slices.Sort(unexpected)
+
 	return missing, unexpected
 }
 
@@ -50,12 +59,15 @@ func alterCoverageGaps[M any](t *testing.T, r resource.Resource, steps []alterSt
 // support some in-place changes. Completeness is checked before classifying inputs.
 func inPlaceInputs(t *testing.T, s schema.Schema, policy map[string]replaceRule) map[string]bool {
 	t.Helper()
+
 	inPlace := map[string]bool{}
+
 	for _, name := range policyInputs(s) {
 		rule, found := policy[name]
 		require.True(t, found, "input %s needs an explicit replacement policy", name)
 		inPlace[name] = rule.kind != replaceKindAlways
 	}
+
 	return inPlace
 }
 
@@ -87,6 +99,7 @@ func alterTestSteps() []alterStep[alterTestModel] {
 	prefix := func(m alterTestModel) sqlclient.Statement {
 		return sqlclient.Stmt("ALTER USER").Ident(m.Name.ValueString())
 	}
+
 	return []alterStep[alterTestModel]{
 		{
 			attribute: "connection_limit",
@@ -95,6 +108,7 @@ func alterTestSteps() []alterStep[alterTestModel] {
 				if plan.Limit.IsNull() {
 					return []string{prefix(plan).Kw("CONNECTION LIMIT UNLIMITED").String()}
 				}
+
 				return []string{prefix(plan).KwInt("CONNECTION LIMIT", plan.Limit.ValueInt64()).String()}
 			},
 		},
@@ -109,10 +123,11 @@ func alterTestSteps() []alterStep[alterTestModel] {
 			attribute:     "session_timeout",
 			value:         func(m alterTestModel) attr.Value { return m.Timeout },
 			skipNullPrior: true,
-			render: func(prev, plan alterTestModel) []string {
+			render: func(_, plan alterTestModel) []string {
 				if plan.Timeout.IsNull() {
 					return []string{prefix(plan).Kw("RESET SESSION TIMEOUT").String()}
 				}
+
 				return []string{prefix(plan).KwInt("SESSION TIMEOUT", plan.Timeout.ValueInt64()).String()}
 			},
 		},
@@ -122,9 +137,11 @@ func alterTestSteps() []alterStep[alterTestModel] {
 // TestAlterStatements emits statements only for changed, known attributes, in step order.
 func TestAlterStatements(t *testing.T) {
 	base := alterTestModel{Name: types.StringValue(`etl"x`), Limit: types.Int64Value(5), Superuser: types.BoolValue(false), Timeout: types.Int64Value(60)}
+
 	with := func(change func(*alterTestModel)) alterTestModel {
 		model := base
 		change(&model)
+
 		return model
 	}
 	for _, test := range []struct {
@@ -152,6 +169,7 @@ func TestAlterStatements(t *testing.T) {
 			assert.Equal(t, test.expected, alterStatements(test.prev, test.plan, alterTestSteps()))
 		})
 	}
+
 	assert.Nil(t, alterStatements(base, with(func(m *alterTestModel) { m.Limit = types.Int64Value(1) }), []alterStep[alterTestModel]{}))
 }
 
@@ -167,6 +185,7 @@ func TestAlterCoverage(t *testing.T) {
 			complete = append(complete, step(extra.attribute))
 		}
 	}
+
 	assertAlterCoverage(t, newUserResource(), complete, "password_wo")
 
 	for _, test := range []struct {
@@ -199,10 +218,9 @@ func TestAlterCoverageFollowsPolicy(t *testing.T) {
 		"database": false, "name": false, "owner": true,
 		"column": false, "distribution": true, "unique": true,
 	}, inPlaceInputs(t, response.Schema, blockTestPolicy))
+
 	policy := map[string]replaceRule{}
-	for name, rule := range blockTestPolicy {
-		policy[name] = rule
-	}
+	maps.Copy(policy, blockTestPolicy)
 	policy["column"] = replaceConditional
 	assert.True(t, inPlaceInputs(t, response.Schema, policy)["column"], "conditional replacement still needs alter coverage")
 }

@@ -15,18 +15,22 @@ func privilegeFieldsKnown(data types.Object, fields ...string) bool {
 			return false
 		}
 	}
+
 	return !data.IsUnknown()
 }
 
+// privilegeSetKnown reports whether the set and every element are known, so validation can wait for the rest.
 func privilegeSetKnown(value types.Set) bool {
 	if value.IsUnknown() {
 		return false
 	}
+
 	for _, element := range value.Elements() {
 		if element.IsUnknown() {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -36,6 +40,7 @@ func validateGrantOptions(privileges, options types.Set, recipientKnown, user bo
 	if len(values) != 0 && recipientKnown && !user {
 		return fmt.Errorf("grant_option_privileges requires a user recipient; Redshift grants options only to users")
 	}
+
 	if privilegeSetKnown(privileges) {
 		for _, option := range values {
 			if !slices.Contains(knownStrings(privileges), option) {
@@ -43,6 +48,7 @@ func validateGrantOptions(privileges, options types.Set, recipientKnown, user bo
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -51,35 +57,42 @@ func (r *privilegeResource) validateConfig(data types.Object) error {
 	privileges := data.Attributes()["privileges"].(types.Set)
 	if r.grantOptions {
 		options := data.Attributes()["grant_option_privileges"].(types.Set)
+
 		recipientKnown := privilegeFieldsKnown(data, "grantee_type")
 		if r.optionRecipient != nil {
 			recipientKnown = privilegeFieldsKnown(data, r.fields...)
 		}
+
 		if err := validateGrantOptions(privileges, options, recipientKnown, r.optionGrantee(data)); err != nil {
 			return err
 		}
 	}
+
 	if _, ok := data.Attributes()["grantee_type"]; ok && r.recipient == nil && privilegeFieldsKnown(data, "grantee", "grantee_type") {
 		if _, _, err := principal(data); err != nil {
 			return err
 		}
 	}
+
 	if r.partialAllowed != nil {
 		allowed, err := r.partialAllowed(data)
 		if err != nil {
 			return err
 		}
+
 		for _, privilege := range knownStrings(privileges) {
 			if len(allowed) > 0 && !privilegeAllowed(allowed, privilege) {
 				return fmt.Errorf("unsupported privilege %q", privilege)
 			}
 		}
 	}
+
 	if r.destroyPrivileges != nil && privilegeFieldsKnown(data, "grantee_type", "object_type", "schema_name") {
 		if _, err := r.destroyPrivileges(data); err != nil {
 			return err
 		}
 	}
+
 	if !privilegeFieldsKnown(data, r.fields...) {
 		return nil
 	}
@@ -88,11 +101,13 @@ func (r *privilegeResource) validateConfig(data types.Object) error {
 	if err != nil {
 		return err
 	}
+
 	for _, privilege := range knownStrings(privileges) {
 		if !privilegeAllowed(target.allowed, privilege) {
 			return fmt.Errorf("unsupported privilege %q", privilege)
 		}
 	}
+
 	return nil
 }
 

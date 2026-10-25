@@ -45,6 +45,7 @@ func readDefaultPrivilegesPublicQuery(owner string) sqlclient.Query {
 	if owner == "" {
 		return sqlclient.Select("privilege_type", "admin_option").From(defaultPrivilegesImplicitPublicCurrentUser)
 	}
+
 	return sqlclient.Select("privilege_type", "admin_option").From(defaultPrivilegesImplicitPublic, sqlclient.Bind("owner", owner))
 }
 
@@ -56,10 +57,13 @@ func defaultPrivilegesImplicit(data types.Object) bool {
 	return objectString(data, "grantee_type") == "PUBLIC" && objectString(data, "object_type") == "FUNCTIONS" && objectString(data, "schema_name") == ""
 }
 
+// defaultPrivilegesConfigAllowed returns the privileges ALTER DEFAULT PRIVILEGES accepts for the object type, or nil
+// while the type is unknown.
 func defaultPrivilegesConfigAllowed(data types.Object) ([]sqlclient.Keyword, error) {
 	if !privilegeFieldsKnown(data, "object_type") {
 		return nil, nil
 	}
+
 	switch objectString(data, "object_type") {
 	case "TABLES":
 		return []sqlclient.Keyword{"SELECT", "INSERT", "UPDATE", "DELETE", "DROP", "REFERENCES", "TRUNCATE"}, nil
@@ -78,10 +82,16 @@ func defaultPrivilegesTarget(data types.Object) (privilegeTarget, error) {
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	database, owner, schemaName, kind := objectString(data, "database_name"), objectString(data, "owner"), objectString(data, "schema_name"), objectString(data, "object_type")
-	var keyword sqlclient.Keyword
-	var catalogType string
+
+	var (
+		keyword     sqlclient.Keyword
+		catalogType string
+	)
+
 	allowed := []sqlclient.Keyword{"EXECUTE"}
+
 	switch kind {
 	case "TABLES":
 		keyword, catalogType = "TABLES", "RELATION"
@@ -93,25 +103,31 @@ func defaultPrivilegesTarget(data types.Object) (privilegeTarget, error) {
 	default:
 		return privilegeTarget{}, fmt.Errorf("unsupported default object_type %q", kind)
 	}
+
 	queries := []sqlclient.Query{localDatabaseQuery(database)}
 	if owner != "" {
 		queries = append(queries, privilegeUserQuery(owner))
 	}
+
 	if schemaName != "" {
 		queries = append(queries, privilegeSchemaQuery(database, schemaName))
 	}
+
 	checks, err := newCatalogChecks(queries...)
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	read := readDefaultPrivilegesQuery(owner, schemaName, catalogType, objectString(data, "grantee"), objectString(data, "grantee_type"))
 	if defaultPrivilegesImplicit(data) {
 		read = readDefaultPrivilegesPublicQuery(owner)
 	}
+
 	query, err := newCatalogCheck(read)
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	return privilegeTarget{
 		database: database, checks: append([]catalogCheck{check}, checks...), query: query, allowed: allowed,
 		grant: grantSpec{

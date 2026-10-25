@@ -19,6 +19,7 @@ func TestLanguageGrantLookup(t *testing.T) {
 	c := fullCatalog()
 	c.localDB = true
 	exerciseCatalogLookup(t, newLanguageGrantDataSource, languageGrantBaseFields, map[string]attr.Value{"privileges": usage, "grant_option_privileges": types.SetValueMust(types.StringType, nil)}, c)
+
 	user := map[string]string{"database_name": "warehouse", "language_name": "SQL", "grantee": "analyst", "grantee_type": "USER"}
 	exerciseCatalogLookup(t, newLanguageGrantDataSource, user, map[string]attr.Value{"privileges": usage, "grant_option_privileges": usage}, &privilegeCatalog{values: map[string]bool{"USAGE": true}, admin: "t", grantee: "analyst", kind: "user"})
 }
@@ -30,11 +31,13 @@ func TestLanguageGrantLookupCanonicalIdentity(t *testing.T) {
 	source := newLanguageGrantDataSource()
 	state, diagnostics := readSource(t, source, catalogLookupObject(t, source, fields), &privilegeCatalog{values: map[string]bool{"USAGE": true}, grantee: "analyst", kind: "user"})
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	assert.Equal(t, types.StringValue("sql"), observed.Attributes()["language_name"])
+
 	fields["language_name"] = "SQL"
-	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", fields)
+	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), fields)
 }
 
 // TestLanguageGrantLookupSchema describes the observed grant options as read-only, not as the resource's argument.

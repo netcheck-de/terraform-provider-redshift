@@ -33,34 +33,44 @@ func commentKnownTarget(data commentModel) error {
 	if data.ObjectType.IsUnknown() {
 		return nil
 	}
+
 	kind := data.ObjectType.ValueString()
 	if _, supported := commentKinds[kind]; !supported {
 		return fmt.Errorf("unsupported comment object_type %q", kind)
 	}
+
 	if kind == "DATABASE" || kind == "SCHEMA" {
 		if knownString(data.SchemaName) != "" || knownString(data.ColumnName) != "" {
 			return fmt.Errorf("%s does not accept schema_name or column_name", kind)
 		}
+
 		if knownString(data.ConstraintName) != "" {
 			return fmt.Errorf("constraint_name is required only for CONSTRAINT")
 		}
+
 		if kind == "DATABASE" && !data.ObjectName.IsUnknown() && !data.DatabaseName.IsUnknown() && !data.ObjectName.Equal(data.DatabaseName) {
 			return fmt.Errorf("DATABASE object_name must equal database_name")
 		}
+
 		return nil
 	}
+
 	if !data.SchemaName.IsUnknown() && data.SchemaName.ValueString() == "" {
 		return fmt.Errorf("schema_name is required for %s", kind)
 	}
+
 	if !data.ColumnName.IsUnknown() && (kind == "COLUMN") != (data.ColumnName.ValueString() != "") {
 		return fmt.Errorf("column_name is required only for COLUMN")
 	}
+
 	if !data.ConstraintName.IsUnknown() && (kind == "CONSTRAINT") != (data.ConstraintName.ValueString() != "") {
 		return fmt.Errorf("constraint_name is required only for CONSTRAINT")
 	}
+
 	if !data.ObjectName.IsUnknown() && data.ObjectName.ValueString() == "" {
 		return fmt.Errorf("object_name is required for %s", kind)
 	}
+
 	return nil
 }
 
@@ -68,41 +78,53 @@ func commentKnownTarget(data commentModel) error {
 func commentTarget(data commentModel) (sqlclient.Statement, sqlclient.Query, error) {
 	kind, name, schemaName, column := data.ObjectType.ValueString(), data.ObjectName.ValueString(), data.SchemaName.ValueString(), data.ColumnName.ValueString()
 	constraint := data.ConstraintName.ValueString()
+
 	keyword, supported := commentKinds[kind]
 	if !supported {
 		return sqlclient.Statement{}, sqlclient.Query{}, fmt.Errorf("unsupported comment object_type %q", kind)
 	}
+
 	statement, query := sqlclient.Stmt("COMMENT ON").Kw(keyword), sqlclient.Select(commentText)
 	nameBinding := sqlclient.Bind("name", name)
+
 	switch kind {
 	case "DATABASE", "SCHEMA":
 		if schemaName != "" || column != "" {
 			return sqlclient.Statement{}, sqlclient.Query{}, fmt.Errorf("%s does not accept schema_name or column_name", kind)
 		}
+
 		if constraint != "" {
 			return sqlclient.Statement{}, sqlclient.Query{}, fmt.Errorf("constraint_name is required only for CONSTRAINT")
 		}
+
 		if kind == "SCHEMA" {
 			return statement.Ident(name), query.From(commentSchemaSource).Where("o.nspname = :name", nameBinding), nil
 		}
+
 		if name != data.DatabaseName.ValueString() {
 			return sqlclient.Statement{}, sqlclient.Query{}, fmt.Errorf("DATABASE object_name must equal database_name")
 		}
+
 		return statement.Ident(name), query.From(commentDatabaseSource).Where("o.datname = :name", nameBinding), nil
 	}
+
 	if schemaName == "" {
 		return sqlclient.Statement{}, sqlclient.Query{}, fmt.Errorf("schema_name is required for %s", kind)
 	}
+
 	if (kind == "COLUMN") != (column != "") {
 		return sqlclient.Statement{}, sqlclient.Query{}, fmt.Errorf("column_name is required only for COLUMN")
 	}
+
 	if (kind == "CONSTRAINT") != (constraint != "") {
 		return sqlclient.Statement{}, sqlclient.Query{}, fmt.Errorf("constraint_name is required only for CONSTRAINT")
 	}
+
 	if name == "" {
 		// Qualified omits empty qualifiers, which would turn schema.""."column" into a different column.
 		return sqlclient.Statement{}, sqlclient.Query{}, fmt.Errorf("object_name is required for %s", kind)
 	}
+
 	schemaBinding := sqlclient.Bind("schema", schemaName)
 	if kind == "CONSTRAINT" {
 		// Constraint names are unique only per table, so both the statement and the read name the table.
@@ -110,8 +132,10 @@ func commentTarget(data commentModel) (sqlclient.Statement, sqlclient.Query, err
 		query = query.From(commentConstraintSource).
 			Where("k.conname = :constraint", sqlclient.Bind("constraint", constraint)).
 			Where("o.relname = :name", nameBinding).Where("n.nspname = :schema", schemaBinding)
+
 		return statement, query, nil
 	}
+
 	if kind == "COLUMN" {
 		statement = statement.Qualified(schemaName, name, column)
 		query = query.From(commentColumnSource, sqlclient.Bind("column", column))
@@ -119,9 +143,11 @@ func commentTarget(data commentModel) (sqlclient.Statement, sqlclient.Query, err
 		statement = statement.Qualified(schemaName, name)
 		query = query.From(commentRelationSource)
 	}
+
 	query = query.Where("o.relname = :name", nameBinding).Where("n.nspname = :schema", schemaBinding).
 		WhereIf(kind == "VIEW", "o.relkind = 'v'").
 		WhereIf(kind == "TABLE", "o.relkind IN ('r', 'm')")
+
 	return statement, query, nil
 }
 
@@ -132,9 +158,11 @@ func commentStatement(data commentModel, text string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	if text == "" {
 		return target.Kw("IS NULL").String(), nil
 	}
+
 	return target.KwLit("IS", text).String(), nil
 }
 

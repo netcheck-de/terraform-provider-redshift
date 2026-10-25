@@ -10,16 +10,6 @@ Owns the exact command set for one IAM role selector and one SQL identity. See A
 [GRANT ASSUMEROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-assumerole-permissions) and its
 [usage notes](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT-usage-notes.html#r_GRANT-usage-notes-assumerole).
 
-## SQL Statements
-
-```sql
-GRANT ASSUMEROLE ON ... TO ... FOR ...;
-REVOKE ASSUMEROLE ON ... FROM ... FOR ...;
-```
-
-Deleting the resource revokes the privileges it owns and never grants any; see [Reconciliation](#reconciliation) for
-changes.
-
 ## Example Usage
 
 ```terraform
@@ -45,8 +35,22 @@ resource "redshift_assumerole_grant" "loader" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Grant permission to assume IAM roles.
+GRANT ASSUMEROLE ON ... TO ... FOR ...;
+
+-- Revoke permission to assume IAM roles.
+REVOKE ASSUMEROLE ON ... FROM ... FOR ...;
+```
+
+## Supported Privileges
 
 Supported `privileges` are `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, `CREATE MODEL`, and `RESULT_OFFLOAD`. The provider
 issues one statement per command rather than `FOR ALL`, which can also include additional engine-specific commands.
@@ -99,6 +103,9 @@ resource "redshift_assumerole_grant" "loaders_any_role" {
 ```
 
 ## Lifecycle and Ownership
+
+Deleting the resource revokes the privileges it owns and never grants any; see [Reconciliation](#reconciliation) for
+changes.
 
 Reads `svv_iam_privileges` for the selected IAM role and SQL identity only. AWS owns IAM policies, trust, and
 namespace role attachments. Only a superuser can grant or revoke `ASSUMEROLE`. The opt-in
@@ -176,28 +183,22 @@ SELECT command_type AS privilege_type FROM svv_iam_privileges WHERE iam_arn = :a
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_assumerole_grant.loader
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    iam_role_arn   = "DEFAULT"
-    grantee        = "loader"
-    grantee_type   = "ROLE"
+    iam_role_arn = "DEFAULT"
+    grantee      = "loader"
+    grantee_type = "ROLE"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_assumerole_grant.loader \
-  '{"workgroup_name":"warehouse","database":"admin","iam_role_arn":"default","grantee":"loader","grantee_type":"ROLE"}'
+  '{"iam_role_arn":"DEFAULT","grantee":"loader","grantee_type":"ROLE"}'
 ```

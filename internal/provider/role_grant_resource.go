@@ -25,7 +25,7 @@ type roleGrantResource struct {
 
 // roleGrantModel is the Terraform state for one granted role and one recipient.
 type roleGrantModel struct {
-	// ID records the administration binding and role/recipient tuple.
+	// ID records the role/recipient tuple within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Role is the granted SQL role, including built-in system roles.
 	Role types.String `tfsdk:"role"`
@@ -79,11 +79,14 @@ func (r *roleGrantResource) read(ctx context.Context, data *roleGrantModel) (boo
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, r.database.ValueString(), readRoleGrantQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
+
 	admin := false
+
 	if !data.ToUser.IsNull() {
 		// One row per grantor can exist; any of them with the option lets the user administer the role.
 		for _, row := range rows {
@@ -91,10 +94,13 @@ func (r *roleGrantResource) read(ctx context.Context, data *roleGrantModel) (boo
 			if err != nil {
 				return false, fmt.Errorf("decode role grant admin option: %w", err)
 			}
+
 			admin = admin || option
 		}
 	}
+
 	data.AdminOption = types.BoolValue(admin)
+
 	return true, nil
 }
 
@@ -106,6 +112,7 @@ func (data roleGrantModel) fields() map[string]string {
 	} else {
 		fields["to_role"] = data.ToRole.ValueString()
 	}
+
 	return fields
 }
 
@@ -113,9 +120,11 @@ func (data roleGrantModel) fields() map[string]string {
 func (r *roleGrantResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data roleGrantModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() || data.ToUser.IsUnknown() || data.AdminOption.IsUnknown() {
 		return
 	}
+
 	if err := data.validate(); err != nil {
 		resp.Diagnostics.AddAttributeError(path.Root("admin_option"), "Invalid role grant", err.Error())
 	}
@@ -125,32 +134,38 @@ func (r *roleGrantResource) ValidateConfig(ctx context.Context, req resource.Val
 func (r *roleGrantResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data roleGrantModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statement, err := createRoleGrantStatement(data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid role grant", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, r.database.ValueString(), statement); err != nil {
 		resp.Diagnostics.AddError("Grant Redshift role membership", err.Error())
 		return
 	}
 	// Save the stable identity before post-write verification can fail.
-	data.ID = r.identity(r.database.ValueString(), data.fields())
+	data.ID = identity(data.fields())
 	data.AdminOption = types.BoolValue(data.adminOption())
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	expected := data.AdminOption
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify Redshift role membership", err.Error())
 		return
 	}
+
 	if !found || !data.AdminOption.Equal(expected) {
 		resp.Diagnostics.AddError("Verify Redshift role membership", "The membership is absent or its admin option differs after granting.")
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -158,18 +173,23 @@ func (r *roleGrantResource) Create(ctx context.Context, req resource.CreateReque
 func (r *roleGrantResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data roleGrantModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read Redshift role membership", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
+	data.ID = normalizeLegacyIdentity(data.ID, false)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -178,36 +198,45 @@ func (r *roleGrantResource) Update(ctx context.Context, req resource.UpdateReque
 	var data, previous roleGrantModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &previous)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.bound(previous.ID, r.database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update Redshift role membership", err.Error())
 		return
 	}
+
 	statements, err := alterRoleGrantStatements(previous, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid role grant", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, r.database.ValueString(), statements...); err != nil {
 		resp.Diagnostics.AddError("Update Redshift role admin option", err.Error())
 		return
 	}
+
 	expected := types.BoolValue(data.adminOption())
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Update Redshift role membership", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("Update Redshift role membership", "The membership disappeared during the update; refresh the plan.")
 		return
 	}
+
 	if !data.AdminOption.Equal(expected) {
 		resp.Diagnostics.AddError("Verify Redshift role membership", "The admin option differs after updating.")
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -215,9 +244,11 @@ func (r *roleGrantResource) Update(ctx context.Context, req resource.UpdateReque
 func (r *roleGrantResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data roleGrantModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, r.database.ValueString(), dropRoleGrantStatement(data))
@@ -228,6 +259,7 @@ func (r *roleGrantResource) Delete(ctx context.Context, req resource.DeleteReque
 			}
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Revoke Redshift role membership", err.Error())
 	}
@@ -240,14 +272,17 @@ func (r *roleGrantResource) ImportState(ctx context.Context, req resource.Import
 		resp.Diagnostics.AddError("Invalid import identity", err.Error())
 		return
 	}
+
 	toRole, toUser := values["to_role"], values["to_user"]
 	if (toRole == "") == (toUser == "") {
 		resp.Diagnostics.AddError("Invalid import identity", "Specify exactly one of to_role and to_user.")
 		return
 	}
+
 	field := "to_role"
 	if toUser != "" {
 		field = "to_user"
 	}
+
 	importIdentity(ctx, req, resp, "role", field)
 }

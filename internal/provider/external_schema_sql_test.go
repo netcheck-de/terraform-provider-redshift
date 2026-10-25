@@ -24,6 +24,7 @@ func externalSchemaMSK(authentication string) externalSchemaModel {
 	data := externalSchemaFixture("MSK", "stream")
 	data.Authentication, data.URI = types.StringValue(authentication), types.StringValue("b-1.example.kafka.eu-central-1.amazonaws.com:9098")
 	data.IAMRoleARN = types.StringValue("arn:aws:iam::123456789012:role/msk")
+
 	return data
 }
 
@@ -32,6 +33,7 @@ func TestExternalSchemaSQL(t *testing.T) {
 	glue := func(name, database string, region types.String) externalSchemaModel {
 		data := externalSchemaFixture("DATA_CATALOG", name)
 		data.GlueDatabase, data.IAMRoleARN, data.Region = types.StringValue(database), types.StringValue("arn:aws:iam::123456789012:role/spectrum"), region
+
 		return data
 	}
 	federated := func(sourceType string) externalSchemaModel {
@@ -39,6 +41,7 @@ func TestExternalSchemaSQL(t *testing.T) {
 		data.SourceDatabase, data.URI = types.StringValue(`it's \db`), types.StringValue("aurora.example.internal")
 		data.IAMRoleARN = types.StringValue("arn:aws:iam::123456789012:role/federated")
 		data.SecretARN = types.StringValue("arn:aws:secretsmanager:eu-central-1:123456789012:secret:aurora-AbCdEf")
+
 		return data
 	}
 	create := func(data externalSchemaModel) func() (string, error) {
@@ -135,6 +138,7 @@ func TestExternalSchemaSQL(t *testing.T) {
 		{"read", func() (string, error) {
 			sql, parameters, err := readExternalSchemaQuery(quoted).Build()
 			assert.Equal(t, map[string]string{"name": `Lake"Schema`}, parameters)
+
 			return sql, err
 		}},
 	})

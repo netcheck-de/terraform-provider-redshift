@@ -38,6 +38,7 @@ func routineListingDatabase(client *resourceClient, filters types.Object) string
 	if selected := objectString(filters, "database"); selected != "" {
 		return selected
 	}
+
 	return client.database.ValueString()
 }
 
@@ -45,6 +46,7 @@ func routineListingDatabase(client *resourceClient, filters types.Object) string
 func routineListingRows(ctx context.Context, client *resourceClient, filters types.Object, kind sqlclient.Keyword, nameFilter string) (string, []sqlclient.Row, error) {
 	database := routineListingDatabase(client, filters)
 	rows, err := client.selectRows(ctx, database, routineListingQuery(kind, objectString(filters, "schema"), objectString(filters, nameFilter)))
+
 	return database, rows, err
 }
 
@@ -66,5 +68,6 @@ func routineListingInt(row sqlclient.Row, column string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("catalog column %s has invalid integer %q", column, row[column])
 	}
+
 	return value, nil
 }

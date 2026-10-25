@@ -13,8 +13,10 @@ import (
 // TestContractTableTimeoutsPlan keeps timeout-only changes in place without issuing DDL.
 func TestContractTableTimeoutsPlan(t *testing.T) {
 	t.Parallel()
+
 	c := fullCatalog()
 	delete(fakeState[*tableFake](c, "table").tables, "serving.events")
+
 	lookup := `
 data "redshift_table" "events" {
   database = redshift_table.events.database
@@ -27,7 +29,9 @@ data "redshift_table" "events" {
   timeouts {`+timeouts+`
   }`) + lookup
 	}
+
 	var applied int
+
 	testresource.UnitTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: tablePlanProviders(c),
 		Steps: []testresource.TestStep{

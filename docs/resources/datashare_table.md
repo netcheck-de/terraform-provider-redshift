@@ -9,13 +9,6 @@ description: Manages explicit table or view membership in a datashare.
 Manages one existing table or view membership in a producer datashare schema. See AWS
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
-## SQL Statements
-
-```sql
-ALTER DATASHARE datashare ADD TABLE schema.table;
-ALTER DATASHARE datashare REMOVE TABLE schema.table;
-```
-
 ## Example Usage
 
 ```terraform
@@ -41,8 +34,20 @@ resource "redshift_datashare_table" "view" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Add the table to the datashare.
+ALTER DATASHARE datashare ADD TABLE schema.table;
+
+-- Remove the table from the datashare.
+ALTER DATASHARE datashare REMOVE TABLE schema.table;
+```
 
 ## Lifecycle and Ownership
 
@@ -74,28 +79,23 @@ relation does not exist. The relation's definition and the share's other members
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_datashare_table.view
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "warehouse"
-    datashare      = "analytics"
-    schema         = "serving"
-    table          = "example_view"
+    database  = "warehouse"
+    datashare = "analytics"
+    schema    = "serving"
+    table     = "example_view"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_datashare_table.view \
-  '{"workgroup_name":"warehouse","database":"warehouse","datashare":"analytics","schema":"serving","table":"example_view"}'
+  '{"database":"warehouse","datashare":"analytics","schema":"serving","table":"example_view"}'
 ```

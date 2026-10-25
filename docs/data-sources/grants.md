@@ -10,13 +10,6 @@ Lists what `SHOW GRANTS` reports, without taking ownership: either every grant o
 (including views), or every grant of one user or role in one database. See AWS
 [SHOW GRANTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_GRANTS.html).
 
-## Catalog Query
-
-```sql
-SHOW GRANTS ON { DATABASE | SCHEMA | TABLE } ...;
-SHOW GRANTS FOR [ROLE] ... FROM DATABASE ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -57,7 +50,7 @@ output "events_grants" {
 ### Read-Only
 
 - `grants` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--grants))
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 
 <a id="nestedatt--grants"></a>
 ### Nested Schema for `grants`
@@ -76,6 +69,20 @@ Read-Only:
 - `schema_name` (String) Schema of the granted object; null for database grants.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List grants on the selected object.
+SHOW GRANTS ON { DATABASE | SCHEMA | TABLE } ...;
+
+-- List a user's or role's grants in the database.
+SHOW GRANTS FOR [ROLE] ... FROM DATABASE ...;
+```
+
+## Read Behavior
+
 Set `object_type` to list the grants on that object; `grantee` and `grantee_type` then narrow the rows, which also
 covers groups and `PUBLIC`. Without `object_type`, `grantee` and `grantee_type` (`USER` or `ROLE`) select
 `SHOW GRANTS FOR`; `schema_name` and `object_name` then narrow the rows. Other combinations are errors.
@@ -85,4 +92,4 @@ is null for `SHOW GRANTS FOR`, which does not report it. `SHOW GRANTS` documents
 inherited through roles from explicit ones, so the listing exposes none. It reports only grants visible to the
 provider's identity and fails when more than 10,000 rows match. Function grants need a signature and are not listed.
 
-`id` is the listing's JSON identity: the warehouse binding, the provider database, and the configured filters.
+`id` is the listing's provider-relative JSON identity: the target `database_name` and the configured filters.

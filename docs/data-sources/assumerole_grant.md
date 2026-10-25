@@ -9,12 +9,6 @@ description: Reads explicit IAM role command permissions for one SQL identity.
 Reads explicit IAM-role usage permissions. See AWS
 [GRANT ASSUMEROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-assumerole-permissions).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_iam_privileges WHERE ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -40,6 +34,17 @@ data "redshift_assumerole_grant" "reader" {
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `privileges` (Set of String) Current explicit privileges for the selected tuple; inherited privileges are excluded.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read IAM role command privileges for the selected identity.
+SELECT ... FROM svv_iam_privileges WHERE ...;
+```
+
+## Read Behavior
 
 `id` (String, computed) is the permission tuple's JSON identity, using the same warehouse, provider database,
 `iam_role_arn`, `grantee`, and `grantee_type` keys as the paired resource. An existing tuple with no explicit privileges

@@ -13,14 +13,6 @@ otherwise Redshift fails with "Cannot find integration for bucket". The AWS prov
 [auto-copy](https://docs.aws.amazon.com/redshift/latest/dg/loading-data-copy-job.html), and
 [SYS_COPY_JOB](https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html).
 
-## SQL Statements
-
-```sql
-COPY schema.table FROM 's3://...' IAM_ROLE '...' ... JOB CREATE name AUTO ...;
-COPY JOB ALTER name AUTO ...;
-COPY JOB DROP name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -82,7 +74,7 @@ resource "redshift_copy_job" "archive" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 
 <a id="nestedblock--table"></a>
 ### Nested Schema for `table`
@@ -93,6 +85,21 @@ Optional:
 - `name` (String) Target table; required in the block.
 - `schema` (String) Schema of the target table; required in the block.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the COPY job.
+COPY schema.table FROM 's3://...' IAM_ROLE '...' ... JOB CREATE name AUTO ...;
+
+-- Change automatic loading for the job.
+COPY JOB ALTER name AUTO ...;
+
+-- Delete the COPY job.
+COPY JOB DROP name;
+```
 
 ## Parameters
 
@@ -142,28 +149,23 @@ creates it again.
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_copy_job.events
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    name           = "events_auto_load"
+    database = "analytics"
+    name     = "events_auto_load"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_copy_job.events \
-  '{"workgroup_name":"warehouse","database":"analytics","name":"events_auto_load"}'
+  '{"database":"analytics","name":"events_auto_load"}'
 ```
 
 Import reads `auto`, `iam_role`, and the actual COPY definition. Configuration must match the imported job;

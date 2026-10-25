@@ -42,6 +42,7 @@ func TestDatashareListSQL(t *testing.T) {
 			if err == nil && name != "" && parameters["name"] != name {
 				return "", fmt.Errorf("name bound as %q", parameters["name"])
 			}
+
 			return sql, err
 		}
 	}

@@ -24,7 +24,7 @@ type maskingPolicyResource struct {
 
 // maskingPolicyModel is the Terraform state of a masking policy.
 type maskingPolicyModel struct {
-	// ID records the warehouse/database/policy identity.
+	// ID records the database/policy identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database is the local database that holds the policy.
 	Database types.String `tfsdk:"database"`
@@ -74,7 +74,7 @@ func (r *maskingPolicyResource) Schema(_ context.Context, _ resource.SchemaReque
 		Blocks: map[string]schema.Block{
 			"input_column": schema.ListNestedBlock{
 				Validators:          []validator.List{listvalidator.IsRequired(), listvalidator.SizeAtLeast(1)},
-				MarkdownDescription: "At least one `input_column` block is required. Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached. Redshift cannot alter them, so changing a name or type replaces the policy; another spelling of the same type, such as `TEXT` for `VARCHAR(256)`, does not.",
+				MarkdownDescription: "At least one `input_column` block is required. Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached.",
 				PlanModifiers: []planmodifier.List{listplanmodifier.RequiresReplaceIf(maskingPolicyInputsReplacement,
 					"Replaces the policy when an input column's name or type changes.", "Replaces the policy when an input column's name or type changes.")},
 				NestedObject: schema.NestedBlockObject{Attributes: map[string]schema.Attribute{
@@ -84,6 +84,7 @@ func (r *maskingPolicyResource) Schema(_ context.Context, _ resource.SchemaReque
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "name")
 }
 
 // maskingPolicyInputsReplacement replaces the policy only when the inputs really change. The catalog spells types
@@ -101,16 +102,20 @@ func (r *maskingPolicyResource) read(ctx context.Context, data *maskingPolicyMod
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return "", false, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return "", false, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readMaskingPolicyQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return "", false, err
 	}
+
 	if len(rows) != 1 {
 		return "", false, fmt.Errorf("masking policy %q has ambiguous catalog metadata", data.Name.ValueString())
 	}
+
 	columns, err := maskingPolicyParseColumns(rows[0]["input_columns"])
 	if err != nil {
 		return "", false, err
@@ -119,12 +124,14 @@ func (r *maskingPolicyResource) read(ctx context.Context, data *maskingPolicyMod
 	if !maskingPolicyColumnsMatch(maskingPolicyColumns(data.InputColumn), columns) {
 		data.InputColumn = maskingPolicyColumnList(columns)
 	}
+
 	return maskingPolicyExpressionText(rows[0]["policy_expression"]), true, nil
 }
 
 // verify re-reads the policy after Create or Update and records the catalog fingerprint of the configured text.
 func (r *maskingPolicyResource) verify(ctx context.Context, data *maskingPolicyModel) error {
 	planned := data.InputColumn
+
 	text, found, err := r.read(ctx, data)
 	switch {
 	case err != nil:
@@ -134,7 +141,9 @@ func (r *maskingPolicyResource) verify(ctx context.Context, data *maskingPolicyM
 	case !data.InputColumn.Equal(planned):
 		return fmt.Errorf("the masking policy's input columns differ from the configuration")
 	}
+
 	data.Expression, data.DefinitionFingerprint = recordDefinition(data.Expression, text)
+
 	return nil
 }
 
@@ -146,12 +155,14 @@ func (r *maskingPolicyResource) ValidateConfig(ctx context.Context, req resource
 	if resp.Diagnostics.HasError() || data.InputColumn.IsNull() {
 		return
 	}
+
 	if !req.Config.Raw.IsFullyKnown() {
 		if !data.Expression.IsUnknown() && !data.Expression.IsNull() {
 			if _, err := sqlclient.CheckUserSQL(data.Expression.ValueString()); err != nil {
 				resp.Diagnostics.AddError("Invalid masking policy", err.Error())
 			}
 		}
+
 		columns, err := data.InputColumn.ToTerraformValue(ctx)
 		if err == nil && columns.IsFullyKnown() {
 			// Validate the known inputs independently of the name and expression, which may be references.
@@ -160,8 +171,10 @@ func (r *maskingPolicyResource) ValidateConfig(ctx context.Context, req resource
 				resp.Diagnostics.AddError("Invalid masking policy", err.Error())
 			}
 		}
+
 		return
 	}
+
 	if err := maskingPolicyValidate(data); err != nil {
 		resp.Diagnostics.AddError("Invalid masking policy", err.Error())
 	}
@@ -171,26 +184,32 @@ func (r *maskingPolicyResource) ValidateConfig(ctx context.Context, req resource
 func (r *maskingPolicyResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data maskingPolicyModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statement, err := createMaskingPolicyStatement(data)
 	if err != nil {
 		resp.Diagnostics.AddError("Create masking policy", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), statement); err != nil {
 		resp.Diagnostics.AddError("Create masking policy", err.Error())
 		return
 	}
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 	// A failed verification must still record the created policy with serializable state.
 	data.DefinitionFingerprint = types.StringNull()
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if err := r.verify(ctx, &data); err != nil {
 		resp.Diagnostics.AddError("Verify masking policy", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -198,19 +217,24 @@ func (r *maskingPolicyResource) Create(ctx context.Context, req resource.CreateR
 func (r *maskingPolicyResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data maskingPolicyModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	text, found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read masking policy", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	data.Expression, data.DefinitionFingerprint = reconcileDefinition(data.Expression, data.DefinitionFingerprint, text)
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -219,6 +243,7 @@ func (r *maskingPolicyResource) Update(ctx context.Context, req resource.UpdateR
 	var plan, prior maskingPolicyModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -227,19 +252,23 @@ func (r *maskingPolicyResource) Update(ctx context.Context, req resource.UpdateR
 		resp.Diagnostics.AddError("Update masking policy", err.Error())
 		return
 	}
+
 	statements, err := alterMaskingPolicyStatements(prior, plan)
 	if err == nil {
 		err = r.exec(ctx, plan.Database.ValueString(), statements...)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Update masking policy", err.Error())
 		return
 	}
+
 	plan.ID = prior.ID
 	if err := r.verify(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Verify masking policy", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -247,13 +276,16 @@ func (r *maskingPolicyResource) Update(ctx context.Context, req resource.UpdateR
 func (r *maskingPolicyResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data maskingPolicyModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	_, found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropMaskingPolicyStatement(data))
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete masking policy", err.Error())
 	}

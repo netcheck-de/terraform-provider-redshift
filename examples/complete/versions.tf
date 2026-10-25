@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.14"
+  required_version = ">= 1.16"
 
   required_providers {
     archive = {
@@ -16,7 +16,7 @@ terraform {
     }
     redshift = {
       source  = "netcheck-de/redshift"
-      version = "~> 0.4"
+      version = "~> 0.5"
     }
   }
 }

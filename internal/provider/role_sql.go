@@ -24,6 +24,7 @@ func createRoleStatements(data roleModel) []string {
 	if owner := knownString(data.Owner); owner != "" {
 		statements = append(statements, roleAlter(data).KwIdent("OWNER TO", owner).String())
 	}
+
 	return statements
 }
 
@@ -39,6 +40,7 @@ var roleAlterSteps = []alterStep[roleModel]{
 			if owner := knownString(plan.Owner); owner != "" {
 				return []string{roleAlter(plan).KwIdent("OWNER TO", owner).String()}
 			}
+
 			return nil
 		},
 	},
@@ -49,6 +51,7 @@ var roleAlterSteps = []alterStep[roleModel]{
 			if external := knownString(plan.ExternalID); external != "" {
 				return []string{roleAlter(plan).KwIdent("EXTERNALID TO", external).String()}
 			}
+
 			return nil
 		},
 	},

@@ -23,7 +23,7 @@ type roleResource struct {
 
 // roleModel is the Terraform state for one SQL role.
 type roleModel struct {
-	// ID records the administration binding and role name.
+	// ID records the role name within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Name includes an identity-provider namespace prefix when applicable.
 	Name types.String `tfsdk:"name"`
@@ -73,6 +73,7 @@ func (r *roleResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			},
 		},
 	}
+	foldNames(&resp.Schema, "name")
 }
 
 // read verifies warehouse ownership and refreshes an existing role.
@@ -80,25 +81,31 @@ func (r *roleResource) read(ctx context.Context, data *roleModel) (bool, error) 
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, r.database.ValueString(), readRoleQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
+
 	if len(rows) != 1 {
 		return false, fmt.Errorf("role %q is ambiguous in the catalog", data.Name.ValueString())
 	}
+
 	row := rows[0]
 	data.Name = types.StringValue(row["role_name"])
 	data.Owner = optionalString(row["role_owner"])
 	data.ExternalID = optionalString(row["external_id"])
 	data.RoleID = types.Int64Null()
+
 	if row["role_id"] != "" {
 		id, err := strconv.ParseInt(row["role_id"], 10, 64)
 		if err != nil {
 			return false, fmt.Errorf("decode role ID: %w", err)
 		}
+
 		data.RoleID = types.Int64Value(id)
 	}
+
 	return true, nil
 }
 
@@ -107,6 +114,7 @@ func roleKnown(value types.String) types.String {
 	if value.IsUnknown() {
 		return types.StringNull()
 	}
+
 	return value
 }
 
@@ -118,6 +126,7 @@ func roleConverged(planned, observed roleModel) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -125,32 +134,39 @@ func roleConverged(planned, observed roleModel) bool {
 func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data roleModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statements := createRoleStatements(data)
 	if err := r.exec(ctx, r.database.ValueString(), statements[0]); err != nil {
 		resp.Diagnostics.AddError("Create Redshift role", err.Error())
 		return
 	}
+
 	planned := data
-	data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"name": data.Name.ValueString()})
 	// The role exists now, so its identity is saved before anything else can fail; unknown values cannot be saved.
 	data.Owner, data.ExternalID, data.RoleID = roleKnown(data.Owner), roleKnown(data.ExternalID), types.Int64Null()
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if err := r.exec(ctx, r.database.ValueString(), statements[1:]...); err != nil {
 		resp.Diagnostics.AddError("Change Redshift role owner", err.Error())
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify Redshift role", err.Error())
 		return
 	}
+
 	if !found || !roleConverged(planned, data) {
 		resp.Diagnostics.AddError("Verify Redshift role", "The role is absent or its owner or external ID differs after creation.")
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -158,18 +174,23 @@ func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, r
 func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data roleModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read Redshift role", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
+	data.ID = normalizeLegacyIdentity(data.ID, false)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -178,31 +199,39 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	var data, previous roleModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &previous)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.bound(previous.ID, r.database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update Redshift role", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, r.database.ValueString(), alterRoleStatements(previous, data)...); err != nil {
 		resp.Diagnostics.AddError("Update Redshift role", err.Error())
 		return
 	}
+
 	planned := data
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read Redshift role", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("Update Redshift role", "The role disappeared during the update; refresh the plan.")
 		return
 	}
+
 	if !roleConverged(planned, data) {
 		resp.Diagnostics.AddError("Verify Redshift role", "The role's owner or external ID differs after updating.")
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -210,13 +239,16 @@ func (r *roleResource) Update(ctx context.Context, req resource.UpdateRequest, r
 func (r *roleResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data roleModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, r.database.ValueString(), dropRoleStatement(data))
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete Redshift role", err.Error())
 	}

@@ -15,6 +15,7 @@ import (
 // required-block validator, the empty plan after apply, and the in-place update for another spelling of a type.
 func TestContractMaskingPolicyBlockPlan(t *testing.T) {
 	t.Parallel()
+
 	c := &catalog{identity: true, privileges: map[string]bool{}}
 	configuration := func(blocks string) string {
 		return fmt.Sprintf(`

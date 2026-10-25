@@ -38,7 +38,7 @@ type userResource struct {
 
 // userModel carries Terraform user attributes; write-only passwords are never retained in state.
 type userModel struct {
-	// ID records the administration binding and user name.
+	// ID records the user name within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Name identifies the database user.
 	Name types.String `tfsdk:"name"`
@@ -97,7 +97,7 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"password_wo": schema.StringAttribute{
-				Optional: true, WriteOnly: true, MarkdownDescription: "Write-only password (requires Terraform 1.11 or later); required on creation, on rotation, and when `password_disabled` changes to `false`, and not allowed while `password_disabled` is `true`. Never stored in this resource's plan or state.",
+				Optional: true, WriteOnly: true, Sensitive: true, MarkdownDescription: "Write-only password; required on creation, on rotation, and when `password_disabled` changes to `false`, and not allowed while `password_disabled` is `true`. Never stored in this resource's plan or state.",
 			},
 			"password_wo_version": schema.Int64Attribute{
 				Optional: true, Computed: true, Default: int64default.StaticInt64(0),
@@ -176,6 +176,7 @@ func userSyslogNames() []string {
 	for i, level := range userSyslogAccess {
 		names[i] = string(level)
 	}
+
 	return names
 }
 
@@ -193,31 +194,39 @@ func userNullModel(name types.String) userModel {
 // userConfigEntries splits the joined useconfig into lower-case parameter names and stored values.
 func userConfigEntries(joined string) map[string]string {
 	entries := map[string]string{}
+
 	for entry := range strings.SplitSeq(joined, userConfigSeparator) {
 		name, value, ok := strings.Cut(entry, "=")
 		if ok && name != "" {
 			entries[strings.ToLower(name)] = value
 		}
 	}
+
 	return entries
 }
 
 // userParseSearchPath splits a stored search_path into schema names. Redshift stores each configured name as a
 // quoted identifier when it needs quoting, so commas inside double quotes do not separate names.
 func userParseSearchPath(stored string) []string {
-	var schemas []string
-	var current strings.Builder
+	var (
+		schemas []string
+		current strings.Builder
+	)
+
 	quoted := false
 	flush := func() {
 		if text := strings.TrimSpace(current.String()); text != "" {
 			schemas = append(schemas, userUnquoteIdentifier(text))
 		}
+
 		current.Reset()
 	}
+
 	for _, char := range stored {
 		switch {
 		case char == '"':
 			quoted = !quoted
+
 			current.WriteRune(char)
 		case char == ',' && !quoted:
 			flush()
@@ -225,7 +234,9 @@ func userParseSearchPath(stored string) []string {
 			current.WriteRune(char)
 		}
 	}
+
 	flush()
+
 	return schemas
 }
 
@@ -234,6 +245,7 @@ func userUnquoteIdentifier(text string) string {
 	if len(text) >= 2 && strings.HasPrefix(text, `"`) && strings.HasSuffix(text, `"`) {
 		return strings.ReplaceAll(text[1:len(text)-1], `""`, `"`)
 	}
+
 	return text
 }
 
@@ -250,6 +262,7 @@ func userParseTimestamp(text string) (time.Time, bool) {
 			return instant, true
 		}
 	}
+
 	return time.Time{}, false
 }
 
@@ -263,19 +276,24 @@ var userStoredInfinity = time.Date(2038, time.January, 19, 3, 14, 4, 0, time.UTC
 // spells out infinity.
 func userObservedValidUntil(current types.String, observed string) types.String {
 	configured := knownString(current)
+
 	instant, parsed := userParseTimestamp(observed)
 	if observed == "" || strings.EqualFold(observed, userValidUntilInfinity) || (parsed && instant.Equal(userStoredInfinity)) {
 		if strings.EqualFold(configured, userValidUntilInfinity) {
 			return current
 		}
+
 		return types.StringValue(userValidUntilInfinity)
 	}
+
 	if !parsed {
 		return types.StringValue(observed)
 	}
+
 	if wanted, ok := userParseTimestamp(configured); ok && wanted.Equal(instant) {
 		return current
 	}
+
 	return types.StringValue(instant.UTC().Format(time.RFC3339))
 }
 
@@ -285,11 +303,14 @@ func userObservedSearchPath(entries map[string]string) types.List {
 	if !ok {
 		return types.ListNull(types.StringType)
 	}
+
 	schemas := userParseSearchPath(stored)
+
 	values := make([]attr.Value, len(schemas))
 	for i, schema := range schemas {
 		values[i] = types.StringValue(schema)
 	}
+
 	return types.ListValueMust(types.StringType, values)
 }
 
@@ -297,14 +318,17 @@ func userObservedSearchPath(entries map[string]string) types.List {
 // than null, so it does not plan a change.
 func userObservedSessionDefaults(current types.Map, entries map[string]string) types.Map {
 	values := map[string]attr.Value{}
+
 	for _, name := range userSessionParameterNames() {
 		if value, ok := entries[name]; ok {
 			values[name] = types.StringValue(value)
 		}
 	}
+
 	if len(values) == 0 && (current.IsNull() || current.IsUnknown()) {
 		return types.MapNull(types.StringType)
 	}
+
 	return types.MapValueMust(types.StringType, values)
 }
 
@@ -317,39 +341,51 @@ func userInfo(data *userModel, rows []sqlclient.Row) error {
 				*value = types.Int64Null()
 			}
 		}
+
 		for _, value := range []*types.String{&data.SyslogAccess, &data.ExternalID} {
 			if value.IsUnknown() {
 				*value = types.StringNull()
 			}
 		}
+
 		return nil
 	}
+
 	row := rows[0]
 	limit := int64(userUnlimitedConnections)
+
 	if text := strings.TrimSpace(row["connection_limit"]); text != "" && !strings.EqualFold(text, "UNLIMITED") {
 		parsed, err := strconv.ParseInt(text, 10, 64)
 		if err != nil {
 			return fmt.Errorf("decode user connection limit: %w", err)
 		}
+
 		limit = parsed
 	}
+
 	timeout := int64(0)
+
 	if text := strings.TrimSpace(row["session_timeout"]); text != "" {
 		parsed, err := strconv.ParseInt(text, 10, 64)
 		if err != nil {
 			return fmt.Errorf("decode user session timeout: %w", err)
 		}
+
 		timeout = parsed
 	}
+
 	data.ConnectionLimit, data.SessionTimeout = types.Int64Value(limit), types.Int64Value(timeout)
+
 	data.SyslogAccess = types.StringValue(strings.ToUpper(strings.TrimSpace(row["syslog_access"])))
 	if data.SyslogAccess.ValueString() == "" {
 		data.SyslogAccess = types.StringValue("RESTRICTED")
 	}
+
 	data.ExternalID = types.StringNull()
 	if id := row["external_user_id"]; id != "" {
 		data.ExternalID = types.StringValue(id)
 	}
+
 	return nil
 }
 
@@ -358,37 +394,45 @@ func (r *userResource) read(ctx context.Context, data *userModel) (bool, error) 
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, r.database.ValueString(), readUserQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, err
 	}
+
 	if len(rows) != 1 {
 		return false, fmt.Errorf("user %q is ambiguous in the catalog", data.Name.ValueString())
 	}
+
 	superuser, err := strconv.ParseBool(rows[0]["usesuper"])
 	if err != nil {
 		return false, fmt.Errorf("decode user superuser flag: %w", err)
 	}
+
 	createDB, err := strconv.ParseBool(rows[0]["usecreatedb"])
 	if err != nil {
 		return false, fmt.Errorf("decode user CREATEDB flag: %w", err)
 	}
+
 	data.Name = types.StringValue(rows[0]["usename"])
 	// The catalog does not show a disabled password, so state from an import or from before the attribute existed
 	// records the default; a later password_disabled = true then has a known prior and renders PASSWORD DISABLE.
 	if data.PasswordDisabled.IsNull() {
 		data.PasswordDisabled = types.BoolValue(false)
 	}
+
 	data.Superuser = types.BoolValue(superuser)
 	data.CreateDB = types.BoolValue(createDB)
 	data.ValidUntil = userObservedValidUntil(data.ValidUntil, rows[0]["valuntil"])
 	entries := userConfigEntries(rows[0]["useconfig"])
 	data.SearchPath = userObservedSearchPath(entries)
 	data.SessionDefaults = userObservedSessionDefaults(data.SessionDefaults, entries)
+
 	info, err := r.selectRows(ctx, r.database.ValueString(), readUserInfoQuery(*data))
 	if err != nil {
 		return false, err
 	}
+
 	return true, userInfo(data, info)
 }
 
@@ -402,6 +446,7 @@ func userConverged(expected, observed userModel) bool {
 	observedOption := func(want, got attr.Value) bool {
 		return want.IsNull() || same(want, got)
 	}
+
 	return same(expected.Superuser, observed.Superuser) && same(expected.CreateDB, observed.CreateDB) &&
 		same(expected.ValidUntil, observed.ValidUntil) && same(expected.SearchPath, observed.SearchPath) &&
 		same(expected.SessionDefaults, observed.SessionDefaults) && observedOption(expected.ConnectionLimit, observed.ConnectionLimit) &&
@@ -412,7 +457,9 @@ func userConverged(expected, observed userModel) bool {
 // userSecret reads the write-only password from configuration, because plans never carry it.
 func userSecret(ctx context.Context, config tfsdk.Config) (string, diag.Diagnostics) {
 	var value types.String
+
 	diagnostics := config.GetAttribute(ctx, path.Root("password_wo"), &value)
+
 	return knownString(value), diagnostics
 }
 
@@ -420,12 +467,15 @@ func userSecret(ctx context.Context, config tfsdk.Config) (string, diag.Diagnost
 func (r *userResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data userModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := userTupleError(data, !data.Password.IsNull() && !data.Password.IsUnknown(), true); err != nil {
 		resp.Diagnostics.AddError("Invalid Redshift user", err.Error())
 	}
+
 	for name := range data.SessionDefaults.Elements() {
 		if _, err := userSessionParameter(name); err != nil {
 			resp.Diagnostics.AddError("Invalid Redshift user", err.Error())
@@ -437,57 +487,90 @@ func (r *userResource) ValidateConfig(ctx context.Context, req resource.Validate
 func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data userModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	secret, diagnostics := userSecret(ctx, req.Config)
 	if err := userTupleError(data, secret != "", true); err != nil {
 		resp.Diagnostics.AddError("Invalid Redshift user", err.Error())
 		return
 	}
+
 	if !userPasswordDisabled(data) && (diagnostics.HasError() || secret == "") {
 		resp.Diagnostics.AddError("Create Redshift user", "password_wo must be set when creating a user unless password_disabled is true")
 		return
 	}
+
 	statements, err := createUserStatements(data, secret)
 	if err == nil {
-		err = r.exec(ctx, r.database.ValueString(), statements...)
+		err = r.exec(ctx, r.database.ValueString(), statements[0])
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Create Redshift user", err.Error())
 		return
 	}
-	data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	// A failed session default must still record the created user, or the next apply would fail to create it again
+	// instead of replacing the tainted user. Unknown values cannot be saved; the verification read fills them in.
+	data.ID = identity(map[string]string{"name": data.Name.ValueString()})
+	recorded := data
+	recorded.ConnectionLimit, recorded.SessionTimeout = userKnownInt(data.ConnectionLimit), userKnownInt(data.SessionTimeout)
+	recorded.SyslogAccess, recorded.ExternalID = roleKnown(data.SyslogAccess), roleKnown(data.ExternalID)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &recorded)...)
+
+	if err := r.exec(ctx, r.database.ValueString(), statements[1:]...); err != nil {
+		resp.Diagnostics.AddError("Configure Redshift user", err.Error())
+		return
+	}
+
 	expected := data
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify Redshift user", err.Error())
 		return
 	}
+
 	if !found || !userConverged(expected, data) {
 		resp.Diagnostics.AddError("Verify Redshift user", "The user is absent or its privileges or options do not match after creation.")
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// userKnownInt replaces an unknown planned number with null, which state can hold.
+func userKnownInt(value types.Int64) types.Int64 {
+	if value.IsUnknown() {
+		return types.Int64Null()
+	}
+
+	return value
 }
 
 // Read refreshes non-secret user attributes or removes a missing user from state.
 func (r *userResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data userModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read Redshift user", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
+	data.ID = normalizeLegacyIdentity(data.ID, false)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -496,9 +579,11 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	var data, previous userModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &previous)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.bound(previous.ID, r.database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update Redshift user", err.Error())
 		return
@@ -507,39 +592,49 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	desired := data
 	if userRotates(previous, data) || userEnables(previous, data) {
 		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("password_wo"), &desired.Password)...)
+
 		if resp.Diagnostics.HasError() {
 			return
 		}
 	}
+
 	if err := userTupleError(desired, false, !previous.ExternalID.Equal(data.ExternalID)); err != nil {
 		resp.Diagnostics.AddError("Invalid Redshift user", err.Error())
 		return
 	}
+
 	batches, err := alterUserBatches(previous, desired)
 	if err != nil {
 		summary := userUpdateSummary
 		if errors.Is(err, errUserPasswordRequired) || errors.Is(err, errUserPasswordEnable) {
 			summary = userPasswordSummary
 		}
+
 		resp.Diagnostics.AddError(summary, err.Error()+".")
+
 		return
 	}
+
 	for _, batch := range batches {
 		if err := r.exec(ctx, r.database.ValueString(), batch.statements...); err != nil {
 			resp.Diagnostics.AddError(batch.summary, err.Error())
 			return
 		}
 	}
+
 	expected := data
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify Redshift user", err.Error())
 		return
 	}
+
 	if !found || !userConverged(expected, data) {
 		resp.Diagnostics.AddError("Verify Redshift user", "The user is absent or its privileges or options do not match after updating.")
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -547,13 +642,16 @@ func (r *userResource) Update(ctx context.Context, req resource.UpdateRequest, r
 func (r *userResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data userModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, r.database.ValueString(), dropUserStatement(data))
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete Redshift user", err.Error())
 	}

@@ -14,16 +14,6 @@ in a schema. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 
-## SQL Statements
-
-```sql
-GRANT privilege ON ... TO ...;
-REVOKE privilege ON ... FROM ...;
-REVOKE GRANT OPTION FOR privilege ON ... FROM ...;
-```
-
-Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
-
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_object_grant/resource.tf" }}
@@ -32,6 +22,23 @@ Deleting the resource revokes the privileges it owns; see [Reconciliation](#reco
 
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Grant object privileges.
+GRANT privilege ON ... TO ...;
+
+-- Revoke object privileges.
+REVOKE privilege ON ... FROM ...;
+
+-- Revoke permission to grant object privileges to others.
+REVOKE GRANT OPTION FOR privilege ON ... FROM ...;
+```
+
+## Object Types and Privileges
 
 | `object_type`    | Requires                                         | Privileges                                                                        |
 |------------------|--------------------------------------------------|-----------------------------------------------------------------------------------|
@@ -118,7 +125,9 @@ exist when the statement runs; objects created later are not covered. Refresh re
 current object of the type holds, so a new object without them shows up as drift and the next apply grants them again.
 Tables include views. A schema without objects of the type, such as one that holds only procedures for
 `ALL FUNCTIONS`, has nothing to cover and is treated as a missing grant. A privilege carries the grant option only when
-every object holds it with the option.
+every object holds it with the option. Because refresh cannot see grants held on only some objects, every create,
+update, and destroy also revokes each privilege outside `privileges` and each grant option outside
+`grant_option_privileges` on all current objects, so destroy leaves no partial grant behind.
 For current and future objects, use [scoped grants](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/grant)
 or default privileges instead.
 
@@ -129,6 +138,8 @@ it must be a subset of `privileges` and defaults to none, so options granted out
 privilege itself stays. Groups, roles, and `PUBLIC` cannot hold grant options.
 
 ## Lifecycle and Ownership
+
+Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
 
 The resource checks object and grantee existence. Databases, schemas, tables, and templates are read with
 `SHOW GRANTS ON` the object, routines with `SVV_FUNCTION_PRIVILEGES`, models with `SVV_ML_MODEL_PRIVILEGES`, and
@@ -171,8 +182,9 @@ configuration with the statements above: a privilege or grant option granted out
 one is granted again. Other grantees, scoped permissions, and privileges inherited through roles or groups are ignored.
 A snapshot reports a privilege only when every current object of its type holds it: when configured, a privilege that a
 new object lacks is granted again on all of them, and when not configured, a privilege that only some objects hold is
-never revoked. A missing database, schema, object, routine overload, model, or grantee removes the grant from state, and
-so does a snapshot whose schema holds no objects of its type; the next plan creates it again.
+not reported as drift; the snapshot revokes it whenever it is created, updated, or destroyed. A missing database,
+schema, object, routine overload, model, or grantee removes the grant from state, and so does a snapshot whose schema
+holds no objects of its type; the next plan creates it again.
 
 ### Replacing Database Privileges
 
@@ -214,16 +226,14 @@ resource "redshift_object_grant" "orders" {
 
 ## Import
 
-For shared consumer objects, include `"database_type":"shared"` in the JSON identity; local identities omit it.
+Use an `import` block with a JSON identity:
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+{{ tffile "examples/resources/redshift_object_grant/import.tf" }}
 
-{{ tffile "examples/resources/redshift_object_grant/import-by-string-id.tf" }}
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
-
-Alternatively, use `terraform import`. Routine identities add `arguments` as configured:
+Alternatively, use `terraform import`:
 
 {{ codefile "shell" "examples/resources/redshift_object_grant/import.sh" }}
+
+For shared consumer objects, include `"database_type":"shared"` in the JSON identity; local identities omit it.
+
+Routine identities add `arguments` as configured.

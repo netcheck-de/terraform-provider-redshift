@@ -56,20 +56,25 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data roleData
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	role := roleModel{Name: data.Name}
+
 	found, err := (&roleResource{d.resourceClient}).read(ctx, &role)
 	if err != nil {
 		resp.Diagnostics.AddError("Read Redshift role", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("Role not found", "No role named "+data.Name.ValueString()+" exists.")
 		return
 	}
+
 	data.Name, data.Owner, data.ExternalID, data.RoleID = role.Name, role.Owner, role.ExternalID, role.RoleID
-	data.ID = d.identity(d.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

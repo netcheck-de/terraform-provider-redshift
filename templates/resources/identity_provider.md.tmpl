@@ -12,14 +12,6 @@ integration IAM role, role attachment to the namespace, and group assignments wi
 [CREATE IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_IDENTITY_PROVIDER.html) and
 [ALTER IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_IDENTITY_PROVIDER.html).
 
-## SQL Statements
-
-```sql
-CREATE IDENTITY PROVIDER name ...;
-ALTER IDENTITY PROVIDER name ...;
-DROP IDENTITY PROVIDER name;
-```
-
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_identity_provider/resource.tf" }}
@@ -29,11 +21,29 @@ DROP IDENTITY PROVIDER name;
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the identity provider.
+CREATE IDENTITY PROVIDER name ...;
+
+-- Update identity provider settings.
+ALTER IDENTITY PROVIDER name ...;
+
+-- Delete the identity provider.
+DROP IDENTITY PROVIDER name;
+```
+
 ## Lifecycle and Ownership
 
 Creating, changing, and reading a provider requires a Redshift database superuser, because
 [SVV_IDENTITY_PROVIDERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_IDENTITY_PROVIDERS.html) is visible only
 to superusers.
+
+`client_secret_wo` is write-only and absent from this resource's state, but the SQL statements that send it contain the
+secret, so restrict provider logs and Data API query-history access accordingly.
 
 Deletion never uses `CASCADE`, which would drop the provider's users and roles. It refuses to drop the provider while
 namespace-prefixed federated users remain. Manage role grants and memberships separately; use resource dependencies so
@@ -115,13 +125,9 @@ resource "redshift_identity_provider" "entra" {
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_identity_provider/import-by-string-id.tf" }}
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
+{{ tffile "examples/resources/redshift_identity_provider/import.tf" }}
 
 Alternatively, use `terraform import`:
 

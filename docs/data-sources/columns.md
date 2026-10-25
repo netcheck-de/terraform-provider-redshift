@@ -9,12 +9,6 @@ description: Lists relation columns with their position, type, nullability, and 
 Lists the columns of one database's tables, views, and external tables. See AWS
 [SVV_ALL_COLUMNS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ALL_COLUMNS.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_all_columns WHERE database_name = '...' AND schema_name = '...' AND table_name = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -42,7 +36,7 @@ output "required_columns" {
 ### Read-Only
 
 - `columns` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--columns))
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 
 <a id="nestedatt--columns"></a>
 ### Nested Schema for `columns`
@@ -63,8 +57,19 @@ Read-Only:
 - `table` (String) Relation containing the column.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List columns matching the configured filters.
+SELECT ... FROM svv_all_columns WHERE database_name = '...' AND schema_name = '...' AND table_name = '...';
+```
+
+## Read Behavior
+
 `database` defaults to the provider's `database`; the read runs in the provider's database. `id` combines the
-warehouse binding, the listed database, and the configured filters. Items are ordered by schema, table, and
+listed database and configured filters within the warehouse. Items are ordered by schema, table, and
 `ordinal_position`; no match returns an empty `columns` list. Without a `table` filter, the listing covers every
 relation of the database, so filter as narrowly as possible on large warehouses.
 

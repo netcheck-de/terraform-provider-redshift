@@ -11,13 +11,6 @@ policy needs when its expression reads the table. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-row-level-security) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-role-level).
 
-## SQL Statements
-
-```sql
-GRANT SELECT ON TABLE ... TO { RLS | MASKING } POLICY policy_name;
-REVOKE SELECT ON TABLE ... FROM { RLS | MASKING } POLICY policy_name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -47,8 +40,20 @@ resource "redshift_policy_grant" "exempt_lookup" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Allow a policy to read a lookup table.
+GRANT SELECT ON TABLE ... TO { RLS | MASKING } POLICY policy_name;
+
+-- Revoke a policy's access to a lookup table.
+REVOKE SELECT ON TABLE ... FROM { RLS | MASKING } POLICY policy_name;
+```
 
 ## Lifecycle and Ownership
 
@@ -84,32 +89,26 @@ table, or policy removes the grant from state, and the next plan creates it agai
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_policy_grant.exempt_lookup
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    database_name  = "warehouse"
-    schema_name    = "public"
-    object_name    = "masking_exempt_emails"
-    policy_type    = "MASKING"
-    policy_name    = "mask_email"
+    database_name = "warehouse"
+    schema_name   = "public"
+    object_name   = "masking_exempt_emails"
+    policy_type   = "MASKING"
+    policy_name   = "mask_email"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_policy_grant.exempt_lookup \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"warehouse","schema_name":"public","object_name":"masking_exempt_emails","policy_type":"MASKING","policy_name":"mask_email"}'
+  '{"database_name":"warehouse","schema_name":"public","object_name":"masking_exempt_emails","policy_type":"MASKING","policy_name":"mask_email"}'
 ```
 
 Import cannot read the grant, so the imported state records no privileges and the next apply runs `GRANT` for the

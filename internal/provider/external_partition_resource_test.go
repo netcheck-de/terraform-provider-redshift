@@ -8,7 +8,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,29 +34,35 @@ var _ = registerValidateConfigCase("external_partition", validateConfigCase{
 	invalid: func() externalPartitionModel {
 		model := externalPartitionTestModel()
 		model.Values = externalTableTestMap("event_date", "a", "Event_Date", "b")
+
 		return model
 	}(),
 	unknown: func() externalPartitionModel {
 		model := externalPartitionTestModel()
 		model.Location = types.StringUnknown()
 		model.Values = types.MapUnknown(types.StringType)
+
 		return model
 	}(),
 })
 
 // externalPartitionState runs one lifecycle operation and decodes the resulting state.
-func externalPartitionState(t *testing.T, client dataapi.Client, operation string, prior, planned externalPartitionModel) (externalPartitionModel, error) {
+func externalPartitionState(t *testing.T, client sqlclient.Client, operation string, prior, planned externalPartitionModel) (externalPartitionModel, error) {
 	t.Helper()
+
 	r := &externalPartitionResource{}
 	configureTestResource(t, r, client)
 	state, diagnostics := applyOperation(t, r, operation, prior, planned, nil)
+
 	var observed externalPartitionModel
 	if !state.Raw.IsNull() {
 		require.False(t, state.Get(context.Background(), &observed).HasError())
 	}
+
 	if diagnostics.HasError() {
 		return observed, errors.New(diagnostics.Errors()[0].Summary() + ": " + diagnostics.Errors()[0].Detail())
 	}
+
 	return observed, nil
 }
 
@@ -69,7 +75,7 @@ func TestExternalPartitionLifecycle(t *testing.T) {
 	created, err := externalPartitionState(t, c, "create", model, model)
 	require.NoError(t, err)
 	assert.Equal(t, model.Location, created.Location, "the catalog's missing trailing slash is not drift")
-	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events","values":"{\"EVENT_DATE\":\"2024-02-01\"}"}`, created.ID.ValueString())
+	assert.JSONEq(t, `{"database":"admin","schema":"example_external","table":"events","values":"{\"EVENT_DATE\":\"2024-02-01\"}"}`, created.ID.ValueString())
 	moved := created
 	moved.Location = types.StringValue("s3://example-bucket/archive/2024-02-01/")
 	updated, err := externalPartitionState(t, c, "update", created, moved)
@@ -89,18 +95,21 @@ func TestExternalPartitionLifecycle(t *testing.T) {
 func TestExternalPartitionImport(t *testing.T) {
 	r := &externalPartitionResource{}
 	configureTestResource(t, r, fullCatalog())
-	id := `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events","values":"{\"event_date\":\"2024-01-01\"}"}`
+
+	id := `{"database":"admin","schema":"example_external","table":"events","values":"{\"event_date\":\"2024-01-01\"}"}`
 	require.False(t, importAndRead(t, r, id).HasError())
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &imported)
+
 	var data externalPartitionModel
 	require.False(t, imported.State.Get(context.Background(), &data).HasError())
 	assert.Equal(t, externalTableTestMap("event_date", "2024-01-01"), data.Values)
+
 	for _, invalid := range []string{
-		`{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events"}`,
-		`{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events","values":"[1]"}`,
-		`{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events","values":"{}"}`,
-		`{"workgroup_name":"warehouse","database":"admin","schema":"example_external","values":"{\"a\":\"b\"}"}`,
+		`{"database":"admin","schema":"example_external","table":"events"}`,
+		`{"database":"admin","schema":"example_external","table":"events","values":"[1]"}`,
+		`{"database":"admin","schema":"example_external","table":"events","values":"{}"}`,
+		`{"database":"admin","schema":"example_external","values":"{\"a\":\"b\"}"}`,
 	} {
 		response := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: invalid}, &response)
@@ -111,6 +120,7 @@ func TestExternalPartitionImport(t *testing.T) {
 // TestExternalPartitionFailurePaths covers catalog checks before ADD PARTITION, malformed rows, and drift.
 func TestExternalPartitionFailurePaths(t *testing.T) {
 	model := externalPartitionTestModel()
+
 	t.Run("values must match the partition keys", func(t *testing.T) {
 		c := fullCatalog()
 		wrong := model
@@ -123,7 +133,7 @@ func TestExternalPartitionFailurePaths(t *testing.T) {
 		invalid := model
 		invalid.Location = types.StringValue("/tmp/data")
 		calls := 0
-		_, err := externalPartitionState(t, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		_, err := externalPartitionState(t, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			calls++
 			return nil, nil
 		}), "create", invalid, invalid)
@@ -135,24 +145,27 @@ func TestExternalPartitionFailurePaths(t *testing.T) {
 		require.ErrorContains(t, err, "already exists")
 	})
 	t.Run("malformed values", func(t *testing.T) {
-		client := queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+		client := queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 			if strings.Contains(sql, "svv_external_columns") {
-				return []dataapi.Row{{"columnname": "event_date", "external_type": "date", "columnnum": "1", "part_key": "1"}}, nil
+				return []sqlclient.Row{{"columnname": "event_date", "external_type": "date", "columnnum": "1", "part_key": "1"}}, nil
 			}
-			return []dataapi.Row{{"values": "not json", "location": "s3://x"}}, nil
+
+			return []sqlclient.Row{{"values": "not json", "location": "s3://x"}}, nil
 		})
 		_, err := externalPartitionState(t, client, "read", model, model)
 		require.ErrorContains(t, err, "decode external partition values")
 	})
 	// Equally named external schemas of two databases both list their partitions in svv_external_partitions.
-	partitionRows := func(rows ...dataapi.Row) dataapi.Client {
-		return queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+	partitionRows := func(rows ...sqlclient.Row) sqlclient.Client {
+		return queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 			if strings.Contains(sql, "svv_external_columns") {
-				return []dataapi.Row{{"columnname": "event_date", "external_type": "date", "columnnum": "1", "part_key": "1"}}, nil
+				return []sqlclient.Row{{"columnname": "event_date", "external_type": "date", "columnnum": "1", "part_key": "1"}}, nil
 			}
+
 			return rows, nil
 		})
 	}
+
 	t.Run("schema configured with uppercase letters", func(t *testing.T) {
 		folded := model
 		folded.Schema = types.StringValue("Example_External")
@@ -161,15 +174,15 @@ func TestExternalPartitionFailurePaths(t *testing.T) {
 		assert.Equal(t, model.Location, observed.Location)
 	})
 	t.Run("same partition through two schemas", func(t *testing.T) {
-		row := dataapi.Row{"values": `["2024-01-01"]`, "location": "s3://example-bucket/events/event_date=2024-01-01"}
+		row := sqlclient.Row{"values": `["2024-01-01"]`, "location": "s3://example-bucket/events/event_date=2024-01-01"}
 		observed, err := externalPartitionState(t, partitionRows(row, row), "read", model, model)
 		require.NoError(t, err)
 		assert.Equal(t, model.Location, observed.Location)
 	})
 	t.Run("different partitions with the same values", func(t *testing.T) {
 		_, err := externalPartitionState(t, partitionRows(
-			dataapi.Row{"values": `["2024-01-01"]`, "location": "s3://example-bucket/events/event_date=2024-01-01"},
-			dataapi.Row{"values": `["2024-01-01"]`, "location": "s3://other-bucket/events/event_date=2024-01-01"},
+			sqlclient.Row{"values": `["2024-01-01"]`, "location": "s3://example-bucket/events/event_date=2024-01-01"},
+			sqlclient.Row{"values": `["2024-01-01"]`, "location": "s3://other-bucket/events/event_date=2024-01-01"},
 		), "read", model, model)
 		require.ErrorContains(t, err, "is ambiguous in the catalog")
 	})
@@ -193,10 +206,11 @@ func TestExternalPartitionFailurePaths(t *testing.T) {
 	})
 	t.Run("update does not converge", func(t *testing.T) {
 		c := fullCatalog()
-		ignoring := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+		ignoring := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 			if strings.Contains(sql, " SET LOCATION ") {
 				return nil, nil
 			}
+
 			return c.Query(ctx, target, sql, parameters)
 		})
 		moved := model
@@ -233,6 +247,7 @@ func TestExternalPartitionValidation(t *testing.T) {
 	require.ErrorContains(t, validateExternalPartitionKnownConfig(model), "nonempty schema")
 	_, err := externalPartitionSpecFrom(model, []string{"event_date"})
 	require.ErrorContains(t, err, "nonempty schema")
+
 	model = externalPartitionTestModel()
 	model.Values = types.MapNull(types.StringType)
 	require.ErrorContains(t, validateExternalPartitionConfig(model), "at least one")
@@ -253,25 +268,32 @@ func TestExternalPartitionVerification(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			c := fullCatalog()
 			model := externalPartitionTestModel()
+
 			if test.operation == "create" {
 				externalTableFakeOf(c).partitions = nil
 			}
-			client := queryFunc(func(ctx context.Context, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+
+			client := queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if strings.Contains(sql, " ADD PARTITION ") || strings.Contains(sql, " SET LOCATION ") {
 					if test.absent {
 						externalTableFakeOf(c).partitions = nil
 						return nil, nil
 					}
+
 					rows, err := c.Query(ctx, connection, sql, parameters)
 					externalTableFakeOf(c).partitions[0].location = "s3://bucket/wrong"
+
 					return rows, err
 				}
+
 				return c.Query(ctx, connection, sql, parameters)
 			})
+
 			plan := model
 			if test.operation == "update" {
 				plan.Location = types.StringValue("s3://bucket/moved")
 			}
+
 			_, err := externalPartitionState(t, client, test.operation, model, plan)
 			require.ErrorContains(t, err, test.want)
 		})
@@ -281,8 +303,8 @@ func TestExternalPartitionVerification(t *testing.T) {
 // TestExternalPartitionRejectsMalformedKeyCatalog fails on partition key metadata it cannot decode.
 func TestExternalPartitionRejectsMalformedKeyCatalog(t *testing.T) {
 	r := &externalPartitionResource{}
-	configureTestResource(t, r, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
-		return []dataapi.Row{{"columnname": "day", "external_type": "date", "columnnum": "invalid", "part_key": "1"}}, nil
+	configureTestResource(t, r, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+		return []sqlclient.Row{{"columnname": "day", "external_type": "date", "columnnum": "invalid", "part_key": "1"}}, nil
 	}))
 	_, err := r.partitionKeys(context.Background(), externalPartitionTestModel())
 	require.Error(t, err)

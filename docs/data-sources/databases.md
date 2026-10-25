@@ -9,12 +9,6 @@ description: Lists local and datashare databases, optionally filtered by type an
 Lists the warehouse's local databases and the databases created from datashares, with their owners and isolation
 levels. See AWS [SVV_REDSHIFT_DATABASES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_DATABASES.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_redshift_databases WHERE database_type = '...' AND database_name LIKE '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -40,7 +34,7 @@ output "analytics_databases" {
 ### Read-Only
 
 - `databases` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--databases))
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 
 <a id="nestedatt--databases"></a>
 ### Nested Schema for `databases`
@@ -53,8 +47,19 @@ Read-Only:
 - `owner` (String) SQL user owning the database; null when the owner is not a local user.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
-The read runs in the provider's `database`. `id` is the JSON identity of the listing: the warehouse binding, the
-provider database, and the configured filters. Items are ordered by name; a filter that matches nothing returns an
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List databases matching the configured filters.
+SELECT ... FROM svv_redshift_databases WHERE database_type = '...' AND database_name LIKE '...';
+```
+
+## Read Behavior
+
+The read runs in the provider's `database`. `id` is the listing's provider-relative JSON identity containing the
+configured filters. Items are ordered by name; a filter that matches nothing returns an
 empty `databases` list rather than an error.
 
 The listing shows what the provider's SQL identity may see: with metadata security enabled, other users' databases

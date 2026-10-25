@@ -24,18 +24,22 @@ func maskingAttachmentKnownConfig(data maskingPolicyAttachmentModel) error {
 			return fmt.Errorf("%s must not be empty", field.name)
 		}
 	}
+
 	if !data.GranteeType.IsUnknown() {
 		kind, err := sqlclient.OneOf(data.GranteeType.ValueString(), maskingAttachmentGranteeTypes...)
 		if err != nil {
 			return fmt.Errorf("grantee_type: %w", err)
 		}
+
 		if kind == "PUBLIC" && !data.Grantee.IsUnknown() && data.Grantee.ValueString() != "public" {
 			return fmt.Errorf("PUBLIC requires grantee = public")
 		}
 	}
+
 	if data.Columns.IsNull() {
 		return fmt.Errorf("columns needs at least one column")
 	}
+
 	for _, field := range []struct {
 		name string
 		list types.List
@@ -43,25 +47,32 @@ func maskingAttachmentKnownConfig(data maskingPolicyAttachmentModel) error {
 		if field.list.IsNull() || field.list.IsUnknown() {
 			continue
 		}
+
 		if len(field.list.Elements()) == 0 {
 			return fmt.Errorf("%s needs at least one column", field.name)
 		}
+
 		seen := map[string]bool{}
+
 		for _, element := range field.list.Elements() {
 			name := element.(types.String)
 			if name.IsUnknown() {
 				continue
 			}
+
 			key := strings.ToLower(name.ValueString())
 			if key == "" || seen[key] {
 				return fmt.Errorf("%s must name distinct, nonempty columns", field.name)
 			}
+
 			seen[key] = true
 		}
 	}
+
 	if priority := knownInt64(data.Priority); priority != nil && *priority < 0 {
 		return fmt.Errorf("priority must not be negative")
 	}
+
 	return nil
 }
 
@@ -76,12 +87,15 @@ func maskingAttachmentValidate(data maskingPolicyAttachmentModel) error {
 			return fmt.Errorf("%s must not be empty", field.name)
 		}
 	}
+
 	if _, err := maskingAttachmentGrantee(data); err != nil {
 		return err
 	}
+
 	if data.Columns.IsNull() {
 		return fmt.Errorf("columns needs at least one column")
 	}
+
 	for _, field := range []struct {
 		name string
 		list types.List
@@ -89,23 +103,29 @@ func maskingAttachmentValidate(data maskingPolicyAttachmentModel) error {
 		if field.list.IsNull() || field.list.IsUnknown() {
 			continue
 		}
+
 		names := maskingAttachmentNames(field.list)
 		if len(names) == 0 {
 			return fmt.Errorf("%s needs at least one column", field.name)
 		}
+
 		seen := map[string]bool{}
+
 		for _, column := range names {
 			// Redshift folds identifiers to lower case by default, so names differing only in case collide.
 			key := strings.ToLower(column)
 			if column == "" || seen[key] {
 				return fmt.Errorf("%s must name distinct, nonempty columns", field.name)
 			}
+
 			seen[key] = true
 		}
 	}
+
 	if knownInt64(data.Priority) != nil && data.Priority.ValueInt64() < 0 {
 		return fmt.Errorf("priority must not be negative")
 	}
+
 	return nil
 }
 
@@ -114,12 +134,14 @@ func maskingAttachmentNames(list types.List) []string {
 	if list.IsNull() || list.IsUnknown() {
 		return nil
 	}
+
 	names := make([]string, 0, len(list.Elements()))
 	for _, element := range list.Elements() {
 		if text, ok := element.(types.String); ok && !text.IsNull() && !text.IsUnknown() {
 			names = append(names, text.ValueString())
 		}
 	}
+
 	return names
 }
 
@@ -129,6 +151,7 @@ func maskingAttachmentNameList(names []string) types.List {
 	for _, name := range names {
 		elements = append(elements, types.StringValue(name))
 	}
+
 	return types.ListValueMust(types.StringType, elements)
 }
 
@@ -138,7 +161,9 @@ func maskingAttachmentGrantee(data maskingPolicyAttachmentModel) (sqlclient.Stat
 	if err != nil {
 		return sqlclient.Statement{}, fmt.Errorf("grantee_type: %w", err)
 	}
+
 	name := data.Grantee.ValueString()
+
 	switch kind {
 	case "USER":
 		return sqlclient.Ident(name), nil
@@ -148,6 +173,7 @@ func maskingAttachmentGrantee(data maskingPolicyAttachmentModel) (sqlclient.Stat
 		if name != "public" {
 			return sqlclient.Statement{}, fmt.Errorf("PUBLIC requires grantee = public")
 		}
+
 		return sqlclient.Kw("PUBLIC"), nil
 	}
 }
@@ -166,16 +192,19 @@ func attachMaskingPolicyStatement(data maskingPolicyAttachmentModel) (string, er
 	if err := maskingAttachmentValidate(data); err != nil {
 		return "", err
 	}
+
 	grantee, err := maskingAttachmentGrantee(data)
 	if err != nil {
 		return "", err
 	}
+
 	inputs := maskingAttachmentNames(data.InputColumns)
 	statement := sqlclient.Stmt("ATTACH MASKING POLICY").Append(maskingAttachmentTarget(data)).
 		When(len(inputs) > 0, func(s sqlclient.Statement) sqlclient.Statement {
 			return s.Kw("USING").Paren(sqlclient.Fragment().Idents(inputs...))
 		}).
 		Kw("TO").Append(grantee).OptInt("PRIORITY", knownInt64(data.Priority))
+
 	return statement.String(), statement.Err()
 }
 
@@ -186,7 +215,9 @@ func detachMaskingPolicyStatement(data maskingPolicyAttachmentModel) (string, er
 	if err != nil {
 		return "", err
 	}
+
 	statement := sqlclient.Stmt("DETACH MASKING POLICY").Append(maskingAttachmentTarget(data)).Kw("FROM").Append(grantee)
+
 	return statement.String(), statement.Err()
 }
 
@@ -200,6 +231,7 @@ var maskingAttachmentAlterSteps = []alterStep[maskingPolicyAttachmentModel]{{
 		// alterMaskingAttachmentStatements validated both tuples before the steps run.
 		detach, _ := detachMaskingPolicyStatement(prev)
 		attach, _ := attachMaskingPolicyStatement(plan)
+
 		return []string{detach, attach}
 	},
 }}
@@ -209,9 +241,11 @@ func alterMaskingAttachmentStatements(current, plan maskingPolicyAttachmentModel
 	if err := maskingAttachmentValidate(plan); err != nil {
 		return nil, err
 	}
+
 	if _, err := detachMaskingPolicyStatement(current); err != nil {
 		return nil, err
 	}
+
 	return alterStatements(current, plan, maskingAttachmentAlterSteps), nil
 }
 
@@ -244,23 +278,29 @@ func maskingAttachmentPriorityConflict(plan maskingPolicyAttachmentModel, peers 
 	if knownInt64(plan.Priority) == nil {
 		return nil
 	}
+
 	priority := plan.Priority.ValueInt64()
+
 	columns := maskingAttachmentNames(plan.Columns)
 	for _, row := range peers {
 		if strings.EqualFold(row["policy_name"], plan.Policy.ValueString()) {
 			continue
 		}
+
 		peerPriority, err := maskingAttachmentPriority(row["priority"])
 		if err != nil {
 			return err
 		}
+
 		if peerPriority != priority {
 			continue
 		}
+
 		outputs, err := maskingAttachmentParseNames(row["output_columns"])
 		if err != nil {
 			return err
 		}
+
 		for _, column := range columns {
 			for _, output := range outputs {
 				if strings.EqualFold(column, output) {
@@ -270,6 +310,7 @@ func maskingAttachmentPriorityConflict(plan maskingPolicyAttachmentModel, peers 
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -279,6 +320,7 @@ func maskingAttachmentParseNames(text string) ([]string, error) {
 	if err := json.Unmarshal([]byte(text), &names); err != nil {
 		return nil, fmt.Errorf("unexpected attached masking policy columns %q: %w", text, err)
 	}
+
 	return names, nil
 }
 
@@ -287,30 +329,36 @@ func maskingAttachmentNamesMatch(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
+
 	for i := range a {
 		if !strings.EqualFold(a[i], b[i]) {
 			return false
 		}
 	}
+
 	return true
 }
 
 // maskingAttachmentRow selects the catalog row of the tuple's recipient and output columns, if any.
 func maskingAttachmentRow(data maskingPolicyAttachmentModel, rows []sqlclient.Row) (sqlclient.Row, error) {
 	kind := data.GranteeType.ValueString()
+
 	columns := maskingAttachmentNames(data.Columns)
 	for _, row := range rows {
 		if !strings.EqualFold(row["grantee_type"], kind) || kind != "PUBLIC" && !strings.EqualFold(row["grantee"], data.Grantee.ValueString()) {
 			continue
 		}
+
 		outputs, err := maskingAttachmentParseNames(row["output_columns"])
 		if err != nil {
 			return nil, err
 		}
+
 		if maskingAttachmentNamesMatch(outputs, columns) {
 			return row, nil
 		}
 	}
+
 	return nil, nil
 }
 
@@ -320,6 +368,7 @@ func maskingAttachmentPriority(text string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("unexpected masking policy priority %q", text)
 	}
+
 	return priority, nil
 }
 
@@ -327,8 +376,10 @@ func maskingAttachmentPriority(text string) (int64, error) {
 // list inside the string-valued identity, because one recipient can hold the policy on several column sets.
 func maskingAttachmentIdentity(data maskingPolicyAttachmentModel) map[string]string {
 	columns, _ := json.Marshal(maskingAttachmentNames(data.Columns)) // String slices are always JSON-serializable.
+
 	return map[string]string{
-		"policy": data.Policy.ValueString(), "schema": data.Schema.ValueString(), "relation": data.Relation.ValueString(),
+		"database": data.Database.ValueString(),
+		"policy":   data.Policy.ValueString(), "schema": data.Schema.ValueString(), "relation": data.Relation.ValueString(),
 		"columns": string(columns), "grantee": data.Grantee.ValueString(), "grantee_type": data.GranteeType.ValueString(),
 	}
 }

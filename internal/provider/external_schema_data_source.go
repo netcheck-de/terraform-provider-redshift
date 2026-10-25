@@ -89,25 +89,30 @@ func (d *externalSchemaDataSource) Schema(_ context.Context, _ datasource.Schema
 func (d *externalSchemaDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data externalSchemaData
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	current := externalSchemaModel{Database: data.Database, Name: data.Name}
+
 	found, err := (&externalSchemaResource{d.resourceClient}).read(ctx, &current)
 	if err != nil {
 		resp.Diagnostics.AddError("Read external schema", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("External schema not found", "No external schema named "+data.Name.ValueString()+" exists in the configured database.")
 		return
 	}
+
 	data = externalSchemaData{
 		Database: data.Database, Name: current.Name, SourceType: current.SourceType, GlueDatabase: current.GlueDatabase,
 		SourceDatabase: current.SourceDatabase, SourceSchema: current.SourceSchema, IAMRoleARN: current.IAMRoleARN, Region: current.Region,
 		URI: current.URI, Port: current.Port, SecretARN: current.SecretARN, Authentication: current.Authentication,
 		AuthenticationARN: current.AuthenticationARN, Owner: current.Owner,
 	}
-	data.ID = d.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

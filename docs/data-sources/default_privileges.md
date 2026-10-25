@@ -9,12 +9,6 @@ description: Reads explicit creator-specific default permissions for future obje
 Reads one default-privilege tuple without changing permissions on current or future objects. See AWS
 [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_default_privileges WHERE owner_name = 'owner' ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -50,6 +44,17 @@ data "redshift_default_privileges" "reports" {
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `privileges` (Set of String) Current explicit privileges for the selected tuple; inherited privileges are excluded.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read default privileges for the selected owner and scope.
+SELECT ... FROM svv_default_privileges WHERE owner_name = 'owner' ...;
+```
+
+## Read Behavior
 
 `id` (String, computed) is the permission tuple's JSON identity, using the paired resource's warehouse, provider
 database, `database_name`, `object_type`, `grantee`, and `grantee_type` keys. `owner` and `schema_name` are included

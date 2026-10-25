@@ -12,12 +12,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// tableRenamedFrom sets a column's renamed_from hint.
 func tableRenamedFrom(name string) func(*tableColumnModel) {
 	return func(column *tableColumnModel) { column.RenamedFrom = types.StringValue(name) }
 }
 
+// tableRenamedEvents renames the events table's id column to event_id, including in its primary, distribution, and sort
+// keys.
 func tableRenamedEvents(t *testing.T) tableModel {
 	t.Helper()
+
 	model := tableEventsModel()
 	columns := tableTestColumnsOf(t, model.Column)
 	columns[0].Name = types.StringValue("event_id")
@@ -26,9 +30,12 @@ func tableRenamedEvents(t *testing.T) tableModel {
 	model.PrimaryKey = tableTestKey("event_id")
 	model.Distribution = tableTestDistribution("KEY", "event_id")
 	model.SortKey = tableTestSortKey("COMPOUND", "event_id")
+
 	return model
 }
 
+// TestTableRenameSQL pins RENAME COLUMN ordering relative to key, constraint, and type changes, and checks that a
+// rename never forces replacement.
 func TestTableRenameSQL(t *testing.T) {
 	before := tableEventsModel()
 	after := tableRenamedEvents(t)
@@ -70,6 +77,8 @@ func TestTableRenameSQL(t *testing.T) {
 	assert.Empty(t, tableReplacements(tableSpecMust(t, before), tableSpecMust(t, after)))
 }
 
+// TestTableRenameValidation rejects self, chained, swapped, duplicate, folded, empty, and unknown rename hints, and
+// fails Update without writing when the source is missing or the destination exists.
 func TestTableRenameValidation(t *testing.T) {
 	for name, columns := range map[string][]tableColumnModel{
 		"self":      {tableTestColumn("id", "int", tableRenamedFrom("id"))},
@@ -87,10 +96,12 @@ func TestTableRenameValidation(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+
 	for _, destination := range []bool{false, true} {
 		c := fullCatalog()
 		table := fakeState[*tableFake](c, "table").tables["serving.events"]
 		plan := tableRenamedEvents(t)
+
 		if destination {
 			table.columns = append(table.columns, tableFakeColumn{name: "event_id", dataType: "bigint", notNull: true, encoding: "az64"})
 		} else {
@@ -98,6 +109,7 @@ func TestTableRenameValidation(t *testing.T) {
 			columns[0].RenamedFrom = types.StringValue("missing")
 			plan.Column = tableTestColumns(columns...)
 		}
+
 		r := newTableResource()
 		configureTestResource(t, r, c)
 		_, diagnostics := applyOperation(t, r, "update", tableEventsModel(), plan, nil)
@@ -107,6 +119,8 @@ func TestTableRenameValidation(t *testing.T) {
 	}
 }
 
+// TestTableRenameRetryAndRead treats a rename already applied before a lost response as complete, keeps the configured
+// hint on Read, and leaves it null in lookups.
 func TestTableRenameRetryAndRead(t *testing.T) {
 	c := fullCatalog()
 	r := newTableResource()
@@ -119,6 +133,7 @@ func TestTableRenameRetryAndRead(t *testing.T) {
 	_, diagnostics = applyOperation(t, r, "update", tableEventsModel(), plan, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.Len(t, c.writes, 1)
+
 	resource := r.(*tableResource)
 	found, _, err := resource.read(context.Background(), &plan)
 	require.NoError(t, err)
@@ -131,6 +146,8 @@ func TestTableRenameRetryAndRead(t *testing.T) {
 	assert.True(t, tableTestColumnsOf(t, lookup.Column)[0].RenamedFrom.IsNull())
 }
 
+// TestTableRenamePartialFailure resumes an interrupted multi-column rename without repeating the rename that already
+// succeeded.
 func TestTableRenamePartialFailure(t *testing.T) {
 	c := fullCatalog()
 	plan := tableRenamedEvents(t)
@@ -142,12 +159,14 @@ func TestTableRenamePartialFailure(t *testing.T) {
 		if fail && strings.Contains(sql, `RENAME COLUMN "label"`) {
 			return nil, errors.New("interrupted second rename")
 		}
+
 		return c.Query(ctx, connection, sql, parameters)
 	}))}
 	_, diagnostics := applyOperation(t, r, "update", tableEventsModel(), plan, nil)
 	require.True(t, diagnostics.HasError())
 	assert.Contains(t, diagnostics[0].Detail(), "interrupted second rename")
 	assert.Len(t, c.writes, 1)
+
 	fail = false
 	_, diagnostics = applyOperation(t, r, "update", tableEventsModel(), plan, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
@@ -157,6 +176,8 @@ func TestTableRenamePartialFailure(t *testing.T) {
 	}, c.writes)
 }
 
+// TestTableObservedSpecIgnoresMigrationHints lets the observed spec hold a rename source beside its destination, so
+// rename planning, not spec validation, reports the conflict.
 func TestTableObservedSpecIgnoresMigrationHints(t *testing.T) {
 	model := tableRenamedEvents(t)
 	columns := tableTestColumnsOf(t, model.Column)

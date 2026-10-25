@@ -25,12 +25,14 @@ func newMaskingPoliciesDataSource() datasource.DataSource {
 			if err != nil {
 				return nil, err
 			}
+
 			items := make([]map[string]attr.Value, 0, len(rows))
 			for _, row := range rows {
 				columns, err := maskingPolicyParseColumns(row["input_columns"])
 				if err != nil {
 					return nil, err
 				}
+
 				text := maskingPolicyExpressionText(row["policy_expression"])
 				items = append(items, map[string]attr.Value{
 					"database": types.StringValue(row["policy_database"]), "name": types.StringValue(row["policy_name"]),
@@ -38,6 +40,7 @@ func newMaskingPoliciesDataSource() datasource.DataSource {
 					"definition_fingerprint": types.StringValue(definitionFingerprint(text)),
 				})
 			}
+
 			return items, nil
 		},
 	})

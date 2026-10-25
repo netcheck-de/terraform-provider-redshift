@@ -9,12 +9,6 @@ description: Lists COPY JOBs with their AUTO setting and IAM role.
 Lists copy jobs with their AUTO setting and IAM role. See AWS
 [SYS_COPY_JOB](https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM sys_copy_job;
-```
-
 ## Example Usage
 
 ```terraform
@@ -38,7 +32,7 @@ output "automatic_copy_jobs" {
 ### Read-Only
 
 - `copy_jobs` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--copy_jobs))
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 
 <a id="nestedatt--copy_jobs"></a>
 ### Nested Schema for `copy_jobs`
@@ -51,6 +45,17 @@ Read-Only:
 - `name` (String) Job name.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List visible COPY jobs.
+SELECT ... FROM sys_copy_job;
+```
+
+## Read Behavior
+
 Items are ordered by name. Superusers see every job; other users see only their own. `SYS_COPY_JOB` has no database
-column, so `database` selects where the view is queried and is reported for every item. `id` combines the warehouse
-binding with the `database` filter, or the provider database without one.
+column, so `database` selects where the view is queried and is reported for every item. `id` contains that database
+within the configured warehouse, using the provider database when the filter is omitted.

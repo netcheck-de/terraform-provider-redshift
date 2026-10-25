@@ -12,14 +12,6 @@ and whose data stays in Amazon S3. See AWS
 [CREATE EXTERNAL TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_TABLE.html) and
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html).
 
-## SQL Statements
-
-```sql
-CREATE EXTERNAL TABLE schema.name (...) ... STORED AS ... LOCATION ...;
-ALTER TABLE schema.name ...;
-DROP TABLE schema.name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -118,20 +110,20 @@ resource "redshift_external_table" "clicks" {
 
 ### Optional
 
-- `column` (Block List) At least one `column` block is required. Data columns in file order for positional formats. Dropping columns and appending them at the end run `ALTER TABLE ... DROP COLUMN` and `ADD COLUMN`; positional formats replace the table for reordering or inserting columns. `PARQUET` tables map columns by name, as do `ORC` tables unless their `orc.schema.resolution` table property, configured or in the catalog, is anything but `name`: they add and drop columns anywhere in place, and reordering their blocks runs no statement. Retyping a column replaces the table. Any column change of an `AVRO` table except a respelling replaces it. (see [below for nested schema](#nestedblock--column))
+- `column` (Block List) At least one `column` block is required. Data columns in file order for positional formats. Dropping columns and appending them at the end run `ALTER TABLE ... DROP COLUMN` and `ADD COLUMN`. `PARQUET` tables map columns by name, as do `ORC` tables unless their `orc.schema.resolution` table property, configured or in the catalog, is anything but `name`: they add and drop columns anywhere in place, and reordering their blocks runs no statement. (see [below for nested schema](#nestedblock--column))
 - `field_delimiter` (String) `ROW FORMAT DELIMITED FIELDS TERMINATED BY` character: one ASCII character; write control characters as HCL escapes such as `"\t"` or `"\u0007"`. Conflicts with `serde`.
 - `input_format` (String) `STORED AS INPUTFORMAT` class, for formats such as Hudi or Delta Lake manifests; requires `output_format`. Without it, the class the catalog records for `stored_as` is reported.
 - `line_delimiter` (String) `ROW FORMAT DELIMITED LINES TERMINATED BY` character, usually `"\n"`. Conflicts with `serde`.
 - `output_format` (String) `OUTPUTFORMAT` class paired with `input_format`. Without it, the class the catalog records for `stored_as` is reported.
-- `partition_key` (Block List) Ordered `PARTITIONED BY` columns; their names must differ from the data columns. Spelling a name in another case or a type with an alias stays in place; any other change replaces the table. (see [below for nested schema](#nestedblock--partition_key))
+- `partition_key` (Block List) Ordered `PARTITIONED BY` columns; their names must differ from the data columns. (see [below for nested schema](#nestedblock--partition_key))
 - `serde` (String) `ROW FORMAT SERDE` class, such as `org.openx.data.jsonserde.JsonSerDe` or `org.apache.hadoop.hive.serde2.OpenCSVSerde`. Conflicts with the delimiters.
 - `serde_properties` (Map of String) `WITH SERDEPROPERTIES` pairs for `serde`, such as `{ "strip.outer.array" = "true" }`.
-- `stored_as` (String) File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; switching from name to position mapping also requires the `column` blocks to follow catalog order. Other changes replace the table.
-- `table_properties` (Map of String) `TABLE PROPERTIES` pairs; names are case-sensitive. Only the configured properties are managed. Adding or changing `numRows`, `skip.header.line.count`, or `orc.schema.resolution` runs `ALTER TABLE ... SET TABLE PROPERTIES`; removing a property, or adding or changing any other property, replaces the table. Switching an `ORC` table to position mapping also replaces it unless the `column` blocks follow the catalog order, to which `ADD COLUMN` appends.
+- `stored_as` (String) File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; switching from name to position mapping also requires the `column` blocks to follow catalog order.
+- `table_properties` (Map of String) `TABLE PROPERTIES` pairs; names are case-sensitive. Only the configured properties are managed. Adding or changing `numRows`, `skip.header.line.count`, or `orc.schema.resolution` runs `ALTER TABLE ... SET TABLE PROPERTIES`.
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 
 <a id="nestedblock--column"></a>
 ### Nested Schema for `column`
@@ -150,6 +142,21 @@ Required:
 - `name` (String) Column name. The external catalog stores names in lowercase, so names differing only in case are the same column.
 - `type` (String) Data type: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `REAL`, `DOUBLE PRECISION`, `BOOLEAN`, `CHAR(n)`, `VARCHAR(n)`, `DATE`, or `TIMESTAMP`, including their aliases such as `INT4` or `NUMERIC`, in any case. Spellings of the same type, such as `INT` and `INTEGER`, are equivalent. A refresh or import reports the uppercase name, and Glue types the provider cannot declare, such as `STRING`, with uppercase type names.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the external table.
+CREATE EXTERNAL TABLE schema.name (...) ... STORED AS ... LOCATION ...;
+
+-- Update the external table definition or settings.
+ALTER TABLE schema.name ...;
+
+-- Delete the external table.
+DROP TABLE schema.name;
+```
 
 ## Lifecycle and Ownership
 
@@ -385,29 +392,24 @@ blocks in the order `id`, `amount`, `label` replaces the table.
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_external_table.sales
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "warehouse"
-    schema         = "raw"
-    name           = "sales"
+    database = "warehouse"
+    schema   = "raw"
+    name     = "sales"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_external_table.sales \
-  '{"workgroup_name":"warehouse","database":"warehouse","schema":"raw","name":"sales"}'
+  '{"database":"warehouse","schema":"raw","name":"sales"}'
 ```
 
 Import derives the columns, partition keys, location, format, SerDe, SerDe properties, and delimiters from the catalog.

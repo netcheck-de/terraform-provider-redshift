@@ -12,15 +12,6 @@ Manages a scalar Lambda user-defined function (UDF) that Redshift runs by invoki
 [DROP FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_FUNCTION.html), and
 [Scalar Lambda UDFs](https://docs.aws.amazon.com/redshift/latest/dg/udf-creating-a-lambda-sql-udf.html).
 
-## SQL Statements
-
-```sql
-CREATE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;
-CREATE OR REPLACE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;
-ALTER FUNCTION schema.name(arguments) OWNER TO owner;
-DROP FUNCTION schema.name(arguments);
-```
-
 ## Example Usage
 
 ```terraform
@@ -44,12 +35,12 @@ resource "redshift_external_function" "upper" {
 
 ### Required
 
-- `arguments` (List of String) Input argument data types in order, at most 32, from the types Lambda UDFs support: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL`, `REAL`, `DOUBLE PRECISION`, `CHAR`, `VARCHAR`, `BOOLEAN`, `DATE`, `TIMESTAMP`, and their aliases. Use `[]` for a function without arguments. With `name` they identify the overload. Changing the canonical argument types replaces the function; a different spelling of the same types, such as `INT` for `INTEGER`, is recorded in place.
+- `arguments` (List of String) Input argument data types in order, at most 32, from the types Lambda UDFs support: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL`, `REAL`, `DOUBLE PRECISION`, `CHAR`, `VARCHAR`, `BOOLEAN`, `DATE`, `TIMESTAMP`, and their aliases. Use `[]` for a function without arguments. With `name` they identify the overload.
 - `database` (String) Local database containing the function.
 - `iam_role` (String) `DEFAULT`, in any case, for the warehouse's default IAM role, or the ARN of an associated IAM role allowed to invoke the Lambda function; chain roles with commas and no spaces. Applied in place with `CREATE OR REPLACE`. Redshift does not expose it in a documented catalog view, so changes made outside Terraform are not detected and import leaves it unset until the next apply restates the function.
 - `lambda_function` (String) Name or ARN of the Lambda function Redshift invokes. Applied in place with `CREATE OR REPLACE`, which requires a superuser. Redshift does not expose it in a documented catalog view, so changes made outside Terraform are not detected and import leaves it unset until the next apply restates the function.
 - `name` (String) Function name; AWS recommends the reserved `f_` prefix to avoid conflicts with built-in functions.
-- `return_type` (String) Result data type, from the same types as `arguments`. Changing the base type replaces the function; a new length or precision is applied in place with `CREATE OR REPLACE`.
+- `return_type` (String) Result data type, from the same types as `arguments`.
 - `schema` (String) Schema containing the function.
 
 ### Optional
@@ -63,8 +54,26 @@ resource "redshift_external_function" "upper" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the external function.
+CREATE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;
+
+-- Update the external function definition.
+CREATE OR REPLACE EXTERNAL FUNCTION schema.name(arguments) RETURNS return_type ...;
+
+-- Transfer ownership.
+ALTER FUNCTION schema.name(arguments) OWNER TO owner;
+
+-- Delete the external function.
+DROP FUNCTION schema.name(arguments);
+```
 
 ## Lifecycle and Ownership
 
@@ -118,30 +127,26 @@ outside Terraform are not detected, and an import leaves them unset until the fi
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity. `arguments` is the canonical signature
-Create records: the argument types as the catalog spells them, without length or precision, separated by `", "`, and
-`""` for a function without arguments.
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_external_function.upper
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "warehouse"
-    schema         = "public"
-    name           = "f_upper"
-    arguments      = "character varying"
+    database  = "warehouse"
+    schema    = "public"
+    name      = "f_upper"
+    arguments = "CHARACTER VARYING"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_external_function.upper \
-  '{"workgroup_name":"warehouse","database":"warehouse","schema":"public","name":"f_upper","arguments":"character varying"}'
+  '{"database":"warehouse","schema":"public","name":"f_upper","arguments":"CHARACTER VARYING"}'
 ```
+
+`arguments` is the canonical signature Create records: the argument types as the catalog spells them, without length or
+precision, separated by `", "`, and `""` for a function without arguments.

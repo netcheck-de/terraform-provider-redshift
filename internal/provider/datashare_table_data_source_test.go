@@ -26,6 +26,7 @@ func TestDatashareTableLookupUsesProducerIdentity(t *testing.T) {
 		if !strings.Contains(sql, "svv_redshift_databases") {
 			assert.Equal(t, "analytics", target.Database)
 		}
+
 		return client.Query(ctx, target, sql, parameters)
 	}))
 }

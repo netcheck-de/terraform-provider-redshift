@@ -46,12 +46,14 @@ func procedureSettingValues(parameter, value string) ([]string, error) {
 	if !strings.EqualFold(parameter, procedureListParameter) {
 		return []string{value}, nil
 	}
+
 	names := strings.Split(value, ",")
 	for i := range names {
 		if names[i] = strings.TrimSpace(names[i]); names[i] == "" {
 			return nil, fmt.Errorf("configuration %s must be a comma-separated list of nonempty schema names, got %q", parameter, value)
 		}
 	}
+
 	return names, nil
 }
 
@@ -91,9 +93,11 @@ func procedureArguments(value types.List) []procedureArgumentModel {
 	if value.IsNull() || value.IsUnknown() {
 		return nil
 	}
+
 	var arguments []procedureArgumentModel
 	// Elements of a list of this element type always convert; unknown nested values read as unknown fields.
 	_ = value.ElementsAs(context.Background(), &arguments, false)
+
 	return arguments
 }
 
@@ -103,10 +107,12 @@ func procedureArgumentList(arguments []procedureArgumentModel) types.List {
 	if len(arguments) == 0 {
 		return types.ListNull(elementType)
 	}
+
 	values := make([]attr.Value, len(arguments))
 	for i, argument := range arguments {
 		values[i] = types.ObjectValueMust(procedureArgumentTypes, map[string]attr.Value{"name": argument.Name, "mode": argument.Mode, "type": argument.Type})
 	}
+
 	return types.ListValueMust(elementType, values)
 }
 
@@ -115,6 +121,7 @@ func procedureMode(argument procedureArgumentModel) string {
 	if mode := knownString(argument.Mode); mode != "" {
 		return strings.ToUpper(mode)
 	}
+
 	return "IN"
 }
 
@@ -127,11 +134,13 @@ func procedureInput(mode string) bool {
 // procedureSignature returns the canonical bare types of the IN and INOUT arguments.
 func procedureSignature(arguments []procedureArgumentModel) (sqlclient.Keyword, error) {
 	var inputs []string
+
 	for _, argument := range arguments {
 		if procedureInput(procedureMode(argument)) {
 			inputs = append(inputs, argument.Type.ValueString())
 		}
 	}
+
 	return routineSignature(inputs)
 }
 
@@ -142,22 +151,26 @@ func procedureArgumentsEquivalent(before, after []procedureArgumentModel) bool {
 	if len(before) != len(after) {
 		return false
 	}
+
 	for i := range before {
 		if procedureMode(before[i]) != procedureMode(after[i]) || !strings.EqualFold(before[i].Name.ValueString(), after[i].Name.ValueString()) ||
 			routineTypeReplaces(before[i].Type.ValueString(), after[i].Type.ValueString()) {
 			return false
 		}
 	}
+
 	return true
 }
 
 // procedureDeclaredTypes returns the canonical declared argument types as one comparable value.
 func procedureDeclaredTypes(data procedureModel) attr.Value {
 	arguments := procedureArguments(data.Arguments)
+
 	dataTypes := make([]string, len(arguments))
 	for i, argument := range arguments {
 		dataTypes[i] = argument.Type.ValueString()
 	}
+
 	return routineDeclaredTypes(data.Arguments.IsUnknown(), dataTypes...)
 }
 
@@ -167,49 +180,63 @@ func newProcedureSpec(data procedureModel) (procedureSpec, error) {
 	if spec.schema == "" || spec.name == "" {
 		return procedureSpec{}, errors.New("schema and name must be nonempty")
 	}
+
 	inputs, outputs := 0, 0
+
 	for i, argument := range procedureArguments(data.Arguments) {
 		mode, err := sqlclient.OneOf(procedureMode(argument), "IN", "OUT", "INOUT")
 		if err != nil {
 			return procedureSpec{}, fmt.Errorf("argument %d mode: %w", i+1, err)
 		}
+
 		dataType, err := routineType(argument.Type.ValueString())
 		if err == nil {
 			err = routineRejectedType(routineBaseType(dataType), "procedure")
 		}
+
 		if err != nil {
 			return procedureSpec{}, fmt.Errorf("argument %d: %w", i+1, err)
 		}
+
 		if !argument.Name.IsNull() && argument.Name.ValueString() == "" {
 			return procedureSpec{}, fmt.Errorf("argument %d: name must be nonempty when set", i+1)
 		}
+
 		if mode != "OUT" {
 			inputs++
 		}
+
 		if mode != "IN" {
 			outputs++
 		}
+
 		spec.arguments = append(spec.arguments, procedureArgumentSpec{name: argument.Name.ValueString(), mode: mode, dataType: dataType})
 	}
+
 	if inputs > routineMaxArguments || outputs > routineMaxArguments {
 		return procedureSpec{}, fmt.Errorf("a procedure accepts at most %d input and %d output arguments", routineMaxArguments, routineMaxArguments)
 	}
+
 	var err error
 	if spec.signature, err = procedureSignature(procedureArguments(data.Arguments)); err != nil {
 		return procedureSpec{}, err
 	}
+
 	security := knownString(data.Security)
 	if security == "" {
 		security = "INVOKER"
 	}
+
 	if spec.security, err = sqlclient.OneOf(security, "INVOKER", "DEFINER"); err != nil {
 		return procedureSpec{}, fmt.Errorf("security: %w", err)
 	}
+
 	settings := knownMap(data.Configuration)
 	for _, parameter := range slices.Sorted(maps.Keys(settings)) {
 		if !procedureParameterName.MatchString(parameter) {
 			return procedureSpec{}, fmt.Errorf("configuration parameter %q is not a valid parameter name", parameter)
 		}
+
 		values, err := procedureSettingValues(parameter, settings[parameter])
 		if err != nil {
 			return procedureSpec{}, err
@@ -221,12 +248,15 @@ func newProcedureSpec(data procedureModel) (procedureSpec, error) {
 	if spec.nonatomic && spec.security == "DEFINER" {
 		return procedureSpec{}, errors.New("SECURITY DEFINER is not supported for a NONATOMIC procedure")
 	}
+
 	if spec.nonatomic && len(spec.settings) > 0 {
 		return procedureSpec{}, errors.New("SET configuration parameters are not supported for a NONATOMIC procedure")
 	}
+
 	if strings.TrimSpace(spec.body) == "" {
 		return procedureSpec{}, errors.New("body must contain a PL/pgSQL block")
 	}
+
 	return spec, nil
 }
 
@@ -241,8 +271,10 @@ func createProcedureStatement(spec procedureSpec, replace bool) string {
 		if argument.name != "" {
 			item = item.Ident(argument.name)
 		}
+
 		arguments[i] = item.Kw(argument.mode).Kw(argument.dataType)
 	}
+
 	statement := sqlclient.Stmt("CREATE").If(replace, "OR REPLACE").Kw("PROCEDURE").Qualified(spec.schema, spec.name).
 		Args(arguments...).If(spec.nonatomic, "NONATOMIC").Kw("AS").Body(spec.body).Kw("LANGUAGE PLPGSQL").
 		When(!spec.nonatomic, func(s sqlclient.Statement) sqlclient.Statement { return s.Kw("SECURITY").Kw(spec.security) })
@@ -251,8 +283,10 @@ func createProcedureStatement(spec procedureSpec, replace bool) string {
 		for i, value := range setting.values {
 			values[i] = sqlclient.Fragment().Lit(value)
 		}
+
 		statement = statement.Kw("SET").Kw(setting.parameter).Kw("TO").List(values...)
 	}
+
 	return statement.String()
 }
 
@@ -283,6 +317,7 @@ func procedureAlterSteps(spec procedureSpec) []alterStep[procedureModel] {
 		routineDefinitionAttribute[procedureModel]{name: "nonatomic", value: func(data procedureModel) attr.Value { return data.Nonatomic }},
 		routineDefinitionAttribute[procedureModel]{name: "configuration", value: func(data procedureModel) attr.Value { return data.Configuration }},
 	)
+
 	return append(steps, procedureOwnerStep)
 }
 
@@ -292,6 +327,7 @@ func alterProcedureStatements(prev, plan procedureModel) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return alterStatements(prev, plan, procedureAlterSteps(spec)), nil
 }
 
@@ -302,6 +338,7 @@ func dropProcedureStatement(data procedureModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return procedureTarget("DROP PROCEDURE", data.Schema.ValueString(), data.Name.ValueString(), signature).String(), nil
 }
 

@@ -11,13 +11,6 @@ sets how several policies combine and whether RLS also applies to datashare cons
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html) and
 [SVV_RLS_RELATION](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_RELATION.html).
 
-## SQL Statements
-
-```sql
-ALTER TABLE schema.relation ROW LEVEL SECURITY ON ...;
-ALTER TABLE schema.relation ROW LEVEL SECURITY OFF ...;
-```
-
 ~> **Destroying this resource turns row-level security OFF.** Every policy attached to the relation stops filtering,
 and all rows become visible to anyone with `SELECT` on it. To keep a relation protected while it leaves Terraform,
 remove the resource from state with a `removed` block instead of destroying it.
@@ -55,8 +48,20 @@ resource "redshift_table_security" "orders" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Enable row-level security on the relation.
+ALTER TABLE schema.relation ROW LEVEL SECURITY ON ...;
+
+-- Disable row-level security on the relation.
+ALTER TABLE schema.relation ROW LEVEL SECURITY OFF ...;
+```
 
 ## Lifecycle and Ownership
 
@@ -119,27 +124,22 @@ ALTER TABLE "public"."events" ROW LEVEL SECURITY OFF FOR DATASHARES;
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_table_security.orders
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    schema         = "sales"
-    relation       = "orders"
+    database = "analytics"
+    schema   = "sales"
+    relation = "orders"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_table_security.orders \
-  '{"workgroup_name":"warehouse","database":"analytics","schema":"sales","relation":"orders"}'
+  '{"database":"analytics","schema":"sales","relation":"orders"}'
 ```

@@ -24,6 +24,7 @@ func newDatasharesDataSource() datasource.DataSource {
 	element["share_type"] = schema.StringAttribute{Computed: true, MarkdownDescription: "`OUTBOUND` for a share this namespace produces, `INBOUND` for one it consumes."}
 	element["consumer_database"] = schema.StringAttribute{Computed: true, MarkdownDescription: "Database created from an inbound share; null when none exists."}
 	element["managed_by"] = schema.StringAttribute{Computed: true, MarkdownDescription: "AWS service managing the share, such as `ADX`; null for a share managed with SQL."}
+
 	return newCollectionDataSource(collectionSpec{
 		name:        "datashares",
 		description: "Lists the inbound and outbound datashares visible in the provider's namespace from `SVV_DATASHARES`, without taking ownership.",
@@ -49,20 +50,25 @@ func datasharesList(ctx context.Context, client *resourceClient, filters types.O
 	if err != nil {
 		return nil, err
 	}
+
 	items := make([]map[string]attr.Value, 0, len(rows))
 	for _, row := range rows {
 		metadata, err := datashareRowMetadata(row)
 		if err != nil {
 			return nil, err
 		}
+
 		public := types.BoolNull()
+
 		if text := strings.TrimSpace(row["is_publicaccessible"]); text != "" {
 			value, err := strconv.ParseBool(text)
 			if err != nil {
 				return nil, fmt.Errorf("decode datashare public accessibility: %w", err)
 			}
+
 			public = types.BoolValue(value)
 		}
+
 		items = append(items, map[string]attr.Value{
 			"name": types.StringValue(strings.TrimSpace(row["share_name"])), "share_type": datashareText(row["share_type"]),
 			"database": datashareText(row["source_database"]), "consumer_database": datashareText(row["consumer_database"]),
@@ -71,5 +77,6 @@ func datasharesList(ctx context.Context, client *resourceClient, filters types.O
 			"created_at": metadata.createdAt,
 		})
 	}
+
 	return items, nil
 }

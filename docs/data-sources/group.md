@@ -9,12 +9,6 @@ description: Looks up an existing SQL user group.
 Looks up an existing SQL user group, its ID, and its members without taking ownership. See AWS
 [Groups](https://docs.aws.amazon.com/redshift/latest/dg/r_Groups.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_group LEFT JOIN pg_user ... WHERE groname = 'name';
-```
-
 ## Example Usage
 
 ```terraform
@@ -37,6 +31,17 @@ data "redshift_group" "readers" {
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `members` (Set of String) Names of the users in the group; empty when it has none.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the group and its members.
+SELECT ... FROM pg_group LEFT JOIN pg_user ... WHERE groname = 'name';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed group's JSON identity, using the same warehouse, provider database, and name
 keys as the paired resource.

@@ -22,44 +22,52 @@ import (
 )
 
 // assertLookupIdentity checks resource identity parity and the exact persisted keys independently.
-func assertLookupIdentity(t *testing.T, id types.String, database string, fields map[string]string) {
+func assertLookupIdentity(t *testing.T, id types.String, fields map[string]string) {
 	t.Helper()
 	require.False(t, id.IsNull())
 	require.False(t, id.IsUnknown())
-	expected := map[string]string{}
-	for key, value := range fields {
-		expected[key] = value
+
+	if fields == nil {
+		fields = map[string]string{}
 	}
-	client := resourceClient{warehouse: warehouseBinding{field: "workgroup_name", value: types.StringValue("warehouse")}}
-	assert.Equal(t, client.identity(database, expected), id)
+
+	assert.Equal(t, identity(fields), id)
+
 	var decoded map[string]string
 	require.NoError(t, json.Unmarshal([]byte(id.ValueString()), &decoded))
-	assert.Equal(t, expected, decoded)
+	assert.Equal(t, fields, decoded)
 }
 
 // catalogLookupObject builds a typed lookup configuration with null computed fields.
 func catalogLookupObject(t *testing.T, source datasource.DataSource, fields map[string]string) types.Object {
 	t.Helper()
+
 	var schema datasource.SchemaResponse
 	source.Schema(context.Background(), datasource.SchemaRequest{}, &schema)
+
 	attributes, attributeTypes := map[string]attr.Value{}, map[string]attr.Type{}
+
 	for name, attribute := range schema.Schema.Attributes {
 		attributeType := attribute.GetType()
 		attributeTypes[name] = attributeType
 		value, err := attributeType.ValueFromTerraform(context.Background(), tftypes.NewValue(attributeType.TerraformType(context.Background()), nil))
 		require.NoError(t, err)
+
 		attributes[name] = value
 		if input, ok := fields[name]; ok {
 			attributes[name] = types.StringValue(input)
 		}
 	}
+
 	return types.ObjectValueMust(attributeTypes, attributes)
 }
 
 // exerciseCatalogLookup checks observations, absence, SQL errors, and read-only execution.
 func exerciseCatalogLookup(t *testing.T, factory func() datasource.DataSource, fields map[string]string, expected map[string]attr.Value, client sqlclient.Client) {
 	t.Helper()
+
 	source := factory()
+
 	var metadata datasource.MetadataResponse
 	source.Metadata(context.Background(), datasource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
 	assert.True(t, strings.HasPrefix(metadata.TypeName, "redshift_"))
@@ -69,31 +77,34 @@ func exerciseCatalogLookup(t *testing.T, factory func() datasource.DataSource, f
 		return client.Query(ctx, target, sql, parameters)
 	}))
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
+
 	for name, value := range expected {
 		assert.True(t, value.Equal(observed.Attributes()[name]), "%s: expected %v, got %v", name, value, observed.Attributes()[name])
 	}
-	database := "admin"
-	if value, ok := fields["database"]; ok {
-		database = value
-	}
-	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), database, fields)
+
+	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), fields)
 	// A computed identity from an earlier observation must not prevent a fresh lookup or survive absence.
 	lookupValue(&data, "id", types.StringValue("stale observation"))
+
 	for _, unavailable := range []bool{false, true} {
 		state, diagnostics := readSource(t, factory(), data, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			if unavailable {
 				return nil, errors.New("catalog unavailable")
 			}
+
 			return nil, nil
 		}))
 		_, relationship := expected["exists"]
 		assert.Equal(t, unavailable || !relationship, diagnostics.HasError(), "%v", diagnostics)
+
 		if !diagnostics.HasError() {
 			require.False(t, state.Get(context.Background(), &observed).HasError())
 			assert.Equal(t, types.BoolValue(false), observed.Attributes()["exists"])
 			assert.Equal(t, types.StringNull(), observed.Attributes()["id"])
+
 			if _, schemaMembership := expected["include_new"]; schemaMembership {
 				assert.Equal(t, types.BoolValue(false), observed.Attributes()["include_new"])
 			}
@@ -104,15 +115,17 @@ func exerciseCatalogLookup(t *testing.T, factory func() datasource.DataSource, f
 // TestPrivilegeLookupsReturnEmptySetsAndGrantOptions checks absent grants and observational reads of unmanaged permissions.
 func TestPrivilegeLookupsReturnEmptySetsAndGrantOptions(t *testing.T) {
 	fields := map[string]string{"role": "readers"}
+
 	for _, values := range []map[string]bool{{}, {"CREATE USER": true, "NEW CAPABILITY": true}} {
 		client := &privilegeCatalog{values: values, admin: "true"}
 		source := newSystemGrantDataSource()
 		state, diagnostics := readSource(t, source, catalogLookupObject(t, source, fields), client)
 		require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 		var observed types.Object
 		require.False(t, state.Get(context.Background(), &observed).HasError())
 		assert.Len(t, observed.Attributes()["privileges"].(types.Set).Elements(), len(values))
-		assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", fields)
+		assertLookupIdentity(t, observed.Attributes()["id"].(types.String), fields)
 		assert.Empty(t, client.writes)
 	}
 }
@@ -123,6 +136,7 @@ func TestPrivilegeLookupReportsGrantOptions(t *testing.T) {
 	client := optionCatalog(optionGrantFields, []string{"INSERT", "SELECT"}, []string{"SELECT"})
 	state, diagnostics := readSource(t, source, catalogLookupObject(t, source, optionGrantFields), client)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	assert.Equal(t, []string{"INSERT", "SELECT"}, knownStrings(observed.Attributes()["privileges"].(types.Set)))
@@ -148,27 +162,33 @@ func TestLookupAttributes(t *testing.T) {
 	assert.NotContains(t, converted, "secret_wo", "write-only inputs cannot be observed")
 	assert.NotContains(t, converted, "refresh_revision", "apply-time triggers cannot be observed")
 	require.Len(t, converted, len(source)-2)
+
 	for name, attribute := range converted {
 		assert.Equal(t, source[name].GetType(), attribute.GetType(), name)
 	}
+
 	selector := converted["selector"].(schema.StringAttribute)
 	assert.True(t, selector.Required)
 	assert.False(t, selector.Computed)
 	assert.Len(t, selector.Validators, 1, "inputs keep their validators")
 	assert.Equal(t, "Selected name.", selector.MarkdownDescription)
+
 	filter := converted["filter"].(schema.BoolAttribute)
 	assert.True(t, filter.Optional)
 	assert.False(t, filter.Computed)
+
 	text := converted["text"].(schema.StringAttribute)
 	assert.True(t, text.Computed)
 	assert.True(t, text.Sensitive)
 	assert.Equal(t, "Text.", text.MarkdownDescription)
 	assert.True(t, converted["owner"].IsComputed(), "computed resource attributes are observed")
 	assert.Equal(t, privilegesLookupDescription, converted["privileges"].GetMarkdownDescription())
+
 	for name, attribute := range converted {
 		if name == "selector" || name == "filter" {
 			continue
 		}
+
 		assert.True(t, attribute.IsComputed(), name)
 		assert.False(t, attribute.IsRequired(), name)
 		assert.False(t, attribute.IsOptional(), name)
@@ -178,7 +198,9 @@ func TestLookupAttributes(t *testing.T) {
 	for name := range converted {
 		paths[name] = "Observed " + name + "."
 	}
+
 	described := lookupDescriptions(&catalogDataSource{attributes: converted}, paths).(*catalogDataSource)
+
 	descriptions := nestedDescriptions(described.attributes)
 	for path, description := range paths {
 		assert.Equal(t, description, descriptions[path], path)
@@ -189,12 +211,14 @@ func TestLookupAttributes(t *testing.T) {
 func TestLookupComputedObjects(t *testing.T) {
 	var source resource.SchemaResponse
 	newTableResource().Schema(context.Background(), resource.SchemaRequest{}, &source)
+
 	converted := lookupAttributes(source.Schema.Attributes, true, nil)
 	for _, name := range []string{"effective_distribution", "effective_sort_key"} {
 		original := source.Schema.Attributes[name].(resourceschema.SingleNestedAttribute)
 		observed := converted[name].(schema.SingleNestedAttribute)
 		assert.Equal(t, original.GetType(), observed.GetType())
 		assert.True(t, observed.Computed)
+
 		for child, attribute := range observed.Attributes {
 			assert.True(t, attribute.IsComputed(), "%s.%s", name, child)
 			assert.False(t, attribute.IsRequired() || attribute.IsOptional(), "%s.%s", name, child)
@@ -216,6 +240,7 @@ func blockTestLookup() datasource.DataSource {
 				"identity": types.ObjectValueMust(identityType.AttrTypes, map[string]attr.Value{"seed": types.Int64Value(1), "step": types.Int64Value(1)}),
 			})
 			lookupValue(data, "column", types.ListValueMust(columnType, []attr.Value{column}))
+
 			return true, nil
 		},
 	})
@@ -226,7 +251,9 @@ func nestedDescriptions(attributes map[string]schema.Attribute) map[string]strin
 	descriptions := map[string]string{}
 	for name, attribute := range attributes {
 		descriptions[name] = attribute.GetMarkdownDescription()
+
 		var nested map[string]schema.Attribute
+
 		switch attribute := attribute.(type) {
 		case schema.ListNestedAttribute:
 			nested = attribute.NestedObject.Attributes
@@ -235,10 +262,12 @@ func nestedDescriptions(attributes map[string]schema.Attribute) map[string]strin
 		case schema.SingleNestedAttribute:
 			nested = attribute.Attributes
 		}
+
 		for path, description := range nestedDescriptions(nested) {
 			descriptions[name+"."+path] = description
 		}
 	}
+
 	return descriptions
 }
 
@@ -257,15 +286,18 @@ func TestLookupBlocks(t *testing.T) {
 	require.Contains(t, source.Schema.Blocks, timeoutsBlockName)
 	assert.NotContains(t, converted, timeoutsBlockName, "the timeouts block bounds resource operations and is not observed")
 	require.Len(t, converted, len(source.Schema.Attributes)+len(source.Schema.Blocks)-1)
+
 	for _, name := range []string{"unique", "distribution"} {
 		assert.Equal(t, source.Schema.Blocks[name].Type(), converted[name].GetType(), name)
 	}
+
 	assert.True(t, converted["database"].IsRequired(), "attributes keep their selector flags")
 	column := converted["column"].(schema.ListNestedAttribute)
 	assert.NotContains(t, column.NestedObject.Attributes, "default_wo", "a write-only block attribute cannot be observed")
 	assert.Equal(t, "Columns in order.", column.MarkdownDescription)
 	assert.IsType(t, schema.SetNestedAttribute{}, converted["unique"])
 	assert.IsType(t, schema.SingleNestedAttribute{}, converted["distribution"])
+
 	identity := column.NestedObject.Attributes["identity"].(schema.SingleNestedAttribute)
 	for path, attribute := range map[string]schema.Attribute{
 		"column": column, "column.name": column.NestedObject.Attributes["name"], "column.encoding": column.NestedObject.Attributes["encoding"],
@@ -275,21 +307,25 @@ func TestLookupBlocks(t *testing.T) {
 		assert.True(t, attribute.IsComputed(), path)
 		assert.False(t, attribute.IsRequired() || attribute.IsOptional(), path)
 	}
+
 	assert.Panics(t, func() { lookupBlocks(map[string]resourceschema.Block{"other": unsupportedBlock{}}) })
 
 	lookup := dataSourceSchema(blockTestLookup)
 	assert.Empty(t, lookup.Blocks)
 	assert.True(t, lookup.Attributes["column_types"].IsOptional())
+
 	for _, shadow := range []string{"column", "name", "id", "exists"} {
 		assert.Panics(t, func() {
 			newCatalogDataSource(catalogSpec{name: "block_test", factory: newBlockTestResource, exists: true, selectors: map[string]schema.Attribute{shadow: schema.StringAttribute{Optional: true}}})
 		}, "selector %s shadows a lookup output", shadow)
 	}
+
 	for _, computed := range []string{"column", "missing"} {
 		assert.Panics(t, func() {
 			newCatalogDataSource(catalogSpec{name: "block_test", factory: newBlockTestResource, computed: []string{computed}})
 		}, "computed %s is not a resource attribute", computed)
 	}
+
 	assert.NotPanics(t, func() {
 		newCatalogDataSource(catalogSpec{name: "block_test", factory: newBlockTestResource, exists: true, computed: []string{"owner"}, selectors: map[string]schema.Attribute{"column_types": schema.StringAttribute{Optional: true}}})
 	})
@@ -302,6 +338,7 @@ func TestLookupBlocksRead(t *testing.T) {
 		return nil, errors.New("unexpected query " + sql)
 	}))
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	columns := observed.Attributes()["column"].(types.List).Elements()
@@ -311,7 +348,7 @@ func TestLookupBlocksRead(t *testing.T) {
 	assert.Equal(t, types.Int64Value(1), column["identity"].(types.Object).Attributes()["seed"])
 	assert.True(t, observed.Attributes()["unique"].IsNull())
 	assert.True(t, observed.Attributes()["distribution"].IsNull())
-	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "analytics", map[string]string{"name": "events"})
+	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), map[string]string{"database": "analytics", "name": "events"})
 }
 
 // TestLookupDescriptionRegexSemantics preserves the regex boundary and whitespace rules in the fast path.
@@ -337,6 +374,7 @@ func TestLookupDescriptions(t *testing.T) {
 		"owner": "Observed owner.", "column": "Observed columns.", "column.identity.seed": "Observed seed.", "distribution.style": "Observed style.",
 		"unique": "Observed unique constraints.", "unique.columns": "Observed constrained columns.",
 	})
+
 	var response datasource.SchemaResponse
 	source.Schema(context.Background(), datasource.SchemaRequest{}, &response)
 	descriptions := nestedDescriptions(response.Schema.Attributes)
@@ -348,6 +386,7 @@ func TestLookupDescriptions(t *testing.T) {
 	assert.Equal(t, "Observed constrained columns.", descriptions["unique.columns"])
 	assert.Equal(t, "Column name.", descriptions["column.name"], "unnamed nested outputs keep the resource text")
 	assert.Equal(t, "Increment.", descriptions["column.identity.step"])
+
 	for _, path := range []string{"missing", "column.missing", "database.child", "column.identity.seed.child"} {
 		assert.Panics(t, func() { lookupDescriptions(blockTestLookup(), map[string]string{path: "text"}) }, path)
 	}
@@ -356,6 +395,7 @@ func TestLookupDescriptions(t *testing.T) {
 // existsShadowResource declares an attribute named like the catalog lookup's exists output.
 type existsShadowResource struct{ resource.Resource }
 
+// Schema declares only a computed exists attribute, colliding with the lookup's own exists output.
 func (existsShadowResource) Schema(_ context.Context, _ resource.SchemaRequest, response *resource.SchemaResponse) {
 	response.Schema = resourceschema.Schema{Attributes: map[string]resourceschema.Attribute{"exists": resourceschema.BoolAttribute{Computed: true}}}
 }

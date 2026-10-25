@@ -9,15 +9,6 @@ description: Manages explicit SQL system capabilities for one role.
 Owns the exact explicit system privilege set for one SQL role. This permits granular capabilities instead of assigning a
 complete system role. See AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
 
-## SQL Statements
-
-```sql
-GRANT privilege TO ROLE role;
-REVOKE privilege FROM ROLE role;
-```
-
-Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
-
 ## Example Usage
 
 ```terraform
@@ -38,8 +29,22 @@ resource "redshift_system_grant" "operators" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Grant system privileges to a role.
+GRANT privilege TO ROLE role;
+
+-- Revoke system privileges from a role.
+REVOKE privilege FROM ROLE role;
+```
+
+## Supported Privileges
 
 Supported privileges cover user/schema/table/role/datashare administration; function, external-function, procedure,
 view, model and library creation/deletion; `ALTER DEFAULT PRIVILEGES`, `ACCESS CATALOG`, `ACCESS SYSTEM TABLE`,
@@ -49,6 +54,8 @@ syntax and the [RBAC system permissions](https://docs.aws.amazon.com/redshift/la
 table. `ALL` is deliberately not accepted; declare explicit privileges.
 
 ## Lifecycle and Ownership
+
+Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
 
 Reads `svv_system_privileges` for permissions granted directly to the role. Use custom roles; this resource does not
 redefine built-in role capabilities.
@@ -114,26 +121,20 @@ SELECT system_privilege AS privilege_type FROM svv_system_privileges WHERE ident
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_system_grant.operators
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    role           = "operators"
+    role = "operators"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_system_grant.operators \
-  '{"workgroup_name":"warehouse","database":"admin","role":"operators"}'
+  '{"role":"operators"}'
 ```

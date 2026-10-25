@@ -13,13 +13,6 @@ it, which sends prompts to Amazon Bedrock from SQL. See AWS
 [SHOW MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_MODEL.html), and
 [Amazon Redshift ML integration with Amazon Bedrock](https://docs.aws.amazon.com/redshift/latest/dg/machine-learning-br.html).
 
-## SQL Statements
-
-```sql
-CREATE EXTERNAL MODEL schema.name FUNCTION function IAM_ROLE ... MODEL_TYPE BEDROCK SETTINGS (...);
-DROP MODEL schema.name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -70,9 +63,21 @@ resource "redshift_object_grant" "summarizer" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `owner` (String) SQL user owning the model, as `SHOW MODEL` reports it; null when it is not reported.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the external model and its inference function.
+CREATE EXTERNAL MODEL schema.name FUNCTION function IAM_ROLE ... MODEL_TYPE BEDROCK SETTINGS (...);
+
+-- Delete the external model.
+DROP MODEL schema.name;
+```
 
 ## Request and Response Formats
 
@@ -123,29 +128,24 @@ owner. A dropped model or database is removed from state, and the next plan crea
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_external_model.summarizer
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    schema         = "ml"
-    name           = "summarizer"
+    database = "analytics"
+    schema   = "ml"
+    name     = "summarizer"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_external_model.summarizer \
-  '{"workgroup_name":"warehouse","database":"analytics","schema":"ml","name":"summarizer"}'
+  '{"database":"analytics","schema":"ml","name":"summarizer"}'
 ```
 
 Import reads the settings `SHOW MODEL` reports. To the model's owner it prints the model ID, prompt, suffix, request

@@ -85,21 +85,27 @@ func parseExternalTableType(value string) (externalTableType, error) {
 	if err != nil {
 		return externalTableType{}, err
 	}
+
 	base, arguments, _ := strings.Cut(strings.TrimSuffix(string(canonical), ")"), "(")
+
 	name, ok := externalTableTypeNames[base]
 	if !ok {
 		return externalTableType{}, fmt.Errorf("data type %q is not supported by external tables", value)
 	}
+
 	parsed := externalTableType{name: name}
+
 	if arguments != "" {
 		for argument := range strings.SplitSeq(arguments, ",") {
 			number, err := strconv.ParseInt(strings.TrimSpace(argument), 10, 64)
 			if err != nil {
 				return externalTableType{}, fmt.Errorf("data type %q has an invalid modifier: %w", value, err)
 			}
+
 			parsed.modifiers = append(parsed.modifiers, number)
 		}
 	}
+
 	return parsed, nil
 }
 
@@ -108,10 +114,12 @@ func (t externalTableType) String() string {
 	if len(t.modifiers) == 0 {
 		return string(t.name)
 	}
+
 	parts := make([]string, len(t.modifiers))
 	for i, modifier := range t.modifiers {
 		parts[i] = strconv.FormatInt(modifier, 10)
 	}
+
 	return string(t.name) + "(" + strings.Join(parts, ",") + ")"
 }
 
@@ -121,10 +129,12 @@ func (t externalTableType) fragment() sqlclient.Statement {
 	if len(t.modifiers) == 0 {
 		return statement
 	}
+
 	arguments := make([]sqlclient.Statement, len(t.modifiers))
 	for i, modifier := range t.modifiers {
 		arguments[i] = sqlclient.Int(modifier)
 	}
+
 	return statement.Args(arguments...)
 }
 
@@ -133,13 +143,16 @@ func (t externalTableType) fragment() sqlclient.Statement {
 func externalTableCatalogType(external string) string {
 	normalized := strings.ToLower(strings.Join(strings.Fields(external), " "))
 	normalized = strings.ReplaceAll(strings.ReplaceAll(normalized, "( ", "("), ", ", ",")
+
 	base, rest, _ := strings.Cut(normalized, "(")
 	if mapped, ok := externalTableHiveTypes[base]; ok && rest == "" {
 		normalized = mapped
 	}
+
 	if parsed, err := parseExternalTableType(normalized); err == nil {
 		return parsed.String()
 	}
+
 	return externalTableUpperTypeNames(strings.TrimSpace(external))
 }
 
@@ -152,10 +165,12 @@ func externalTableUpperTypeNames(external string) string {
 	if strings.ContainsAny(external, "`\"") {
 		return external
 	}
+
 	return externalTableTypeWord.ReplaceAllStringFunc(external, func(word string) string {
 		if strings.HasSuffix(word, ":") {
 			return word
 		}
+
 		return strings.ToUpper(word)
 	})
 }
@@ -163,10 +178,12 @@ func externalTableUpperTypeNames(external string) string {
 // externalTableTypesEqual compares two type spellings by the type they declare.
 func externalTableTypesEqual(a, b string) bool {
 	left, leftErr := parseExternalTableType(a)
+
 	right, rightErr := parseExternalTableType(b)
 	if leftErr != nil || rightErr != nil {
 		return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
 	}
+
 	return left.String() == right.String()
 }
 
@@ -177,6 +194,7 @@ func externalLocationsMatch(configured, catalog string) bool {
 	if strings.TrimSuffix(configured, "/") == strings.TrimSuffix(catalog, "/") {
 		return true
 	}
+
 	return len(catalog) >= 128 && strings.HasPrefix(configured, catalog)
 }
 
@@ -185,6 +203,7 @@ func externalLocation(value string) error {
 	if !strings.HasPrefix(value, "s3://") || len(value) == len("s3://") {
 		return fmt.Errorf("location %q must be an s3:// folder or manifest file", value)
 	}
+
 	return nil
 }
 
@@ -239,19 +258,24 @@ func externalTableColumns(list types.List) (columns []externalTableColumnValue, 
 	if list.IsNull() || list.IsUnknown() {
 		return nil, false
 	}
+
 	for _, element := range list.Elements() {
 		object, ok := element.(types.Object)
 		if !ok || object.IsNull() || object.IsUnknown() {
 			return nil, false
 		}
+
 		attributes := object.Attributes()
 		name, _ := attributes["name"].(types.String)
+
 		dataType, _ := attributes["type"].(types.String)
 		if name.IsUnknown() || dataType.IsUnknown() {
 			return nil, false
 		}
+
 		columns = append(columns, externalTableColumnValue{Name: name, Type: dataType})
 	}
+
 	return columns, true
 }
 
@@ -261,6 +285,7 @@ func externalTableColumnList(columns []externalTableColumnValue) types.List {
 	for i, column := range columns {
 		elements[i] = types.ObjectValueMust(externalTableColumnType.AttrTypes, map[string]attr.Value{"name": column.Name, "type": column.Type})
 	}
+
 	return types.ListValueMust(externalTableColumnType, elements)
 }
 
@@ -271,25 +296,32 @@ func parseExternalTableColumns(kind string, list types.List, seen map[string]str
 	if !known && !list.IsNull() {
 		return nil, fmt.Errorf("%s blocks must be known", kind)
 	}
+
 	columns := make([]externalTableColumn, 0, len(values))
 	for _, value := range values {
 		name := value.Name.ValueString()
 		if strings.TrimSpace(name) == "" {
 			return nil, fmt.Errorf("%s blocks need nonempty names", kind)
 		}
+
 		if slices.Contains(externalTablePseudoColumns, strings.ToLower(name)) {
 			return nil, fmt.Errorf("%s cannot use the pseudocolumn name %q", kind, name)
 		}
+
 		if previous, ok := seen[strings.ToLower(name)]; ok {
 			return nil, fmt.Errorf("%s name %q repeats %s", kind, name, previous)
 		}
+
 		seen[strings.ToLower(name)] = fmt.Sprintf("%q", name)
+
 		dataType, err := parseExternalTableType(value.Type.ValueString())
 		if err != nil {
 			return nil, fmt.Errorf("%s %q: %w", kind, name, err)
 		}
+
 		columns = append(columns, externalTableColumn{name: name, dataType: dataType})
 	}
+
 	return columns, nil
 }
 
@@ -298,9 +330,11 @@ func externalTableDelimiter(kind, value string) error {
 	if value == "" {
 		return nil
 	}
+
 	if len(value) != 1 || value[0] == 0 || value[0] > 0x7f {
 		return fmt.Errorf("%s must be a single ASCII character other than NUL; write control characters as HCL escapes such as \"\\t\" or \"\\u0007\"", kind)
 	}
+
 	return nil
 }
 
@@ -311,6 +345,7 @@ func externalTableDelimiterFragment(value string) sqlclient.Statement {
 		//sql:trusted externalTableDelimiter admits one ASCII byte, so the escape is three octal digits.
 		return sqlclient.Kw(sqlclient.Keyword(fmt.Sprintf(`'\%03o'`, char)))
 	}
+
 	return sqlclient.Lit(value)
 }
 
@@ -325,11 +360,13 @@ func externalTableCatalogDelimiter(catalog string) string {
 	case `\r`:
 		return "\r"
 	}
+
 	if len(catalog) == 4 && catalog[0] == '\\' {
 		if code, err := strconv.ParseUint(catalog[1:], 8, 7); err == nil {
 			return string(rune(code))
 		}
 	}
+
 	return catalog
 }
 
@@ -338,12 +375,14 @@ func externalTableProperties(kind string, value types.Map) (map[string]string, e
 	if value.IsUnknown() {
 		return nil, fmt.Errorf("%s must be known", kind)
 	}
+
 	properties := knownMap(value)
 	for key := range properties {
 		if key == "" {
 			return nil, fmt.Errorf("%s need nonempty names", kind)
 		}
 	}
+
 	return properties, nil
 }
 
@@ -354,11 +393,14 @@ func externalTableSpecFrom(data externalTableModel) (externalTableSpec, error) {
 	if spec.schema == "" || spec.name == "" {
 		return spec, fmt.Errorf("external table requires a nonempty schema and name")
 	}
+
 	seen := map[string]string{}
+
 	var err error
 	if spec.columns, err = parseExternalTableColumns("column", data.Columns, seen); err != nil {
 		return spec, err
 	}
+
 	if len(spec.columns) == 0 {
 		return spec, fmt.Errorf("external table requires at least one column block")
 	}
@@ -366,22 +408,28 @@ func externalTableSpecFrom(data externalTableModel) (externalTableSpec, error) {
 	if spec.partitionKeys, err = parseExternalTableColumns("partition_key", data.PartitionKeys, seen); err != nil {
 		return spec, err
 	}
+
 	spec.fieldDelimiter, spec.lineDelimiter, spec.serde = knownString(data.FieldDelimiter), knownString(data.LineDelimiter), knownString(data.Serde)
 	if err := externalTableDelimiter("field_delimiter", spec.fieldDelimiter); err != nil {
 		return spec, err
 	}
+
 	if err := externalTableDelimiter("line_delimiter", spec.lineDelimiter); err != nil {
 		return spec, err
 	}
+
 	if spec.serde != "" && (spec.fieldDelimiter != "" || spec.lineDelimiter != "") {
 		return spec, fmt.Errorf("serde conflicts with field_delimiter and line_delimiter: ROW FORMAT is either DELIMITED or SERDE")
 	}
+
 	if spec.serdeProperties, err = externalTableProperties("serde_properties", data.SerdeProperties); err != nil {
 		return spec, err
 	}
+
 	if len(spec.serdeProperties) > 0 && spec.serde == "" {
 		return spec, fmt.Errorf("serde_properties require serde")
 	}
+
 	if storedAs := knownString(data.StoredAs); storedAs != "" {
 		if spec.storedAs, err = sqlclient.OneOf(storedAs, slices.Sorted(maps.Keys(externalTableFileFormats))...); err != nil {
 			return spec, fmt.Errorf("stored_as: %w", err)
@@ -392,12 +440,15 @@ func externalTableSpecFrom(data externalTableModel) (externalTableSpec, error) {
 			return spec, fmt.Errorf("external table requires stored_as, or both input_format and output_format")
 		}
 	}
+
 	if err := externalLocation(spec.location); err != nil {
 		return spec, err
 	}
+
 	if spec.tableProperties, err = externalTableProperties("table_properties", data.TableProperties); err != nil {
 		return spec, err
 	}
+
 	return spec, nil
 }
 
@@ -407,7 +458,9 @@ func validateExternalTableConfig(data externalTableModel) error {
 	if knownString(data.StoredAs) != "" && (knownString(data.InputFormat) != "" || knownString(data.OutputFormat) != "") {
 		return fmt.Errorf("stored_as conflicts with input_format and output_format")
 	}
+
 	_, err := externalTableSpecFrom(data)
+
 	return err
 }
 
@@ -422,6 +475,7 @@ func externalTablePairs(properties map[string]string) []sqlclient.Statement {
 	for _, key := range slices.Sorted(maps.Keys(properties)) {
 		pairs = append(pairs, sqlclient.Lit(key).Kw("=").Lit(properties[key]))
 	}
+
 	return pairs
 }
 
@@ -431,6 +485,7 @@ func externalTableColumnItems(columns []externalTableColumn) []sqlclient.Stateme
 	for i, column := range columns {
 		items[i] = sqlclient.Ident(column.name).Append(column.dataType.fragment())
 	}
+
 	return items
 }
 
@@ -441,6 +496,7 @@ func createExternalTableStatement(data externalTableModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	statement := sqlclient.Stmt("CREATE EXTERNAL TABLE").Append(externalTableRelation(spec.schema, spec.name)).
 		Paren(externalTableColumnItems(spec.columns)...).
 		When(len(spec.partitionKeys) > 0, func(s sqlclient.Statement) sqlclient.Statement {
@@ -468,6 +524,7 @@ func createExternalTableStatement(data externalTableModel) (string, error) {
 		When(len(spec.tableProperties) > 0, func(s sqlclient.Statement) sqlclient.Statement {
 			return s.Kw("TABLE PROPERTIES").Paren(externalTablePairs(spec.tableProperties)...)
 		})
+
 	return statement.String(), statement.Err()
 }
 
@@ -492,8 +549,10 @@ func externalTableMapsByName(spec externalTableSpec) bool {
 	if spec.storedAs == "PARQUET" || spec.storedAs == "" && spec.inputFormat == externalTableFileFormats["PARQUET"] {
 		return true
 	}
+
 	orc := spec.storedAs == "ORC" || spec.storedAs == "" && spec.inputFormat == externalTableFileFormats["ORC"]
 	resolution, set := spec.tableProperties["orc.schema.resolution"]
+
 	return orc && (!set || resolution == "name")
 }
 
@@ -505,6 +564,7 @@ func externalTableMappingSpec(data externalTableModel, catalog map[string]string
 	if properties == nil {
 		properties = map[string]string{}
 	}
+
 	maps.Copy(properties, knownMap(data.TableProperties))
 	// A resolution known only after apply may be anything, so it counts as position, the answer that never skips a
 	// replacement; knownMap leaves it out, which would otherwise read as the name default.
@@ -513,6 +573,7 @@ func externalTableMappingSpec(data externalTableModel, catalog map[string]string
 	}
 	// An unrecognized or unknown format leaves storedAs empty and maps by position, for the same reason.
 	storedAs, _ := sqlclient.OneOf(knownString(data.StoredAs), slices.Sorted(maps.Keys(externalTableFileFormats))...)
+
 	return externalTableSpec{storedAs: storedAs, inputFormat: knownString(data.InputFormat), tableProperties: properties}
 }
 
@@ -531,6 +592,7 @@ func (l *externalTableLayout) parameters() map[string]string {
 	if l == nil {
 		return nil
 	}
+
 	return l.Parameters
 }
 
@@ -540,14 +602,17 @@ func (l *externalTableLayout) physical(columns []externalTableColumnValue) ([]ex
 	if l == nil || len(l.Columns) != len(columns) {
 		return nil, false
 	}
+
 	ordered := make([]externalTableColumnValue, 0, len(columns))
 	for _, name := range l.Columns {
 		i := slices.IndexFunc(columns, func(column externalTableColumnValue) bool { return strings.EqualFold(column.Name.ValueString(), name) })
 		if i < 0 {
 			return nil, false
 		}
+
 		ordered = append(ordered, columns[i])
 	}
+
 	return ordered, true
 }
 
@@ -558,19 +623,25 @@ func (l *externalTableLayout) physical(columns []externalTableColumnValue) ([]ex
 // catalog order only for a table that maps by position, so without a layout a switch away from name mapping is refused.
 func externalTableColumnsAlterable(prev, plan externalTableModel, layout *externalTableLayout) bool {
 	before, beforeKnown := externalTableColumns(prev.Columns)
+
 	after, afterKnown := externalTableColumns(plan.Columns)
 	if !beforeKnown || !afterKnown {
 		return false
 	}
+
 	byName := externalTableMapsByName(externalTableMappingSpec(plan, layout.parameters()))
+
 	physical, ok := layout.physical(before)
 	if !ok {
 		if !byName && externalTableMapsByName(externalTableMappingSpec(prev, layout.parameters())) {
 			return false
 		}
+
 		physical = before
 	}
+
 	avro := externalTableAvro(prev.StoredAs, prev.InputFormat) || externalTableAvro(plan.StoredAs, plan.InputFormat)
+
 	return externalTableColumnsInPlace(physical, after, byName, avro)
 }
 
@@ -580,6 +651,7 @@ func externalTableColumnIndex(columns []externalTableColumnValue) map[string]int
 	for i, column := range columns {
 		index[strings.ToLower(column.Name.ValueString())] = i
 	}
+
 	return index
 }
 
@@ -589,20 +661,24 @@ func externalTableColumnIndex(columns []externalTableColumnValue) map[string]int
 func externalTableColumnDiff(prev, plan []externalTableColumnValue) (added []externalTableColumnValue, dropped []string, retyped bool) {
 	index := externalTableColumnIndex(prev)
 	kept := map[int]bool{}
+
 	for _, column := range plan {
 		position, found := index[strings.ToLower(column.Name.ValueString())]
 		if !found {
 			added = append(added, column)
 			continue
 		}
+
 		kept[position] = true
 		retyped = retyped || !externalTableTypesEqual(prev[position].Type.ValueString(), column.Type.ValueString())
 	}
+
 	for i, column := range prev {
 		if !kept[i] {
 			dropped = append(dropped, column.Name.ValueString())
 		}
 	}
+
 	return added, dropped, retyped
 }
 
@@ -616,17 +692,21 @@ func externalTableColumnsInPlace(prev, plan []externalTableColumnValue, byName, 
 	if len(plan) == 0 || retyped || avro && (len(added) > 0 || len(dropped) > 0) {
 		return false
 	}
+
 	if byName {
 		return true
 	}
+
 	index, last := externalTableColumnIndex(prev), -1
 	for _, column := range plan[:len(plan)-len(added)] {
 		position, found := index[strings.ToLower(column.Name.ValueString())]
 		if !found || position < last {
 			return false
 		}
+
 		last = position
 	}
+
 	return true
 }
 
@@ -642,10 +722,12 @@ func externalTableStoredAsInPlace(prev, plan string) bool {
 	if strings.EqualFold(prev, plan) {
 		return true
 	}
+
 	settable := func(format string) bool {
 		_, err := sqlclient.OneOf(format, externalTableSetFileFormats...)
 		return err == nil
 	}
+
 	return prev != "" && plan != "" && settable(prev) && settable(plan)
 }
 
@@ -657,16 +739,21 @@ func externalTablePropertyChanges(prev, plan map[string]string) (map[string]stri
 			return nil, fmt.Errorf("table property %q cannot be removed in place", key)
 		}
 	}
+
 	changes := map[string]string{}
+
 	for key, value := range plan {
 		if previous, ok := prev[key]; ok && previous == value {
 			continue
 		}
+
 		if !slices.Contains(externalTableSettableProperties, key) {
 			return nil, fmt.Errorf("table property %q can only be set when the table is created; ALTER TABLE ... SET TABLE PROPERTIES supports %s", key, strings.Join(externalTableSettableProperties, ", "))
 		}
+
 		changes[key] = value
 	}
+
 	return changes, nil
 }
 
@@ -681,15 +768,18 @@ var externalTableAlterSteps = []alterStep[externalTableModel]{
 			before, _ := externalTableColumns(prev.Columns)
 			after, _ := externalTableColumns(plan.Columns)
 			added, dropped, _ := externalTableColumnDiff(before, after)
+
 			var statements []string
 			// Adding first keeps at least one column, because a table cannot lose its last one.
 			for _, column := range added {
 				dataType, _ := parseExternalTableType(column.Type.ValueString())
 				statements = append(statements, externalTableAlter(plan).Kw("ADD COLUMN").Ident(column.Name.ValueString()).Append(dataType.fragment()).String())
 			}
+
 			for _, name := range dropped {
 				statements = append(statements, externalTableAlter(plan).Kw("DROP COLUMN").Ident(name).String())
 			}
+
 			return statements
 		},
 	},
@@ -701,6 +791,7 @@ var externalTableAlterSteps = []alterStep[externalTableModel]{
 			if strings.EqualFold(prev.StoredAs.ValueString(), plan.StoredAs.ValueString()) {
 				return nil
 			}
+
 			return []string{externalTableAlter(plan).Kw("SET FILE FORMAT", format).String()}
 		},
 	},
@@ -716,10 +807,12 @@ var externalTableAlterSteps = []alterStep[externalTableModel]{
 		value:     func(data externalTableModel) attr.Value { return data.TableProperties },
 		render: func(prev, plan externalTableModel) []string {
 			changes, _ := externalTablePropertyChanges(knownMap(prev.TableProperties), knownMap(plan.TableProperties))
+
 			var statements []string
 			for _, pair := range externalTablePairs(changes) {
 				statements = append(statements, externalTableAlter(plan).Kw("SET TABLE PROPERTIES").Paren(pair).String())
 			}
+
 			return statements
 		},
 	},
@@ -732,15 +825,19 @@ func alterExternalTableStatements(prev, plan externalTableModel, layout *externa
 	if _, err := externalTableSpecFrom(plan); err != nil {
 		return nil, err
 	}
+
 	if !externalTableColumnsAlterable(prev, plan, layout) {
 		return nil, fmt.Errorf("column blocks change in place only by adding or dropping columns, at the end unless a PARQUET or ORC table maps columns by name, and never retype a column or change an AVRO table's columns; switching to positional mapping also requires catalog column order; replace the table")
 	}
+
 	if !prev.StoredAs.Equal(plan.StoredAs) && !externalTableStoredAsInPlace(knownString(prev.StoredAs), knownString(plan.StoredAs)) {
 		return nil, fmt.Errorf("stored_as can change in place only between %s; replace the table", strings.Join(stringsOf(externalTableSetFileFormats), ", "))
 	}
+
 	if _, err := externalTablePropertyChanges(knownMap(prev.TableProperties), knownMap(plan.TableProperties)); err != nil {
 		return nil, fmt.Errorf("%w; replace the table", err)
 	}
+
 	return alterStatements(prev, plan, externalTableAlterSteps), nil
 }
 
@@ -750,6 +847,7 @@ func stringsOf(keywords []sqlclient.Keyword) []string {
 	for i, keyword := range keywords {
 		values[i] = string(keyword)
 	}
+
 	return values
 }
 
@@ -791,10 +889,12 @@ func readExternalTableColumnsQuery(database, schema, table string) sqlclient.Que
 func externalTableCatalogColumns(rows []sqlclient.Row) (columns, partitionKeys []externalTableCatalogColumn, err error) {
 	for _, row := range rows {
 		number, numberErr := strconv.Atoi(row["columnnum"])
+
 		key, keyErr := strconv.Atoi(row["part_key"])
 		if numberErr != nil || keyErr != nil || row["columnname"] == "" {
 			return nil, nil, fmt.Errorf("external table column %q has incomplete catalog metadata", row["columnname"])
 		}
+
 		column := externalTableCatalogColumn{name: row["columnname"], dataType: externalTableCatalogType(row["external_type"]), order: number}
 		if key > 0 {
 			column.order = key
@@ -803,9 +903,11 @@ func externalTableCatalogColumns(rows []sqlclient.Row) (columns, partitionKeys [
 			columns = append(columns, column)
 		}
 	}
+
 	byOrder := func(a, b externalTableCatalogColumn) int { return a.order - b.order }
 	slices.SortStableFunc(columns, byOrder)
 	slices.SortStableFunc(partitionKeys, byOrder)
+
 	return columns, partitionKeys, nil
 }
 
@@ -826,16 +928,20 @@ func externalTableCatalogMap(kind, text string) (map[string]string, error) {
 	if strings.TrimSpace(text) == "" {
 		return values, nil
 	}
+
 	var decoded map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(text), &decoded); err != nil {
 		return nil, fmt.Errorf("decode external table %s: %w", kind, err)
 	}
+
 	for key, raw := range decoded {
 		var value string
 		if err := json.Unmarshal(raw, &value); err != nil {
 			value = string(raw)
 		}
+
 		values[key] = value
 	}
+
 	return values, nil
 }

@@ -11,12 +11,6 @@ without unlocking anyone. See AWS
 [SHOW USER LOCKOUT](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_USER_LOCKOUT.html) and
 [max_failed_login_attempts](https://docs.aws.amazon.com/redshift/latest/dg/max_failed_login_attempts.html).
 
-## Catalog Query
-
-```sql
-SHOW USER LOCKOUT;
-```
-
 ## Example Usage
 
 ```terraform
@@ -41,7 +35,7 @@ output "locked_users" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `user_lockouts` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--user_lockouts))
 
 <a id="nestedatt--user_lockouts"></a>
@@ -58,6 +52,17 @@ Read-Only:
 - `user_name` (String) Database user name.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List user account lockout records.
+SHOW USER LOCKOUT;
+```
+
+## Read Behavior
+
 `SHOW USER LOCKOUT` requires a superuser, so the read fails for any other provider identity. A warehouse without account
 lockout support rejects the command with "account lockout security is not supported", and the read fails too. Federated
 users are not listed. The command has no filter, so `user_name` keeps the exact name after reading every row;
@@ -66,5 +71,5 @@ timestamps as Redshift reports them, and they, `lock_reason`, and `locked_by` ar
 
 Reading never changes a lockout or a counter; unlocking a user, which takes a superuser or the `ALTER USER` privilege,
 stays outside this data source. The lockout threshold is the cluster-wide `max_failed_login_attempts` parameter, which
-`redshift_configuration` reads. `id` (String, computed) is the listing's JSON identity: the warehouse binding, the
-provider database, and the configured filter.
+`redshift_configuration` reads. `id` (String, computed) is the listing's provider-relative JSON identity containing the
+configured filter.

@@ -30,6 +30,7 @@ func TestAccObjectGrantSharedWrite(t *testing.T) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	producer := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Cluster: os.Getenv("REDSHIFT_ACC_SHARED_PRODUCER_CLUSTER"), SecretARN: os.Getenv("REDSHIFT_ACC_SHARED_PRODUCER_SECRET_ARN"), Timeout: 5 * time.Minute, Poll: time.Second}
 	consumer := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	admin := sqlclient.Connection{Database: database}
@@ -48,6 +49,7 @@ func TestAccObjectGrantSharedWrite(t *testing.T) {
 			t.Logf("cleanup: %s", statement)
 		})
 	}
+
 	exec(producer, admin, sqlclient.Stmt("CREATE DATABASE").Ident(source).Kw("ISOLATION LEVEL SNAPSHOT").String())
 	cleanup(producer, admin, sqlclient.Stmt("DROP DATABASE").Ident(source).String())
 	sourceConnection := sqlclient.Connection{Database: source}
@@ -62,14 +64,17 @@ func TestAccObjectGrantSharedWrite(t *testing.T) {
 	exec(producer, sourceConnection, sqlclient.Stmt("GRANT USAGE ON DATASHARE").Ident(share).Kw("TO NAMESPACE").Lit(os.Getenv("REDSHIFT_ACC_SHARED_CONSUMER_NAMESPACE")).String())
 	exec(consumer, admin, sqlclient.Stmt("CREATE DATABASE").Ident(shared).KwIdent("WITH PERMISSIONS FROM DATASHARE", share).Kw("OF NAMESPACE").Lit(os.Getenv("REDSHIFT_ACC_SHARED_PRODUCER_NAMESPACE")).String())
 	cleanup(consumer, admin, sqlclient.Stmt("DROP DATABASE").Ident(shared).String())
+
 	routing, err := (&redshiftconn.IAM{Workgroup: workgroup, Serverless: redshiftserverless.NewFromConfig(cfg)}).Resolve(ctx, database)
 	require.NoError(t, err)
+
 	probe := &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: routing.Host, Port: routing.Port, Username: user, Password: password}, CACertFile: testAccCACertFile(), SSLMode: testAccSSLMode(), Timeout: 30 * time.Second}
 	configuration := func(options bool) string {
 		grantOptions := "[]"
 		if options {
 			grantOptions = `["INSERT", "SELECT"]`
 		}
+
 		return grantAcceptanceProvider(region, profile, workgroup, database) + fmt.Sprintf(`
 resource "redshift_user" "writer" {
   name = %[1]q
@@ -120,6 +125,7 @@ data "redshift_object_grant" "table" {
 		if options {
 			count = "2"
 		}
+
 		return resource.ComposeAggregateTestCheckFunc(
 			resource.TestCheckResourceAttr("redshift_object_grant.table", "grant_option_privileges.#", count),
 			resource.TestCheckResourceAttr("data.redshift_object_grant.table", "grant_option_privileges.#", count),
@@ -127,16 +133,21 @@ data "redshift_object_grant" "table" {
 			func(*terraform.State) error {
 				rows, err := consumer.Query(ctx, admin, sqlclient.Stmt("SHOW GRANTS ON TABLE").Qualified(shared, "write_probe", "events").String(), nil)
 				require.NoError(t, err)
+
 				for _, privilege := range []string{"INSERT", "SELECT"} {
 					found := false
+
 					for _, row := range rows {
 						if row["identity_name"] == user && row["privilege_type"] == privilege {
 							found = true
+
 							assert.Equal(t, options, row["admin_option"] == "true" || row["admin_option"] == "t", "%s: %v", privilege, row)
 						}
 					}
+
 					require.True(t, found, "%s missing from independent SHOW GRANTS: %v", privilege, rows)
 				}
+
 				exec(probe, admin, sqlclient.Stmt("INSERT INTO").Qualified(shared, "write_probe", "events").Kw("VALUES").Paren(sqlclient.Fragment().Int(id)).String())
 				query := sqlclient.Stmt("SELECT id FROM").Qualified("write_probe", "events").Kw("WHERE id =").Int(id).String()
 				rows, err = producer.Query(ctx, sourceConnection, query, nil)
@@ -146,6 +157,7 @@ data "redshift_object_grant" "table" {
 				require.NoError(t, err)
 				require.Equal(t, []sqlclient.Row{{"id": strconv.FormatInt(id, 10)}}, rows)
 				t.Logf("producer confirms consumer USER INSERT id=%d; SELECT/INSERT grant options=%t", id, options)
+
 				return nil
 			},
 		)
@@ -155,10 +167,13 @@ data "redshift_object_grant" "table" {
 		CheckDestroy: func(*terraform.State) error {
 			rows, err := consumer.Query(ctx, admin, sqlclient.Stmt("SHOW GRANTS ON TABLE").Qualified(shared, "write_probe", "events").String(), nil)
 			require.NoError(t, err)
+
 			for _, row := range rows {
 				assert.NotEqual(t, user, row["identity_name"], "Terraform destroy must revoke the managed table ACL: %v", row)
 			}
+
 			t.Log("independent SHOW GRANTS confirms managed USER table ACL removed after Terraform destroy")
+
 			return nil
 		},
 		Steps: []resource.TestStep{

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // languageGrantStatement parses GRANT/REVOKE [GRANT OPTION FOR] USAGE ON LANGUAGE statements.
@@ -35,18 +35,21 @@ var _ = registerFakeFamily("language_grant", func() fakeFamily {
 })
 
 // query answers language privilege reads and applies language grants.
-func (f *languageGrantFake) query(_ *catalog, _ dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, bool, error) {
+func (f *languageGrantFake) query(_ *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	if strings.Contains(sql, " FROM svv_language_privileges") {
 		option, ok := f.usage[languageGrantFakeKey{parameters["language"], parameters["grantee"], parameters["identity_type"]}]
 		if !ok {
 			return nil, true, nil
 		}
-		return []dataapi.Row{{"privilege_type": "USAGE", "admin_option": fmt.Sprint(option)}}, true, nil
+
+		return []sqlclient.Row{{"privilege_type": "USAGE", "admin_option": fmt.Sprint(option)}}, true, nil
 	}
+
 	match := languageGrantStatement.FindStringSubmatch(sql)
 	if match == nil {
 		return nil, false, nil
 	}
+
 	name, kind := columnGrantFakeIdentity(match[4])
 	// SVV_LANGUAGE_PRIVILEGES names languages in lowercase.
 	key := languageGrantFakeKey{strings.ToLower(match[3]), name, kind}
@@ -59,10 +62,12 @@ func (f *languageGrantFake) query(_ *catalog, _ dataapi.Connection, sql string, 
 		}
 	default:
 		delete(f.usage, key)
+
 		if kind == "public" {
 			delete(f.defaults, key.language)
 		}
 	}
+
 	return nil, true, nil
 }
 

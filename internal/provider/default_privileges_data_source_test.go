@@ -25,9 +25,12 @@ func TestDefaultPrivilegesLookupIdentitySelectors(t *testing.T) {
 		if strings.Contains(sql, "FROM svv_default_privileges") {
 			assert.Equal(t, "analytics", target.Database)
 			assert.NotContains(t, parameters, "schema")
+
 			return nil, nil
 		}
+
 		assert.Equal(t, "admin", target.Database)
+
 		return []sqlclient.Row{{}}, nil
 	}))
 }

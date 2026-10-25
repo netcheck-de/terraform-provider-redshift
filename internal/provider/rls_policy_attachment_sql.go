@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
-
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
@@ -19,9 +18,11 @@ func rlsPolicyAttachmentKnownConfig(data rlsPolicyAttachmentModel) error {
 			return fmt.Errorf("RLS policy attachment requires a nonempty policy, schema, relation, and grantee")
 		}
 	}
+
 	if data.GranteeType.IsUnknown() {
 		return nil
 	}
+
 	switch kind := data.GranteeType.ValueString(); kind {
 	case "USER", "ROLE":
 		return nil
@@ -29,6 +30,7 @@ func rlsPolicyAttachmentKnownConfig(data rlsPolicyAttachmentModel) error {
 		if !data.Grantee.IsUnknown() && data.Grantee.ValueString() != "public" {
 			return fmt.Errorf("grantee_type PUBLIC requires grantee = public")
 		}
+
 		return nil
 	default:
 		return fmt.Errorf("grantee_type %q is not one of %s", kind, strings.Join(rlsPolicyAttachmentGranteeTypes, ", "))
@@ -42,7 +44,9 @@ func rlsPolicyAttachmentParts(data rlsPolicyAttachmentModel) (sqlclient.Statemen
 	if data.Policy.ValueString() == "" || data.Schema.ValueString() == "" || data.Relation.ValueString() == "" {
 		return relation, grantee, fmt.Errorf("RLS policy attachment requires a nonempty policy, schema, and relation")
 	}
+
 	relation = sqlclient.Fragment().Qualified(data.Schema.ValueString(), data.Relation.ValueString())
+
 	name := data.Grantee.ValueString()
 	switch kind := data.GranteeType.ValueString(); kind {
 	case "USER":
@@ -53,13 +57,16 @@ func rlsPolicyAttachmentParts(data rlsPolicyAttachmentModel) (sqlclient.Statemen
 		if name != "public" {
 			return relation, grantee, fmt.Errorf("grantee_type PUBLIC requires grantee = public")
 		}
+
 		return relation, sqlclient.Kw("PUBLIC"), nil
 	default:
 		return relation, grantee, fmt.Errorf("grantee_type %q is not one of %s", kind, strings.Join(rlsPolicyAttachmentGranteeTypes, ", "))
 	}
+
 	if name == "" {
 		return relation, grantee, fmt.Errorf("RLS policy attachment requires a nonempty grantee")
 	}
+
 	return relation, grantee, nil
 }
 
@@ -71,6 +78,7 @@ func createRlsPolicyAttachmentStatement(data rlsPolicyAttachmentModel) (string, 
 	if err != nil {
 		return "", err
 	}
+
 	return sqlclient.Stmt("ATTACH RLS POLICY").Ident(data.Policy.ValueString()).Kw("ON").Append(relation).Kw("TO").Append(grantee).String(), nil
 }
 
@@ -81,6 +89,7 @@ func dropRlsPolicyAttachmentStatement(data rlsPolicyAttachmentModel) (string, er
 	if err != nil {
 		return "", err
 	}
+
 	return sqlclient.Stmt("DETACH RLS POLICY").Ident(data.Policy.ValueString()).Kw("ON").Append(relation).Kw("FROM").Append(grantee).String(), nil
 }
 
@@ -89,6 +98,7 @@ func dropRlsPolicyAttachmentStatement(data rlsPolicyAttachmentModel) (string, er
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_ATTACHED_POLICY.html
 func readRlsPolicyAttachmentQuery(data rlsPolicyAttachmentModel) sqlclient.Query {
 	kind := data.GranteeType.ValueString()
+
 	return sqlclient.Select("polname", "relschema", "relname", "grantee", "granteekind").From("svv_rls_attached_policy").
 		Where("polname = :policy", sqlclient.Bind("policy", data.Policy.ValueString())).
 		Where("relschema = :schema", sqlclient.Bind("schema", data.Schema.ValueString())).

@@ -11,16 +11,6 @@ credentials or a federated identity. Role memberships and object privileges are 
 [CREATE USER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html) and
 [ALTER USER](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_USER.html).
 
-## SQL Statements
-
-```sql
-CREATE USER name PASSWORD { '...' | DISABLE } ...;
-ALTER USER name ...;
-ALTER USER name SET parameter TO '...';
-ALTER USER name RESET parameter;
-DROP USER name;
-```
-
 ## Example Usage
 
 {{ tffile "examples/resources/redshift_user/resource.tf" }}
@@ -29,6 +19,27 @@ DROP USER name;
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the user.
+CREATE USER name PASSWORD { '...' | DISABLE } ...;
+
+-- Update user settings.
+ALTER USER name ...;
+
+-- Set a session parameter default for the user.
+ALTER USER name SET parameter TO '...';
+
+-- Reset a session parameter default for the user.
+ALTER USER name RESET parameter;
+
+-- Delete the user.
+DROP USER name;
+```
+
 ## Lifecycle and Ownership
 
 Deletion issues `DROP USER` without `CASCADE`; dependencies, including role grants, must be removed first.
@@ -36,7 +47,7 @@ Superusers see every row of [SVV_USER_INFO](https://docs.aws.amazon.com/redshift
 provider identity that is not a superuser sees only its own. `session_defaults` accepts only the documented session
 parameters listed above; cluster-wide parameters belong to the parameter group.
 
-`password_wo` is a write-only argument and requires Terraform 1.11 or later. Write-only values are absent from
+`password_wo` is a write-only argument. Write-only values are absent from
 **this resource's** state. The password source (for example, `random_password`) may
 still keep a value in its own Terraform state, and the Data API executes a SQL statement containing the password.
 Restrict Terraform state, provider logs, and Data API query-history access accordingly.
@@ -123,13 +134,9 @@ session_defaults = {
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_user/import-by-string-id.tf" }}
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
+{{ tffile "examples/resources/redshift_user/import.tf" }}
 
 Alternatively, use `terraform import`:
 

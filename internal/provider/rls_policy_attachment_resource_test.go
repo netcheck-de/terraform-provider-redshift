@@ -15,6 +15,7 @@ import (
 func rlsPolicyAttachmentLifecycleModel() rlsPolicyAttachmentModel {
 	data := rlsPolicyAttachmentSample()
 	data.Database = types.StringValue("admin")
+
 	return data
 }
 
@@ -37,11 +38,13 @@ var (
 		invalid: func() rlsPolicyAttachmentModel {
 			data := rlsPolicyAttachmentLifecycleModel()
 			data.GranteeType = types.StringValue("PUBLIC")
+
 			return data
 		}(),
 		unknown: func() rlsPolicyAttachmentModel {
 			data := rlsPolicyAttachmentLifecycleModel()
 			data.GranteeType, data.Grantee = types.StringValue("PUBLIC"), types.StringUnknown()
+
 			return data
 		}(),
 	})
@@ -90,6 +93,7 @@ func TestRlsPolicyAttachmentRejectsInvalidTuplesBeforeSQL(t *testing.T) {
 	configureTestResource(t, r, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return nil, errors.New("no SQL expected")
 	}))
+
 	invalid := rlsPolicyAttachmentLifecycleModel()
 	invalid.GranteeType = types.StringValue("GROUP")
 	state, diagnostics := applyOperation(t, r, "create", nil, invalid, nil)
@@ -105,7 +109,8 @@ func TestRlsPolicyAttachmentIdentity(t *testing.T) {
 	configureTestResource(t, r, c)
 	state, diagnostics := applyOperation(t, r, "create", nil, rlsPolicyAttachmentLifecycleModel(), nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var data rlsPolicyAttachmentModel
 	require.False(t, state.Get(context.Background(), &data).HasError())
-	assertLookupIdentity(t, data.ID, "admin", map[string]string{"policy": "region_filter", "schema": "public", "relation": "events", "grantee": "analysts", "grantee_type": "ROLE"})
+	assertLookupIdentity(t, data.ID, map[string]string{"database": "admin", "policy": "region_filter", "schema": "public", "relation": "events", "grantee": "analysts", "grantee_type": "ROLE"})
 }

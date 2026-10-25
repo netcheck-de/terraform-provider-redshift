@@ -15,11 +15,12 @@ var _ = registerParity(parityCase{source: newExternalSchemaDataSource, resource:
 func TestExternalSchemaLookup(t *testing.T) {
 	state, diagnostics := readSource(t, newExternalSchemaDataSource(), externalSchemaData{Database: types.StringValue("admin"), Name: types.StringValue("example_external")}, &catalog{external: true})
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var data externalSchemaData
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.Equal(t, "example_glue", data.GlueDatabase.ValueString())
 	assert.Equal(t, "DATA_CATALOG", data.SourceType.ValueString())
 	assert.Equal(t, "admin", data.Owner.ValueString())
 	assert.True(t, data.SourceDatabase.IsNull())
-	assertLookupIdentity(t, data.ID, "admin", map[string]string{"name": "example_external"})
+	assertLookupIdentity(t, data.ID, map[string]string{"database": "admin", "name": "example_external"})
 }

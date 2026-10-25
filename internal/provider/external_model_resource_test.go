@@ -40,11 +40,13 @@ var _ = registerValidateConfigCase("external_model", validateConfigCase{
 	invalid: func() externalModelModel {
 		data := testExternalModelModel()
 		data.RequestType = types.StringValue("RAW")
+
 		return data
 	}(),
 	unknown: func() externalModelModel {
 		data := testExternalModelModel()
 		data.ModelID = types.StringUnknown()
+
 		return data
 	}(),
 })
@@ -58,8 +60,10 @@ func externalModelFake() (*catalog, *externalModelFamily) {
 // decodeExternalModelState reads a model from Terraform state.
 func decodeExternalModelState(t *testing.T, state tfsdk.State) externalModelModel {
 	t.Helper()
+
 	var data externalModelModel
 	require.False(t, state.Get(context.Background(), &data).HasError())
+
 	return data
 }
 
@@ -67,8 +71,10 @@ func decodeExternalModelState(t *testing.T, state tfsdk.State) externalModelMode
 func TestExternalModelCreateRecordsCatalog(t *testing.T) {
 	c, models := externalModelFake()
 	models.remove(fakeModelName)
+
 	r := newExternalModelResource()
 	configureTestResource(t, r, c)
+
 	planned := testExternalModelModel()
 	planned.Prompt, planned.RequestType, planned.ResponseType = types.StringNull(), types.StringValue("RAW"), types.StringValue("SUPER")
 	planned.IAMRole, planned.Owner = types.StringValue("arn:aws:iam::123456789012:role/redshift-bedrock"), types.StringUnknown()
@@ -76,7 +82,7 @@ func TestExternalModelCreateRecordsCatalog(t *testing.T) {
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	created := decodeExternalModelState(t, state)
 	assert.Equal(t, "admin", created.Owner.ValueString())
-	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"summarizer"}`, created.ID.ValueString())
+	assert.JSONEq(t, `{"database":"admin","schema":"serving","name":"summarizer"}`, created.ID.ValueString())
 	assert.Equal(t, "raw", models.get(fakeModelName).settings["Request Type"])
 	assert.Equal(t, "arn:aws:iam::123456789012:role/redshift-bedrock", models.get(fakeModelName).settings["IAM Role"])
 
@@ -91,6 +97,7 @@ func TestExternalModelDrift(t *testing.T) {
 	c, models := externalModelFake()
 	r := newExternalModelResource()
 	configureTestResource(t, r, c)
+
 	models.get(fakeModelName).settings["Model ID"] = "amazon.nova-pro-v1:0"
 	state, diagnostics := applyOperation(t, r, "read", testExternalModelModel(), nil, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
@@ -109,7 +116,7 @@ func TestExternalModelImport(t *testing.T) {
 	r := newExternalModelResource()
 	configureTestResource(t, r, c)
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
-	id := `{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"summarizer"}`
+	id := `{"database":"admin","schema":"serving","name":"summarizer"}`
 	r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
 	resp := resource.ReadResponse{State: imported.State}
@@ -117,7 +124,7 @@ func TestExternalModelImport(t *testing.T) {
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 	data := decodeExternalModelState(t, resp.State)
 	expected := testExternalModelModel()
-	expected.ID = types.StringValue(id)
+	expected.ID = types.StringValue(`{"database":"admin","name":"summarizer","schema":"serving"}`)
 	assert.Equal(t, expected, data)
 	assert.Empty(t, c.writes, "import never mutates")
 }
@@ -137,10 +144,12 @@ func TestExternalModelRoleReplacement(t *testing.T) {
 		{arn, strings.ToUpper(arn), true},
 	} {
 		request := planmodifier.StringRequest{StateValue: types.StringValue(test.before), PlanValue: types.StringValue(test.after)}
+
 		var response stringplanmodifier.RequiresReplaceIfFuncResponse
 		externalModelRoleChanged(context.Background(), request, &response)
 		assert.Equal(t, test.replace, response.RequiresReplace, "%s -> %s", test.before, test.after)
 	}
+
 	var response stringplanmodifier.RequiresReplaceIfFuncResponse
 	externalModelRoleChanged(context.Background(), planmodifier.StringRequest{StateValue: types.StringValue("DEFAULT"), PlanValue: types.StringUnknown()}, &response)
 	assert.True(t, response.RequiresReplace, "an unknown role may differ")
@@ -152,6 +161,7 @@ func TestExternalModelCreateRejectsInvalidSettingsBeforeSQL(t *testing.T) {
 	configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		return nil, errors.New("unexpected SQL " + sql)
 	}))
+
 	data := testExternalModelModel()
 	data.RequestType, data.ResponseType = types.StringValue("RAW"), types.StringValue("SUPER")
 	state, diagnostics := applyOperation(t, r, "create", nil, data, nil)
@@ -165,12 +175,14 @@ func TestExternalModelCreateRejectsInvalidSettingsBeforeSQL(t *testing.T) {
 func TestExternalModelConvergenceFailure(t *testing.T) {
 	c, models := externalModelFake()
 	models.remove(fakeModelName)
+
 	r := newExternalModelResource()
 	configureTestResource(t, r, queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		rows, err := c.Query(ctx, target, sql, parameters)
 		if strings.HasPrefix(sql, "CREATE EXTERNAL MODEL") {
 			models.get(fakeModelName).settings["Model ID"] = "amazon.titan-text-express-v1"
 		}
+
 		return rows, err
 	}))
 	state, diagnostics := applyOperation(t, r, "create", nil, testExternalModelModel(), nil)

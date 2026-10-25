@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -14,11 +16,11 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
-// resourceClient supplies transport-neutral execution and stable ownership to SQL resources.
+// resourceClient supplies transport-neutral execution to SQL resources.
 type resourceClient struct {
 	// client executes statements within its configured warehouse.
 	client sqlclient.Client
-	// warehouse validates state ownership before SQL execution.
+	// warehouse validates connection configuration and legacy state ownership before SQL execution.
 	warehouse warehouseBinding
 	// database is the default administration database; resources may select another local database.
 	database types.String
@@ -26,16 +28,18 @@ type resourceClient struct {
 	datashareARN func(context.Context, shareSource) (string, error)
 }
 
-// Configure receives the shared SQL client and transport-independent ownership binding.
+// Configure receives the shared SQL client and configured connection selectors.
 func (r *resourceClient) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
+
 	data, ok := req.ProviderData.(providerData)
 	if !ok {
 		resp.Diagnostics.AddError("Unexpected provider client", fmt.Sprintf("Expected provider connection data, got %T.", req.ProviderData))
 		return
 	}
+
 	r.client, r.warehouse, r.database = data.client, data.warehouse, data.database
 	r.datashareARN = data.datashareARN
 }
@@ -43,16 +47,17 @@ func (r *resourceClient) Configure(_ context.Context, req resource.ConfigureRequ
 // idAttribute defines a computed import identity retained across unknown plans.
 func idAttribute() schema.StringAttribute {
 	return schema.StringAttribute{
-		Computed: true, MarkdownDescription: "JSON import identity; independent of Data API execution history.",
+		Computed: true, MarkdownDescription: "JSON import identity within the configured warehouse; independent of connection method and Data API execution history.",
 		PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 	}
 }
 
-// connection selects a database only after the provider ownership binding is known.
+// connection selects a database only after the provider connection selectors are known.
 func (r *resourceClient) connection(database string) (sqlclient.Connection, error) {
 	if r.warehouse.value.IsUnknown() || r.warehouse.value.IsNull() || r.warehouse.value.ValueString() == "" || database == "" {
 		return sqlclient.Connection{}, fmt.Errorf("provider %s and database must be known before executing SQL", r.warehouse.field)
 	}
+
 	return sqlclient.Connection{Database: database}, nil
 }
 
@@ -67,6 +72,7 @@ func (r *resourceClient) queryDatabase(ctx context.Context, database, sql string
 	if err != nil {
 		return nil, err
 	}
+
 	return r.client.Query(ctx, target, sql, parameters)
 }
 
@@ -78,6 +84,7 @@ func (r *resourceClient) exec(ctx context.Context, database string, statements .
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -87,6 +94,7 @@ func (r *resourceClient) selectRows(ctx context.Context, database string, query 
 	if err != nil {
 		return nil, err
 	}
+
 	return r.queryDatabase(ctx, database, sql, parameters)
 }
 
@@ -95,58 +103,116 @@ func (r *resourceClient) localDatabaseExists(ctx context.Context, database strin
 	if database == r.database.ValueString() {
 		return true, nil
 	}
+
 	rows, err := r.selectRows(ctx, r.database.ValueString(), localDatabaseQuery(database))
+
 	return len(rows) > 0, err
 }
 
-// identity adds the warehouse/database binding to resource-specific JSON import fields.
-func (r *resourceClient) identity(database string, fields map[string]string) types.String {
-	fields[r.warehouse.field] = r.warehouse.value.ValueString()
-	fields["database"] = database
+// identity encodes the object's complete provider-relative tuple without adding connection context.
+func identity(fields map[string]string) types.String {
 	encoded, _ := json.Marshal(fields) // String maps are always JSON-serializable.
+
 	return types.StringValue(string(encoded))
 }
 
-// bound rejects adoption of state belonging to another warehouse or database.
+// bound preserves the ownership check for legacy IDs before refresh rewrites them without connection selectors.
+// New IDs are provider-relative; their containing database, when present, must still match the object being read.
 func (r *resourceClient) bound(id types.String, database string) error {
 	if id.IsNull() || id.IsUnknown() {
 		return nil
 	}
+
 	var fields map[string]string
 	if err := json.Unmarshal([]byte(id.ValueString()), &fields); err != nil {
 		return fmt.Errorf("invalid resource identity: %w", err)
 	}
-	if fields[r.warehouse.field] != r.warehouse.value.ValueString() || fields["database"] != database {
+
+	if len(fields) == 0 {
+		return fmt.Errorf("invalid resource identity: expected a nonempty JSON object")
+	}
+
+	bindings := 0
+
+	for _, field := range warehouseIdentityFields {
+		if _, present := fields[field]; present {
+			bindings++
+
+			if field != r.warehouse.field || fields[field] != r.warehouse.value.ValueString() {
+				return fmt.Errorf("provider warehouse or database differs from the resource identity; migrate explicitly")
+			}
+		}
+	}
+
+	if bindings > 1 || (bindings == 1 && fields["database"] != database) ||
+		(bindings == 0 && fields["database"] != "" && fields["database"] != database) {
 		return fmt.Errorf("provider warehouse or database differs from the resource identity; migrate explicitly")
 	}
+
 	return nil
 }
 
-// importIdentity validates one Serverless/cluster/endpoint binding and restores resource attributes.
+// warehouseIdentityFields recognizes the connection selectors carried by historical IDs.
+var warehouseIdentityFields = []string{"workgroup_name", "cluster_identifier", "endpoint"}
+
+// normalizeLegacyIdentity removes connection context from a validated ID, retaining its containing database only
+// for database-scoped objects. New IDs are constructed independently by identity.
+func normalizeLegacyIdentity(id types.String, databaseScoped bool) types.String {
+	if id.IsNull() || id.IsUnknown() {
+		return id
+	}
+
+	var fields map[string]string
+	if err := json.Unmarshal([]byte(id.ValueString()), &fields); err != nil {
+		return id
+	}
+
+	for _, field := range warehouseIdentityFields {
+		delete(fields, field)
+	}
+
+	if !databaseScoped {
+		delete(fields, "database")
+	}
+
+	return identity(fields)
+}
+
+// importIdentity accepts only provider-relative tuples; legacy connection context is supported only in stored state.
 func importIdentity(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse, fields ...string) {
 	var values map[string]string
 	if err := json.Unmarshal([]byte(req.ID), &values); err != nil {
 		resp.Diagnostics.AddError("Invalid import identity", "Expected a JSON object: "+err.Error())
 		return
 	}
-	bindings := 0
-	for _, field := range []string{"workgroup_name", "cluster_identifier", "endpoint"} {
-		if values[field] != "" {
-			bindings++
+
+	for _, field := range warehouseIdentityFields {
+		if _, present := values[field]; present {
+			resp.Diagnostics.AddError("Invalid import identity", "Remove connection selector "+field+" from the import identity.")
+			return
 		}
 	}
-	if bindings != 1 {
-		resp.Diagnostics.AddError("Invalid warehouse identity", "Import requires exactly one nonempty workgroup_name, cluster_identifier, or endpoint.")
+
+	if _, present := values["database"]; present && !slices.Contains(fields, "database") {
+		resp.Diagnostics.AddError("Invalid import identity", "The administration database is not part of this resource's import identity; remove database.")
 		return
 	}
-	for _, field := range append([]string{"database"}, fields...) {
+
+	for _, field := range fields {
 		if values[field] == "" {
 			resp.Diagnostics.AddError("Invalid import identity", "Missing nonempty field "+field+".")
 			return
 		}
 	}
+
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
+
 	for _, field := range fields {
 		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root(field), values[field])...)
 	}
+}
+
+// privateState reads provider private state, which plan modifier, import, and update requests and responses share.
+type privateState interface {
+	GetKey(ctx context.Context, key string) ([]byte, diag.Diagnostics)
 }

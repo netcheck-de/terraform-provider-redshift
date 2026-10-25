@@ -51,11 +51,13 @@ var (
 		invalid: func() rlsPolicyModel {
 			data := rlsPolicyLifecycleModel()
 			data.Predicate = types.StringValue("true; DROP TABLE t")
+
 			return data
 		}(),
 		unknown: func() rlsPolicyModel {
 			data := rlsPolicyLifecycleModel()
 			data.Predicate = types.StringUnknown()
+
 			return data
 		}(),
 	})
@@ -70,6 +72,7 @@ func TestRlsPolicyAlterCoverage(t *testing.T) {
 func rlsPolicyCatalog(predicate string, changes ...func(*rlsFake)) func() sqlclient.Client {
 	return catalogWith(func(c *catalog) {
 		f := rlsFakeOf(c)
+
 		f.predicate = predicate
 		for _, change := range changes {
 			change(f)
@@ -94,13 +97,16 @@ func TestRlsPolicyTranscripts(t *testing.T) {
 // rlsPolicyOperation runs one lifecycle RPC against client and decodes the resulting state.
 func rlsPolicyOperation(t *testing.T, client sqlclient.Client, operation string, prior, planned any) (rlsPolicyModel, bool) {
 	t.Helper()
+
 	r := newRlsPolicyResource()
 	configureTestResource(t, r, client)
 	state, diagnostics := applyOperation(t, r, operation, prior, planned, nil)
+
 	var data rlsPolicyModel
 	if !state.Raw.IsNull() {
 		require.False(t, state.Get(context.Background(), &data).HasError())
 	}
+
 	return data, diagnostics.HasError()
 }
 
@@ -115,7 +121,7 @@ func TestRlsPolicyPredicateDrift(t *testing.T) {
 	require.False(t, failed)
 	assert.Equal(t, planned.Predicate, created.Predicate, "state keeps the configured text")
 	assert.Equal(t, definitionFingerprint(rlsFakePredicate), created.DefinitionFingerprint.ValueString(), "whitespace does not change the fingerprint")
-	assertLookupIdentity(t, created.ID, "admin", map[string]string{"name": "region_filter"})
+	assertLookupIdentity(t, created.ID, map[string]string{"database": "admin", "name": "region_filter"})
 
 	refreshed, failed := rlsPolicyOperation(t, c, "read", created, nil)
 	require.False(t, failed)
@@ -182,18 +188,22 @@ func TestRlsPolicyCreateVerification(t *testing.T) {
 				if strings.HasPrefix(sql, "SELECT") {
 					return []sqlclient.Row{row}, nil
 				}
+
 				return nil, nil
 			})
 			planned := rlsPolicyLifecycleModel()
+
 			planned.Alias, planned.DefinitionFingerprint = types.StringValue("t"), types.StringUnknown()
 			if name == "columns" {
 				planned.Alias = types.StringUnknown()
 			}
+
 			r := newRlsPolicyResource()
 			configureTestResource(t, r, client)
 			state, diagnostics := applyOperation(t, r, "create", nil, planned, nil)
 			require.True(t, diagnostics.HasError())
 			assert.Contains(t, diagnostics.Errors()[0].Detail(), name)
+
 			var data rlsPolicyModel
 			require.False(t, state.Get(context.Background(), &data).HasError())
 			assert.False(t, data.ID.IsNull())
@@ -205,6 +215,7 @@ func TestRlsPolicyCreateVerification(t *testing.T) {
 		if strings.HasPrefix(sql, "SELECT") {
 			return []sqlclient.Row{{"poldb": "admin", "polname": "region_filter", "polalias": "t", "polatts": rlsFakeColumns, "polqual": rlsFakePredicate}}, nil
 		}
+
 		return nil, nil
 	})
 	planned := rlsPolicyLifecycleModel()
@@ -235,13 +246,15 @@ func TestRlsPolicyImport(t *testing.T) {
 	c := fullCatalog()
 	r := newRlsPolicyResource()
 	configureTestResource(t, r, c)
+
 	ctx := context.Background()
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
-	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","name":"region_filter"}`}, &imported)
+	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: `{"database":"admin","name":"region_filter"}`}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
 	resp := resource.ReadResponse{State: imported.State}
 	r.Read(ctx, resource.ReadRequest{State: imported.State}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 	var data rlsPolicyModel
 	require.False(t, resp.State.Get(ctx, &data).HasError())
 	assert.Equal(t, rlsFakePredicate, data.Predicate.ValueString())
@@ -249,8 +262,9 @@ func TestRlsPolicyImport(t *testing.T) {
 	assert.True(t, data.Alias.IsNull())
 	assert.Equal(t, definitionFingerprint(rlsFakePredicate), data.DefinitionFingerprint.ValueString())
 	assert.Empty(t, c.writes)
+
 	missing := resource.ImportStateResponse{State: tfsdk.State{Schema: imported.State.Schema}}
-	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin"}`}, &missing)
+	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: `{"database":"admin"}`}, &missing)
 	assert.True(t, missing.Diagnostics.HasError())
 }
 
@@ -268,16 +282,21 @@ func TestRlsPolicyDeleteKeepsAttachedPolicy(t *testing.T) {
 // whether any modifier requires replacement.
 func rlsPolicyPlanAttribute(t *testing.T, name string, prior, configured, initial attr.Value) (attr.Value, bool) {
 	t.Helper()
+
 	ctx := context.Background()
+
 	var response resource.SchemaResponse
 	newRlsPolicyResource().Schema(ctx, resource.SchemaRequest{}, &response)
+
 	existing := tftypes.NewValue(tftypes.Object{}, map[string]tftypes.Value{})
 	state, plan, config := tfsdk.State{Raw: existing}, tfsdk.Plan{Raw: existing}, tfsdk.Config{Raw: existing}
 	replace := false
+
 	input := any(response.Schema.Attributes[name])
 	if block, ok := response.Schema.Blocks[name]; ok {
 		input = block
 	}
+
 	switch input := input.(type) {
 	case schema.ListNestedBlock:
 		planned := initial.(types.List)
@@ -288,6 +307,7 @@ func rlsPolicyPlanAttribute(t *testing.T, name string, prior, configured, initia
 			require.False(t, result.Diagnostics.HasError(), "%v", result.Diagnostics)
 			planned, replace = result.PlanValue, replace || result.RequiresReplace
 		}
+
 		return planned, replace
 	case schema.StringAttribute:
 		planned := initial.(types.String)
@@ -298,6 +318,7 @@ func rlsPolicyPlanAttribute(t *testing.T, name string, prior, configured, initia
 			require.False(t, result.Diagnostics.HasError(), "%v", result.Diagnostics)
 			planned, replace = result.PlanValue, replace || result.RequiresReplace
 		}
+
 		return planned, replace
 	default:
 		t.Fatalf("no plan helper for input %s", name)
@@ -325,6 +346,7 @@ func TestRlsPolicyEquivalentSpellingPlansNoReplacement(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			planned, replace := rlsPolicyPlanAttribute(t, "column", test.prior, test.configured, test.configured)
 			assert.Equal(t, test.replace, replace)
+
 			if test.replace {
 				assert.Equal(t, test.configured, planned, "a real change plans the configuration")
 			} else {
@@ -332,6 +354,7 @@ func TestRlsPolicyEquivalentSpellingPlansNoReplacement(t *testing.T) {
 			}
 		})
 	}
+
 	for name, test := range map[string]struct {
 		prior, configured types.String
 		planned           types.String
@@ -347,6 +370,7 @@ func TestRlsPolicyEquivalentSpellingPlansNoReplacement(t *testing.T) {
 				// The framework marks an unset Optional+Computed value unknown before modifiers run.
 				initial = types.StringUnknown()
 			}
+
 			result, replace := rlsPolicyPlanAttribute(t, "alias", test.prior, test.configured, initial)
 			assert.Equal(t, test.replace, replace)
 			assert.Equal(t, test.planned, result)

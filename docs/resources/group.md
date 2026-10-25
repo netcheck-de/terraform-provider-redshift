@@ -10,13 +10,6 @@ Manages a SQL user group. Groups contain database users; they are distinct from 
 [CREATE GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_GROUP.html) and
 [DROP GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_GROUP.html).
 
-## SQL Statements
-
-```sql
-CREATE GROUP name;
-DROP GROUP name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -36,9 +29,21 @@ resource "redshift_group" "readers" {
 ### Read-Only
 
 - `group_id` (Number) Group ID from `pg_group.grosysid`.
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `members` (Set of String) Names of the users currently in the group, read from `pg_group`. Informational only: this resource never changes membership, which `redshift_group_membership` manages, and refresh records members added elsewhere.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the group.
+CREATE GROUP name;
+
+-- Delete the group.
+DROP GROUP name;
+```
 
 ## Lifecycle and Ownership
 
@@ -61,26 +66,20 @@ outside Terraform is removed from state and planned for creation. Privileges gra
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_group.readers
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    name           = "report_readers"
+    name = "report_readers"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_group.readers \
-  '{"workgroup_name":"warehouse","database":"admin","name":"report_readers"}'
+  '{"name":"report_readers"}'
 ```

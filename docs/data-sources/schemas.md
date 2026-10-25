@@ -9,12 +9,6 @@ description: Lists the local, external, and datashare schemas of one database.
 Lists the schemas of one database with their owner and type. See AWS
 [SVV_ALL_SCHEMAS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ALL_SCHEMAS.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_all_schemas WHERE database_name = '...' AND schema_type = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -39,7 +33,7 @@ output "external_schema_sources" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `schemas` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--schemas))
 
 <a id="nestedatt--schemas"></a>
@@ -54,9 +48,20 @@ Read-Only:
 - `source_database` (String) Source database of an external schema, such as its AWS Glue database; null otherwise.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List schemas matching the configured filters.
+SELECT ... FROM svv_all_schemas WHERE database_name = '...' AND schema_type = '...';
+```
+
+## Read Behavior
+
 `database` defaults to the provider's `database`. The read always runs in the provider's database, because
 `SVV_ALL_SCHEMAS` spans every database of the warehouse, so datashare databases can be listed without connecting to
-them. `id` combines the warehouse binding, the listed database, and the configured filters. Items are ordered by
+them. `id` combines the listed database and configured filters within the warehouse. Items are ordered by
 name; no match returns an empty `schemas` list.
 
 System schemas such as `pg_catalog` and `information_schema` are included; filter them in Terraform when needed.

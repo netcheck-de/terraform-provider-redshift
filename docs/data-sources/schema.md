@@ -9,13 +9,6 @@ description: Looks up a local schema, its SQL owner, and its quota.
 Looks up an existing local schema without managing it. See AWS
 [SVV_REDSHIFT_SCHEMA_QUOTA](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_SCHEMA_QUOTA.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_namespace WHERE nspname = 'name';
-SELECT ... FROM svv_redshift_schema_quota WHERE schema_name = 'name';
-```
-
 ## Example Usage
 
 ```terraform
@@ -40,6 +33,20 @@ data "redshift_schema" "serving" {
 - `owner` (String) Database user owning the schema.
 - `quota` (Number) Disk quota in megabytes; `-1` means `UNLIMITED`. Null when the connection is neither a superuser nor the schema owner, because `SVV_REDSHIFT_SCHEMA_QUOTA` shows a regular user only their own schemas.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the schema and its owner.
+SELECT ... FROM pg_namespace WHERE nspname = 'name';
+
+-- Read the schema's storage quota.
+SELECT ... FROM svv_redshift_schema_quota WHERE schema_name = 'name';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed schema's JSON identity, using the same warehouse, owning database, and name keys
 as the paired resource.

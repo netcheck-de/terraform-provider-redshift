@@ -12,14 +12,6 @@ Attach it to columns with `redshift_masking_policy_attachment`, and give it acce
 [CREATE MASKING POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_MASKING_POLICY.html) and
 [Dynamic data masking](https://docs.aws.amazon.com/redshift/latest/dg/t_ddm.html).
 
-## SQL Statements
-
-```sql
-CREATE MASKING POLICY name WITH (...) USING (expression);
-ALTER MASKING POLICY name USING (expression);
-DROP MASKING POLICY name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -64,12 +56,12 @@ resource "redshift_masking_policy" "card" {
 
 ### Optional
 
-- `input_column` (Block List) At least one `input_column` block is required. Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached. Redshift cannot alter them, so changing a name or type replaces the policy; another spelling of the same type, such as `TEXT` for `VARCHAR(256)`, does not. (see [below for nested schema](#nestedblock--input_column))
+- `input_column` (Block List) At least one `input_column` block is required. Ordered input columns of the `WITH` clause that the expression reads. Their types must match the masked columns' types when the policy is attached. (see [below for nested schema](#nestedblock--input_column))
 
 ### Read-Only
 
-- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed outside literals, quoted identifiers, and comments; detects definition changes made outside Terraform.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 
 <a id="nestedblock--input_column"></a>
 ### Nested Schema for `input_column`
@@ -79,6 +71,21 @@ Required:
 - `name` (String) Input column name used in `expression`; it does not have to match the masked column's name.
 - `type` (String) Redshift data type, such as `VARCHAR(256)` or `INTEGER`. A type without length gets the length a column would get, so `VARCHAR` means `VARCHAR(256)`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the masking policy.
+CREATE MASKING POLICY name WITH (...) USING (expression);
+
+-- Update the masking expression.
+ALTER MASKING POLICY name USING (expression);
+
+-- Delete the masking policy.
+DROP MASKING POLICY name;
+```
 
 ## Lifecycle and Ownership
 
@@ -123,28 +130,23 @@ policy. A dropped policy is removed from state, and the next plan creates it aga
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_masking_policy.email
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "warehouse"
-    name           = "mask_email"
+    database = "warehouse"
+    name     = "mask_email"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_masking_policy.email \
-  '{"workgroup_name":"warehouse","database":"warehouse","name":"mask_email"}'
+  '{"database":"warehouse","name":"mask_email"}'
 ```
 
 Import reads the `input_column` blocks and `expression` from the catalog in Redshift's spelling, for example

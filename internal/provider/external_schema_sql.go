@@ -77,16 +77,19 @@ func externalSchemaSourceName(value types.String) string {
 	if value.IsNull() {
 		return externalSchemaDefaultSource
 	}
+
 	return value.ValueString()
 }
 
 // externalSchemaSourceOf returns the form of a known source type.
 func externalSchemaSourceOf(data externalSchemaModel) (externalSchemaSource, error) {
 	name := externalSchemaSourceName(data.SourceType)
+
 	source, ok := externalSchemaSources[name]
 	if !ok {
 		return externalSchemaSource{}, fmt.Errorf("unsupported external schema source_type %q", name)
 	}
+
 	return source, nil
 }
 
@@ -106,19 +109,25 @@ func validateExternalSchema(data externalSchemaModel, unknownIsUnset bool) error
 	if data.SourceType.IsUnknown() {
 		return nil
 	}
+
 	name := externalSchemaSourceName(data.SourceType)
+
 	source, err := externalSchemaSourceOf(data)
 	if err != nil {
 		return err
 	}
+
 	set := func(option string) (configured, known bool) {
 		value := externalSchemaOption(data, option)
 		if value.IsUnknown() {
 			return !unknownIsUnset, unknownIsUnset
 		}
+
 		return !value.IsNull(), true
 	}
+
 	var problems []string
+
 	for _, option := range externalSchemaOptions {
 		configured, known := set(option)
 		switch {
@@ -129,12 +138,15 @@ func validateExternalSchema(data externalSchemaModel, unknownIsUnset bool) error
 			problems = append(problems, fmt.Sprintf("%s does not accept %s", name, option))
 		}
 	}
+
 	if name == "MSK" && !data.Authentication.IsUnknown() {
 		problems = append(problems, externalSchemaAuthenticationProblems(data, set)...)
 	}
+
 	if len(problems) > 0 {
 		return fmt.Errorf("invalid %s external schema: %s", name, strings.Join(problems, "; "))
 	}
+
 	return nil
 }
 
@@ -142,14 +154,17 @@ func validateExternalSchema(data externalSchemaModel, unknownIsUnset bool) error
 // needs exactly one certificate source, which the other modes do not take.
 func externalSchemaAuthenticationProblems(data externalSchemaModel, set func(string) (bool, bool)) []string {
 	var problems []string
+
 	role, roleKnown := set("iam_role_arn")
 	certificate, certificateKnown := set("authentication_arn")
 	secret, secretKnown := set("secret_arn")
+
 	switch strings.ToUpper(data.Authentication.ValueString()) {
 	case "IAM":
 		if roleKnown && !role {
 			problems = append(problems, "AUTHENTICATION IAM requires iam_role_arn")
 		}
+
 		fallthrough
 	case "NONE":
 		if (certificateKnown && certificate) || (secretKnown && secret) {
@@ -160,6 +175,7 @@ func externalSchemaAuthenticationProblems(data externalSchemaModel, set func(str
 			problems = append(problems, "AUTHENTICATION MTLS requires exactly one of authentication_arn and secret_arn")
 		}
 	}
+
 	return problems
 }
 
@@ -174,6 +190,7 @@ func externalSchemaAuthentication(statement sqlclient.Statement, data externalSc
 	if err != nil || authentication == "" {
 		return statement, err
 	}
+
 	return statement.Kw("AUTHENTICATION", authentication).
 		OptLit("AUTHENTICATION_ARN", knownString(data.AuthenticationARN)).OptLit("SECRET_ARN", knownString(data.SecretARN)), nil
 }
@@ -186,31 +203,39 @@ func createExternalSchemaStatement(data externalSchemaModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	if err := validateExternalSchema(data, true); err != nil {
 		return "", err
 	}
+
 	kind := externalSchemaSourceName(data.SourceType)
+
 	statement := sqlclient.Stmt("CREATE EXTERNAL SCHEMA").Ident(data.Name.ValueString()).Kw("FROM", source.keyword).
 		OptLit("DATABASE", knownString(data.GlueDatabase)).OptLit("DATABASE", knownString(data.SourceDatabase)).
 		OptLit("SCHEMA", knownString(data.SourceSchema))
 	if kind != externalSchemaDefaultSource {
 		statement = statement.OptLit("REGION", knownString(data.Region))
 	}
+
 	if kind != "MSK" {
 		statement = statement.OptLit("URI", knownString(data.URI)).OptInt("PORT", knownInt64(data.Port))
 	}
+
 	statement = externalSchemaIAMRole(statement, data)
 	if kind == externalSchemaDefaultSource {
 		statement = statement.OptLit("REGION", knownString(data.Region))
 	}
+
 	if kind == "MSK" {
 		if statement, err = externalSchemaAuthentication(statement, data); err != nil {
 			return "", err
 		}
+
 		statement = statement.OptLit("URI", knownString(data.URI))
 	} else {
 		statement = statement.OptLit("SECRET_ARN", knownString(data.SecretARN))
 	}
+
 	return statement.String(), statement.Err()
 }
 
@@ -239,12 +264,14 @@ func externalSchemaAuthenticationStep(attribute string) alterStep[externalSchema
 				if earlier == attribute {
 					break
 				}
+
 				if before, after := externalSchemaOption(prev, earlier), externalSchemaOption(plan, earlier); !after.IsUnknown() && !before.Equal(after) {
 					return nil
 				}
 			}
 			// alterExternalSchemaStatements checked the keyword, so the error is always nil.
 			statement, _ := externalSchemaAuthentication(externalSchemaAlter(plan), plan)
+
 			return []string{statement.String()}
 		},
 	}
@@ -285,10 +312,13 @@ func alterExternalSchemaStatements(prev, plan externalSchemaModel) ([]string, er
 	if err != nil {
 		return nil, err
 	}
+
 	if _, err := optOneOf(plan.Authentication, externalSchemaAuthentications...); err != nil {
 		return nil, err
 	}
+
 	var steps []alterStep[externalSchemaModel]
+
 	for _, step := range externalSchemaAlterSteps {
 		before, after := step.value(prev), step.value(plan)
 		// Only the certificate sources can be dropped, by switching to the other one or leaving mTLS.
@@ -305,6 +335,7 @@ func alterExternalSchemaStatements(prev, plan externalSchemaModel) ([]string, er
 			steps = append(steps, step)
 		}
 	}
+
 	return alterStatements(prev, plan, steps), nil
 }
 

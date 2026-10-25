@@ -40,6 +40,7 @@ resource "redshift_external_schema" "shared" {
   owner           = %s
 }`, shared, schemaOwner)
 		}
+
 		return fmt.Sprintf(`
 provider "redshift" {
   region         = %q
@@ -82,12 +83,14 @@ data "redshift_schema" "local" {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	admin := sqlclient.Connection{Database: database}
 	// A failed test may leave the database behind; the schema inside it is dropped with it.
 	t.Cleanup(func() {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
 			_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)

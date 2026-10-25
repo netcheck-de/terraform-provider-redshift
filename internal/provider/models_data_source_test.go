@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -29,7 +30,9 @@ func TestModelsList(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			c, models := externalModelFake()
 			models.models[fakeViewKey("public", "customer_churn")] = &fakeExternalModel{schema: "public", name: "customer_churn", owner: "admin"}
+
 			var databases []string
+
 			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				databases = append(databases, target.Database)
 				return c.Query(ctx, target, sql, parameters)
@@ -39,11 +42,16 @@ func TestModelsList(t *testing.T) {
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			assert.Empty(t, c.writes)
 			assert.Equal(t, []string{test.database}, databases, "SHOW MODEL ALL runs in the listed database")
+
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
-			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), test.database, test.filters)
+
+			expected := map[string]string{"database": test.database}
+			maps.Copy(expected, test.filters)
+			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), expected)
 			items := collectionResult(source, observed).Elements()
 			require.Len(t, items, len(test.models))
+
 			for index, model := range test.models {
 				item := items[index].(types.Object).Attributes()
 				assert.Equal(t, types.StringValue(test.database), item["database"])

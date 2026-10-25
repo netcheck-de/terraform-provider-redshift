@@ -52,6 +52,7 @@ func (r *datashareTableResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"table":     schema.StringAttribute{Required: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()}, MarkdownDescription: "Existing table or view to include."},
 		},
 	}
+	foldNames(&resp.Schema, "database", "datashare", "schema", "table")
 }
 
 // read checks explicit table membership under the configured warehouse binding.
@@ -59,10 +60,13 @@ func (r *datashareTableResource) read(ctx context.Context, data datashareTableMo
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readDatashareTableQuery(data))
+
 	return len(rows) > 0, err
 }
 
@@ -70,19 +74,24 @@ func (r *datashareTableResource) read(ctx context.Context, data datashareTableMo
 func (r *datashareTableResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data datashareTableModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statement, err := createDatashareTableStatement(data)
 	if err == nil {
 		err = r.exec(ctx, data.Database.ValueString(), statement)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Add table to datashare", err.Error())
 		return
 	}
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"datashare": data.Datashare.ValueString(), "schema": data.Schema.ValueString(), "table": data.Table.ValueString()})
+
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "datashare": data.Datashare.ValueString(), "schema": data.Schema.ValueString(), "table": data.Table.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	found, err := r.read(ctx, data)
 	if err != nil {
 		resp.Diagnostics.AddError("Verify datashare table", err.Error())
@@ -95,9 +104,11 @@ func (r *datashareTableResource) Create(ctx context.Context, req resource.Create
 func (r *datashareTableResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data datashareTableModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() || !req.Config.Raw.IsFullyKnown() {
 		return
 	}
+
 	if _, err := createDatashareTableStatement(data); err != nil {
 		resp.Diagnostics.AddError("Invalid datashare table", err.Error())
 	}
@@ -107,9 +118,11 @@ func (r *datashareTableResource) ValidateConfig(ctx context.Context, req resourc
 func (r *datashareTableResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data datashareTableModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, data)
 	switch {
 	case err != nil:
@@ -117,6 +130,7 @@ func (r *datashareTableResource) Read(ctx context.Context, req resource.ReadRequ
 	case !found:
 		resp.State.RemoveResource(ctx)
 	default:
+		data.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 }
@@ -125,9 +139,11 @@ func (r *datashareTableResource) Read(ctx context.Context, req resource.ReadRequ
 func (r *datashareTableResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data datashareTableModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, data)
 	switch {
 	case err != nil:
@@ -143,15 +159,18 @@ func (r *datashareTableResource) Update(ctx context.Context, req resource.Update
 func (r *datashareTableResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data datashareTableModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, data)
 	if err == nil && found {
 		var statement string
 		if statement, err = dropDatashareTableStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
 		}
+
 		if err == nil {
 			found, err = r.read(ctx, data)
 			if err == nil && found {
@@ -159,6 +178,7 @@ func (r *datashareTableResource) Delete(ctx context.Context, req resource.Delete
 			}
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Remove datashare table", err.Error())
 	}

@@ -56,6 +56,7 @@ func TestSchemaOptionsMustConverge(t *testing.T) {
 				case strings.HasPrefix(sql, "CREATE SCHEMA"):
 					sql = `CREATE SCHEMA "serving"`
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			})
 			r := &schemaResource{testResourceClient(client)}
@@ -77,6 +78,7 @@ func TestSchemaOptionsDetectDrift(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found)
 	assert.Equal(t, int64(100), data.Quota.ValueInt64())
+
 	desired := schemaOptionsModel("admin", 2048)
 	_, diagnostics := applyOperation(t, r, "update", data, desired, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
@@ -98,6 +100,7 @@ func TestSchemaQuotaValue(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, test.expected, quota)
 	}
+
 	for _, rows := range [][]sqlclient.Row{{{"quota": "lots"}}, {{"quota": "1"}, {"quota": "2"}}} {
 		_, err := schemaQuotaValue(rows)
 		require.Error(t, err)
@@ -115,6 +118,7 @@ func TestSchemaQuotaReadFailures(t *testing.T) {
 				if strings.HasPrefix(sql, "SELECT quota") {
 					return quota()
 				}
+
 				return []sqlclient.Row{{"schema_name": "serving", "owner": "admin"}}, nil
 			}))}
 			_, err := r.read(context.Background(), &schemaModel{Database: types.StringValue("admin"), Name: types.StringValue("serving")})
@@ -141,9 +145,11 @@ func TestSchemaQuotaHiddenFromRegularUser(t *testing.T) {
 		c := fullCatalog()
 		f := fakeState[*databasesFamily](c, "databases")
 		f.sessionRegular, f.schemaOwner, f.schemaQuota = true, owner, quota
+
 		return c
 	}
 	r := &schemaResource{testResourceClient(regular("etl", "2048"))}
+
 	for name, prior := range map[string]types.Int64{"known": types.Int64Value(100), "unknown": types.Int64Unknown(), "null": types.Int64Null()} {
 		t.Run(name, func(t *testing.T) {
 			data := schemaModel{Database: types.StringValue("admin"), Name: types.StringValue("serving"), Quota: prior}
@@ -151,6 +157,7 @@ func TestSchemaQuotaHiddenFromRegularUser(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, found)
 			assert.Equal(t, "etl", data.Owner.ValueString())
+
 			if prior.IsUnknown() {
 				assert.True(t, data.Quota.IsNull(), "an unreadable quota is not reported as UNLIMITED")
 			} else {
@@ -169,6 +176,7 @@ func TestSchemaQuotaHiddenFromRegularUser(t *testing.T) {
 	c.schema = false
 	state, diagnostics := applyOperation(t, &schemaResource{testResourceClient(c)}, "create", nil, schemaOptionsModel("etl", 2048), nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var created schemaModel
 	require.False(t, state.Get(context.Background(), &created).HasError())
 	assert.Equal(t, int64(2048), created.Quota.ValueInt64())

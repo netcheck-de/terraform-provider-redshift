@@ -69,7 +69,9 @@ func (c *recordingClient) Query(ctx context.Context, connection sqlclient.Connec
 	rows, err := c.client.Query(ctx, connection, sql, parameters)
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	c.entries = append(c.entries, sqlEntry{database: connection.Database, sql: sql, params: maps.Clone(parameters), err: err})
+
 	return rows, err
 }
 
@@ -77,8 +79,10 @@ func (c *recordingClient) Query(ctx context.Context, connection sqlclient.Connec
 func (c *recordingClient) take() []sqlEntry {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	entries := c.entries
 	c.entries = nil
+
 	return entries
 }
 
@@ -87,8 +91,11 @@ var errUnsupportedRenderer = errors.New("unsupported golden renderer type")
 
 // goldenStatements normalizes the supported renderer shapes; an empty single statement means none.
 func goldenStatements(render any) ([]string, error) {
-	var statement string
-	var err error
+	var (
+		statement string
+		err       error
+	)
+
 	switch f := render.(type) {
 	case func() string:
 		statement = f()
@@ -101,13 +108,16 @@ func goldenStatements(render any) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		return statements, nil
 	default:
 		return nil, fmt.Errorf("%w %T", errUnsupportedRenderer, render)
 	}
+
 	if err != nil || statement == "" {
 		return nil, err
 	}
+
 	return []string{statement}, nil
 }
 
@@ -124,10 +134,12 @@ func formatSQL(statements []string, renderErr error) string {
 	case len(statements) == 0:
 		return "-- no statements\n"
 	}
+
 	blocks := make([]string, 0, len(statements))
 	for _, statement := range statements {
 		blocks = append(blocks, statement+";")
 	}
+
 	return strings.Join(blocks, "\n\n") + "\n"
 }
 
@@ -136,10 +148,13 @@ func formatParams(parameters map[string]string) string {
 	if parameters == nil {
 		parameters = map[string]string{}
 	}
+
 	var buffer bytes.Buffer
+
 	encoder := json.NewEncoder(&buffer)
 	encoder.SetEscapeHTML(false)
 	_ = encoder.Encode(parameters) // String maps are always JSON-serializable.
+
 	return strings.TrimSuffix(buffer.String(), "\n")
 }
 
@@ -148,14 +163,17 @@ func formatTranscript(entries []sqlEntry) string {
 	if len(entries) == 0 {
 		return "-- no statements\n"
 	}
+
 	blocks := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		block := goldenComment("database", entry.database) + "\n" + entry.sql + ";\n" + goldenComment("params", formatParams(entry.params))
 		if entry.err != nil {
 			block += "\n" + goldenComment("error", entry.err.Error())
 		}
+
 		blocks = append(blocks, block)
 	}
+
 	return strings.Join(blocks, "\n\n") + "\n"
 }
 
@@ -164,6 +182,7 @@ func checkStatement(sql string, parameters map[string]string) error {
 	if sql == "" || strings.TrimSpace(sql) != sql || strings.HasSuffix(sql, ";") {
 		return fmt.Errorf("statement %q must be nonempty, trimmed, and unterminated", sql)
 	}
+
 	verb, _, _ := strings.Cut(sql, " ")
 	switch {
 	case slices.Contains(ddlVerbs, verb):
@@ -175,6 +194,7 @@ func checkStatement(sql string, parameters map[string]string) error {
 	default:
 		return fmt.Errorf("statement %q must start with one of %v or %v", sql, ddlVerbs, readVerbs)
 	}
+
 	return nil
 }
 
@@ -183,6 +203,7 @@ func checkGoldenName(kind, name string) error {
 	if !goldenName.MatchString(name) {
 		return fmt.Errorf("golden %s %q must match %s", kind, name, goldenName)
 	}
+
 	return nil
 }
 
@@ -193,6 +214,7 @@ func checkGoldenGroup(group string) error {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -204,39 +226,48 @@ func goldenPath(group, name string) string {
 // updateCommand reproduces the exact go test invocation that rewrites the current test's golden files.
 func updateCommand(t *testing.T) string {
 	t.Helper()
+
 	parts := strings.Split(t.Name(), "/")
 	for index, part := range parts {
 		parts[index] = "^" + regexp.QuoteMeta(part) + "$"
 	}
+
 	return "go test ./internal/provider -run '" + strings.Join(parts, "/") + "' -update"
 }
 
 // updating reports whether golden files should be rewritten; CI must compare against reviewed files only.
 func updating(t *testing.T) bool {
 	t.Helper()
+
 	if *updateGolden && os.Getenv("CI") != "" {
 		t.Fatal("refusing -update while CI is set; regenerate golden files locally and commit them")
 	}
+
 	return *updateGolden
 }
 
 // checkGolden compares or rewrites one golden file.
 func checkGolden(t *testing.T, group, name, content string) {
 	t.Helper()
+
 	path := goldenPath(group, name)
 	if updating(t) {
 		if existing, err := os.ReadFile(path); err == nil && string(existing) == content {
 			return
 		}
+
 		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
 		require.NoError(t, os.WriteFile(path, []byte(content), 0o644))
+
 		return
 	}
+
 	expected, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		assert.Failf(t, "missing golden file", "%s does not exist; record it with: %s", path, updateCommand(t))
 		return
 	}
+
 	require.NoError(t, err)
 	assert.Equal(t, string(expected), content, "%s differs; if the change is intended, run: %s", path, updateCommand(t))
 }
@@ -244,16 +275,20 @@ func checkGolden(t *testing.T, group, name, content string) {
 // checkStale reports golden files in a group that no case produced, deleting them on -update.
 func checkStale(t *testing.T, group string, names map[string]bool) {
 	t.Helper()
+
 	files, err := filepath.Glob(filepath.Join("testdata", "sql", filepath.FromSlash(group), "*.sql"))
 	require.NoError(t, err)
+
 	for _, file := range files {
 		if names[strings.TrimSuffix(filepath.Base(file), ".sql")] {
 			continue
 		}
+
 		if updating(t) {
 			require.NoError(t, os.Remove(file))
 			continue
 		}
+
 		assert.Failf(t, "stale golden file", "%s has no case in group %q; remove it with: %s", file, group, updateCommand(t))
 	}
 }
@@ -265,18 +300,23 @@ func checkSQL(t *testing.T, group string, cases []sqlCase) {
 	require.NoError(t, checkGoldenGroup(group))
 	_, _, err := claimGoldenGroup(t, group, false)
 	require.NoError(t, err)
+
 	names := map[string]bool{}
+
 	for _, test := range cases {
 		require.NoError(t, checkGoldenName("case", test.name))
 		require.False(t, names[test.name], "duplicate golden case %q in group %q", test.name, group)
 		names[test.name] = true
 		statements, renderErr := goldenStatements(test.render)
 		require.NotErrorIs(t, renderErr, errUnsupportedRenderer, "case %q", test.name)
+
 		for _, statement := range statements {
 			require.NoError(t, checkStatement(statement, nil), "case %q", test.name)
 		}
+
 		checkGolden(t, group, test.name, formatSQL(statements, renderErr))
 	}
+
 	if !t.Failed() {
 		checkStale(t, group, names)
 	}
@@ -297,6 +337,7 @@ type goldenGroup struct {
 // that run one after the other cannot share a group either.
 var goldenGroups = struct {
 	sync.Mutex
+
 	groups map[string]*goldenGroup
 }{groups: map[string]*goldenGroup{}}
 
@@ -306,21 +347,27 @@ func claimGoldenGroup(t *testing.T, group string, transcript bool) (*goldenGroup
 	t.Helper()
 	goldenGroups.Lock()
 	defer goldenGroups.Unlock()
+
 	owner, ok := goldenGroups.groups[group]
 	if ok && owner.test != t && owner.test.Name() == t.Name() {
 		ok = false
 	}
+
 	if !ok {
 		owner = &goldenGroup{test: t, transcript: transcript, names: map[string]bool{}}
 		goldenGroups.groups[group] = owner
+
 		return owner, true, nil
 	}
+
 	if owner.test != t {
 		return nil, false, fmt.Errorf("golden group %q is already written by %s; give each test its own group", group, owner.test.Name())
 	}
+
 	if !transcript || !owner.transcript {
 		return nil, false, fmt.Errorf("golden group %q needs one checkSQL call, or only checkTranscript calls, per test", group)
 	}
+
 	return owner, false, nil
 }
 
@@ -332,6 +379,7 @@ func checkTranscript(t *testing.T, group, name string, entries []sqlEntry) {
 	require.NoError(t, checkGoldenName("case", name))
 	recorded, claimed, err := claimGoldenGroup(t, group, true)
 	require.NoError(t, err)
+
 	if claimed {
 		t.Cleanup(func() {
 			// A failed or partial run has not recorded every case, so missing names are not evidence of staleness.
@@ -343,20 +391,24 @@ func checkTranscript(t *testing.T, group, name string, entries []sqlEntry) {
 			}
 		})
 	}
+
 	goldenGroups.Lock()
 	duplicate := recorded.names[name]
 	recorded.names[name] = true
 	goldenGroups.Unlock()
 	require.False(t, duplicate, "duplicate transcript %q in group %q", name, group)
+
 	for _, entry := range entries {
 		require.NoError(t, checkStatement(entry.sql, entry.params), "transcript %s/%s", group, name)
 	}
+
 	checkGolden(t, group, name, formatTranscript(entries))
 }
 
 // TestGoldenGroupOwnership keeps each golden group with one writer, so -update never deletes another test's files.
 func TestGoldenGroupOwnership(t *testing.T) {
 	const plain, transcript = "zz_ownership_probe", "zz_ownership_transcript"
+
 	t.Cleanup(func() {
 		goldenGroups.Lock()
 		delete(goldenGroups.groups, plain)
@@ -410,6 +462,7 @@ func TestGoldenRenderForms(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			statements, err := goldenStatements(test.render)
 			assert.Equal(t, test.statements, statements)
+
 			if test.err == nil {
 				assert.NoError(t, err)
 			} else {
@@ -443,16 +496,21 @@ func TestGoldenValidation(t *testing.T) {
 	} {
 		require.NoError(t, checkStatement(sql, nil), sql)
 	}
+
 	require.NoError(t, checkStatement("SELECT 1 WHERE a = :a", map[string]string{"a": "b"}))
+
 	for _, sql := range []string{"", " DROP ROLE x", "DROP ROLE x;", "drop role x", "TRUNCATE x", "WITH x AS (SELECT 1) SELECT 1"} {
 		require.Error(t, checkStatement(sql, nil), sql)
 	}
+
 	require.Error(t, checkStatement("DROP ROLE :name", map[string]string{"name": "x"}))
 	require.Error(t, checkStatement("ATTACH RLS POLICY :p ON t TO PUBLIC", map[string]string{"p": "x"}))
 	require.NoError(t, checkGoldenGroup("lifecycle/role_grant"))
+
 	for _, group := range []string{"", "Lifecycle", "lifecycle/", "life-cycle", "../x"} {
 		require.Error(t, checkGoldenGroup(group), group)
 	}
+
 	require.Error(t, checkGoldenName("case", "create user"))
 	assert.Equal(t, filepath.Join("testdata", "sql", "lifecycle", "role", "create.sql"), goldenPath("lifecycle/role", "create"))
 	assert.Equal(t, "go test ./internal/provider -run '^TestGoldenValidation$' -update", updateCommand(t))

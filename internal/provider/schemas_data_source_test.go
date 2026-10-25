@@ -34,13 +34,14 @@ func TestSchemasDataSource(t *testing.T) {
 	assert.True(t, items[0]["owner"].IsNull(), "a shared schema's producer owner is not resolved")
 
 	var target sqlclient.Connection
+
 	_, identity, diagnostics := discoveryRead(t, newSchemasDataSource, map[string]string{"database": "analytics"}, queryFunc(func(_ context.Context, connection sqlclient.Connection, _ string, _ map[string]string) ([]sqlclient.Row, error) {
 		target = connection
 		return nil, nil
 	}))
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.Equal(t, "admin", target.Database, "SVV_ALL_SCHEMAS is read from the administration database")
-	assert.Equal(t, map[string]string{"workgroup_name": "warehouse", "database": "analytics"}, identity)
+	assert.Equal(t, map[string]string{"database": "analytics"}, identity)
 
 	discoveryFailures(t, newSchemasDataSource, nil, sqlclient.Row{"schema_name": ""})
 }

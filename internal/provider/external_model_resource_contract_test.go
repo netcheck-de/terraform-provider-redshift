@@ -17,6 +17,7 @@ import (
 // exemption active and incorrectly accept a later SUPER change without replacing the model.
 func TestContractExternalModelImportAdoptsDefaultResponse(t *testing.T) {
 	t.Parallel()
+
 	c, models := externalModelFake()
 	configuration := func(requestType, modelID string) string {
 		return fmt.Sprintf(`
@@ -42,7 +43,7 @@ resource "redshift_external_model" "summarizer" {
 		Steps: []testresource.TestStep{
 			{
 				Config: configuration("UNIFIED", fakeModelID), ResourceName: address, ImportState: true, ImportStatePersist: true,
-				ImportStateId: fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName),
+				ImportStateId: fmt.Sprintf(`{"database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName),
 			},
 			{
 				Config:           configuration("UNIFIED", fakeModelID),
@@ -77,8 +78,10 @@ resource "redshift_external_model" "summarizer" {
 // merely to adopt these values, but their next change must still replace it.
 func TestContractExternalModelImportAdoptsUnreadSettings(t *testing.T) {
 	t.Parallel()
+
 	c, models := externalModelFake()
 	delete(models.get(fakeModelName).settings, "IAM Role")
+
 	configuration := func(role string) string {
 		return fmt.Sprintf(`
 provider "redshift" {
@@ -104,7 +107,7 @@ resource "redshift_external_model" "summarizer" {
 		Steps: []testresource.TestStep{
 			{
 				Config: configuration("DEFAULT"), ResourceName: address, ImportState: true, ImportStatePersist: true,
-				ImportStateId: fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName),
+				ImportStateId: fmt.Sprintf(`{"database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName),
 			},
 			{
 				Config:           configuration("DEFAULT"),
@@ -129,6 +132,7 @@ resource "redshift_external_model" "summarizer" {
 // A future catalog that reports RESPONSE_TYPE must end the exemption on observation, without requiring an update.
 func TestContractExternalModelImportObservedResponseReplaces(t *testing.T) {
 	t.Parallel()
+
 	c, models := externalModelFake()
 	models.get(fakeModelName).settings["Response Type"] = "SUPER"
 	configuration := fmt.Sprintf(`
@@ -151,11 +155,15 @@ resource "redshift_external_model" "summarizer" {
 	testresource.UnitTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c})},
 		Steps: []testresource.TestStep{
-			{Config: configuration, ResourceName: address, ImportState: true, ImportStatePersist: true,
-				ImportStateId: fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName)},
+			{
+				Config: configuration, ResourceName: address, ImportState: true, ImportStatePersist: true,
+				ImportStateId: fmt.Sprintf(`{"database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName),
+			},
 			{Config: configuration, ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionNoop)}}},
-			{Config: strings.ReplaceAll(configuration, `response_type = "SUPER"`, `response_type = "VARCHAR"`),
-				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionDestroyBeforeCreate)}}},
+			{
+				Config:           strings.ReplaceAll(configuration, `response_type = "SUPER"`, `response_type = "VARCHAR"`),
+				ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionDestroyBeforeCreate)}},
+			},
 		},
 	})
 }

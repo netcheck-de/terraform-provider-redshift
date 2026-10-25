@@ -16,14 +16,18 @@ var _ = registerParity(parityCase{source: newGrantsDataSource, collection: true,
 // TestGrantsListing reads SHOW GRANTS in the selected database and reports invalid selections as errors.
 func TestGrantsListing(t *testing.T) {
 	var database, statement string
+
 	client := queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		database, statement = connection.Database, sql
+
 		assert.Empty(t, parameters, "SHOW GRANTS takes no bindings")
+
 		return []sqlclient.Row{
 			{"schema_name": "serving", "object_name": "events", "object_type": "TABLE", "privilege_type": "SELECT", "identity_name": "readers", "identity_type": "group", "admin_option": "f", "privilege_scope": "TABLE", "database_name": "warehouse", "grantor_name": "admin"},
 			{"schema_name": "serving", "object_name": "events", "object_type": "TABLE", "privilege_type": "SELECT", "identity_name": "analyst", "identity_type": "user", "admin_option": "t", "privilege_scope": "TABLE", "database_name": "warehouse", "grantor_name": "admin"},
 		}, nil
 	})
+
 	for _, test := range []struct {
 		name, database, statement string
 		filters                   map[string]string
@@ -39,11 +43,13 @@ func TestGrantsListing(t *testing.T) {
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			assert.Equal(t, test.database, database)
 			assert.Equal(t, test.statement, statement)
+
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
 			assert.Len(t, collectionResult(source, observed).Elements(), test.items)
 		})
 	}
+
 	for name, filters := range map[string]map[string]string{
 		"nothing selected": nil,
 		"group identity":   {"grantee": "readers", "grantee_type": "GROUP"},
@@ -56,6 +62,7 @@ func TestGrantsListing(t *testing.T) {
 			assert.Empty(t, statement, "invalid selections never reach SQL")
 		})
 	}
+
 	source := newGrantsDataSource()
 	_, diagnostics := readSource(t, source, collectionConfig(t, source, map[string]string{"object_type": "DATABASE"}), queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return nil, errors.New("catalog unavailable")
