@@ -29,7 +29,7 @@ type externalFunctionResource struct {
 
 // externalFunctionModel is the Terraform state of one external function overload.
 type externalFunctionModel struct {
-	// ID records the warehouse, database, schema, name, and canonical signature.
+	// ID records the database, schema, name, and canonical signature.
 	ID types.String `tfsdk:"id"`
 	// Database contains the function.
 	Database types.String `tfsdk:"database"`
@@ -258,7 +258,7 @@ func (r *externalFunctionResource) identityOf(data externalFunctionModel) (types
 		return types.StringNull(), err
 	}
 
-	return r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString(), "arguments": string(signature)}), nil
+	return identity(map[string]string{"database": data.Database.ValueString(), "schema": data.Schema.ValueString(), "name": data.Name.ValueString(), "arguments": string(signature)}), nil
 }
 
 // read refreshes the observable catalog state: the result type, volatility, and owner. The Lambda options are
@@ -400,6 +400,7 @@ func (r *externalFunctionResource) Read(ctx context.Context, req resource.ReadRe
 		return
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

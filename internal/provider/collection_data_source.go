@@ -21,6 +21,8 @@ type collectionSpec struct {
 	// filters are optional inputs narrowing the listing; a filter named database also selects the database
 	// recorded in the identity.
 	filters map[string]schema.Attribute
+	// databaseField is the filter that defaults to the provider database; empty denotes no database default.
+	databaseField string
 	// element defines the computed attributes of each listed object.
 	element map[string]schema.Attribute
 	// list returns the matching objects, keyed by element attribute, without executing mutations. Filters
@@ -86,7 +88,7 @@ func (d *collectionDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 		attributes = map[string]schema.Attribute{}
 	}
 
-	attributes["id"] = schema.StringAttribute{Computed: true, MarkdownDescription: "JSON identity of this listing: the warehouse binding, the database, and the configured filters."}
+	attributes["id"] = schema.StringAttribute{Computed: true, MarkdownDescription: "JSON identity of this listing within the configured warehouse: its database scope and configured filters."}
 	attributes[d.spec.name] = schema.ListNestedAttribute{
 		Computed: true, MarkdownDescription: "Matching objects; empty when nothing matches.",
 		NestedObject: schema.NestedAttributeObject{Attributes: d.spec.element},
@@ -94,7 +96,7 @@ func (d *collectionDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 	resp.Schema = schema.Schema{MarkdownDescription: d.spec.description, Attributes: attributes}
 }
 
-// collectionID binds the listing to its warehouse, database, and filters, so two differently filtered
+// collectionID includes the listing's database scope and filters, so two differently filtered
 // listings never share an identity.
 func (d *collectionDataSource) collectionID(data types.Object) types.String {
 	fields := map[string]string{}
@@ -113,12 +115,11 @@ func (d *collectionDataSource) collectionID(data types.Object) types.String {
 		}
 	}
 
-	database := d.database.ValueString()
-	if selected, ok := fields["database"]; ok {
-		database = selected
+	if field := d.spec.databaseField; field != "" && fields[field] == "" {
+		fields[field] = d.database.ValueString()
 	}
 
-	return d.identity(database, fields)
+	return identity(fields)
 }
 
 // Read lists the matching objects; no match yields an empty list.

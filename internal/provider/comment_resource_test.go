@@ -182,7 +182,7 @@ func TestCommentImport(t *testing.T) {
 	r.Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
 	assert.Equal(t, "redshift_comment", metadata.TypeName)
 
-	for _, id := range []string{"invalid", `{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","object_type":"COLUMN","object_name":"table","schema_name":"serving","column_name":"column"}`} {
+	for _, id := range []string{"invalid", `{"database_name":"analytics","object_type":"COLUMN","object_name":"table","schema_name":"serving","column_name":"column"}`} {
 		resp := resource.ImportStateResponse{State: testState(t, r, schemaComment())}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
 		assert.Equal(t, id == "invalid", resp.Diagnostics.HasError())

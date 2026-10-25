@@ -19,7 +19,7 @@ func TestDatashareLookup(t *testing.T) {
 	var data datashareData
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.True(t, data.PublicAccessible.ValueBool())
-	assertLookupIdentity(t, data.ID, "admin", map[string]string{"name": "producer"})
+	assertLookupIdentity(t, data.ID, map[string]string{"database": "admin", "name": "producer"})
 }
 
 // TestDatashareLookupObservesCatalogMetadata exposes the same owner and producer attributes as the resource.

@@ -89,14 +89,15 @@ func TestTemplateRenameRecordedWhenLaterStepFails(t *testing.T) {
 
 		return c.Query(ctx, target, sql, parameters)
 	}))
-	prior.ID = r.identity("admin", map[string]string{"schema": prior.Schema.ValueString(), "name": prior.Name.ValueString()})
+
+	prior.ID = identity(map[string]string{"database": "admin", "schema": prior.Schema.ValueString(), "name": prior.Name.ValueString()})
 	state, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
 	require.True(t, diagnostics.HasError())
 
 	var recorded templateModel
 	require.False(t, state.Get(context.Background(), &recorded).HasError())
 	assert.Equal(t, "csv_import", recorded.Name.ValueString())
-	assert.Equal(t, r.identity("admin", map[string]string{"schema": prior.Schema.ValueString(), "name": "csv_import"}), recorded.ID)
+	assert.Equal(t, identity(map[string]string{"database": "admin", "schema": prior.Schema.ValueString(), "name": "csv_import"}), recorded.ID)
 	assert.Equal(t, "admin", recorded.Owner.ValueString(), "the failed owner change is not recorded")
 	refreshed, diagnostics := applyOperation(t, r, "read", recorded, nil, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
@@ -241,9 +242,9 @@ func TestTemplateCreateRejectsInvalidBeforeState(t *testing.T) {
 func TestTemplateImport(t *testing.T) {
 	r := newTemplateResource()
 	for id, valid := range map[string]bool{
-		`{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"csv_load"}`: true,
-		`{"workgroup_name":"warehouse","database":"admin","name":"csv_load"}`:                    false,
-		`csv_load`: false,
+		`{"database":"admin","schema":"serving","name":"csv_load"}`: true,
+		`{"database":"admin","name":"csv_load"}`:                    false,
+		`csv_load`:                                                  false,
 	} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)

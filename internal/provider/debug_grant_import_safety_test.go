@@ -66,7 +66,7 @@ func TestDebugGrantImportUnreliableRemoteReadPreservesState(t *testing.T) {
 				}
 
 				data := debugGrantFixture("sales@catalog", principal, kind)
-				data.ID = r.identity(data.Database.ValueString(), data.fields())
+				data.ID = identity(data.fields())
 				imported := resource.ImportStateResponse{State: emptyState(t, r)}
 				r.ImportState(ctx, resource.ImportStateRequest{ID: data.ID.ValueString()}, &imported)
 				require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)

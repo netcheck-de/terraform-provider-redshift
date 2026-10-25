@@ -29,8 +29,7 @@ type catalogSpec struct {
 	lookup func(context.Context, *resourceClient, *types.Object) (bool, error)
 	// identityFields lists the paired resource's JSON identity keys; permission resources supply their own.
 	identityFields []string
-	// identityDatabase names the attribute holding the database that owns the identity; empty selects the
-	// provider's administration database.
+	// identityDatabase names the containing database attribute; empty denotes a warehouse-scoped tuple.
 	identityDatabase string
 	// adjust rewrites the identity fields where the paired resource omits or derives some of them.
 	adjust func(map[string]string)
@@ -346,7 +345,7 @@ func describedAttribute(attribute schema.Attribute, rest []string, name, descrip
 	}
 }
 
-// observedID matches the paired resource's identity keys and ownership database, not its SQL query route.
+// observedID matches the paired resource's object scope, not its SQL query route.
 func (d *catalogDataSource) observedID(data types.Object) types.String {
 	fields := map[string]string{}
 
@@ -360,12 +359,11 @@ func (d *catalogDataSource) observedID(data types.Object) types.String {
 		d.spec.adjust(fields)
 	}
 
-	database := d.database.ValueString()
 	if d.spec.identityDatabase != "" {
-		database = objectString(data, d.spec.identityDatabase)
+		fields["database"] = objectString(data, d.spec.identityDatabase)
 	}
 
-	return d.identity(database, fields)
+	return identity(fields)
 }
 
 // identityText renders one identity field. A Bool flag is recorded as "true" only when set and omitted otherwise,

@@ -36,7 +36,7 @@ func readTableLookup(t *testing.T, name string, change func(*tableFakeTable)) (t
 func TestTableLookup(t *testing.T) {
 	data, diagnostics := readTableLookup(t, "events", nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
-	assertLookupIdentity(t, data.ID, "admin", map[string]string{"schema": "serving", "name": "events"})
+	assertLookupIdentity(t, data.ID, map[string]string{"database": "admin", "schema": "serving", "name": "events"})
 	assert.Equal(t, "admin", data.Owner.ValueString())
 	assert.Equal(t, tableTestDistribution("KEY", "id"), data.Distribution)
 	assert.Equal(t, tableTestSortKey("COMPOUND", "id"), data.SortKey)

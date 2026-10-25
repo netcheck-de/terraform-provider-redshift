@@ -23,7 +23,7 @@ type roleResource struct {
 
 // roleModel is the Terraform state for one SQL role.
 type roleModel struct {
-	// ID records the administration binding and role name.
+	// ID records the role name within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Name includes an identity-provider namespace prefix when applicable.
 	Name types.String `tfsdk:"name"`
@@ -146,7 +146,7 @@ func (r *roleResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	planned := data
-	data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"name": data.Name.ValueString()})
 	// The role exists now, so its identity is saved before anything else can fail; unknown values cannot be saved.
 	data.Owner, data.ExternalID, data.RoleID = roleKnown(data.Owner), roleKnown(data.ExternalID), types.Int64Null()
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -190,6 +190,7 @@ func (r *roleResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, false)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

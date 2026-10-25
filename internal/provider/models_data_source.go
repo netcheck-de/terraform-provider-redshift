@@ -14,8 +14,9 @@ var _ = registerDataSource(newModelsDataSource)
 // newModelsDataSource lists the machine learning models of one database, trained and external alike.
 func newModelsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
-		name:        "models",
-		description: "Lists the machine learning models of one database that the provider's SQL identity can use, trained and external models alike, from `SHOW MODEL ALL`.",
+		name:          "models",
+		databaseField: "database",
+		description:   "Lists the machine learning models of one database that the provider's SQL identity can use, trained and external models alike, from `SHOW MODEL ALL`.",
 		filters: map[string]schema.Attribute{
 			"database": discoveryDatabaseFilter("models"),
 			"schema":   discoveryFilter("Only models in this schema."),

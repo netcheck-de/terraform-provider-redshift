@@ -36,7 +36,9 @@ through the Data API or a direct TLS connection.
   is gone, and returns errors only for real failures.
 - Ordinary synchronous DROP operations need no post-delete refresh. Use only the identity and parent/existence checks
   needed to delete safely; retain convergence checks for permission reconciliation and asynchronous operations.
-- Resource IDs are JSON objects built by `resourceClient.identity` and checked by `bound`; imports use the same JSON.
+- Resource IDs are provider-relative JSON objects encoded by `identity(fields)`; include only object scope, not
+  connection selectors or administration-only databases. `bound` validates legacy bindings before normalization;
+  imports accept only provider-relative IDs.
 - Nested configuration uses blocks with singular names; a required block validates with `listvalidator.IsRequired()`,
   `setvalidator.IsRequired()`, or `objectvalidator.IsRequired()` (plus `SizeAtLeast(1)` for lists and sets) and its
   description starts with "At least one … is required". Lists of plain values stay plural attributes. Data sources

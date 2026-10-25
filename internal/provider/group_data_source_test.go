@@ -27,7 +27,7 @@ func TestGroupDataSourceLooksUpExistingGroup(t *testing.T) {
 			assert.Equal(t, "readers", data.Name.ValueString())
 			assert.Equal(t, int64(101), data.GroupID.ValueInt64())
 			assert.Equal(t, test.members, data.Members)
-			assertLookupIdentity(t, data.ID, "admin", map[string]string{"name": "readers"})
+			assertLookupIdentity(t, data.ID, map[string]string{"name": "readers"})
 		})
 	}
 }

@@ -71,7 +71,7 @@ func (d *databaseDataSource) Read(ctx context.Context, req datasource.ReadReques
 	}
 
 	data = observed
-	identity := map[string]string{"name": data.Name.ValueString()}
+	fields := map[string]string{"name": data.Name.ValueString()}
 	// SHOW DATABASES does not document the type of a zero-ETL destination, which may report as local, so every
 	// database but a shared one is looked up in SVV_INTEGRATION. This supplementary metadata must not prevent a
 	// non-superuser from looking up an ordinary local database; Redshift denies access to the view rather than
@@ -92,7 +92,7 @@ func (d *databaseDataSource) Read(ctx context.Context, req datasource.ReadReques
 
 		if found {
 			data.Integration = &integration
-			identity["integration_id"] = integration.IntegrationID.ValueString()
+			fields["integration_id"] = integration.IntegrationID.ValueString()
 		}
 	}
 	// A destination takes no collation, so the collation is read after the integration, which skips it.
@@ -119,9 +119,9 @@ func (d *databaseDataSource) Read(ctx context.Context, req datasource.ReadReques
 		}
 
 		data.DatashareARN = types.StringValue(value)
-		identity["datashare_arn"] = value
+		fields["datashare_arn"] = value
 	}
 
-	data.ID = d.identity(d.database.ValueString(), identity)
+	data.ID = identity(fields)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

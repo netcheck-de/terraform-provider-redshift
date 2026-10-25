@@ -44,7 +44,7 @@ output "materialized_views" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `tables` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--tables))
 
 <a id="nestedatt--tables"></a>
@@ -61,7 +61,7 @@ Read-Only:
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `database` defaults to the provider's `database`; both reads run in the provider's database. `id` combines the
-warehouse binding, the listed database, and the configured filters. Items are ordered by schema and name; no match
+listed database and configured filters within the warehouse. Items are ordered by schema and name; no match
 returns an empty `tables` list.
 
 `SVV_ALL_TABLES` reports materialized views as views. The listing reclassifies every view that `SVV_MV_INFO` knows as

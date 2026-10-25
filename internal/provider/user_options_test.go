@@ -23,8 +23,8 @@ func userObservedOptions(data *userModel) {
 }
 
 // userCreated returns a planned user after a create, with its identity and the options the fake reports.
-func userCreated(r *userResource, data userModel) userModel {
-	data.ID = r.identity("admin", map[string]string{"name": data.Name.ValueString()})
+func userCreated(data userModel) userModel {
+	data.ID = identity(map[string]string{"name": data.Name.ValueString()})
 	return data
 }
 
@@ -122,7 +122,7 @@ func TestUserOptionsLifecycle(t *testing.T) {
 func TestUserDisablesPasswordAfterRevokingSuperuser(t *testing.T) {
 	c := &catalog{user: true, superuser: true}
 	r := &userResource{testResourceClient(c)}
-	admin := userCreated(r, userWith(grafanaUser(), func(data *userModel) { data.Superuser = types.BoolValue(true) }))
+	admin := userCreated(userWith(grafanaUser(), func(data *userModel) { data.Superuser = types.BoolValue(true) }))
 	disabled := userWith(admin, func(data *userModel) {
 		data.Superuser, data.PasswordDisabled = types.BoolValue(false), types.BoolValue(true)
 	})
@@ -177,7 +177,7 @@ func TestUserUpdateValidatesBeforeSQL(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			c := &catalog{user: true}
 			r := &userResource{testResourceClient(c)}
-			prior := userCreated(r, grafanaUser())
+			prior := userCreated(grafanaUser())
 			diagnostics := runUser(t, r, "update", userWith(prior, change), prior, "")
 			require.True(t, diagnostics.HasError())
 			assert.Empty(t, c.writes)
@@ -205,7 +205,7 @@ func TestUserVerifiesOptionConvergence(t *testing.T) {
 				return c.Query(ctx, target, sql, parameters)
 			})
 			r := &userResource{testResourceClient(client)}
-			prior := userCreated(r, userWith(grafanaUser(), func(data *userModel) {
+			prior := userCreated(userWith(grafanaUser(), func(data *userModel) {
 				data.ConnectionLimit, data.SessionTimeout, data.SyslogAccess = types.Int64Value(-1), types.Int64Value(0), types.StringValue("RESTRICTED")
 			}))
 			diagnostics := runUser(t, r, "update", userWith(prior, change), prior, "")
@@ -222,7 +222,7 @@ func TestUserReadReportsDrift(t *testing.T) {
 	family := fakeState[*userFamily](c, "user")
 	family.validUntil, family.connectionLimit, family.sessionTimeout, family.syslog = "2031-02-03 04:05:06+00", "7", "600", "UNRESTRICTED"
 	family.config = []string{"search_path=public, \"Odd\"\"Schema\"", "TimeZone=UTC", "unmanaged_parameter=x"}
-	prior := userCreated(r, grafanaUser())
+	prior := userCreated(grafanaUser())
 	state, diagnostics := runUserState(t, r, "read", prior, prior, "")
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.Equal(t, types.StringValue("2031-02-03T04:05:06Z"), state.ValidUntil)
@@ -315,7 +315,7 @@ func TestUserOptionFailures(t *testing.T) {
 				c := &catalog{}
 				setup := &userResource{testResourceClient(c)}
 
-				prior := userCreated(setup, base)
+				prior := userCreated(base)
 				if operation != "create" {
 					require.False(t, runUser(t, setup, "create", base, base, "Secret123").HasError())
 				}
@@ -333,7 +333,7 @@ func TestUserOptionFailures(t *testing.T) {
 
 				plan := base
 				if operation == "update" {
-					plan = userCreated(r, changed)
+					plan = userCreated(changed)
 				}
 
 				diagnostics := runUser(t, r, operation, plan, prior, "Secret456")
@@ -377,7 +377,7 @@ func TestUserCreateRecordsUserWhenDefaultsFail(t *testing.T) {
 
 	var recorded userModel
 	require.False(t, resp.State.Get(ctx, &recorded).HasError())
-	assert.Equal(t, userCreated(r, plan).ID, recorded.ID, "the created user is tracked")
+	assert.Equal(t, userCreated(plan).ID, recorded.ID, "the created user is tracked")
 	require.True(t, c.user)
 
 	// Terraform replaces the tainted user: Delete drops it, and a new Create succeeds.
@@ -463,7 +463,7 @@ func TestUserImportMatchesDefaults(t *testing.T) {
 func TestUserReadUpgradesNullPasswordDisabled(t *testing.T) {
 	c := &catalog{user: true}
 	r := &userResource{testResourceClient(c)}
-	legacy := userCreated(r, userWith(grafanaUser(), func(data *userModel) {
+	legacy := userCreated(userWith(grafanaUser(), func(data *userModel) {
 		data.PasswordDisabled, data.ValidUntil = types.BoolNull(), types.StringNull()
 	}))
 	state, diagnostics := runUserState(t, r, "read", legacy, legacy, "")

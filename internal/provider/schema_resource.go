@@ -28,7 +28,7 @@ type schemaResource struct {
 
 // schemaModel is the Terraform state for a local schema.
 type schemaModel struct {
-	// ID records the warehouse/database/schema identity.
+	// ID records the database/schema identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database contains the schema.
 	Database types.String `tfsdk:"database"`
@@ -218,7 +218,7 @@ func (r *schemaResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 	// A failed verification must still return serializable state for the created schema.
 	if data.Owner.IsUnknown() {
 		data.Owner = types.StringNull()
@@ -266,6 +266,7 @@ func (r *schemaResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

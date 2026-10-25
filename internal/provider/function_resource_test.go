@@ -232,7 +232,7 @@ func TestFunctionCreateKeepsStateWhenVerificationFails(t *testing.T) {
 			var observed functionModel
 			require.False(t, resp.State.Get(context.Background(), &observed).HasError())
 			assert.Equal(t, "INTEGER", observed.Signature.ValueString())
-			assertLookupIdentity(t, observed.ID, "admin", map[string]string{"schema": "public", "name": "f_example", "arguments": "INTEGER"})
+			assertLookupIdentity(t, observed.ID, map[string]string{"database": "admin", "schema": "public", "name": "f_example", "arguments": "INTEGER"})
 			assert.True(t, resp.State.Raw.IsFullyKnown())
 		})
 	}
@@ -257,8 +257,8 @@ func TestFunctionVerifyDetectsDivergence(t *testing.T) {
 func TestFunctionImportIdentity(t *testing.T) {
 	r := &functionResource{}
 	for id, expected := range map[string][]string{
-		`{"workgroup_name":"w","database":"d","schema":"s","name":"f","arguments":"int4, varchar"}`: {"INTEGER", "CHARACTER VARYING"},
-		`{"workgroup_name":"w","database":"d","schema":"s","name":"f","arguments":""}`:              nil,
+		`{"database":"d","schema":"s","name":"f","arguments":"int4, varchar"}`: {"INTEGER", "CHARACTER VARYING"},
+		`{"database":"d","schema":"s","name":"f","arguments":""}`:              nil,
 	} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
@@ -270,9 +270,9 @@ func TestFunctionImportIdentity(t *testing.T) {
 	}
 
 	for _, id := range []string{
-		`{"workgroup_name":"w","database":"d","schema":"s","name":"f"}`,
-		`{"workgroup_name":"w","database":"d","schema":"s","name":"f","arguments":"money"}`,
-		`{"workgroup_name":"w","database":"d","name":"f","arguments":""}`,
+		`{"database":"d","schema":"s","name":"f"}`,
+		`{"database":"d","schema":"s","name":"f","arguments":"money"}`,
+		`{"database":"d","name":"f","arguments":""}`,
 	} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)

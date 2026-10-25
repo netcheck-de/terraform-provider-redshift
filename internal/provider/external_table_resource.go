@@ -31,7 +31,7 @@ type externalTableResource struct {
 
 // externalTableModel is the Terraform state of one external table.
 type externalTableModel struct {
-	// ID records the warehouse/database/schema/table identity.
+	// ID records the database/schema/table identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database is the local database holding the external schema.
 	Database types.String `tfsdk:"database"`
@@ -724,7 +724,7 @@ func (r *externalTableResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
 	planned := data
 	// Failed verification must still record the created table with known values.
 	if data.InputFormat.IsUnknown() {
@@ -773,6 +773,7 @@ func (r *externalTableResource) Read(ctx context.Context, req resource.ReadReque
 		}
 
 		observed := observeExternalTable(catalog, data, mode)
+		observed.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &observed)...)
 		// The framework always provides private state; direct unit calls do not.
 		if resp.Private != nil {

@@ -19,8 +19,9 @@ var _ = registerDataSource(newDatashareObjectsDataSource)
 // newDatashareObjectsDataSource lists the objects of the datashares in one local database.
 func newDatashareObjectsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
-		name:        "datashare_objects",
-		description: "Lists current objects in a producer datashare without taking ownership. Includes explicitly added, bulk-added, and automatically included objects; the catalog does not distinguish their origins.",
+		name:          "datashare_objects",
+		databaseField: "database",
+		description:   "Lists current objects in a producer datashare without taking ownership. Includes explicitly added, bulk-added, and automatically included objects; the catalog does not distinguish their origins.",
 		filters: map[string]schema.Attribute{
 			"database":    schema.StringAttribute{Optional: true, Validators: []validator.String{stringvalidator.LengthAtLeast(1)}, MarkdownDescription: "Local producer database; defaults to the provider database."},
 			"datashare":   schema.StringAttribute{Optional: true, Validators: []validator.String{stringvalidator.LengthAtLeast(1)}, MarkdownDescription: "Only members of this producer datashare; omit for all outbound shares in the selected database."},

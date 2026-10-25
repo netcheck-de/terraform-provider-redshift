@@ -225,7 +225,7 @@ func TestDebugGrantRemoteAuthenticationMustBeVerified(t *testing.T) {
 			}))
 			data := debugGrantFixture("sales@catalog", "IAM:auditor", "USER")
 
-			data.ID = r.identity(data.Database.ValueString(), data.fields())
+			data.ID = identity(data.fields())
 			for _, operation := range []string{"create", "read", "delete"} {
 				state, diagnostics := applyOperation(t, r, operation, data, data, nil)
 				require.True(t, diagnostics.HasError(), "%s must fail closed", operation)

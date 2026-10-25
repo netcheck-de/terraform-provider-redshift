@@ -16,8 +16,9 @@ var _ = registerDataSource(newColumnsDataSource)
 // newColumnsDataSource lists relation columns with their types, nullability, and defaults.
 func newColumnsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
-		name:        "columns",
-		description: "Lists the columns of the tables, views, and external tables of one database visible to the provider's SQL identity, from `SVV_ALL_COLUMNS`, ordered by schema, table, and position.",
+		name:          "columns",
+		databaseField: "database",
+		description:   "Lists the columns of the tables, views, and external tables of one database visible to the provider's SQL identity, from `SVV_ALL_COLUMNS`, ordered by schema, table, and position.",
 		filters: map[string]schema.Attribute{
 			"database": discoveryDatabaseFilter("columns"),
 			"schema":   discoveryFilter("Only columns of relations in this schema."),

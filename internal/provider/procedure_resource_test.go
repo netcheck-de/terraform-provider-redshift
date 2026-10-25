@@ -200,7 +200,7 @@ func TestProcedureCreateKeepsStateWhenVerificationFails(t *testing.T) {
 
 			var observed procedureModel
 			require.False(t, resp.State.Get(context.Background(), &observed).HasError())
-			assertLookupIdentity(t, observed.ID, "admin", map[string]string{"schema": "public", "name": "sp_example", "arguments": "INTEGER"})
+			assertLookupIdentity(t, observed.ID, map[string]string{"database": "admin", "schema": "public", "name": "sp_example", "arguments": "INTEGER"})
 			assert.True(t, resp.State.Raw.IsFullyKnown())
 		})
 	}
@@ -225,7 +225,7 @@ func TestProcedureVerifyDetectsDivergence(t *testing.T) {
 func TestProcedureImportIdentity(t *testing.T) {
 	r := &procedureResource{}
 	resp := resource.ImportStateResponse{State: emptyState(t, r)}
-	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"w","database":"d","schema":"s","name":"p","arguments":"int, varchar"}`}, &resp)
+	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"database":"d","schema":"s","name":"p","arguments":"int, varchar"}`}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 
 	var arguments types.List
@@ -235,7 +235,7 @@ func TestProcedureImportIdentity(t *testing.T) {
 	assert.Equal(t, "CHARACTER VARYING", imported[1].Type.ValueString())
 	assert.True(t, imported[1].Mode.IsNull())
 
-	for _, id := range []string{`{"workgroup_name":"w","database":"d","schema":"s","name":"p"}`, `not json`} {
+	for _, id := range []string{`{"database":"d","schema":"s","name":"p"}`, `not json`} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
 		assert.True(t, resp.Diagnostics.HasError(), id)

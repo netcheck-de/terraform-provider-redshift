@@ -72,7 +72,7 @@ func TestContractExternalTablePropertiesPlan(t *testing.T) {
 				Steps: []testresource.TestStep{
 					{
 						Config: externalTableProviderConfig(""), ResourceName: address, ImportState: true, ImportStatePersist: true,
-						ImportStateId: `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","name":"events"}`,
+						ImportStateId: `{"database":"admin","schema":"example_external","name":"events"}`,
 					},
 					{Config: externalTableProviderConfig(""), PlanOnly: true},
 					{Config: externalTableProviderConfig(test.properties), ConfigPlanChecks: expect(test.action), Check: parameter(c, test.key, test.value)},
@@ -196,7 +196,7 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 			Steps: []testresource.TestStep{
 				{
 					Config: imported, ResourceName: address, ImportState: true, ImportStatePersist: true,
-					ImportStateId: `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","name":"events"}`,
+					ImportStateId: `{"database":"admin","schema":"example_external","name":"events"}`,
 				},
 				{Config: imported, PlanOnly: true},
 				{Config: externalTableOrderConfig("ORC", "", "label", "VARCHAR(64)", "id", "INTEGER"), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
@@ -256,7 +256,7 @@ func TestContractExternalTableColumnOrderPlan(t *testing.T) {
 				Steps: []testresource.TestStep{
 					{
 						Config: externalTableOrderConfig("ORC", "", "id", "INTEGER", "label", "VARCHAR(64)"), ResourceName: address, ImportState: true, ImportStatePersist: true,
-						ImportStateId: `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","name":"events"}`,
+						ImportStateId: `{"database":"admin","schema":"example_external","name":"events"}`,
 					},
 					{Config: externalTableOrderConfig("ORC", managed, "id", "INTEGER", "label", "VARCHAR(64)"), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate)},
 					{Config: externalTableOrderConfig("ORC", managed, edited...), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},

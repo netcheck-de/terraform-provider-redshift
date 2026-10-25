@@ -70,7 +70,7 @@ resource "redshift_object_grant" "summarizer" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `owner` (String) SQL user owning the model, as `SHOW MODEL` reports it; null when it is not reported.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -129,23 +129,18 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_external_model.summarizer
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    schema         = "ml"
-    name           = "summarizer"
+    database = "analytics"
+    schema   = "ml"
+    name     = "summarizer"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_external_model.summarizer \
-  '{"workgroup_name":"warehouse","database":"analytics","schema":"ml","name":"summarizer"}'
+  '{"database":"analytics","schema":"ml","name":"summarizer"}'
 ```
 
 Import reads the settings `SHOW MODEL` reports. To the model's owner it prints the model ID, prompt, suffix, request

@@ -133,7 +133,7 @@ resource "redshift_table" "events" {
 
 - `effective_distribution` (Attributes) Distribution Redshift currently applies, from `PG_CLASS_INFO.releffectivediststyle` and the distribution key column in `SVV_REDSHIFT_COLUMNS`. Under `AUTO` it shows what Redshift picked, for example `{ style = "KEY", key = "account_id", auto = true }`. An explicit distribution is known during planning; an automatic one keeps its value while a plan changes nothing else and is known after apply otherwise. (see [below for nested schema](#nestedatt--effective_distribution))
 - `effective_sort_key` (Attributes) Sort key Redshift currently applies, from the sort key positions in `SVV_REDSHIFT_COLUMNS` and `SVV_TABLE_INFO.sortkey1`. Under `AUTO` it shows the key Redshift chose, for example `{ style = "COMPOUND", columns = ["created_at"], auto = true }`. An explicit sort key is known during planning; an automatic one keeps its value while a plan changes nothing else and is known after apply otherwise. (see [below for nested schema](#nestedatt--effective_sort_key))
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 
 <a id="nestedblock--column"></a>
 ### Nested Schema for `column`
@@ -646,23 +646,18 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_table.events
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "warehouse"
-    schema         = "serving"
-    name           = "events"
+    database = "warehouse"
+    schema   = "serving"
+    name     = "events"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_table.events \
-  '{"workgroup_name":"warehouse","database":"warehouse","schema":"serving","name":"events"}'
+  '{"database":"warehouse","schema":"serving","name":"events"}'
 ```
 
 After import, the state holds the columns in catalog order and the catalog spellings, and the `distribution` and

@@ -132,7 +132,8 @@ func TestRoleUpdateFailures(t *testing.T) {
 			})
 			r := newRoleResource()
 			configureTestResource(t, r, client)
-			prior.ID = r.(*roleResource).identity("admin", map[string]string{"name": "example:readers"})
+
+			prior.ID = identity(map[string]string{"name": "example:readers"})
 			planned.ID = prior.ID
 			_, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
 			require.True(t, diagnostics.HasError())

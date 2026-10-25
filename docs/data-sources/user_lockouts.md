@@ -41,7 +41,7 @@ output "locked_users" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `user_lockouts` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--user_lockouts))
 
 <a id="nestedatt--user_lockouts"></a>
@@ -66,5 +66,5 @@ timestamps as Redshift reports them, and they, `lock_reason`, and `locked_by` ar
 
 Reading never changes a lockout or a counter; unlocking a user, which takes a superuser or the `ALTER USER` privilege,
 stays outside this data source. The lockout threshold is the cluster-wide `max_failed_login_attempts` parameter, which
-`redshift_configuration` reads. `id` (String, computed) is the listing's JSON identity: the warehouse binding, the
-provider database, and the configured filter.
+`redshift_configuration` reads. `id` (String, computed) is the listing's provider-relative JSON identity containing the
+configured filter.

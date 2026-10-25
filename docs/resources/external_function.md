@@ -63,7 +63,7 @@ resource "redshift_external_function" "upper" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## Lifecycle and Ownership
@@ -124,24 +124,19 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_external_function.upper
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "warehouse"
-    schema         = "public"
-    name           = "f_upper"
-    arguments      = "CHARACTER VARYING"
+    database  = "warehouse"
+    schema    = "public"
+    name      = "f_upper"
+    arguments = "CHARACTER VARYING"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_external_function.upper \
-  '{"workgroup_name":"warehouse","database":"warehouse","schema":"public","name":"f_upper","arguments":"CHARACTER VARYING"}'
+  '{"database":"warehouse","schema":"public","name":"f_upper","arguments":"CHARACTER VARYING"}'
 ```
 
 `arguments` is the canonical signature Create records: the argument types as the catalog spells them, without length or

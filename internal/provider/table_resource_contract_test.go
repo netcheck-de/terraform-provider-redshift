@@ -126,7 +126,7 @@ func TestContractTableImportPlan(t *testing.T) {
 	config := tableConfig(tableIDColumn+tableLabelColumn, "") + `
 import {
   to = redshift_table.events
-  id = jsonencode({ workgroup_name = "warehouse", database = "admin", schema = "serving", name = "events" })
+  id = jsonencode({ database = "admin", schema = "serving", name = "events" })
 }
 `
 	testresource.UnitTest(t, testresource.TestCase{

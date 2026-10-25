@@ -142,7 +142,7 @@ func (r *datashareGrantResource) ValidateConfig(ctx context.Context, req resourc
 // identityFields returns the JSON identity keys; the Data Catalog form is recorded only when set, so plain
 // account and namespace identities keep their format.
 func (data datashareGrantModel) identityFields(field, value string) map[string]string {
-	fields := map[string]string{"datashare": data.Datashare.ValueString(), field: value}
+	fields := map[string]string{"database": data.Database.ValueString(), "datashare": data.Datashare.ValueString(), field: value}
 	if data.ViaDataCatalog.ValueBool() {
 		fields["via_data_catalog"] = "true"
 	}
@@ -196,7 +196,7 @@ func (r *datashareGrantResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	data.ID = r.identity(data.Database.ValueString(), data.identityFields(field, value))
+	data.ID = identity(data.identityFields(field, value))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	found, err := r.read(ctx, data)
@@ -223,6 +223,7 @@ func (r *datashareGrantResource) Read(ctx context.Context, req resource.ReadRequ
 	case !found:
 		resp.State.RemoveResource(ctx)
 	default:
+		data.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 }

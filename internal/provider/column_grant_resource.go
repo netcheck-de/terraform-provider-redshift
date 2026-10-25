@@ -21,7 +21,7 @@ type columnGrantResource struct {
 
 // columnGrantModel is the Terraform state of one relation/grantee tuple.
 type columnGrantModel struct {
-	// ID records the administration binding and tuple.
+	// ID records the permission tuple within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// DatabaseName is the local database holding the relation.
 	DatabaseName types.String `tfsdk:"database_name"`
@@ -110,6 +110,7 @@ func (r *columnGrantResource) read(ctx context.Context, data *columnGrantModel, 
 	}
 
 	data.Privileges = columnGrantValue(columns)
+	data.ID = normalizeLegacyIdentity(data.ID, false)
 
 	return target, true, nil
 }
@@ -186,7 +187,7 @@ func (r *columnGrantResource) Create(ctx context.Context, req resource.CreateReq
 		fields[field] = columnGrantField(data, field)
 	}
 
-	data.ID = r.identity(r.database.ValueString(), fields)
+	data.ID = identity(fields)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	if err := r.reconcile(ctx, data); err != nil {

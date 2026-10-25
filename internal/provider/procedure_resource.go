@@ -31,7 +31,7 @@ type procedureResource struct {
 
 // procedureModel is the Terraform state of a stored procedure.
 type procedureModel struct {
-	// ID records the warehouse, database, schema, name, and canonical input types.
+	// ID records the database, schema, name, and canonical input types.
 	ID types.String `tfsdk:"id"`
 	// Database contains the procedure.
 	Database types.String `tfsdk:"database"`
@@ -356,7 +356,7 @@ func (r *procedureResource) read(ctx context.Context, data *procedureModel) (boo
 
 // identityOf builds the JSON identity, including the canonical input types that select the overload.
 func (r *procedureResource) identityOf(data procedureModel, signature sqlclient.Keyword) types.String {
-	return r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString(), routineIdentityArguments: string(signature)})
+	return identity(map[string]string{"database": data.Database.ValueString(), "schema": data.Schema.ValueString(), "name": data.Name.ValueString(), routineIdentityArguments: string(signature)})
 }
 
 // verify re-reads the procedure after a change and checks that the planned security mode and owner converged.
@@ -448,6 +448,7 @@ func (r *procedureResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

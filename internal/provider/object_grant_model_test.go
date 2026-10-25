@@ -53,7 +53,7 @@ func TestObjectGrantModelMissing(t *testing.T) {
 	}))
 	fields := map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_name": "summarizer", "object_type": "MODEL", "grantee_type": "ROLE", "grantee": "readers"}
 	attributes := privilegeObject(t, r, fields).Attributes()
-	attributes["id"] = r.identity("admin", fields)
+	attributes["id"] = identity(fields)
 	state := testState(t, r, types.ObjectValueMust(privilegeObject(t, r, fields).AttributeTypes(context.Background()), attributes))
 	resp := resource.ReadResponse{State: state}
 	r.Read(context.Background(), resource.ReadRequest{State: state}, &resp)

@@ -185,8 +185,8 @@ func TestGrantValidation(t *testing.T) {
 func TestGrantUserImport(t *testing.T) {
 	r := &grantResource{testResourceClient(&catalog{})}
 	for id, user := range map[string]string{
-		`{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","user":"analyst","scope":"TEMPLATES","schema_name":"serving"}`: "analyst",
-		`{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","scope":"TABLES"}`:                                             "",
+		`{"database_name":"analytics","user":"analyst","scope":"TEMPLATES","schema_name":"serving"}`: "analyst",
+		`{"database_name":"analytics","scope":"TABLES"}`:                                             "",
 	} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)

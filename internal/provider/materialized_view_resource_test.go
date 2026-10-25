@@ -99,7 +99,7 @@ func TestMaterializedViewImportAdoptsConfiguration(t *testing.T) {
 	r := newMaterializedViewResource()
 	configureTestResource(t, r, c)
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
-	id := `{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"sales_summary"}`
+	id := `{"database":"admin","schema":"serving","name":"sales_summary"}`
 	r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
 	read := resource.ReadResponse{State: imported.State}

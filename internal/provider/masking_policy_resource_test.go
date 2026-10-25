@@ -196,9 +196,9 @@ func TestMaskingPolicyAbsentInputsReportedOnce(t *testing.T) {
 func TestMaskingPolicyImport(t *testing.T) {
 	r := newMaskingPolicyResource()
 	for id, valid := range map[string]bool{
-		`{"workgroup_name":"warehouse","database":"analytics","name":"mask_email"}`: true,
-		`{"workgroup_name":"warehouse","database":"analytics"}`:                     false,
-		`mask_email`: false,
+		`{"database":"analytics","name":"mask_email"}`: true,
+		`{"database":"analytics"}`:                     false,
+		`mask_email`:                                   false,
 	} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
@@ -220,7 +220,7 @@ func TestMaskingPolicyInputsReplacement(t *testing.T) {
 	r := newMaskingPolicyResource()
 	configureTestResource(t, r, catalogWith()())
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
-	id := r.(*maskingPolicyResource).identity("admin", map[string]string{"name": "mask_email"}).ValueString()
+	id := identity(map[string]string{"database": "admin", "name": "mask_email"}).ValueString()
 	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: id}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
 	refreshed := resource.ReadResponse{State: imported.State}

@@ -218,7 +218,7 @@ func TestSchemaGrantRequiresConsistentScope(t *testing.T) {
 
 	empty := grantTestModel(grantModel{ID: types.StringNull(), DatabaseName: types.StringNull(), SchemaName: types.StringNull(), Role: types.StringNull(), Scope: types.StringNull(), Privileges: types.SetNull(types.StringType)})
 	resp := resource.ImportStateResponse{State: testState(t, r, empty)}
-	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","role":"readers","scope":"SCHEMA","schema_name":"serving"}`}, &resp)
+	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"database_name":"analytics","role":"readers","scope":"SCHEMA","schema_name":"serving"}`}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 
 	var imported grantModel
@@ -291,7 +291,7 @@ func TestDatashareScopedGrantLifecycle(t *testing.T) {
 			require.False(t, invoke(t, r, "delete", data).HasError())
 			assert.False(t, granted)
 			resp := resource.ImportStateResponse{State: testState(t, r, data)}
-			r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","datashare":"share","scope":"` + scope + `","schema_name":"serving"}`}, &resp)
+			r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"database_name":"analytics","datashare":"share","scope":"` + scope + `","schema_name":"serving"}`}, &resp)
 			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 
 			var imported grantModel

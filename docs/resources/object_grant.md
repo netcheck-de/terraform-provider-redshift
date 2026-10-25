@@ -61,7 +61,7 @@ resource "redshift_object_grant" "report" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 | `object_type`    | Requires                                         | Privileges                                                                        |
@@ -340,31 +340,25 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_object_grant.report
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    database_name  = "analytics"
-    schema_name    = "reporting"
-    object_name    = "daily_summary"
-    object_type    = "TABLE"
-    grantee        = "report_readers"
-    grantee_type   = "GROUP"
+    database_name = "analytics"
+    schema_name   = "reporting"
+    object_name   = "daily_summary"
+    object_type   = "TABLE"
+    grantee       = "report_readers"
+    grantee_type  = "GROUP"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_object_grant.report \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","schema_name":"reporting","object_name":"daily_summary","object_type":"TABLE","grantee":"report_readers","grantee_type":"GROUP"}'
+  '{"database_name":"analytics","schema_name":"reporting","object_name":"daily_summary","object_type":"TABLE","grantee":"report_readers","grantee_type":"GROUP"}'
 
 # Function overload: arguments as configured
 terraform import redshift_object_grant.score \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","schema_name":"reporting","object_name":"f_score","object_type":"FUNCTION","arguments":"INTEGER, VARCHAR","grantee":"analyst","grantee_type":"USER"}'
+  '{"database_name":"analytics","schema_name":"reporting","object_name":"f_score","object_type":"FUNCTION","arguments":"INTEGER, VARCHAR","grantee":"analyst","grantee_type":"USER"}'
 ```
 
 For shared consumer objects, include `"database_type":"shared"` in the JSON identity; local identities omit it.

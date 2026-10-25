@@ -101,8 +101,10 @@ New types add files rather than modifying shared infrastructure. Follow this che
   example SQL uses uppercase keywords/functions/casts; Terraform function names remain lowercase.
 - Both transports wait for statement completion. Ordinary synchronous DROP needs no catalog readback. Delete checks
   existence with the resource's read, or with a minimal catalog read only where the full read issues extra queries.
-  Keep missing-parent and warehouse ownership checks, and retain verification for permission reconciliation or
+  Keep missing-parent, object-scope, and legacy identity checks, and retain verification for permission reconciliation or
   asynchronous operations.
+- Resource and data-source IDs are provider-relative JSON tuples. Include the object's containing database where
+  applicable, not the administration database or connection selectors. Imports accept the same tuples.
 
 ### Shared infrastructure
 

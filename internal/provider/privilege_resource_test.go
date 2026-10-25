@@ -238,7 +238,7 @@ func exercisePrivilege(t *testing.T, factory func() resource.Resource, fields ma
 		})
 	}
 
-	for _, id := range []string{"invalid JSON", `{}`, r.identity("admin", fields).ValueString()} {
+	for _, id := range []string{"invalid JSON", `{}`, identity(fields).ValueString()} {
 		state := testState(t, r, data)
 		resp := resource.ImportStateResponse{State: state}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)

@@ -24,5 +24,5 @@ SELECT ... FROM sys_copy_job;
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Items are ordered by name. Superusers see every job; other users see only their own. `SYS_COPY_JOB` has no database
-column, so `database` selects where the view is queried and is reported for every item. `id` combines the warehouse
-binding with the `database` filter, or the provider database without one.
+column, so `database` selects where the view is queried and is reported for every item. `id` contains that database
+within the configured warehouse, using the provider database when the filter is omitted.

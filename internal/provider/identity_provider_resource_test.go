@@ -239,7 +239,7 @@ func TestIdentityProviderUpdateNamesFailedStatement(t *testing.T) {
 			configureTestResource(t, r, client)
 
 			prior := identityProviderAWSIDCFixture("identity", "example", "role-one", false)
-			prior.ID = r.(*identityProviderResource).identity("admin", map[string]string{"name": "identity"})
+			prior.ID = identity(map[string]string{"name": "identity"})
 			planned := prior
 			planned.IAMRoleARN = types.StringValue("role-two")
 			prior.Enabled = types.BoolValue(true)
@@ -366,7 +366,7 @@ func TestIdentityProviderNamespaceChangeKeepsFederatedUsers(t *testing.T) {
 	configureTestResource(t, r, c)
 
 	prior := identityProviderAWSIDCFixture("identity", "example", "role-one", true)
-	prior.ID = r.(*identityProviderResource).identity("admin", map[string]string{"name": "identity"})
+	prior.ID = identity(map[string]string{"name": "identity"})
 	planned := prior
 	planned.Namespace = types.StringValue("entra")
 	_, diagnostics := applyOperation(t, r, "update", prior, planned, nil)

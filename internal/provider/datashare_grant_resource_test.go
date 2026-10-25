@@ -130,7 +130,7 @@ func TestDatashareGrantViaDataCatalogLifecycle(t *testing.T) {
 
 	var created datashareGrantModel
 	require.False(t, state.Get(context.Background(), &created).HasError())
-	assert.Equal(t, r.identity("admin", map[string]string{"datashare": "producer", "account_id": "123456789012", "via_data_catalog": "true"}), created.ID)
+	assert.Equal(t, identity(map[string]string{"database": "admin", "datashare": "producer", "account_id": "123456789012", "via_data_catalog": "true"}), created.ID)
 	require.False(t, invoke(t, r, "delete", created).HasError())
 	assert.Equal(t, []string{
 		`GRANT USAGE ON DATASHARE "producer" TO ACCOUNT '123456789012' VIA DATA CATALOG`,
@@ -149,7 +149,7 @@ func TestDatashareGrantViaDataCatalogImport(t *testing.T) {
 		`"account_id":"123456789012","via_data_catalog":""`:                               false,
 		`"namespace_id":"12345678-1234-1234-1234-123456789abc","via_data_catalog":"true"`: false,
 	} {
-		id := `{"workgroup_name":"warehouse","database":"admin","datashare":"producer",` + selector + `}`
+		id := `{"database":"admin","datashare":"producer",` + selector + `}`
 		resp := resource.ImportStateResponse{State: testState(t, r, datashareGrantModel{})}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
 		require.Equal(t, !valid, resp.Diagnostics.HasError(), "%s: %v", selector, resp.Diagnostics)
@@ -311,7 +311,7 @@ func TestDatashareGrantLifecycle(t *testing.T) {
 				return c.Query(ctx, target, sql, parameters)
 			}))}
 			require.False(t, invoke(t, r, "create", data).HasError())
-			data.ID = r.identity("admin", map[string]string{"datashare": "producer", field: value})
+			data.ID = identity(map[string]string{"database": "admin", "datashare": "producer", field: value})
 			require.False(t, invoke(t, r, "read", data).HasError())
 			require.False(t, invoke(t, r, "update", data).HasError())
 			require.False(t, invoke(t, r, "delete", data).HasError())
@@ -332,7 +332,7 @@ func TestDatashareGrantImport(t *testing.T) {
 	r.Schema(context.Background(), resource.SchemaRequest{}, &schema)
 
 	for _, selector := range []string{`"account_id":"123456789012"`, `"namespace_id":"12345678-1234-1234-1234-123456789abc"`, ``, `"account_id":"123456789012","namespace_id":"12345678-1234-1234-1234-123456789abc"`, `"account_id":"bad"`, `"namespace_id":"bad"`, `"namespace_id":""`} {
-		id := `{"workgroup_name":"warehouse","database":"admin","datashare":"producer"`
+		id := `{"database":"admin","datashare":"producer"`
 		if selector != "" {
 			id += "," + selector
 		}

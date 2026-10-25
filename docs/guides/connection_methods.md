@@ -1,7 +1,7 @@
 ---
 subcategory: Configuration
 page_title: Connection methods and authentication
-description: Configure Serverless/provisioned Data API or direct TLS password/IAM connections and preserve warehouse identity.
+description: Configure Serverless/provisioned Data API or direct TLS password/IAM connections.
 ---
 
 # Connection methods and authentication
@@ -112,7 +112,7 @@ provider "redshift" {
 
 Endpoint discovery uses `DescribeClusters`. `GetClusterCredentials` authenticates the existing `db_user` with
 `AutoCreate = false` and no session group assignment. IAM permissions and SQL privileges are separate requirements.
-Unknown warehouse/endpoint values are allowed during planning; SQL waits until the binding and authentication are known.
+Unknown warehouse/endpoint values are allowed during planning; SQL waits until the connection and authentication are known.
 
 ## TLS and routing
 
@@ -145,17 +145,10 @@ provider page.
 ## Imports and transport switching
 
 The [provider import guide](../index.md#importing-existing-resources) explains `import` blocks, CLI import, provider
-aliases, and JSON fields. Each resource page shows its block example first and CLI example second. The ID's `database`
-is the administration or containing database according to the resource; it does not always match the SQL connection's
-administration database.
+aliases, and JSON fields. Each resource page shows its block example first and CLI example second. IDs identify objects
+within the configured warehouse and include their containing database where applicable, not connection selectors or an
+administration-only database.
 
-Data API and direct IAM identify the warehouse with `workgroup_name` for Serverless or `cluster_identifier` for a
-provisioned cluster. Direct password connections use a normalized `endpoint` (`host:port`).
-
-Existing Serverless IDs remain unchanged. Switching Data API to direct IAM for the same selector spelling preserves
-resource identity and needs no import or replacement. Name and ARN spellings are deliberately not treated as equivalent;
-changing the spelling requires explicit re-importing. Password endpoint identities normalize DNS case/trailing dots and
-include the port. Switching between AWS identity and password endpoint identity requires explicit re-importing.
-
-Do not destroy/recreate SQL objects merely to switch bindings. Re-import the same objects under the intended
-configuration and inspect the next plan. Read-only data sources never need imports.
+Switching between Data API, direct IAM, and direct password connections to the same warehouse preserves resource IDs
+and needs no import or replacement. A workgroup name and its ARN likewise produce the same resource IDs. Read-only
+data sources never need imports.

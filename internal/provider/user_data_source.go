@@ -103,6 +103,6 @@ func (d *userDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	data.SyslogAccess, data.ExternalID = user.SyslogAccess, user.ExternalID
 	data.SearchPath = userListStrings(user.SearchPath)
 	data.SessionDefaults = knownMap(user.SessionDefaults)
-	data.ID = d.identity(d.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

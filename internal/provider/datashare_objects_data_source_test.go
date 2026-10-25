@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -50,7 +51,10 @@ func TestDatashareObjectsList(t *testing.T) {
 
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
-			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", filters)
+
+			expected := map[string]string{"database": "admin"}
+			maps.Copy(expected, filters)
+			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), expected)
 			items := collectionResult(source, observed).Elements()
 			require.Len(t, items, test.count)
 
@@ -118,5 +122,5 @@ func TestDatashareObjectsMissingDatabase(t *testing.T) {
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	assert.Empty(t, collectionResult(source, observed).Elements())
-	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "missing", map[string]string{"database": "missing", "datashare": "producer"})
+	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), map[string]string{"database": "missing", "datashare": "producer"})
 }

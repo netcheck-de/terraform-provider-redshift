@@ -117,7 +117,7 @@ func (r *policyGrantResource) Create(ctx context.Context, req resource.CreateReq
 	}
 
 	attributes := data.Attributes()
-	attributes["id"] = r.identity(r.database.ValueString(), fields)
+	attributes["id"] = identity(fields)
 	data = types.ObjectValueMust(data.AttributeTypes(ctx), attributes)
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 	// Nothing is recorded as granted yet, so the configured privileges are granted even if the policy holds them.
@@ -149,6 +149,8 @@ func (r *policyGrantResource) Read(ctx context.Context, req resource.ReadRequest
 	if data.Attributes()["privileges"].IsNull() {
 		data = withPrivileges(data, nil)
 	}
+
+	lookupValue(&data, "id", normalizeLegacyIdentity(data.Attributes()["id"].(types.String), false))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }

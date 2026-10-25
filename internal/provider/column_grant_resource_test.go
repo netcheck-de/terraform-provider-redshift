@@ -205,7 +205,7 @@ func TestColumnGrantFailurePaths(t *testing.T) {
 	})
 	t.Run("relation dropped", func(t *testing.T) {
 		r, _ := setup(func(c *catalog) { fakeState[*columnGrantFake](c, "column_grant").relation = false })
-		state := testState(t, r, withID(model, r.identity("admin", map[string]string{"x": "y"})))
+		state := testState(t, r, withID(model, identity(map[string]string{"x": "y"})))
 		resp := resource.ReadResponse{State: state}
 		r.Read(context.Background(), resource.ReadRequest{State: state}, &resp)
 		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
@@ -226,7 +226,7 @@ func TestColumnGrantImport(t *testing.T) {
 	r := newColumnGrantResource().(*columnGrantResource)
 	r.resourceClient = testResourceClient(nil)
 	fields := maps.Clone(columnGrantBaseFields)
-	valid := r.identity("admin", fields).ValueString()
+	valid := identity(fields).ValueString()
 	incomplete := maps.Clone(fields)
 	delete(incomplete, "object_name")
 	encoded, err := json.Marshal(incomplete)

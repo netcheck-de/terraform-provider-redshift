@@ -25,7 +25,7 @@ type tableSecurityResource struct {
 
 // tableSecurityModel is the Terraform state of one relation's row-level security settings.
 type tableSecurityModel struct {
-	// ID records the warehouse/database/schema/relation identity.
+	// ID records the database/schema/relation identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database contains the relation.
 	Database types.String `tfsdk:"database"`
@@ -80,7 +80,7 @@ func (r *tableSecurityResource) Schema(_ context.Context, _ resource.SchemaReque
 
 // tableSecurityIdentity is the JSON identity shared by the resource, its lookup, and imports.
 func (r *tableSecurityResource) tableSecurityIdentity(data tableSecurityModel) types.String {
-	return r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "relation": data.Relation.ValueString()})
+	return identity(map[string]string{"database": data.Database.ValueString(), "schema": data.Schema.ValueString(), "relation": data.Relation.ValueString()})
 }
 
 // read refreshes the settings. A relation that svv_rls_relation does not list has never been protected, so it
@@ -229,6 +229,7 @@ func (r *tableSecurityResource) Read(ctx context.Context, req resource.ReadReque
 	case !found:
 		resp.State.RemoveResource(ctx)
 	default:
+		data.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 }

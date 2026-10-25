@@ -38,7 +38,7 @@ resource "redshift_system_grant" "operators" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Supported privileges cover user/schema/table/role/datashare administration; function, external-function, procedure,
@@ -120,20 +120,14 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_system_grant.operators
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    role           = "operators"
+    role = "operators"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_system_grant.operators \
-  '{"workgroup_name":"warehouse","database":"admin","role":"operators"}'
+  '{"role":"operators"}'
 ```

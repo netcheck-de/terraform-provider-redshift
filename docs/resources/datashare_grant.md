@@ -93,7 +93,7 @@ resource "aws_redshift_data_share_authorization" "lake_formation" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Exactly one consumer selector is required; `via_data_catalog` defaults to `false`.
@@ -141,36 +141,31 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_datashare_grant.consumer
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "warehouse"
-    datashare      = "analytics"
-    account_id     = "123456789012"
+    database   = "warehouse"
+    datashare  = "analytics"
+    account_id = "123456789012"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 # Account grant
 terraform import redshift_datashare_grant.consumer \
-  '{"workgroup_name":"warehouse","database":"warehouse","datashare":"analytics","account_id":"123456789012"}'
+  '{"database":"warehouse","datashare":"analytics","account_id":"123456789012"}'
 
 # Namespace grant: uses namespace_id instead of account_id
 terraform import redshift_datashare_grant.namespace \
-  '{"workgroup_name":"warehouse","database":"warehouse","datashare":"analytics","namespace_id":"12345678-1234-1234-1234-123456789abc"}'
+  '{"database":"warehouse","datashare":"analytics","namespace_id":"12345678-1234-1234-1234-123456789abc"}'
 
 # Lake Formation account grant: adds via_data_catalog
 terraform import redshift_datashare_grant.lake_formation \
-  '{"workgroup_name":"warehouse","database":"warehouse","datashare":"analytics","account_id":"123456789012","via_data_catalog":"true"}'
+  '{"database":"warehouse","datashare":"analytics","account_id":"123456789012","via_data_catalog":"true"}'
 ```
 
 Namespace grants use `namespace_id` instead of `account_id` in the JSON identity.
 
 Existing account JSON identities and state retain the `account_id` key. A Lake Formation grant adds
-`"via_data_catalog":"true"`; plain grants omit the key. Imports require exactly one valid consumer selector and one
-warehouse binding (`workgroup_name`, `cluster_identifier`, or `endpoint`).
+`"via_data_catalog":"true"`; plain grants omit the key. Imports require exactly one valid consumer selector and the
+producer database.

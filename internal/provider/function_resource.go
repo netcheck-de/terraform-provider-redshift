@@ -29,7 +29,7 @@ type functionResource struct {
 
 // functionModel is the Terraform state of a SQL UDF.
 type functionModel struct {
-	// ID records the warehouse, database, schema, name, and canonical input types.
+	// ID records the database, schema, name, and canonical input types.
 	ID types.String `tfsdk:"id"`
 	// Database contains the function.
 	Database types.String `tfsdk:"database"`
@@ -304,7 +304,7 @@ func (r *functionResource) read(ctx context.Context, data *functionModel) (bool,
 
 // identityOf builds the JSON identity, including the canonical input types that select the overload.
 func (r *functionResource) identityOf(data functionModel, signature sqlclient.Keyword) types.String {
-	return r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString(), routineIdentityArguments: string(signature)})
+	return identity(map[string]string{"database": data.Database.ValueString(), "schema": data.Schema.ValueString(), "name": data.Name.ValueString(), routineIdentityArguments: string(signature)})
 }
 
 // verify re-reads the function after a change and checks that the planned definition and owner converged.
@@ -398,6 +398,7 @@ func (r *functionResource) Read(ctx context.Context, req resource.ReadRequest, r
 		return
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

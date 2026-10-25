@@ -53,8 +53,7 @@ func TestMaskingPolicyAttachmentLookup(t *testing.T) {
 			continue
 		}
 
-		client := testResourceClient(nil)
-		assert.Equal(t, client.identity("admin", maskingAttachmentIdentity(model)), data.Attributes()["id"])
+		assert.Equal(t, identity(maskingAttachmentIdentity(model)), data.Attributes()["id"])
 		assert.Equal(t, types.Int64Value(10), data.Attributes()["priority"])
 		assert.Equal(t, []string{"email"}, maskingAttachmentNames(data.Attributes()["input_columns"].(types.List)))
 	}

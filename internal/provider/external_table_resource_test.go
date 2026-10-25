@@ -252,7 +252,7 @@ func TestExternalTableCreateKeepsConfiguredSpellings(t *testing.T) {
 	assert.Equal(t, model.Columns, observed.Columns)
 	assert.Equal(t, model.Location, observed.Location)
 	assert.Equal(t, "org.apache.hadoop.mapred.TextInputFormat", observed.InputFormat.ValueString())
-	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","name":"events"}`, observed.ID.ValueString())
+	assert.JSONEq(t, `{"database":"admin","schema":"example_external","name":"events"}`, observed.ID.ValueString())
 
 	table := externalTableFakeOf(c)
 	assert.Equal(t, []externalTableFakeColumn{{"id", "int"}, {"amount", "decimal(8,2)"}, {"ratio", "double"}, {"label", "varchar(256)"}}, table.columns)
@@ -262,7 +262,7 @@ func TestExternalTableCreateKeepsConfiguredSpellings(t *testing.T) {
 func TestExternalTableImportAdoptsCatalog(t *testing.T) {
 	c := fullCatalog()
 	r := externalTableTestResource(t, c)
-	id := `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","name":"events"}`
+	id := `{"database":"admin","schema":"example_external","name":"events"}`
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)

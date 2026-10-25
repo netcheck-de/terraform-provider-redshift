@@ -16,8 +16,9 @@ var _ = registerDataSource(newTablesDataSource)
 // newTablesDataSource lists the tables, views, and materialized views of one database.
 func newTablesDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
-		name:        "tables",
-		description: "Lists the tables, views, materialized views, external tables, and datashare tables of one database visible to the provider's SQL identity, from `SVV_ALL_TABLES`, with owners from `SVV_REDSHIFT_TABLES` and materialized views identified through `SVV_MV_INFO`. Unless the identity is a superuser, `SVV_MV_INFO` shows only its own materialized views, so materialized views owned by other users are listed as `VIEW`.",
+		name:          "tables",
+		databaseField: "database",
+		description:   "Lists the tables, views, materialized views, external tables, and datashare tables of one database visible to the provider's SQL identity, from `SVV_ALL_TABLES`, with owners from `SVV_REDSHIFT_TABLES` and materialized views identified through `SVV_MV_INFO`. Unless the identity is a superuser, `SVV_MV_INFO` shows only its own materialized views, so materialized views owned by other users are listed as `VIEW`.",
 		filters: map[string]schema.Attribute{
 			"database":   discoveryDatabaseFilter("relations"),
 			"schema":     discoveryFilter("Only relations in this schema."),

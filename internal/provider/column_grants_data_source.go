@@ -14,9 +14,10 @@ var _ = registerDataSource(newColumnGrantsDataSource)
 // newColumnGrantsDataSource lists explicit column privileges in one database.
 func newColumnGrantsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
-		name:        "column_grants",
-		description: "Lists explicit column-level privileges in one local database from `SVV_COLUMN_PRIVILEGES`, one element per column, privilege, and grantee, without taking ownership.",
-		filters:     grantsGranteeFilters(),
+		name:          "column_grants",
+		databaseField: "database_name",
+		description:   "Lists explicit column-level privileges in one local database from `SVV_COLUMN_PRIVILEGES`, one element per column, privilege, and grantee, without taking ownership.",
+		filters:       grantsGranteeFilters(),
 		element: map[string]schema.Attribute{
 			"database_name": grantsString("Database containing the relation."),
 			"schema_name":   grantsString("Schema containing the relation."),

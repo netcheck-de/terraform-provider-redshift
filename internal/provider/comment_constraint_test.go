@@ -79,7 +79,7 @@ func TestCommentConstraintLifecycle(t *testing.T) {
 	assert.False(t, invoke(t, r, "delete", commentConstraintModel()).HasError(), "clearing a vanished constraint's comment is a no-op")
 
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
-	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","object_type":"CONSTRAINT","object_name":"orders","schema_name":"serving","constraint_name":"orders_pkey"}`}, &imported)
+	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"database_name":"analytics","object_type":"CONSTRAINT","object_name":"orders","schema_name":"serving","constraint_name":"orders_pkey"}`}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
 
 	var restored commentModel

@@ -39,7 +39,7 @@ output "external_schema_sources" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `schemas` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--schemas))
 
 <a id="nestedatt--schemas"></a>
@@ -56,7 +56,7 @@ Read-Only:
 
 `database` defaults to the provider's `database`. The read always runs in the provider's database, because
 `SVV_ALL_SCHEMAS` spans every database of the warehouse, so datashare databases can be listed without connecting to
-them. `id` combines the warehouse binding, the listed database, and the configured filters. Items are ordered by
+them. `id` combines the listed database and configured filters within the warehouse. Items are ordered by
 name; no match returns an empty `schemas` list.
 
 System schemas such as `pg_catalog` and `information_schema` are included; filter them in Terraform when needed.

@@ -68,7 +68,7 @@ func TestFunctionLookup(t *testing.T) {
 	}
 
 	assert.Equal(t, types.StringValue(definitionFingerprint("SELECT $1 + 1")), attributes["definition_fingerprint"])
-	assertLookupIdentity(t, attributes["id"].(types.String), "admin", map[string]string{"schema": "public", "name": "f_example", "arguments": "INTEGER"})
+	assertLookupIdentity(t, attributes["id"].(types.String), map[string]string{"database": "admin", "schema": "public", "name": "f_example", "arguments": "INTEGER"})
 	assert.Empty(t, c.writes)
 
 	// Another overload of the same name is not found, which is an error for an object lookup.

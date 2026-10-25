@@ -153,7 +153,7 @@ func TestObjectGrantRoutineLifecycle(t *testing.T) {
 	require.Len(t, c.writes, 2)
 	assert.Equal(t, `REVOKE EXECUTE ON FUNCTION "warehouse"."serving"."f_score"(INTEGER, CHARACTER VARYING) FROM "analyst"`, c.writes[1])
 	resp := resource.ImportStateResponse{State: testState(t, r, privilegeObject(t, r, fields))}
-	r.ImportState(context.Background(), resource.ImportStateRequest{ID: r.identity("admin", fields).ValueString()}, &resp)
+	r.ImportState(context.Background(), resource.ImportStateRequest{ID: identity(fields).ValueString()}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 
 	var arguments types.String
@@ -228,7 +228,7 @@ func TestObjectGrantRoutineSnapshotKind(t *testing.T) {
 			}))
 			fields := map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_type": test.kind, "grantee_type": "ROLE", "grantee": "readers"}
 			attributes := privilegeObject(t, r, fields).Attributes()
-			attributes["id"] = r.identity("admin", fields)
+			attributes["id"] = identity(fields)
 			state := testState(t, r, types.ObjectValueMust(privilegeObject(t, r, fields).AttributeTypes(context.Background()), attributes))
 			resp := resource.ReadResponse{State: state}
 			r.Read(context.Background(), resource.ReadRequest{State: state}, &resp)

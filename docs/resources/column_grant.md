@@ -50,7 +50,7 @@ resource "redshift_column_grant" "events" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 One resource owns all columns of one grantee on one relation, because `SVV_COLUMN_PRIVILEGES` reports each column,
@@ -145,24 +145,18 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_column_grant.events
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    database_name  = "analytics"
-    schema_name    = "reporting"
-    object_name    = "events"
-    grantee        = "analysts"
-    grantee_type   = "ROLE"
+    database_name = "analytics"
+    schema_name   = "reporting"
+    object_name   = "events"
+    grantee       = "analysts"
+    grantee_type  = "ROLE"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_column_grant.events \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","schema_name":"reporting","object_name":"events","grantee":"analysts","grantee_type":"ROLE"}'
+  '{"database_name":"analytics","schema_name":"reporting","object_name":"events","grantee":"analysts","grantee_type":"ROLE"}'
 ```

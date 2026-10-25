@@ -25,7 +25,7 @@ type externalPartitionResource struct {
 
 // externalPartitionModel is the Terraform state of one partition.
 type externalPartitionModel struct {
-	// ID records the warehouse/database/schema/table/values identity.
+	// ID records the database/schema/table/values identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database is the local database holding the external schema.
 	Database types.String `tfsdk:"database"`
@@ -168,7 +168,7 @@ func (r *externalPartitionResource) read(ctx context.Context, data *externalPart
 
 // partitionIdentity encodes the partition identity; values is a JSON string because identity fields are strings.
 func (r *externalPartitionResource) partitionIdentity(data externalPartitionModel) types.String {
-	return r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "table": data.Table.ValueString(), "values": externalPartitionIDValues(knownMap(data.Values))})
+	return identity(map[string]string{"database": data.Database.ValueString(), "schema": data.Schema.ValueString(), "table": data.Table.ValueString(), "values": externalPartitionIDValues(knownMap(data.Values))})
 }
 
 // Create adds the partition after checking its values against the table's partition keys, and verifies it.
@@ -234,6 +234,7 @@ func (r *externalPartitionResource) Read(ctx context.Context, req resource.ReadR
 	case !found:
 		resp.State.RemoveResource(ctx)
 	default:
+		data.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 }

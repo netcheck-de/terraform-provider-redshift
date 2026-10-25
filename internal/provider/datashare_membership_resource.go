@@ -254,7 +254,7 @@ func (r *datashareMembershipResource) Create(ctx context.Context, req resource.C
 		return
 	}
 
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"datashare": data.Datashare.ValueString(), "schema": data.Schema.ValueString(), "kind": data.Kind.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "datashare": data.Datashare.ValueString(), "schema": data.Schema.ValueString(), "kind": data.Kind.ValueString()})
 	data.All = types.BoolValue(true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
@@ -291,6 +291,7 @@ func (r *datashareMembershipResource) Read(ctx context.Context, req resource.Rea
 		resp.Diagnostics.AddWarning("Incompatible future-object inclusion", "Set include_new = false on the datashare schema before changing or destroying its exclusive membership owner.")
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

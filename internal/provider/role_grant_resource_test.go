@@ -214,7 +214,7 @@ func TestRoleGrantRejectsAmbiguousImport(t *testing.T) {
 	var schema resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &schema)
 
-	for _, id := range []string{"invalid", `{"workgroup_name":"warehouse","database":"admin","role":"sys:monitor"}`, `{"workgroup_name":"warehouse","database":"admin","role":"sys:monitor","to_user":"grafana","to_role":"readers"}`} {
+	for _, id := range []string{"invalid", `{"role":"sys:monitor"}`, `{"role":"sys:monitor","to_user":"grafana","to_role":"readers"}`} {
 		resp := resource.ImportStateResponse{State: tfsdk.State{Schema: schema.Schema}}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
 		assert.True(t, resp.Diagnostics.HasError())

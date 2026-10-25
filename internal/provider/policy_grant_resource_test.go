@@ -182,7 +182,7 @@ func TestPolicyGrantImport(t *testing.T) {
 
 	data := policyGrantObject(nil, "SELECT")
 
-	id := r.(*policyGrantResource).identity("admin", maps.Clone(policyGrantTupleFields)).ValueString()
+	id := identity(policyGrantTupleFields).ValueString()
 	for _, candidate := range []string{"invalid JSON", `{}`, id} {
 		resp := resource.ImportStateResponse{State: testState(t, r, data)}
 		r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: candidate}, &resp)

@@ -46,7 +46,7 @@ resource "redshift_template" "csv" {
 					plancheck.ExpectResourceAction("redshift_template.csv", plancheck.ResourceActionUpdate),
 					plancheck.ExpectUnknownValue("redshift_template.csv", tfjsonpath.New("id")),
 				}},
-				Check: testresource.TestCheckResourceAttr("redshift_template.csv", "id", `{"database":"admin","name":"csv_import","schema":"serving","workgroup_name":"warehouse"}`),
+				Check: testresource.TestCheckResourceAttr("redshift_template.csv", "id", `{"database":"admin","name":"csv_import","schema":"serving"}`),
 			},
 		},
 	})

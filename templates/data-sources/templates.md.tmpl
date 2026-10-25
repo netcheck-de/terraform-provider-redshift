@@ -26,4 +26,4 @@ SELECT ... FROM sys_redshift_template WHERE database_name = '...';
 
 Items are ordered by schema and name. Superusers see all templates; regular users see only their own, even if they
 have `USAGE` on other templates. Listing does not probe schemas or require `USAGE` on every schema. Explicit `schema`
-filters use the same catalog visibility. `id` combines the warehouse binding with the filters.
+filters use the same catalog visibility. `id` contains the target database and configured filters within the warehouse.

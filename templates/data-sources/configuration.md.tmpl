@@ -34,4 +34,4 @@ source neither sets nor manages them.
 `name` must be a lowercase identifier or a dotted session context name such as `app_context.user_id`, because `SHOW`
 takes it unquoted; `all` is rejected. A context variable must exist in the provider's own session: a `SET` in another
 session is not visible. An unknown parameter or context variable is an error. `id` (String, computed) is the read's JSON
-identity: the warehouse binding, the provider database, and `name`. Only `SHOW` is executed.
+identity containing `name` within the configured warehouse. Only `SHOW` is executed.

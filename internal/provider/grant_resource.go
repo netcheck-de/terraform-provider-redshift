@@ -28,7 +28,7 @@ type grantResource struct {
 
 // grantModel is the Terraform state for one recipient/database/scope permission tuple.
 type grantModel struct {
-	// ID records the administration binding and permission tuple.
+	// ID records the permission tuple within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// DatabaseName receives the scoped permissions.
 	DatabaseName types.String `tfsdk:"database_name"`
@@ -224,6 +224,7 @@ func (r *grantResource) read(ctx context.Context, data *grantModel) (string, boo
 	}
 
 	data.Privileges, data.GrantOptionPrivileges = grantSet(privileges, nil), grantSet(privileges, options)
+	data.ID = normalizeLegacyIdentity(data.ID, false)
 
 	return target, true, nil
 }
@@ -329,7 +330,7 @@ func (r *grantResource) Create(ctx context.Context, req resource.CreateRequest, 
 		fields["schema_name"] = schemaName
 	}
 
-	data.ID = r.identity(r.database.ValueString(), fields)
+	data.ID = identity(fields)
 	data.GrantOptionPrivileges = types.SetValueMust(types.StringType, grantStringValues(knownStrings(data.GrantOptionPrivileges)))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 

@@ -36,7 +36,7 @@ resource "redshift_view" "labels" {
 		Steps: []testresource.TestStep{
 			{
 				Config: configuration, ResourceName: address, ImportState: true, ImportStatePersist: true,
-				ImportStateId: fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":%q,"name":%q}`, fakeViewSchema, fakeViewName),
+				ImportStateId: fmt.Sprintf(`{"database":"admin","schema":%q,"name":%q}`, fakeViewSchema, fakeViewName),
 			},
 			{
 				Config:           configuration,

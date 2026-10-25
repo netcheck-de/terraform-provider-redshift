@@ -38,7 +38,7 @@ type userResource struct {
 
 // userModel carries Terraform user attributes; write-only passwords are never retained in state.
 type userModel struct {
-	// ID records the administration binding and user name.
+	// ID records the user name within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Name identifies the database user.
 	Name types.String `tfsdk:"name"`
@@ -514,7 +514,7 @@ func (r *userResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 	// A failed session default must still record the created user, or the next apply would fail to create it again
 	// instead of replacing the tainted user. Unknown values cannot be saved; the verification read fills them in.
-	data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"name": data.Name.ValueString()})
 	recorded := data
 	recorded.ConnectionLimit, recorded.SessionTimeout = userKnownInt(data.ConnectionLimit), userKnownInt(data.SessionTimeout)
 	recorded.SyslogAccess, recorded.ExternalID = roleKnown(data.SyslogAccess), roleKnown(data.ExternalID)
@@ -570,6 +570,7 @@ func (r *userResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, false)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

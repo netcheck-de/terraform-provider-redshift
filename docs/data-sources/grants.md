@@ -57,7 +57,7 @@ output "events_grants" {
 ### Read-Only
 
 - `grants` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--grants))
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 
 <a id="nestedatt--grants"></a>
 ### Nested Schema for `grants`
@@ -85,4 +85,4 @@ is null for `SHOW GRANTS FOR`, which does not report it. `SHOW GRANTS` documents
 inherited through roles from explicit ones, so the listing exposes none. It reports only grants visible to the
 provider's identity and fails when more than 10,000 rows match. Function grants need a signature and are not listed.
 
-`id` is the listing's JSON identity: the warehouse binding, the provider database, and the configured filters.
+`id` is the listing's provider-relative JSON identity: the target `database_name` and the configured filters.

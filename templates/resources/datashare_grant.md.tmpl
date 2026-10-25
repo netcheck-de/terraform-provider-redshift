@@ -82,10 +82,6 @@ Use an `import` block with a JSON identity:
 
 {{ tffile "examples/resources/redshift_datashare_grant/import.tf" }}
 
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
-
 Alternatively, use `terraform import`:
 
 {{ codefile "shell" "examples/resources/redshift_datashare_grant/import.sh" }}
@@ -93,5 +89,5 @@ Alternatively, use `terraform import`:
 Namespace grants use `namespace_id` instead of `account_id` in the JSON identity.
 
 Existing account JSON identities and state retain the `account_id` key. A Lake Formation grant adds
-`"via_data_catalog":"true"`; plain grants omit the key. Imports require exactly one valid consumer selector and one
-warehouse binding (`workgroup_name`, `cluster_identifier`, or `endpoint`).
+`"via_data_catalog":"true"`; plain grants omit the key. Imports require exactly one valid consumer selector and the
+producer database.

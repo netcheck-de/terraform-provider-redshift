@@ -43,7 +43,7 @@ resource "redshift_external_model" "summarizer" {
 		Steps: []testresource.TestStep{
 			{
 				Config: configuration("UNIFIED", fakeModelID), ResourceName: address, ImportState: true, ImportStatePersist: true,
-				ImportStateId: fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName),
+				ImportStateId: fmt.Sprintf(`{"database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName),
 			},
 			{
 				Config:           configuration("UNIFIED", fakeModelID),
@@ -107,7 +107,7 @@ resource "redshift_external_model" "summarizer" {
 		Steps: []testresource.TestStep{
 			{
 				Config: configuration("DEFAULT"), ResourceName: address, ImportState: true, ImportStatePersist: true,
-				ImportStateId: fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName),
+				ImportStateId: fmt.Sprintf(`{"database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName),
 			},
 			{
 				Config:           configuration("DEFAULT"),
@@ -157,7 +157,7 @@ resource "redshift_external_model" "summarizer" {
 		Steps: []testresource.TestStep{
 			{
 				Config: configuration, ResourceName: address, ImportState: true, ImportStatePersist: true,
-				ImportStateId: fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName),
+				ImportStateId: fmt.Sprintf(`{"database":"admin","schema":%q,"name":%q}`, fakeModelSchema, fakeModelName),
 			},
 			{Config: configuration, ConfigPlanChecks: testresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionNoop)}}},
 			{

@@ -46,7 +46,7 @@ output "provider_session_settings" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this read: the warehouse binding, the provider database, and `name`.
+- `id` (String) JSON identity containing `name` within the configured warehouse.
 - `value` (String) Value `SHOW` reports for the provider's session, as text.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -59,4 +59,4 @@ source neither sets nor manages them.
 `name` must be a lowercase identifier or a dotted session context name such as `app_context.user_id`, because `SHOW`
 takes it unquoted; `all` is rejected. A context variable must exist in the provider's own session: a `SET` in another
 session is not visible. An unknown parameter or context variable is an error. `id` (String, computed) is the read's JSON
-identity: the warehouse binding, the provider database, and `name`. Only `SHOW` is executed.
+identity containing `name` within the configured warehouse. Only `SHOW` is executed.

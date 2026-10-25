@@ -168,7 +168,7 @@ func TestAccDatabaseIntegrationExistingUpdate(t *testing.T) {
 		Name: types.StringValue(os.Getenv("REDSHIFT_ACC_DYNAMODB_DATABASE")), DatashareARN: types.StringNull(), WithPermissions: types.BoolValue(true),
 		Integration: &databaseIntegrationModel{IntegrationID: types.StringValue(os.Getenv("REDSHIFT_ACC_DYNAMODB_INTEGRATION_ID"))},
 	}
-	prior.ID = r.identity(database, map[string]string{"name": prior.Name.ValueString(), "integration_id": prior.Integration.IntegrationID.ValueString()})
+	prior.ID = identity(map[string]string{"name": prior.Name.ValueString(), "integration_id": prior.Integration.IntegrationID.ValueString()})
 	found, err := r.read(ctx, &prior)
 	require.NoError(t, err)
 	require.True(t, found)

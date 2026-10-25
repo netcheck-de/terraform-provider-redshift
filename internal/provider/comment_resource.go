@@ -19,7 +19,7 @@ type commentResource struct {
 
 // commentModel is the Terraform state for an annotation on one local SQL object.
 type commentModel struct {
-	// ID records the administration binding and annotated object identity.
+	// ID records the annotated object's identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// DatabaseName is the local database where COMMENT executes.
 	DatabaseName types.String `tfsdk:"database_name"`
@@ -88,6 +88,7 @@ func (r *commentResource) read(ctx context.Context, data *commentModel) (bool, e
 	}
 
 	data.Text = types.StringValue(rows[0]["text"])
+	data.ID = normalizeLegacyIdentity(data.ID, false)
 
 	return true, nil
 }
@@ -162,7 +163,7 @@ func (r *commentResource) Create(ctx context.Context, req resource.CreateRequest
 		fields["constraint_name"] = data.ConstraintName.ValueString()
 	}
 
-	data.ID = r.identity(r.database.ValueString(), fields)
+	data.ID = identity(fields)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	if err := r.reconcile(ctx, data, false); err != nil {

@@ -141,9 +141,9 @@ func (r *debugGrantResource) read(ctx context.Context, data debugGrantModel) (bo
 	return false, nil
 }
 
-// fields returns the JSON identity keys besides the binding and the database.
+// fields returns the complete provider-relative JSON identity.
 func (data debugGrantModel) fields() map[string]string {
-	fields := map[string]string{"grantee": data.Grantee.ValueString(), "grantee_type": data.GranteeType.ValueString()}
+	fields := map[string]string{"database": data.Database.ValueString(), "grantee": data.Grantee.ValueString(), "grantee_type": data.GranteeType.ValueString()}
 	debugGrantCanonical(fields)
 
 	return fields
@@ -207,7 +207,7 @@ func (r *debugGrantResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	data.ID = r.identity(data.Database.ValueString(), data.fields())
+	data.ID = identity(data.fields())
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	found, err := r.read(ctx, data)
@@ -234,6 +234,7 @@ func (r *debugGrantResource) Read(ctx context.Context, req resource.ReadRequest,
 	case !found:
 		resp.State.RemoveResource(ctx)
 	default:
+		data.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 }

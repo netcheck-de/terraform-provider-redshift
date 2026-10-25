@@ -40,7 +40,7 @@ output "staging_templates" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `templates` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--templates))
 
 <a id="nestedatt--templates"></a>
@@ -56,4 +56,4 @@ Read-Only:
 
 Items are ordered by schema and name. Superusers see all templates; regular users see only their own, even if they
 have `USAGE` on other templates. Listing does not probe schemas or require `USAGE` on every schema. Explicit `schema`
-filters use the same catalog visibility. `id` combines the warehouse binding with the filters.
+filters use the same catalog visibility. `id` contains the target database and configured filters within the warehouse.

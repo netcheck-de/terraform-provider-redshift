@@ -64,7 +64,7 @@ resource "redshift_comment" "primary_key" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 For `DATABASE`, `object_name` must equal `database_name`. For `COLUMN`, `object_name` identifies the relation. For
@@ -107,26 +107,20 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_comment.column
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    database_name  = "analytics"
-    object_type    = "COLUMN"
-    schema_name    = "reporting"
-    object_name    = "daily_summary"
-    column_name    = "day"
+    database_name = "analytics"
+    object_type   = "COLUMN"
+    schema_name   = "reporting"
+    object_name   = "daily_summary"
+    column_name   = "day"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_comment.column \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","object_type":"COLUMN","schema_name":"reporting","object_name":"daily_summary","column_name":"day"}'
+  '{"database_name":"analytics","object_type":"COLUMN","schema_name":"reporting","object_name":"daily_summary","column_name":"day"}'
 ```
 
 For database/schema annotations, omit `schema_name`, `column_name`, and `constraint_name`. For table/view annotations,

@@ -58,7 +58,7 @@ resource "redshift_grant" "readers" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## Scopes and Privileges
@@ -297,33 +297,27 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_grant.readers["TABLES"]
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    database_name  = "analytics"
-    role           = "ncidc:analytics-readers"
-    scope          = "TABLES"
+    database_name = "analytics"
+    role          = "ncidc:analytics-readers"
+    scope         = "TABLES"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 # Role grant
 terraform import 'redshift_grant.readers["TABLES"]' \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","role":"ncidc:analytics-readers","scope":"TABLES"}'
+  '{"database_name":"analytics","role":"ncidc:analytics-readers","scope":"TABLES"}'
 
 # User grant: uses user in place of role and includes schema_name when set
 terraform import redshift_grant.analyst_tables \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","user":"analyst","schema_name":"serving","scope":"TABLES"}'
+  '{"database_name":"analytics","user":"analyst","schema_name":"serving","scope":"TABLES"}'
 
 # Datashare grant: uses datashare in place of role and includes schema_name
 terraform import redshift_grant.share_tables \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","datashare":"analytics_share","schema_name":"serving","scope":"TABLES"}'
+  '{"database_name":"analytics","datashare":"analytics_share","schema_name":"serving","scope":"TABLES"}'
 ```
 
 The identity names the one configured recipient key (`role`, `user`, or `datashare`) and includes `schema_name` when

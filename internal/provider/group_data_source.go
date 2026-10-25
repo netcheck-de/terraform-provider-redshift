@@ -76,6 +76,6 @@ func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		data.Members = []string{}
 	}
 
-	data.ID = d.identity(d.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

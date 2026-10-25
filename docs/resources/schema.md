@@ -47,7 +47,7 @@ resource "redshift_schema" "serving" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## Owner and Quota
@@ -100,22 +100,17 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_schema.serving
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "warehouse"
-    name           = "serving"
+    database = "warehouse"
+    name     = "serving"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_schema.serving \
-  '{"workgroup_name":"warehouse","database":"warehouse","name":"serving"}'
+  '{"database":"warehouse","name":"serving"}'
 ```
 
 The owner and quota are discovered on refresh.

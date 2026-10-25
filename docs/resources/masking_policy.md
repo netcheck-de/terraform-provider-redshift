@@ -69,7 +69,7 @@ resource "redshift_masking_policy" "card" {
 ### Read-Only
 
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed outside literals, quoted identifiers, and comments; detects definition changes made outside Terraform.
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 
 <a id="nestedblock--input_column"></a>
 ### Nested Schema for `input_column`
@@ -129,22 +129,17 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_masking_policy.email
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "warehouse"
-    name           = "mask_email"
+    database = "warehouse"
+    name     = "mask_email"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_masking_policy.email \
-  '{"workgroup_name":"warehouse","database":"warehouse","name":"mask_email"}'
+  '{"database":"warehouse","name":"mask_email"}'
 ```
 
 Import reads the `input_column` blocks and `expression` from the catalog in Redshift's spelling, for example

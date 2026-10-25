@@ -102,7 +102,7 @@ func TestDatabaseIntegrationImport(t *testing.T) {
 
 	ctx := context.Background()
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
-	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: integrationState().ID.ValueString()}, &imported)
+	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: `{"name":"replica","integration_id":"` + fakeIntegrationID + `"}`}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
 	resp := resource.ReadResponse{State: imported.State}
 	r.Read(ctx, resource.ReadRequest{State: imported.State}, &resp)
@@ -612,7 +612,7 @@ func TestDatabaseIntegrationLookup(t *testing.T) {
 
 		if hidden {
 			assert.Nil(t, data.Integration)
-			assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","name":"replica"}`, data.ID.ValueString())
+			assert.JSONEq(t, `{"name":"replica"}`, data.ID.ValueString())
 
 			continue
 		}
@@ -622,7 +622,7 @@ func TestDatabaseIntegrationLookup(t *testing.T) {
 		assert.Equal(t, int64(600), data.Integration.RefreshInterval.ValueInt64())
 		assert.True(t, data.Integration.AutoRemediation.ValueBool())
 		assert.True(t, data.Integration.TruncateColumns.IsNull())
-		assert.JSONEq(t, integrationState().ID.ValueString(), data.ID.ValueString())
+		assert.JSONEq(t, `{"name":"replica","integration_id":"`+fakeIntegrationID+`"}`, data.ID.ValueString())
 	}
 	// A destination that SHOW DATABASES reports as local still reports its integration, and no collation.
 	c := fullCatalog()

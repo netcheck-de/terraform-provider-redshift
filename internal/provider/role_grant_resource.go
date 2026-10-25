@@ -25,7 +25,7 @@ type roleGrantResource struct {
 
 // roleGrantModel is the Terraform state for one granted role and one recipient.
 type roleGrantModel struct {
-	// ID records the administration binding and role/recipient tuple.
+	// ID records the role/recipient tuple within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Role is the granted SQL role, including built-in system roles.
 	Role types.String `tfsdk:"role"`
@@ -150,7 +150,7 @@ func (r *roleGrantResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 	// Save the stable identity before post-write verification can fail.
-	data.ID = r.identity(r.database.ValueString(), data.fields())
+	data.ID = identity(data.fields())
 	data.AdminOption = types.BoolValue(data.adminOption())
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	expected := data.AdminOption
@@ -189,6 +189,7 @@ func (r *roleGrantResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, false)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

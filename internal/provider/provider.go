@@ -32,7 +32,7 @@ type redshiftProvider struct {
 type providerData struct {
 	// client executes SQL without exposing its transport to lifecycle code.
 	client sqlclient.Client
-	// warehouse identifies ownership independently of query routing.
+	// warehouse holds connection selectors for configuration validation and legacy IDs.
 	warehouse warehouseBinding
 	// database is the local administration database used for catalog reads.
 	database types.String
@@ -40,9 +40,9 @@ type providerData struct {
 	datashareARN func(context.Context, shareSource) (string, error)
 }
 
-// warehouseBinding identifies SQL ownership independently of the execution transport.
+// warehouseBinding retains configured connection spelling for validation and legacy ID checks.
 type warehouseBinding struct {
-	// field is the JSON import key representing this warehouse kind.
+	// field is the legacy JSON key representing this warehouse kind.
 	field string
 	// value is its configured identity, which can be unknown during planning.
 	value types.String
@@ -136,7 +136,7 @@ func (p *redshiftProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 	}
 }
 
-// Configure constructs the SQL transport without issuing SQL and distributes its ownership binding.
+// Configure constructs the SQL transport without issuing SQL and distributes its connection configuration.
 func (p *redshiftProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
 	var data providerModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)

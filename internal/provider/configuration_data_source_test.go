@@ -79,7 +79,7 @@ func TestConfigurationRead(t *testing.T) {
 			}))
 			require.True(t, ok, detail)
 			assert.Equal(t, types.StringValue(test.value), observed.Value)
-			assertLookupIdentity(t, observed.ID, "admin", map[string]string{"name": test.name})
+			assertLookupIdentity(t, observed.ID, map[string]string{"name": test.name})
 			assert.Equal(t, []string{"admin: SHOW " + test.name}, statements)
 		})
 	}

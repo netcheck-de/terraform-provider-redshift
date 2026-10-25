@@ -48,7 +48,7 @@ resource "redshift_datashare_privilege" "share_admins" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Use `grantee_type = "PUBLIC"` with `grantee = "public"` to grant to every user.
@@ -150,8 +150,6 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_datashare_privilege.share_admins
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
     database_name  = "warehouse"
     datashare_name = "analytics"
     grantee        = "share_admins"
@@ -160,15 +158,11 @@ import {
 }
 ```
 
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
-
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_datashare_privilege.share_admins \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"warehouse","datashare_name":"analytics","grantee":"share_admins","grantee_type":"ROLE"}'
+  '{"database_name":"warehouse","datashare_name":"analytics","grantee":"share_admins","grantee_type":"ROLE"}'
 ```
 
 The identity's `database` is the provider's administration database; `database_name` is the share's producer database.

@@ -37,7 +37,7 @@ output "masking_policy_names" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `masking_policies` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--masking_policies))
 
 <a id="nestedatt--masking_policies"></a>
@@ -61,4 +61,4 @@ Read-Only:
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Items are ordered by database and name. Only superusers and `sys:secadmin` members see policies; for other identities
-the list is empty. `id` combines the warehouse binding with the `database` filter, or the provider database without one.
+the list is empty. `id` contains the `database` filter when configured; without it, the identity is an empty JSON object.

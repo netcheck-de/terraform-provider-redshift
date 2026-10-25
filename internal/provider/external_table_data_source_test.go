@@ -37,7 +37,7 @@ func TestExternalTableLookup(t *testing.T) {
 	assert.Equal(t, "TEXTFILE", data.StoredAs.ValueString())
 	assert.Equal(t, ",", data.FieldDelimiter.ValueString())
 	assert.Equal(t, externalTableTestMap("EXTERNAL", "TRUE", "skip.header.line.count", "1", "transient_lastDdlTime", "1700000000"), data.TableProperties)
-	assertLookupIdentity(t, data.ID, "admin", map[string]string{"schema": "example_external", "name": "Events"})
+	assertLookupIdentity(t, data.ID, map[string]string{"database": "admin", "schema": "example_external", "name": "Events"})
 	_, ok = externalTableLookupState(t, fullCatalog(), "missing")
 	assert.False(t, ok, "a missing table is an error")
 	state, diagnostics := readSource(t, newExternalTableDataSource(), catalogLookupObject(t, newExternalTableDataSource(), map[string]string{"database": "admin", "schema": "example_external", "name": "events"}), &catalog{})

@@ -66,7 +66,7 @@ func TestDebugGrantRecipients(t *testing.T) {
 
 			var id types.String
 			require.False(t, state.GetAttribute(context.Background(), path.Root("id"), &id).HasError())
-			assertLookupIdentity(t, id, data.Database.ValueString(), map[string]string{"grantee": data.Grantee.ValueString(), "grantee_type": strings.ToUpper(data.GranteeType.ValueString())})
+			assertLookupIdentity(t, id, map[string]string{"database": data.Database.ValueString(), "grantee": data.Grantee.ValueString(), "grantee_type": strings.ToUpper(data.GranteeType.ValueString())})
 			data.ID = id
 			_, diagnostics = applyOperation(t, r, "read", data, nil, nil)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)

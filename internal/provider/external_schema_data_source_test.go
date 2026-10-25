@@ -22,5 +22,5 @@ func TestExternalSchemaLookup(t *testing.T) {
 	assert.Equal(t, "DATA_CATALOG", data.SourceType.ValueString())
 	assert.Equal(t, "admin", data.Owner.ValueString())
 	assert.True(t, data.SourceDatabase.IsNull())
-	assertLookupIdentity(t, data.ID, "admin", map[string]string{"name": "example_external"})
+	assertLookupIdentity(t, data.ID, map[string]string{"database": "admin", "name": "example_external"})
 }

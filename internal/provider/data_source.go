@@ -19,7 +19,7 @@ type dataSourceClient struct {
 	resourceClient
 }
 
-// Configure receives the shared SQL client and catalog ownership binding for lookups.
+// Configure receives the shared SQL client and connection configuration for lookups.
 func (d *dataSourceClient) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return

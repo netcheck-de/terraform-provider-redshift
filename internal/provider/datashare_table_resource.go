@@ -89,7 +89,7 @@ func (r *datashareTableResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"datashare": data.Datashare.ValueString(), "schema": data.Schema.ValueString(), "table": data.Table.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "datashare": data.Datashare.ValueString(), "schema": data.Schema.ValueString(), "table": data.Table.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	found, err := r.read(ctx, data)
@@ -130,6 +130,7 @@ func (r *datashareTableResource) Read(ctx context.Context, req resource.ReadRequ
 	case !found:
 		resp.State.RemoveResource(ctx)
 	default:
+		data.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 }

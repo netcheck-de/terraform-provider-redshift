@@ -159,7 +159,7 @@ func TestCopyJobImportAdoptsDefinition(t *testing.T) {
 	r := newCopyJobResource()
 	configureTestResource(t, r, fullCatalog())
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
-	id := r.(*copyJobResource).identity("admin", map[string]string{"name": "events_load"}).ValueString()
+	id := identity(map[string]string{"database": "admin", "name": "events_load"}).ValueString()
 	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: id}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
 	refreshed := resource.ReadResponse{State: imported.State}

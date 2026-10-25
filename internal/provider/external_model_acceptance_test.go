@@ -41,7 +41,7 @@ func TestAccExternalModelImportAdoption(t *testing.T) {
 			})
 
 			provider := fmt.Sprintf("provider \"redshift\" {\n region = %q\n profile = %q\n workgroup_name = %q\n database = %q\n}\n", region, profile, workgroup, database)
-			identity := fmt.Sprintf(`{"workgroup_name":%q,"database":%q,"schema":%q,"name":"imported_model"}`, workgroup, database, f.schema)
+			importID := identity(map[string]string{"database": database, "schema": f.schema, "name": "imported_model"}).ValueString()
 			observer := f
 			grantee := ""
 
@@ -62,7 +62,6 @@ func TestAccExternalModelImportAdoption(t *testing.T) {
 				observer = f.directUser(t, user, password)
 				credentials := observer.client.(*redshiftconn.Client).Credentials
 				provider = fmt.Sprintf("provider \"redshift\" {\n database = %q\n direct_connection {\n host = %q\n port = %d\n username = %q\n password = %q\n %s\n }\n}\n", database, credentials.Host, credentials.Port, user, password, testAccSSLModeHCL())
-				identity = fmt.Sprintf(`{"endpoint":%q,"database":%q,"schema":%q,"name":"imported_model"}`, fmt.Sprintf("%s:%d", credentials.Host, credentials.Port), database, f.schema)
 			}
 
 			catalogClient := resourceClient{client: observer.client, database: types.StringValue(database), warehouse: warehouseBinding{field: "workgroup_name", value: types.StringValue(workgroup)}}
@@ -127,7 +126,7 @@ data "redshift_object_grant" "model" {
 			}
 
 			steps := []resource.TestStep{
-				{Config: configuration(scenario.response), ResourceName: address, ImportState: true, ImportStatePersist: true, ImportStateId: identity},
+				{Config: configuration(scenario.response), ResourceName: address, ImportState: true, ImportStatePersist: true, ImportStateId: importID},
 				{Config: configuration(scenario.response), Check: resource.ComposeAggregateTestCheckFunc(checks...), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate)}}},
 				{Config: configuration(scenario.response), PlanOnly: true},
 			}

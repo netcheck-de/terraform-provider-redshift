@@ -36,7 +36,7 @@ type tableResource struct {
 
 // tableModel is the Terraform state of a table definition.
 type tableModel struct {
-	// ID records the warehouse/database/schema/table identity.
+	// ID records the database/schema/table identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database contains the table.
 	Database types.String `tfsdk:"database"`
@@ -904,7 +904,7 @@ func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, 
 		return
 	}
 
-	data.ID = r.identity(database, map[string]string{"schema": spec.schema, "name": spec.name})
+	data.ID = identity(map[string]string{"database": database, "schema": spec.schema, "name": spec.name})
 	// A failed follow-up statement or verification must still leave state for the created table.
 	known := tableResourceModel{tableModel: tableKnownState(data.tableModel), Timeouts: data.Timeouts}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &known)...)
@@ -1030,6 +1030,7 @@ func (r *tableResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	case !found:
 		resp.State.RemoveResource(ctx)
 	default:
+		data.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 }

@@ -26,4 +26,4 @@ SELECT ... FROM svv_column_privileges WHERE ...;
 
 All filters are optional and combine with AND; an empty result is an empty list. The view shows only grants visible
 to the provider's identity (superusers and users with `ACCESS SYSTEM TABLE` see all). Column grants have no grant
-option. `id` is the listing's JSON identity: the warehouse binding, the provider database, and the configured filters.
+option. `id` is the listing's provider-relative JSON identity: the target `database_name` and the configured filters.

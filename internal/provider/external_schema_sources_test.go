@@ -359,8 +359,7 @@ func TestExternalSchemaCreateFailures(t *testing.T) {
 // after an ownership transfer as an error, so Read never removes a live schema and Create never calls it absent.
 func TestExternalSchemaHiddenFromRegularUser(t *testing.T) {
 	glue := externalSchemaSourceModel("DATA_CATALOG")
-	identity := testResourceClient(fullCatalog())
-	glue.ID = identity.identity("admin", map[string]string{"name": "example_external"})
+	glue.ID = identity(map[string]string{"database": "admin", "name": "example_external"})
 	hidden := func() sqlclient.Client {
 		c := externalSchemaCatalog(t, glue)().(*catalog)
 		fakeState[*databasesFamily](c, "databases").externalHidden = true

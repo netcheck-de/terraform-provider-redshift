@@ -104,7 +104,7 @@ func TestUserCreatesAndRotatesPassword(t *testing.T) {
 	assert.True(t, c.user)
 	assert.Contains(t, c.writes[0], "PASSWORD 'InitialPass123'")
 
-	data.ID = r.identity("admin", map[string]string{"name": "grafana"})
+	data.ID = identity(map[string]string{"name": "grafana"})
 	previous := data
 	data.PasswordVersion = types.Int64Value(1)
 	require.False(t, runUser(t, r, "update", data, previous, "RotatedPass456").HasError())
@@ -130,7 +130,7 @@ func TestUserImportDoesNotRotatePassword(t *testing.T) {
 	c := &catalog{user: true}
 	r := &userResource{testResourceClient(c)}
 	data := grafanaUser()
-	data.ID = r.identity("admin", map[string]string{"name": "grafana"})
+	data.ID = identity(map[string]string{"name": "grafana"})
 	previous := data
 	previous.PasswordVersion = types.Int64Null()
 	require.False(t, runUser(t, r, "update", data, previous, "").HasError())
@@ -149,7 +149,7 @@ func TestUserRejectsMissingPassword(t *testing.T) {
 
 	c := &catalog{user: true}
 	r = &userResource{testResourceClient(c)}
-	data.ID = r.identity("admin", map[string]string{"name": "grafana"})
+	data.ID = identity(map[string]string{"name": "grafana"})
 	previous := data
 	data.PasswordVersion = types.Int64Value(1)
 	assert.True(t, runUser(t, r, "update", data, previous, "").HasError())
@@ -213,7 +213,7 @@ func TestUserOperationsReportCatalogErrors(t *testing.T) {
 
 				data := grafanaUser()
 				if operation != "create" {
-					data.ID = r.identity("admin", map[string]string{"name": "grafana"})
+					data.ID = identity(map[string]string{"name": "grafana"})
 				}
 
 				planned, prior := data, data
@@ -237,7 +237,7 @@ func TestUserUpdateDetectsMismatchedBindingAndPrivileges(t *testing.T) {
 	assert.True(t, runUser(t, r, "update", data, data, "").HasError())
 	assert.Empty(t, c.writes)
 
-	data.ID = r.identity("admin", map[string]string{"name": "grafana"})
+	data.ID = identity(map[string]string{"name": "grafana"})
 	previous := data
 	data.Superuser = types.BoolValue(true)
 	client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
@@ -256,7 +256,7 @@ func TestUserLifecycleErrorPaths(t *testing.T) {
 	for _, operation := range []string{"read", "delete"} {
 		r := &userResource{testResourceClient(&catalog{})}
 		data := grafanaUser()
-		data.ID = r.identity("admin", map[string]string{"name": "grafana"})
+		data.ID = identity(map[string]string{"name": "grafana"})
 		assert.False(t, runUser(t, r, operation, data, data, "").HasError())
 	}
 
@@ -330,7 +330,7 @@ func TestUserUpdateFailures(t *testing.T) {
 			})
 			r := &userResource{testResourceClient(client)}
 			previous := grafanaUser()
-			previous.ID = r.identity("admin", map[string]string{"name": "grafana"})
+			previous.ID = identity(map[string]string{"name": "grafana"})
 
 			planned := previous
 			if stage == "rotation" || stage == "invalid config" {

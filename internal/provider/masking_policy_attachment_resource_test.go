@@ -144,12 +144,12 @@ func TestMaskingPolicyAttachmentImport(t *testing.T) {
 	r := newMaskingPolicyAttachmentResource()
 	configureTestResource(t, r, maskingAttachmentClient())
 
-	id := r.(*maskingPolicyAttachmentResource).identity("analytics", maskingAttachmentIdentity(maskingTestAttachment(nil))).ValueString()
+	id := identity(maskingAttachmentIdentity(maskingTestAttachment(nil))).ValueString()
 	for candidate, valid := range map[string]bool{
 		id: true,
-		`{"workgroup_name":"warehouse","database":"analytics","policy":"p","schema":"s","relation":"r","grantee":"g","grantee_type":"ROLE","columns":"email"}`: false,
-		`{"workgroup_name":"warehouse","database":"analytics","policy":"p","schema":"s","relation":"r","grantee":"g","grantee_type":"ROLE","columns":"[]"}`:    false,
-		`{"workgroup_name":"warehouse","database":"analytics","policy":"p","schema":"s","relation":"r","grantee":"g","columns":"[\"email\"]"}`:                 false,
+		`{"database":"analytics","policy":"p","schema":"s","relation":"r","grantee":"g","grantee_type":"ROLE","columns":"email"}`: false,
+		`{"database":"analytics","policy":"p","schema":"s","relation":"r","grantee":"g","grantee_type":"ROLE","columns":"[]"}`:    false,
+		`{"database":"analytics","policy":"p","schema":"s","relation":"r","grantee":"g","columns":"[\"email\"]"}`:                 false,
 	} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: candidate}, &resp)

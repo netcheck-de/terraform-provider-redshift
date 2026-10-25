@@ -198,7 +198,7 @@ func TestContractProviderLifecycle(t *testing.T) {
 				checkAttributes(t, "redshift_identity_provider.main", map[string]string{"enabled": "true"}),
 				checkAttributes(t, "redshift_user.grafana", map[string]string{"password_wo_version": "0"}),
 				checkAttributes(t, "data.redshift_user.grafana", map[string]string{"superuser": "false"}),
-				checkAttributes(t, "data.redshift_database.analytics", map[string]string{"database_type": "SHARED", "datashare_arn": shareARN, "id": `{"database":"admin","datashare_arn":"` + shareARN + `","name":"analytics","workgroup_name":"warehouse"}`}),
+				checkAttributes(t, "data.redshift_database.analytics", map[string]string{"database_type": "SHARED", "datashare_arn": shareARN, "id": `{"datashare_arn":"` + shareARN + `","name":"analytics"}`}),
 				checkAttributes(t, "data.redshift_datashare.producer", map[string]string{"publicly_accessible": "false"}),
 				checkAttributes(t, "redshift_grant.read", map[string]string{"privileges.#": "1"}),
 			)},

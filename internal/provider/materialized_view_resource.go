@@ -27,7 +27,7 @@ type materializedViewResource struct {
 
 // materializedViewModel is the Terraform state of one materialized view.
 type materializedViewModel struct {
-	// ID records the warehouse/database/schema/name identity.
+	// ID records the database/schema/name identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database contains the materialized view.
 	Database types.String `tfsdk:"database"`
@@ -294,7 +294,7 @@ func (r *materializedViewResource) Create(ctx context.Context, req resource.Crea
 	}
 
 	planned := data
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
 	// A failed ownership change or verification must still record the created view in serializable state.
 	if data.Owner.IsUnknown() {
 		data.Owner = types.StringNull()
@@ -369,6 +369,7 @@ func (r *materializedViewResource) Read(ctx context.Context, req resource.ReadRe
 		data.Query, data.DefinitionFingerprint = reconcileDefinition(data.Query, data.DefinitionFingerprint, observed.view.definition)
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

@@ -15,8 +15,9 @@ var _ = registerDataSource(newCopyJobsDataSource)
 // newCopyJobsDataSource lists the copy jobs SYS_COPY_JOB shows in one database.
 func newCopyJobsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
-		name:        "copy_jobs",
-		description: "Lists copy jobs from `SYS_COPY_JOB`. Superusers see every job; other users see only their own.",
+		name:          "copy_jobs",
+		databaseField: "database",
+		description:   "Lists copy jobs from `SYS_COPY_JOB`. Superusers see every job; other users see only their own.",
 		filters: map[string]schema.Attribute{
 			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database whose jobs are listed; the provider database when omitted."},
 		},

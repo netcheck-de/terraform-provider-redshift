@@ -22,8 +22,9 @@ func testSchemaListing() datasource.DataSource {
 	element["tables"] = schema.Int64Attribute{Computed: true, MarkdownDescription: "Number of tables."}
 
 	return newCollectionDataSource(collectionSpec{
-		name:        "test_schemas",
-		description: "Lists schemas.",
+		name:          "test_schemas",
+		databaseField: "database",
+		description:   "Lists schemas.",
 		filters: map[string]schema.Attribute{
 			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database to list; defaults to the provider database."},
 			"owner":    schema.StringAttribute{Optional: true, MarkdownDescription: "Only schemas owned by this user."},
@@ -109,7 +110,7 @@ func TestCollectionID(t *testing.T) {
 	source.resourceClient = testResourceClient(fullCatalog())
 	data := collectionConfig(t, source, map[string]string{"database": "analytics", "owner": "etl"})
 	id := source.collectionID(data)
-	assertLookupIdentity(t, id, "analytics", map[string]string{"owner": "etl"})
+	assertLookupIdentity(t, id, map[string]string{"database": "analytics", "owner": "etl"})
 
 	for range 20 {
 		assert.Equal(t, id, source.collectionID(data))
@@ -117,7 +118,7 @@ func TestCollectionID(t *testing.T) {
 
 	lookupValue(&data, "database", types.StringUnknown())
 	lookupValue(&data, "owner", types.StringNull())
-	assertLookupIdentity(t, source.collectionID(data), "admin", map[string]string{})
+	assertLookupIdentity(t, source.collectionID(data), map[string]string{"database": "admin"})
 }
 
 // TestCollectionDataSourceRead checks filtered and unfiltered listings, empty results, and failures.
@@ -143,9 +144,9 @@ func TestCollectionDataSourceRead(t *testing.T) {
 		database string
 		identity map[string]string
 	}{
-		{"unfiltered", nil, []sqlclient.Row{{"nspname": "public", "usename": "admin"}, {"nspname": "serving", "usename": "etl"}}, "admin", map[string]string{"workgroup_name": "warehouse", "database": "admin"}},
-		{"filtered", map[string]string{"database": "analytics", "owner": "etl"}, []sqlclient.Row{{"nspname": "serving", "usename": "etl"}}, "analytics", map[string]string{"workgroup_name": "warehouse", "database": "analytics", "owner": "etl"}},
-		{"empty", map[string]string{"owner": "nobody"}, nil, "admin", map[string]string{"workgroup_name": "warehouse", "database": "admin", "owner": "nobody"}},
+		{"unfiltered", nil, []sqlclient.Row{{"nspname": "public", "usename": "admin"}, {"nspname": "serving", "usename": "etl"}}, "admin", map[string]string{"database": "admin"}},
+		{"filtered", map[string]string{"database": "analytics", "owner": "etl"}, []sqlclient.Row{{"nspname": "serving", "usename": "etl"}}, "analytics", map[string]string{"database": "analytics", "owner": "etl"}},
+		{"empty", map[string]string{"owner": "nobody"}, nil, "admin", map[string]string{"database": "admin", "owner": "nobody"}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			rows = test.rows
@@ -197,5 +198,5 @@ func TestCollectionIdentityIncludesBooleanFilter(t *testing.T) {
 	d := newCollectionDataSource(collectionSpec{name: "items", filters: map[string]schema.Attribute{"enabled": schema.BoolAttribute{Optional: true}}}).(*collectionDataSource)
 	d.resourceClient = testResourceClient(fullCatalog())
 	data := types.ObjectValueMust(map[string]attr.Type{"enabled": types.BoolType}, map[string]attr.Value{"enabled": types.BoolValue(true)})
-	assertLookupIdentity(t, d.collectionID(data), "admin", map[string]string{"enabled": "true"})
+	assertLookupIdentity(t, d.collectionID(data), map[string]string{"enabled": "true"})
 }

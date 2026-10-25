@@ -378,7 +378,8 @@ func maskingAttachmentIdentity(data maskingPolicyAttachmentModel) map[string]str
 	columns, _ := json.Marshal(maskingAttachmentNames(data.Columns)) // String slices are always JSON-serializable.
 
 	return map[string]string{
-		"policy": data.Policy.ValueString(), "schema": data.Schema.ValueString(), "relation": data.Relation.ValueString(),
+		"database": data.Database.ValueString(),
+		"policy":   data.Policy.ValueString(), "schema": data.Schema.ValueString(), "relation": data.Relation.ValueString(),
 		"columns": string(columns), "grantee": data.Grantee.ValueString(), "grantee_type": data.GranteeType.ValueString(),
 	}
 }

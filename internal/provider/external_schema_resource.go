@@ -31,7 +31,7 @@ type externalSchemaResource struct {
 
 // externalSchemaModel is the Terraform state for an external schema mapping.
 type externalSchemaModel struct {
-	// ID records the warehouse/database/schema identity.
+	// ID records the database/schema identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database contains the Redshift schema mapping.
 	Database types.String `tfsdk:"database"`
@@ -366,7 +366,7 @@ func (r *externalSchemaResource) Create(ctx context.Context, req resource.Create
 		return
 	}
 
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 	// Computed options left to the server are only known after readback.
 	for _, value := range []*types.String{&data.Region, &data.SourceSchema, &data.Owner} {
 		if value.IsUnknown() {
@@ -424,6 +424,7 @@ func (r *externalSchemaResource) Read(ctx context.Context, req resource.ReadRequ
 	case !found:
 		resp.State.RemoveResource(ctx)
 	default:
+		data.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 }

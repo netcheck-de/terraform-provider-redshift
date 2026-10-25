@@ -82,7 +82,7 @@ resource "redshift_copy_job" "archive" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 
 <a id="nestedblock--table"></a>
 ### Nested Schema for `table`
@@ -148,22 +148,17 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_copy_job.events
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    name           = "events_auto_load"
+    database = "analytics"
+    name     = "events_auto_load"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_copy_job.events \
-  '{"workgroup_name":"warehouse","database":"analytics","name":"events_auto_load"}'
+  '{"database":"analytics","name":"events_auto_load"}'
 ```
 
 Import reads `auto`, `iam_role`, and the actual COPY definition. Configuration must match the imported job;

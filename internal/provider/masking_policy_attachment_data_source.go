@@ -51,6 +51,6 @@ func (d *maskingAttachmentDataSource) Read(ctx context.Context, req datasource.R
 	}
 
 	model := maskingAttachmentModelFromObject(data)
-	id := d.identity(model.Database.ValueString(), maskingAttachmentIdentity(model))
+	id := identity(maskingAttachmentIdentity(model))
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 }

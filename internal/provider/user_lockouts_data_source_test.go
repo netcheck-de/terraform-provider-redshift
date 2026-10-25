@@ -52,7 +52,7 @@ func TestUserLockoutsList(t *testing.T) {
 
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
-			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", test.filters)
+			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), test.filters)
 			items := collectionResult(source, observed).Elements()
 			require.Len(t, items, len(test.users))
 

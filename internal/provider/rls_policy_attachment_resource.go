@@ -20,7 +20,7 @@ type rlsPolicyAttachmentResource struct {
 
 // rlsPolicyAttachmentModel is the Terraform state of one policy/relation/recipient attachment.
 type rlsPolicyAttachmentModel struct {
-	// ID records the warehouse/database/policy/relation/recipient identity.
+	// ID records the database/policy/relation/recipient identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Policy names the attached RLS policy.
 	Policy types.String `tfsdk:"policy"`
@@ -70,8 +70,9 @@ func (r *rlsPolicyAttachmentResource) Schema(_ context.Context, _ resource.Schem
 
 // rlsPolicyAttachmentIdentity is the JSON identity shared by the resource, its lookup, and imports.
 func (r *rlsPolicyAttachmentResource) rlsPolicyAttachmentIdentity(data rlsPolicyAttachmentModel) types.String {
-	return r.identity(data.Database.ValueString(), map[string]string{
-		"policy": data.Policy.ValueString(), "schema": data.Schema.ValueString(), "relation": data.Relation.ValueString(),
+	return identity(map[string]string{
+		"database": data.Database.ValueString(),
+		"policy":   data.Policy.ValueString(), "schema": data.Schema.ValueString(), "relation": data.Relation.ValueString(),
 		"grantee": data.Grantee.ValueString(), "grantee_type": data.GranteeType.ValueString(),
 	})
 }
@@ -152,6 +153,7 @@ func (r *rlsPolicyAttachmentResource) Read(ctx context.Context, req resource.Rea
 	case !found:
 		resp.State.RemoveResource(ctx)
 	default:
+		data.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 }

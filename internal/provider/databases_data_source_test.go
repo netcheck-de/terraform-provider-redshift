@@ -29,7 +29,7 @@ func TestDatabasesDataSource(t *testing.T) {
 
 	_, identity, diagnostics := discoveryRead(t, newDatabasesDataSource, map[string]string{"database_type": "shared"}, fullCatalog())
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
-	assert.Equal(t, map[string]string{"workgroup_name": "warehouse", "database": "admin", "database_type": "shared"}, identity)
+	assert.Equal(t, map[string]string{"database_type": "shared"}, identity)
 
 	discoveryFailures(t, newDatabasesDataSource, nil, sqlclient.Row{"database_name": "", "database_type": "local"})
 }

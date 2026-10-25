@@ -58,14 +58,14 @@ func routineListingRead(t *testing.T, source datasource.DataSource, filters map[
 // TestFunctionsListing lists the Lambda UDF with its observable metadata and honors the filters.
 func TestFunctionsListing(t *testing.T) {
 	identity, items := routineListingRead(t, newFunctionsDataSource(), nil, fullCatalog())
-	assert.Equal(t, map[string]string{"workgroup_name": "warehouse", "database": "admin"}, identity)
+	assert.Equal(t, map[string]string{}, identity)
 	require.Len(t, items, 1)
 	assert.Equal(t, map[string]any{
 		"database": "admin", "schema": "serving", "name": fakeExternalFunctionName, "arguments": []string{"CHARACTER VARYING"},
 		"return_type": "CHARACTER VARYING", "volatility": "STABLE", "language": "EXFUNC", "owner": "admin",
 	}, items[0])
 	identity, items = routineListingRead(t, newFunctionsDataSource(), map[string]string{"database": "warehouse", "schema": "serving", "name": "other"}, fullCatalog())
-	assert.Equal(t, map[string]string{"workgroup_name": "warehouse", "database": "warehouse", "schema": "serving", "name": "other"}, identity)
+	assert.Equal(t, map[string]string{"database": "warehouse", "schema": "serving", "name": "other"}, identity)
 	assert.Empty(t, items)
 }
 

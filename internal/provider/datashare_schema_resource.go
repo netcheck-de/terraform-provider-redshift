@@ -102,7 +102,7 @@ func (r *datashareSchemaResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"datashare": data.Datashare.ValueString(), "schema": data.Schema.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "datashare": data.Datashare.ValueString(), "schema": data.Schema.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	// The membership is recorded before include_new is set, so a failure here still leaves it removable.
 	if err := r.exec(ctx, data.Database.ValueString(), statements[1:]...); err != nil {
@@ -139,6 +139,7 @@ func (r *datashareSchemaResource) Read(ctx context.Context, req resource.ReadReq
 	case !found:
 		resp.State.RemoveResource(ctx)
 	default:
+		data.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 }

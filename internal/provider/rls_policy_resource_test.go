@@ -121,7 +121,7 @@ func TestRlsPolicyPredicateDrift(t *testing.T) {
 	require.False(t, failed)
 	assert.Equal(t, planned.Predicate, created.Predicate, "state keeps the configured text")
 	assert.Equal(t, definitionFingerprint(rlsFakePredicate), created.DefinitionFingerprint.ValueString(), "whitespace does not change the fingerprint")
-	assertLookupIdentity(t, created.ID, "admin", map[string]string{"name": "region_filter"})
+	assertLookupIdentity(t, created.ID, map[string]string{"database": "admin", "name": "region_filter"})
 
 	refreshed, failed := rlsPolicyOperation(t, c, "read", created, nil)
 	require.False(t, failed)
@@ -249,7 +249,7 @@ func TestRlsPolicyImport(t *testing.T) {
 
 	ctx := context.Background()
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
-	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","name":"region_filter"}`}, &imported)
+	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: `{"database":"admin","name":"region_filter"}`}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
 	resp := resource.ReadResponse{State: imported.State}
 	r.Read(ctx, resource.ReadRequest{State: imported.State}, &resp)
@@ -264,7 +264,7 @@ func TestRlsPolicyImport(t *testing.T) {
 	assert.Empty(t, c.writes)
 
 	missing := resource.ImportStateResponse{State: tfsdk.State{Schema: imported.State.Schema}}
-	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin"}`}, &missing)
+	r.(resource.ResourceWithImportState).ImportState(ctx, resource.ImportStateRequest{ID: `{"database":"admin"}`}, &missing)
 	assert.True(t, missing.Diagnostics.HasError())
 }
 

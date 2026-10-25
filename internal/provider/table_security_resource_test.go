@@ -117,7 +117,7 @@ func TestTableSecurityLifecycle(t *testing.T) {
 	assert.True(t, f.rlsOn)
 	assert.Equal(t, types.StringValue("OR"), created.ConjunctionType, "an unset conjunction keeps the padded catalog value")
 	assert.Equal(t, types.BoolValue(false), created.DatashareRowLevelSecurity, "an unset datashare setting keeps the catalog value")
-	assertLookupIdentity(t, created.ID, "admin", map[string]string{"schema": "public", "relation": "events"})
+	assertLookupIdentity(t, created.ID, map[string]string{"database": "admin", "schema": "public", "relation": "events"})
 
 	f.rlsOn = false
 	drifted, failed := tableSecurityOperation(t, c, "read", created, nil)

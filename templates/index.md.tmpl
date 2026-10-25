@@ -29,7 +29,7 @@ Select exactly one warehouse method: `workgroup_name`, `cluster_identifier`, or 
 accepts optional `host`, `port`, `username`, sensitive `password`, `ca_cert_file`, and a nested `iam` block. Password
 mode requires host/username/password. IAM requires exactly one `workgroup_name` or `cluster_identifier`; cluster IAM
 also requires an existing `db_user`. Port defaults to 5439 or the discovered port. See [connection
-methods](guides/connection_methods.md) for complete configuration, permissions, TLS, and warehouse binding details.
+methods](guides/connection_methods.md) for complete configuration, permissions, and TLS details.
 
 When `region` or `profile` is omitted, the provider falls back to the AWS SDK defaults, including the `AWS_REGION` and
 `AWS_PROFILE` environment variables, shared configuration files, and the standard credential chain. Profiles may include
@@ -439,121 +439,14 @@ Scoped grants connect to that database for local grants and the administration d
 
 ### Importing existing resources
 
-Every resource exports a computed `id` containing its stable JSON import identity, independent of Data API statement
-IDs. Each resource page shows an `import` block first and an equivalent CLI command second, including the fields that
-identify that resource. Import reads an existing object into state without running creation SQL. Read-only data sources
-do not need imports.
+Each resource page documents its provider-relative JSON `id` and shows both an `import` block and an equivalent CLI
+command. The provider configuration selects the warehouse; IDs contain only the object's scope and identifying fields,
+independent of connection method. Configure the provider and matching resource before importing, selecting its provider
+alias if needed. Import reads the existing object without creation SQL; read-only data sources do not need imports.
+See each resource page for catalog limitations and first-apply adoption behavior.
 
-Configure the provider with known warehouse selectors, routing, and authentication before importing. Add the matching
-resource configuration and select its provider alias, if any. These examples adopt an existing SQL role named `readers`
-on each warehouse. Use the example for your connection method.
-
-**Serverless:**
-
-```terraform
-provider "redshift" {
-  alias          = "analytics"
-  region         = "eu-central-1"
-  workgroup_name = "analytics"
-  database       = "admin"
-}
-
-resource "redshift_role" "readers" {
-  provider = redshift.analytics
-  name     = "readers"
-}
-
-import {
-  to = redshift_role.readers
-  id = jsonencode({
-    workgroup_name = "analytics"
-    database       = "admin"
-    name           = "readers"
-  })
-}
-```
-
-**Provisioned cluster:**
-
-```terraform
-provider "redshift" {
-  alias              = "provisioned"
-  region             = "eu-central-1"
-  cluster_identifier = "analytics-cluster"
-  database           = "admin"
-  db_user            = "terraform_admin"
-}
-
-resource "redshift_role" "cluster_readers" {
-  provider = redshift.provisioned
-  name     = "readers"
-}
-
-import {
-  to = redshift_role.cluster_readers
-  id = jsonencode({
-    cluster_identifier = "analytics-cluster"
-    database           = "admin"
-    name               = "readers"
-  })
-}
-```
-
-Run `terraform plan` to inspect the import and any configuration changes, then `terraform apply` to carry them out.
-`jsonencode` constructs the JSON string without manual escaping. After a successful import, the block can remain as a
-record or be removed.
-
-Alternatively, with the same provider and resource configuration, omit the `import` block and run:
-
-```sh
-# Serverless
-terraform import redshift_role.readers \
-  '{"workgroup_name":"analytics","database":"admin","name":"readers"}'
-
-# Provisioned cluster
-terraform import redshift_role.cluster_readers \
-  '{"cluster_identifier":"analytics-cluster","database":"admin","name":"readers"}'
-```
-
-The CLI command writes the imported state immediately; it does not generate the resource configuration. These examples
-use POSIX shell quoting. Quote indexed addresses too, such as `'redshift_role.readers["analytics"]'`. The resource's
-`provider` argument selects the alias for either import method. Run `terraform plan` afterwards and review changes
-before applying them.
-
-### Import identity and warehouse binding
-
-The JSON ID contains exactly one nonempty warehouse key, a `database`, and the resource-specific keys:
-
-| Connection method               | Warehouse key        | Example                                |
-|---------------------------------|----------------------|----------------------------------------|
-| Serverless Data API/direct IAM  | `workgroup_name`     | `"analytics"` or its configured ARN    |
-| Provisioned Data API/direct IAM | `cluster_identifier` | `"analytics-cluster"`                  |
-| Direct password                 | `endpoint`           | `"redshift.internal.example.com:5439"` |
-
-For a direct password connection, use `endpoint` with the normalized host and port. Both import methods accept the same
-JSON identity. Direct IAM retains the AWS warehouse key; it does not use `endpoint` as its identity.
-
-The meaning of the ID's `database` follows the resource's ownership binding. Warehouse-wide resources such as roles,
-users, and groups use the provider's administration database. Resources such as schemas, tables, and views use their
-containing database. Grants that also expose `database_name` generally use the administration database in `database` and
-identify the target database separately in `database_name`. Use the complete identity on each resource page rather than
-inferring it from the SQL execution database. Identity values are strings; nested lists or maps, where required, are
-JSON-encoded strings inside the outer JSON object.
-
-Warehouse selectors must match the configured spelling exactly: a Serverless name and its ARN are distinct bindings.
-Direct password endpoints lowercase the DNS hostname, remove its trailing dot, and include the port (5439 by default). A
-resource rejects a different warehouse or identity database instead of adopting a same-named object elsewhere. Switching
-between Data API and direct IAM with the same selector spelling preserves identity. Switching to or from a password
-endpoint binding, or changing selector spelling, requires explicit state removal and re-import under the intended
-provider configuration; back up the state and review the resulting plan. These steps change Terraform's binding, not the
-location of SQL objects. See [connection methods](guides/connection_methods.md#imports-and-transport-switching).
-
-Import can recover only what the catalogs expose. Resource-specific instructions explain unreadable options, secrets,
-and first-apply adoption behavior. Match configuration to the existing object and inspect the plan, especially where
-replacement could recreate data-bearing objects.
-
-Object names and immutable bindings require replacement. For a warehouse migration, explicitly rebind/import resources
-under the new provider alias; changing provider configuration does not automatically move SQL objects. Reads refresh
+Object names and immutable object scope require replacement. Provider configuration selects the warehouse; changing it
+does not move SQL objects. Reads refresh
 mutable catalog state and remove missing resources from state so Terraform can recreate them. Writes check convergence;
 deletion uses no `CASCADE`. Resource references order dependent operations, and changes to immutable referenced inputs
 require replacement through the provider's schema. Same-name recreation can require a follow-up refresh/plan/apply to

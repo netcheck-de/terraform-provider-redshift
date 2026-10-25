@@ -43,7 +43,7 @@ data "redshift_datashare_objects" "example" {
 ### Read-Only
 
 - `datashare_objects` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--datashare_objects))
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 
 <a id="nestedatt--datashare_objects"></a>
 ### Nested Schema for `datashare_objects`

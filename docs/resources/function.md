@@ -57,7 +57,7 @@ resource "redshift_function" "greater" {
 ### Read-Only
 
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed outside literals, quoted identifiers, and comments; detects definition changes made outside Terraform.
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `signature` (String) Canonical input argument types without modifiers, as `ALTER FUNCTION`, `DROP FUNCTION`, and `GRANT ... ON FUNCTION` identify the overload, for example `INTEGER, CHARACTER VARYING`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -121,24 +121,19 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_function.greater
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    schema         = "reporting"
-    name           = "f_sql_greater"
-    arguments      = "DOUBLE PRECISION, DOUBLE PRECISION"
+    database  = "analytics"
+    schema    = "reporting"
+    name      = "f_sql_greater"
+    arguments = "DOUBLE PRECISION, DOUBLE PRECISION"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_function.greater \
-  '{"workgroup_name":"warehouse","database":"analytics","schema":"reporting","name":"f_sql_greater","arguments":"DOUBLE PRECISION, DOUBLE PRECISION"}'
+  '{"database":"analytics","schema":"reporting","name":"f_sql_greater","arguments":"DOUBLE PRECISION, DOUBLE PRECISION"}'
 ```
 
 `arguments` holds the input types as `signature` reports them, comma-separated, and is `""` for a function without

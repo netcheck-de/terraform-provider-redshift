@@ -66,7 +66,7 @@ resource "redshift_debug_grant" "producer_admins" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `grantee_type` selects the grantee form:
@@ -148,23 +148,18 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_debug_grant.auditor
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "sales_db@finance-catalog"
-    grantee        = "IAM:sales_auditor"
-    grantee_type   = "USER"
+    database     = "sales_db@finance-catalog"
+    grantee      = "IAM:sales_auditor"
+    grantee_type = "USER"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_debug_grant.auditor \
-  '{"workgroup_name":"warehouse","database":"sales_db@finance-catalog","grantee":"IAM:sales_auditor","grantee_type":"USER"}'
+  '{"database":"sales_db@finance-catalog","grantee":"IAM:sales_auditor","grantee_type":"USER"}'
 ```
 
 The JSON identity's `database` is the database `DEBUG` applies to, and `grantee_type` is upper case.

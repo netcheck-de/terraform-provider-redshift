@@ -102,7 +102,7 @@ func TestRlsPoliciesListing(t *testing.T) {
 
 	var identity map[string]string
 	require.NoError(t, json.Unmarshal([]byte(observed.Attributes()["id"].(types.String).ValueString()), &identity))
-	assert.Equal(t, map[string]string{"workgroup_name": "warehouse", "database": "analytics"}, identity)
+	assert.Equal(t, map[string]string{"database": "analytics"}, identity)
 
 	items := collectionResult(source, observed).Elements()
 	require.Len(t, items, 2)

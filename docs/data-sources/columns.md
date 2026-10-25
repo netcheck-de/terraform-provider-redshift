@@ -42,7 +42,7 @@ output "required_columns" {
 ### Read-Only
 
 - `columns` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--columns))
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 
 <a id="nestedatt--columns"></a>
 ### Nested Schema for `columns`
@@ -64,7 +64,7 @@ Read-Only:
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `database` defaults to the provider's `database`; the read runs in the provider's database. `id` combines the
-warehouse binding, the listed database, and the configured filters. Items are ordered by schema, table, and
+listed database and configured filters within the warehouse. Items are ordered by schema, table, and
 `ordinal_position`; no match returns an empty `columns` list. Without a `table` filter, the listing covers every
 relation of the database, so filter as narrowly as possible on large warehouses.
 

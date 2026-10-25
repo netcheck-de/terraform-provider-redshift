@@ -34,7 +34,7 @@ func TestDatabaseLookup(t *testing.T) {
 				assert.Equal(t, "source", data.ShareName.ValueString())
 				assert.Equal(t, "123456789012", data.ProducerAccount.ValueString())
 				assert.Equal(t, shareARN, data.DatashareARN.ValueString())
-				assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","name":"analytics","datashare_arn":"`+shareARN+`"}`, data.ID.ValueString())
+				assert.JSONEq(t, `{"name":"analytics","datashare_arn":"`+shareARN+`"}`, data.ID.ValueString())
 			} else {
 				assert.Equal(t, "LOCAL", data.DatabaseType.ValueString())
 				assert.Equal(t, "admin", data.Owner.ValueString())
@@ -43,7 +43,7 @@ func TestDatabaseLookup(t *testing.T) {
 				assert.Equal(t, "SNAPSHOT", data.IsolationLevel.ValueString())
 				assert.True(t, data.ShareName.IsNull())
 				assert.True(t, data.DatashareARN.IsNull())
-				assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","name":"warehouse"}`, data.ID.ValueString())
+				assert.JSONEq(t, `{"name":"warehouse"}`, data.ID.ValueString())
 			}
 		})
 	}
@@ -77,7 +77,7 @@ func TestDatabaseReadableMetadataMatchesResources(t *testing.T) {
 				fields["datashare_arn"] = value
 			}
 
-			managed.ID = r.identity("admin", fields)
+			managed.ID = identity(fields)
 			found, err := r.read(context.Background(), &managed)
 			require.NoError(t, err)
 			assert.True(t, found)

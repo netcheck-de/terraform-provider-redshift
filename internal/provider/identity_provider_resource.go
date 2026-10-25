@@ -35,7 +35,7 @@ type identityProviderResource struct {
 // identityProviderModel is the Terraform state for one SQL identity provider. Audience is a plain slice rather than
 // types.Set because a zero-value types.Set has no element type and cannot be stored, while a nil slice is null.
 type identityProviderModel struct {
-	// ID records the administration binding and integration name.
+	// ID records the integration name within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Name identifies the SQL identity provider.
 	Name types.String `tfsdk:"name"`
@@ -376,7 +376,7 @@ func (r *identityProviderResource) Create(ctx context.Context, req resource.Crea
 		return
 	}
 
-	data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"name": data.Name.ValueString()})
 	// The provider exists now, so its identity is saved before anything else can fail; unknown values cannot be saved.
 	data.ProviderID, data.InstanceID, data.IdentityCenterInstanceARN = types.Int64Null(), types.StringNull(), types.StringNull()
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -424,6 +424,7 @@ func (r *identityProviderResource) Read(ctx context.Context, req resource.ReadRe
 		return
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, false)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

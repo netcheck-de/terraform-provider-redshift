@@ -75,7 +75,7 @@ func TestExternalPartitionLifecycle(t *testing.T) {
 	created, err := externalPartitionState(t, c, "create", model, model)
 	require.NoError(t, err)
 	assert.Equal(t, model.Location, created.Location, "the catalog's missing trailing slash is not drift")
-	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events","values":"{\"EVENT_DATE\":\"2024-02-01\"}"}`, created.ID.ValueString())
+	assert.JSONEq(t, `{"database":"admin","schema":"example_external","table":"events","values":"{\"EVENT_DATE\":\"2024-02-01\"}"}`, created.ID.ValueString())
 	moved := created
 	moved.Location = types.StringValue("s3://example-bucket/archive/2024-02-01/")
 	updated, err := externalPartitionState(t, c, "update", created, moved)
@@ -96,7 +96,7 @@ func TestExternalPartitionImport(t *testing.T) {
 	r := &externalPartitionResource{}
 	configureTestResource(t, r, fullCatalog())
 
-	id := `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events","values":"{\"event_date\":\"2024-01-01\"}"}`
+	id := `{"database":"admin","schema":"example_external","table":"events","values":"{\"event_date\":\"2024-01-01\"}"}`
 	require.False(t, importAndRead(t, r, id).HasError())
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &imported)
@@ -106,10 +106,10 @@ func TestExternalPartitionImport(t *testing.T) {
 	assert.Equal(t, externalTableTestMap("event_date", "2024-01-01"), data.Values)
 
 	for _, invalid := range []string{
-		`{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events"}`,
-		`{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events","values":"[1]"}`,
-		`{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events","values":"{}"}`,
-		`{"workgroup_name":"warehouse","database":"admin","schema":"example_external","values":"{\"a\":\"b\"}"}`,
+		`{"database":"admin","schema":"example_external","table":"events"}`,
+		`{"database":"admin","schema":"example_external","table":"events","values":"[1]"}`,
+		`{"database":"admin","schema":"example_external","table":"events","values":"{}"}`,
+		`{"database":"admin","schema":"example_external","values":"{\"a\":\"b\"}"}`,
 	} {
 		response := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: invalid}, &response)

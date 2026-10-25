@@ -25,7 +25,7 @@ type externalModelResource struct {
 
 // externalModelModel is the Terraform state of one external model.
 type externalModelModel struct {
-	// ID records the warehouse, database, schema, and name.
+	// ID records the database, schema, and name.
 	ID types.String `tfsdk:"id"`
 	// Database contains the model.
 	Database types.String `tfsdk:"database"`
@@ -335,7 +335,7 @@ func (r *externalModelResource) Create(ctx context.Context, req resource.CreateR
 	}
 
 	planned := data
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
 	// A failed verification must still record the created model in serializable state.
 	if data.Owner.IsUnknown() {
 		data.Owner = types.StringNull()
@@ -397,6 +397,7 @@ func (r *externalModelResource) Read(ctx context.Context, req resource.ReadReque
 		}
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

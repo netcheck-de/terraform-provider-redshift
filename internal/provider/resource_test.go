@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"maps"
 	"reflect"
 	"testing"
@@ -94,11 +95,9 @@ func modelHasField(model any, name string) bool {
 func TestImportRejectsInvalidIdentity(t *testing.T) {
 	r := &roleResource{}
 
-	for _, id := range []string{"invalid JSON", `[]`, `null`, `{}`, `{"name":"role"}`, `{"workgroup_name":"warehouse","database":"admin"}`} {
+	for _, id := range []string{"invalid JSON", `[]`, `null`, `{}`, `{"name":""}`, `{"workgroup_name":"warehouse","database":"admin"}`, `{"workgroup_name":"warehouse","name":"role"}`, `{"endpoint":"","name":"role"}`} {
 		t.Run(id, func(t *testing.T) {
-			var schema resource.SchemaResponse
-			r.Schema(context.Background(), resource.SchemaRequest{}, &schema)
-			resp := resource.ImportStateResponse{State: tfsdk.State{Schema: schema.Schema}}
+			resp := resource.ImportStateResponse{State: emptyState(t, r)}
 			r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
 			assert.True(t, resp.Diagnostics.HasError(), "expected invalid import diagnostics")
 		})
@@ -137,48 +136,97 @@ func TestBindingRejectsInvalidIdentity(t *testing.T) {
 		return nil, nil
 	}))
 	require.ErrorContains(t, r.bound(types.StringValue("invalid JSON"), "admin"), "invalid resource identity")
+	require.ErrorContains(t, r.bound(types.StringValue("null"), "admin"), "invalid resource identity")
+	require.ErrorContains(t, r.bound(types.StringValue("{}"), "admin"), "invalid resource identity")
 	require.ErrorContains(t, r.bound(types.StringValue(`{"workgroup_name":"warehouse","database":"other"}`), "admin"), "differs")
+	require.ErrorContains(t, r.bound(types.StringValue(`{"database":"other","name":"table"}`), "admin"), "differs")
 	require.NoError(t, r.bound(types.StringNull(), "admin"))
+	require.NoError(t, r.bound(types.StringUnknown(), "admin"))
 }
 
-// TestWarehouseBindingIsIndependentOfSQLTransport checks generic bindings and legacy ID compatibility.
-func TestWarehouseBindingIsIndependentOfSQLTransport(t *testing.T) {
+// TestIdentityPreservesTuple checks that encoding neither injects scope nor mutates shared identity fields.
+func TestIdentityPreservesTuple(t *testing.T) {
+	for name, fields := range map[string]map[string]string{
+		"warehouse": {"name": "readers"},
+		"database":  {"database": "analytics", "schema": "serving", "name": "events"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			before := maps.Clone(fields)
+			id := identity(fields)
+
+			var decoded map[string]string
+			require.NoError(t, json.Unmarshal([]byte(id.ValueString()), &decoded))
+			assert.Equal(t, before, decoded)
+			assert.Equal(t, before, fields)
+			assert.Equal(t, id, identity(fields))
+		})
+	}
+}
+
+// TestIdentityIsProviderRelative checks that connection configuration never enters new IDs.
+func TestIdentityIsProviderRelative(t *testing.T) {
 	r := testResourceClient(queryFunc(func(_ context.Context, target sqlclient.Connection, _ string, _ map[string]string) ([]sqlclient.Row, error) {
 		assert.Equal(t, "admin", target.Database)
 		return nil, nil
 	}))
-	legacy := r.identity("admin", map[string]string{"name": "readers"})
-	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","name":"readers"}`, legacy.ValueString())
+	legacy := types.StringValue(`{"workgroup_name":"warehouse","database":"admin","name":"readers"}`)
+	id := identity(map[string]string{"name": "readers"})
+	assert.JSONEq(t, `{"name":"readers"}`, id.ValueString())
+	require.NoError(t, r.bound(legacy, "admin"))
+	assert.Equal(t, id, normalizeLegacyIdentity(legacy, false))
 
 	r.warehouse = warehouseBinding{field: "endpoint", value: types.StringValue("example:5439")}
-	id := r.identity("admin", map[string]string{"name": "readers"})
-	assert.JSONEq(t, `{"endpoint":"example:5439","database":"admin","name":"readers"}`, id.ValueString())
+
+	assert.Equal(t, id, identity(map[string]string{"name": "readers"}))
 	require.NoError(t, r.bound(id, "admin"))
 	require.ErrorContains(t, r.bound(legacy, "admin"), "differs")
 	_, err := r.query(context.Background(), "SELECT 1", nil)
 	require.NoError(t, err)
 }
 
-// TestImportSupportsClusterAndEndpointBindings preserves transport-independent ownership and rejects mixed identities.
-func TestImportSupportsClusterAndEndpointBindings(t *testing.T) {
-	for _, field := range []string{"cluster_identifier", "endpoint"} {
+// TestImportRejectsConnectionSelectors separates legacy state support from the current import format.
+func TestImportRejectsConnectionSelectors(t *testing.T) {
+	for _, field := range warehouseIdentityFields {
 		client := testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return nil, nil
 		}))
 		client.warehouse = warehouseBinding{field: field, value: types.StringValue("warehouse")}
 		r := &roleResource{client}
-		id := client.identity("admin", map[string]string{"name": "readers"})
+		encoded, err := json.Marshal(map[string]string{field: "warehouse", "database": "admin", "name": "readers"})
+		require.NoError(t, err)
+
+		id := types.StringValue(string(encoded))
 		resp := resource.ImportStateResponse{State: testState(t, r, roleModel{Name: types.StringValue("readers")})}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id.ValueString()}, &resp)
-		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+		require.True(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+		assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), field)
 		require.NoError(t, client.bound(id, "admin"))
-
-		other := testResourceClient(nil)
-		require.ErrorContains(t, other.bound(id, "admin"), "differs")
 	}
 
 	r := &roleResource{}
 	resp := resource.ImportStateResponse{State: testState(t, r, roleModel{})}
 	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","cluster_identifier":"cluster","database":"admin","name":"readers"}`}, &resp)
 	require.True(t, resp.Diagnostics.HasError())
+}
+
+// TestImportRejectsAdministrationDatabase prevents imports from carrying redundant connection context.
+func TestImportRejectsAdministrationDatabase(t *testing.T) {
+	r := &roleResource{}
+	resp := resource.ImportStateResponse{State: emptyState(t, r)}
+	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"database":"admin","name":"readers"}`}, &resp)
+	require.True(t, resp.Diagnostics.HasError())
+	assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), "administration database")
+}
+
+// TestMinimalImportIdentity restores a warehouse-wide object without connection or administration context.
+func TestMinimalImportIdentity(t *testing.T) {
+	r := &roleResource{testResourceClient(nil)}
+	resp := resource.ImportStateResponse{State: emptyState(t, r)}
+	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"name":"readers"}`}, &resp)
+	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
+	var data roleModel
+	require.False(t, resp.State.Get(context.Background(), &data).HasError())
+	assert.Equal(t, "readers", data.Name.ValueString())
+	assert.JSONEq(t, `{"name":"readers"}`, data.ID.ValueString())
 }

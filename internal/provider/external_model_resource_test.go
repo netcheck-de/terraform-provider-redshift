@@ -82,7 +82,7 @@ func TestExternalModelCreateRecordsCatalog(t *testing.T) {
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	created := decodeExternalModelState(t, state)
 	assert.Equal(t, "admin", created.Owner.ValueString())
-	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"summarizer"}`, created.ID.ValueString())
+	assert.JSONEq(t, `{"database":"admin","schema":"serving","name":"summarizer"}`, created.ID.ValueString())
 	assert.Equal(t, "raw", models.get(fakeModelName).settings["Request Type"])
 	assert.Equal(t, "arn:aws:iam::123456789012:role/redshift-bedrock", models.get(fakeModelName).settings["IAM Role"])
 
@@ -116,7 +116,7 @@ func TestExternalModelImport(t *testing.T) {
 	r := newExternalModelResource()
 	configureTestResource(t, r, c)
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
-	id := `{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"summarizer"}`
+	id := `{"database":"admin","schema":"serving","name":"summarizer"}`
 	r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
 	resp := resource.ReadResponse{State: imported.State}
@@ -124,7 +124,7 @@ func TestExternalModelImport(t *testing.T) {
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 	data := decodeExternalModelState(t, resp.State)
 	expected := testExternalModelModel()
-	expected.ID = types.StringValue(id)
+	expected.ID = types.StringValue(`{"database":"admin","name":"summarizer","schema":"serving"}`)
 	assert.Equal(t, expected, data)
 	assert.Empty(t, c.writes, "import never mutates")
 }

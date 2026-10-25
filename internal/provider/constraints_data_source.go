@@ -15,8 +15,9 @@ var _ = registerDataSource(newConstraintsDataSource)
 // newConstraintsDataSource lists primary key, unique, and foreign key constraints.
 func newConstraintsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
-		name:        "constraints",
-		description: "Lists the primary key, unique, and foreign key constraints of one database's tables from `PG_CONSTRAINT`, with key columns in key order. Redshift does not enforce these constraints, but the query planner relies on them.",
+		name:          "constraints",
+		databaseField: "database",
+		description:   "Lists the primary key, unique, and foreign key constraints of one database's tables from `PG_CONSTRAINT`, with key columns in key order. Redshift does not enforce these constraints, but the query planner relies on them.",
 		filters: map[string]schema.Attribute{
 			"database":        discoveryDatabaseFilter("constraints"),
 			"schema":          discoveryFilter("Only constraints of tables in this schema."),

@@ -67,7 +67,7 @@ resource "redshift_rls_policy" "tenant" {
 ### Read-Only
 
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed outside literals, quoted identifiers, and comments; detects definition changes made outside Terraform.
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 
 <a id="nestedblock--column"></a>
 ### Nested Schema for `column`
@@ -127,22 +127,17 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_rls_policy.own_region
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    name           = "own_region"
+    database = "analytics"
+    name     = "own_region"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_rls_policy.own_region \
-  '{"workgroup_name":"warehouse","database":"analytics","name":"own_region"}'
+  '{"database":"analytics","name":"own_region"}'
 ```
 
 Refresh reads the columns, alias, and the catalog form of the predicate. Columns and alias that match configuration

@@ -41,7 +41,7 @@ func TestSchemasDataSource(t *testing.T) {
 	}))
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.Equal(t, "admin", target.Database, "SVV_ALL_SCHEMAS is read from the administration database")
-	assert.Equal(t, map[string]string{"workgroup_name": "warehouse", "database": "analytics"}, identity)
+	assert.Equal(t, map[string]string{"database": "analytics"}, identity)
 
 	discoveryFailures(t, newSchemasDataSource, nil, sqlclient.Row{"schema_name": ""})
 }

@@ -46,8 +46,9 @@ func newRlsPolicyDataSource() datasource.DataSource {
 // newRlsPoliciesDataSource lists the RLS policies of one database.
 func newRlsPoliciesDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
-		name:        "rls_policies",
-		description: "Lists the row-level security policies of one database from `svv_rls_policy`, including policies Terraform does not manage. Only superusers and `sys:secadmin` holders see every policy.",
+		name:          "rls_policies",
+		databaseField: "database",
+		description:   "Lists the row-level security policies of one database from `svv_rls_policy`, including policies Terraform does not manage. Only superusers and `sys:secadmin` holders see every policy.",
 		filters: map[string]schema.Attribute{
 			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database whose policies are listed; defaults to the provider database."},
 		},

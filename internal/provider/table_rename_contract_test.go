@@ -99,7 +99,7 @@ func TestContractTableRenameAfterImportPlans(t *testing.T) {
 	imported := before + `
 import {
   to = redshift_table.events
-  id = jsonencode({ workgroup_name = "warehouse", database = "admin", schema = "serving", name = "events" })
+  id = jsonencode({ database = "admin", schema = "serving", name = "events" })
 }
 `
 	after := strings.ReplaceAll(before, `"id"`, `"event_id"`)

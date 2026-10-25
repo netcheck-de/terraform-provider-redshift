@@ -45,7 +45,7 @@ resource "redshift_assumerole_grant" "loader" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Supported `privileges` are `COPY`, `UNLOAD`, `EXTERNAL FUNCTION`, `CREATE MODEL`, and `RESULT_OFFLOAD`. The provider
@@ -182,22 +182,16 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_assumerole_grant.loader
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    iam_role_arn   = "DEFAULT"
-    grantee        = "loader"
-    grantee_type   = "ROLE"
+    iam_role_arn = "DEFAULT"
+    grantee      = "loader"
+    grantee_type = "ROLE"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_assumerole_grant.loader \
-  '{"workgroup_name":"warehouse","database":"admin","iam_role_arn":"DEFAULT","grantee":"loader","grantee_type":"ROLE"}'
+  '{"iam_role_arn":"DEFAULT","grantee":"loader","grantee_type":"ROLE"}'
 ```

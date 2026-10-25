@@ -31,6 +31,6 @@ func TestAssumeroleGrantLookupCanonicalIdentity(t *testing.T) {
 		assert.Equal(t, types.StringValue(configured), observed.Attributes()["iam_role_arn"])
 
 		fields["iam_role_arn"] = canonical
-		assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", fields)
+		assertLookupIdentity(t, observed.Attributes()["id"].(types.String), fields)
 	}
 }

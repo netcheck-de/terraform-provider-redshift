@@ -356,7 +356,7 @@ func (data providerModel) deferred() bool {
 	return connection.IAM != nil && connection.IAM.DBUser.IsUnknown()
 }
 
-// binding identifies the warehouse independently of transport; a workgroup keeps its configured name or ARN verbatim.
+// binding retains connection spelling for legacy ID validation; a workgroup keeps its name or ARN verbatim.
 func (data providerModel) binding() warehouseBinding {
 	workgroup, cluster := data.Workgroup, data.ClusterIdentifier
 	if data.Connection != nil {

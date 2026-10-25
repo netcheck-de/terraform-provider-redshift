@@ -41,7 +41,7 @@ output "lambda_udfs" {
 ### Read-Only
 
 - `functions` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--functions))
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 
 <a id="nestedatt--functions"></a>
 ### Nested Schema for `functions`

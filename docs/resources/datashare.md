@@ -45,7 +45,7 @@ resource "redshift_datashare" "analytics" {
 ### Read-Only
 
 - `created_at` (String) Creation timestamp reported by `SVV_DATASHARES`, as text without a time zone.
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `owner` (String) Database user owning the datashare: the user that ran `CREATE DATASHARE`. Read-only, because `ALTER DATASHARE` has no `OWNER TO` clause.
 - `producer_account` (String) AWS account ID of the producer namespace.
 - `producer_namespace` (String) Producer namespace UUID; with `producer_account` and `name` it identifies the datashare ARN.
@@ -93,22 +93,17 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_datashare.analytics
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "warehouse"
-    name           = "analytics"
+    database = "warehouse"
+    name     = "analytics"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_datashare.analytics \
-  '{"workgroup_name":"warehouse","database":"warehouse","name":"analytics"}'
+  '{"database":"warehouse","name":"analytics"}'
 ```
 
 The producer database in the import ID must match the datashare's actual source database. Public accessibility is

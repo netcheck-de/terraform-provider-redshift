@@ -29,7 +29,7 @@ type copyJobResource struct {
 
 // copyJobModel is the Terraform state of one copy job.
 type copyJobModel struct {
-	// ID records the warehouse/database/name identity.
+	// ID records the database/name identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database is the database whose table the job loads.
 	Database types.String `tfsdk:"database"`
@@ -224,7 +224,7 @@ func (r *copyJobResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 	if data.Auto.IsUnknown() {
 		data.Auto = types.BoolValue(true)
 	}
@@ -259,6 +259,7 @@ func (r *copyJobResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

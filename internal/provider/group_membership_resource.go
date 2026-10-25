@@ -19,7 +19,7 @@ type groupMembershipResource struct {
 
 // groupMembershipModel is the Terraform state for one explicit group membership.
 type groupMembershipModel struct {
-	// ID records the administration binding and group/user identity.
+	// ID records the group/user identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Group is the SQL group receiving the user.
 	Group types.String `tfsdk:"group"`
@@ -91,7 +91,7 @@ func (r *groupMembershipResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 
-	data.ID = r.identity(r.database.ValueString(), map[string]string{"group": data.Group.ValueString(), "user": data.User.ValueString()})
+	data.ID = identity(map[string]string{"group": data.Group.ValueString(), "user": data.User.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	if err := r.reconcile(ctx, data, true); err != nil {
@@ -119,6 +119,7 @@ func (r *groupMembershipResource) Read(ctx context.Context, req resource.ReadReq
 		return
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, false)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

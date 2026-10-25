@@ -16,8 +16,9 @@ var _ = registerDataSource(newSchemasDataSource)
 // newSchemasDataSource lists the local, external, and datashare schemas of one database.
 func newSchemasDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
-		name:        "schemas",
-		description: "Lists the schemas of one database visible to the provider's SQL identity, from `SVV_ALL_SCHEMAS`: local schemas, including system schemas such as `pg_catalog`, external schemas, and schemas of datashare databases.",
+		name:          "schemas",
+		databaseField: "database",
+		description:   "Lists the schemas of one database visible to the provider's SQL identity, from `SVV_ALL_SCHEMAS`: local schemas, including system schemas such as `pg_catalog`, external schemas, and schemas of datashare databases.",
 		filters: map[string]schema.Attribute{
 			"database":    discoveryDatabaseFilter("schemas"),
 			"schema_type": discoveryFilter("Only schemas of this type, in any case: `LOCAL`, `EXTERNAL`, or `SHARED`.", "LOCAL", "EXTERNAL", "SHARED"),

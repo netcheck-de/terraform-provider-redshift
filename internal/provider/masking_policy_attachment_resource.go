@@ -26,7 +26,7 @@ type maskingPolicyAttachmentResource struct {
 
 // maskingPolicyAttachmentModel is the Terraform state of one attachment.
 type maskingPolicyAttachmentModel struct {
-	// ID records the warehouse, database, policy, relation, columns, and recipient.
+	// ID records the database, policy, relation, columns, and recipient.
 	ID types.String `tfsdk:"id"`
 	// Database holds both the policy and the relation.
 	Database types.String `tfsdk:"database"`
@@ -196,7 +196,7 @@ func (r *maskingPolicyAttachmentResource) Create(ctx context.Context, req resour
 		return
 	}
 
-	data.ID = r.identity(data.Database.ValueString(), maskingAttachmentIdentity(data))
+	data.ID = identity(maskingAttachmentIdentity(data))
 	planned := data
 	// A failed verification must still record the attachment with serializable state.
 	if data.InputColumns.IsUnknown() {
@@ -234,6 +234,7 @@ func (r *maskingPolicyAttachmentResource) Read(ctx context.Context, req resource
 		return
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

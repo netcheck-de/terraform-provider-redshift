@@ -22,7 +22,7 @@ var debugGlobalIdentity = regexp.MustCompile(`^[^:\s]+:\S.*$`)
 
 // debugGrantModel is the Terraform state for one DEBUG grant on one database.
 type debugGrantModel struct {
-	// ID records the warehouse binding, the database, and the grantee.
+	// ID records the database and grantee within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database is the database with federated permissions that DEBUG applies to.
 	Database types.String `tfsdk:"database"`

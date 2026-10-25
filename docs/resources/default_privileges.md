@@ -56,7 +56,7 @@ resource "redshift_default_privileges" "reports" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 Tables support `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, and `TRUNCATE`; functions and
@@ -228,31 +228,25 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_default_privileges.reports
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    database_name  = "analytics"
-    owner          = "loader"
-    schema_name    = "reporting"
-    object_type    = "TABLES"
-    grantee        = "report_readers"
-    grantee_type   = "GROUP"
+    database_name = "analytics"
+    owner         = "loader"
+    schema_name   = "reporting"
+    object_type   = "TABLES"
+    grantee       = "report_readers"
+    grantee_type  = "GROUP"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_default_privileges.reports \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","owner":"loader","schema_name":"reporting","object_type":"TABLES","grantee":"report_readers","grantee_type":"GROUP"}'
+  '{"database_name":"analytics","owner":"loader","schema_name":"reporting","object_type":"TABLES","grantee":"report_readers","grantee_type":"GROUP"}'
 
 # Defaults of the connection user: no owner key
 terraform import redshift_default_privileges.mine \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","object_type":"TABLES","grantee":"analyst","grantee_type":"USER"}'
+  '{"database_name":"analytics","object_type":"TABLES","grantee":"analyst","grantee_type":"USER"}'
 ```
 
 Omit `owner` from the identity for the connection user's defaults.

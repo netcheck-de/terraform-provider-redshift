@@ -39,7 +39,8 @@ func newGrantsDataSource() datasource.DataSource {
 	}
 
 	return newCollectionDataSource(collectionSpec{
-		name: "grants",
+		name:          "grants",
+		databaseField: "database_name",
 		description: "Lists the grants `SHOW GRANTS` reports on one database, schema, or table, or for one user or role in one database, without taking ownership. " +
 			"Rows include scoped (`privilege_scope`) grants; `SHOW GRANTS` documents no column for grants inherited through roles, so none is exposed.",
 		filters: filters,

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -44,7 +45,10 @@ func TestModelsList(t *testing.T) {
 
 			var observed types.Object
 			require.False(t, state.Get(context.Background(), &observed).HasError())
-			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), test.database, test.filters)
+
+			expected := map[string]string{"database": test.database}
+			maps.Copy(expected, test.filters)
+			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), expected)
 			items := collectionResult(source, observed).Elements()
 			require.Len(t, items, len(test.models))
 

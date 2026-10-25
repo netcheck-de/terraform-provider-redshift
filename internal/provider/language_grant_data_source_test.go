@@ -37,7 +37,7 @@ func TestLanguageGrantLookupCanonicalIdentity(t *testing.T) {
 	assert.Equal(t, types.StringValue("sql"), observed.Attributes()["language_name"])
 
 	fields["language_name"] = "SQL"
-	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", fields)
+	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), fields)
 }
 
 // TestLanguageGrantLookupSchema describes the observed grant options as read-only, not as the resource's argument.

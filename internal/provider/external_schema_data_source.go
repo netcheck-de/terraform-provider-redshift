@@ -113,6 +113,6 @@ func (d *externalSchemaDataSource) Read(ctx context.Context, req datasource.Read
 		URI: current.URI, Port: current.Port, SecretARN: current.SecretARN, Authentication: current.Authentication,
 		AuthenticationARN: current.AuthenticationARN, Owner: current.Owner,
 	}
-	data.ID = d.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

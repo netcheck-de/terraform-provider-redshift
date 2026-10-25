@@ -32,7 +32,7 @@ provider "redshift" {
 }
 import {
   to = redshift_rls_policy.own_region
-  id = jsonencode({ workgroup_name = "warehouse", database = "admin", name = "region_filter" })
+  id = jsonencode({ database = "admin", name = "region_filter" })
 }
 resource "redshift_rls_policy" "own_region" {
   database = "admin"

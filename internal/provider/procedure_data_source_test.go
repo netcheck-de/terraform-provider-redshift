@@ -54,7 +54,7 @@ func TestProcedureLookup(t *testing.T) {
 	assert.Equal(t, procedureLookupSelector("int"), attributes["arguments"], "the configured selector is kept")
 	assert.Equal(t, []procedureArgumentModel{procedureTestArgument("min_id", "", "INTEGER"), procedureTestArgument("total", "OUT", "BIGINT")},
 		procedureArguments(attributes["argument"].(types.List)))
-	assertLookupIdentity(t, attributes["id"].(types.String), "admin", map[string]string{"schema": "public", "name": "sp_example", "arguments": "INTEGER"})
+	assertLookupIdentity(t, attributes["id"].(types.String), map[string]string{"database": "admin", "schema": "public", "name": "sp_example", "arguments": "INTEGER"})
 	assert.Empty(t, c.writes)
 
 	lookupValue(&data, "name", types.StringValue("sp_missing"))
@@ -97,7 +97,7 @@ func TestProcedureLookupWithoutArguments(t *testing.T) {
 			assert.False(t, arguments.IsNull())
 			assert.Empty(t, arguments.Elements())
 			assert.Equal(t, types.StringValue(""), observed.Attributes()["signature"])
-			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", map[string]string{"schema": "public", "name": "sp_refresh", "arguments": ""})
+			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), map[string]string{"database": "admin", "schema": "public", "name": "sp_refresh", "arguments": ""})
 		})
 	}
 }

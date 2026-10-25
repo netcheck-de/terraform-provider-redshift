@@ -278,7 +278,7 @@ func TestDatabaseOptionsDetectDrift(t *testing.T) {
 	c.localDB = true
 	r := &databaseResource{testResourceClient(c)}
 	data := databaseLocalOptionsModel("admin", -1, "CASE_SENSITIVE", "SNAPSHOT")
-	data.ID = r.identity("admin", map[string]string{"name": "warehouse"})
+	data.ID = identity(map[string]string{"name": "warehouse"})
 	fakeState[*databasesFamily](c, "databases").isolation = "Serializable"
 	found, err := r.read(context.Background(), &data)
 	require.NoError(t, err)
@@ -435,7 +435,7 @@ func TestDatabaseCollationReadFailures(t *testing.T) {
 			require.Error(t, err)
 
 			imported := databaseLocalOptionsModel("admin", -1, "", "SNAPSHOT")
-			imported.ID, imported.Collation = r.identity("admin", map[string]string{"name": "warehouse"}), types.StringNull()
+			imported.ID, imported.Collation = identity(map[string]string{"name": "warehouse"}), types.StringNull()
 			state, diagnostics := applyOperation(t, r, "read", imported, nil, nil)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
 			require.Len(t, diagnostics.Warnings(), 1)
@@ -472,7 +472,7 @@ func TestDatabaseKnownCollationReadRefused(t *testing.T) {
 	})
 	r := &databaseResource{testResourceClient(client)}
 	prior := databaseLocalOptionsModel("admin", -1, "CASE_SENSITIVE", "SNAPSHOT")
-	prior.ID = r.identity("admin", map[string]string{"name": "warehouse"})
+	prior.ID = identity(map[string]string{"name": "warehouse"})
 	planned := prior
 
 	planned.ConnectionLimit, planned.IsolationLevel, planned.Collation = types.Int64Value(0), types.StringValue("SERIALIZABLE"), types.StringUnknown()

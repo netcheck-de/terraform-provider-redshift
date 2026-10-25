@@ -1,9 +1,7 @@
 import {
   to = redshift_group_membership.reader
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    group          = "report_readers"
-    user           = "report_reader"
+    group = "report_readers"
+    user  = "report_reader"
   })
 }

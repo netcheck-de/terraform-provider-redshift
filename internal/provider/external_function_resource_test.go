@@ -264,7 +264,7 @@ func TestExternalFunctionImport(t *testing.T) {
 	r := newExternalFunctionResource()
 
 	importID := func(signature string) string {
-		return fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"f_exfunc_upper","arguments":%q}`, signature)
+		return fmt.Sprintf(`{"database":"admin","schema":"serving","name":"f_exfunc_upper","arguments":%q}`, signature)
 	}
 	for signature, expected := range map[string][]string{"CHARACTER VARYING": {"CHARACTER VARYING"}, "": {}, "INTEGER, TIMESTAMP WITHOUT TIME ZONE": {"INTEGER", "TIMESTAMP WITHOUT TIME ZONE"}} {
 		response := resource.ImportStateResponse{State: emptyState(t, r)}
@@ -277,11 +277,11 @@ func TestExternalFunctionImport(t *testing.T) {
 	}
 
 	for _, id := range []string{
-		`{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"f"}`,
+		`{"database":"admin","schema":"serving","name":"f"}`,
 		importID("varchar"),
 		importID("character varying"),
 		importID("INTEGER,INTEGER"),
-		`{"workgroup_name":"warehouse","database":"admin","name":"f","arguments":""}`,
+		`{"database":"admin","name":"f","arguments":""}`,
 	} {
 		response := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &response)
@@ -302,7 +302,7 @@ func TestExternalFunctionImportMatchesCreatedIdentity(t *testing.T) {
 
 	var id types.String
 	require.False(t, state.GetAttribute(context.Background(), path.Root("id"), &id).HasError())
-	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"f_exfunc_upper","arguments":"CHARACTER VARYING"}`, id.ValueString())
+	assert.JSONEq(t, `{"database":"admin","schema":"serving","name":"f_exfunc_upper","arguments":"CHARACTER VARYING"}`, id.ValueString())
 	require.False(t, importAndRead(t, r, id.ValueString()).HasError())
 }
 

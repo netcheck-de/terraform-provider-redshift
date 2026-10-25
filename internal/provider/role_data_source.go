@@ -75,6 +75,6 @@ func (d *roleDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	}
 
 	data.Name, data.Owner, data.ExternalID, data.RoleID = role.Name, role.Owner, role.ExternalID, role.RoleID
-	data.ID = d.identity(d.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

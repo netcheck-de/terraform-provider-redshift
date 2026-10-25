@@ -91,7 +91,7 @@ resource "redshift_database" "dynamodb_replica" {
 ### Read-Only
 
 - `database_type` (String) `LOCAL` or `SHARED`; for a zero-ETL destination database, the type `SHOW DATABASES` reports, in uppercase.
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `producer_account` (String) Producer account ID; null for local databases.
 - `producer_namespace` (String) Producer namespace ID; null for local databases.
 - `share_name` (String) Producer share name; null for local databases.
@@ -332,23 +332,17 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_database.analytics
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    name           = "analytics"
-    datashare_arn  = "arn:aws:redshift:eu-central-1:123456789012:datashare:11111111-2222-3333-4444-555555555555/source"
+    name          = "analytics"
+    datashare_arn = "arn:aws:redshift:eu-central-1:123456789012:datashare:11111111-2222-3333-4444-555555555555/source"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_database.analytics \
-  '{"workgroup_name":"warehouse","database":"admin","name":"analytics","datashare_arn":"arn:aws:redshift:eu-central-1:123456789012:datashare:11111111-2222-3333-4444-555555555555/source"}'
+  '{"name":"analytics","datashare_arn":"arn:aws:redshift:eu-central-1:123456789012:datashare:11111111-2222-3333-4444-555555555555/source"}'
 ```
 
 For a local database, omit `datashare_arn` and `integration_id` from the import ID. For a shared database

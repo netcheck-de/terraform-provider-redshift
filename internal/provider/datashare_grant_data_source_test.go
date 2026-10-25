@@ -28,12 +28,12 @@ func TestDatashareGrantLookupViaDataCatalog(t *testing.T) {
 		require.False(t, state.Get(context.Background(), &observed).HasError())
 		assert.Equal(t, types.BoolValue(true), observed.Attributes()["exists"])
 
-		fields := map[string]string{"datashare": "producer", "account_id": "123456789012"}
+		fields := map[string]string{"database": "admin", "datashare": "producer", "account_id": "123456789012"}
 		if via.ValueBool() {
 			fields["via_data_catalog"] = "true"
 		}
 
-		assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", fields)
+		assertLookupIdentity(t, observed.Attributes()["id"].(types.String), fields)
 	}
 
 	source := newDatashareGrantDataSource()

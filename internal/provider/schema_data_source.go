@@ -75,6 +75,6 @@ func (d *schemaDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 	}
 
 	data.Name, data.Owner, data.Quota = current.Name, current.Owner, current.Quota
-	data.ID = d.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

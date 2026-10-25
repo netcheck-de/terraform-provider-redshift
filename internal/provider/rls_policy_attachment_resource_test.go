@@ -112,5 +112,5 @@ func TestRlsPolicyAttachmentIdentity(t *testing.T) {
 
 	var data rlsPolicyAttachmentModel
 	require.False(t, state.Get(context.Background(), &data).HasError())
-	assertLookupIdentity(t, data.ID, "admin", map[string]string{"policy": "region_filter", "schema": "public", "relation": "events", "grantee": "analysts", "grantee_type": "ROLE"})
+	assertLookupIdentity(t, data.ID, map[string]string{"database": "admin", "policy": "region_filter", "schema": "public", "relation": "events", "grantee": "analysts", "grantee_type": "ROLE"})
 }

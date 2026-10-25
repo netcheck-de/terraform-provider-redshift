@@ -53,7 +53,7 @@ resource "redshift_role" "entra_finance" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `role_id` (Number) Catalog role ID (`svv_roles.role_id`).
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -92,20 +92,14 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_role.readers
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    name           = "ncidc:analytics-readers"
+    name = "ncidc:analytics-readers"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_role.readers \
-  '{"workgroup_name":"warehouse","database":"admin","name":"ncidc:analytics-readers"}'
+  '{"name":"ncidc:analytics-readers"}'
 ```

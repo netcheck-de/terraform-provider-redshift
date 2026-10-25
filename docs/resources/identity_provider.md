@@ -79,7 +79,7 @@ resource "redshift_identity_provider" "entra" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `identity_center_instance_arn` (String) IAM Identity Center instance ARN of an `AWSIDC` provider (`instance_arn` in the catalog parameters); null for `AZURE`.
 - `instance_id` (String) Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `AWSIDC` and the tenant ID for `AZURE`.
 - `provider_id` (Number) Catalog ID of the identity provider (`svv_identity_providers.uid`).
@@ -184,22 +184,16 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_identity_provider.this
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    name           = "analytics-redshift-idc"
+    name = "analytics-redshift-idc"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_identity_provider.this \
-  '{"workgroup_name":"warehouse","database":"admin","name":"analytics-redshift-idc"}'
+  '{"name":"analytics-redshift-idc"}'
 ```
 
 Refresh discovers the type, namespace, and type-specific binding and the enabled state. It cannot discover

@@ -70,16 +70,13 @@ func TestDocsExistForEveryRegisteredType(t *testing.T) {
 				assert.Contains(t, string(template), heading+"\n\n```sql\n", "%s must introduce its SQL summary with %q", typeName, heading)
 
 				if category.dir == "resources" {
-					assert.Contains(t, string(template), importBindingsNote, "%s must name the other import bindings", typeName)
-
 					_, section, found := strings.Cut(string(template), "\n## Import\n")
 					if assert.True(t, found, "%s requires an Import section", typeName) {
 						block := `{{ tffile "examples/resources/` + typeName + `/import.tf" }}`
 						cli := `{{ codefile "shell" "examples/resources/` + typeName + `/import.sh" }}`
 						assert.Contains(t, section, importBlockIntroduction+"\n\n"+block, typeName)
 						assert.Contains(t, section, importCLIIntroduction+"\n\n"+cli, typeName)
-						assert.Less(t, strings.Index(section, block), strings.Index(section, importBindingsNote), typeName)
-						assert.Less(t, strings.Index(section, importBindingsNote), strings.Index(section, cli), typeName)
+						assert.Less(t, strings.Index(section, block), strings.Index(section, cli), typeName)
 					}
 				}
 			}
@@ -184,12 +181,6 @@ const (
 	// importCLIIntroduction introduces the equivalent CLI command after the block example.
 	importCLIIntroduction = "Alternatively, use `terraform import`:"
 )
-
-// importBindingsNote follows each Serverless import example, because provisioned clusters and direct password
-// connections bind the import identity with a different key.
-const importBindingsNote = "Replace `workgroup_name` with `cluster_identifier` for a provisioned\ncluster, or with " +
-	"`endpoint` (`host:port`) for a direct password connection; see\n" +
-	"[connection methods](../guides/connection_methods.md#imports-and-transport-switching)."
 
 // sqlSummaryHeadings names the section that holds each page kind's simplified SQL block, so readers know what it shows.
 var sqlSummaryHeadings = map[string]string{

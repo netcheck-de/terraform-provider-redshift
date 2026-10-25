@@ -24,7 +24,7 @@ type datashareResource struct {
 
 // datashareModel is the Terraform state for a producer share.
 type datashareModel struct {
-	// ID records warehouse, producer database, and share identity.
+	// ID records the producer database and share identity.
 	ID types.String `tfsdk:"id"`
 	// Database owns the outbound share.
 	Database types.String `tfsdk:"database"`
@@ -205,7 +205,7 @@ func (r *datashareResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 	data.clearObserved()
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	expected := data.PublicAccessible
@@ -244,6 +244,7 @@ func (r *datashareResource) Read(ctx context.Context, req resource.ReadRequest, 
 		return
 	}
 
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

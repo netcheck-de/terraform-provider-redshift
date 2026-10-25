@@ -85,6 +85,6 @@ func (d *datashareDataSource) Read(ctx context.Context, req datasource.ReadReque
 
 	data.Name, data.PublicAccessible, data.Owner, data.ShareID = share.Name, share.PublicAccessible, share.Owner, share.ShareID
 	data.ProducerAccount, data.ProducerNamespace, data.CreatedAt = share.ProducerAccount, share.ProducerNamespace, share.CreatedAt
-	data.ID = d.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

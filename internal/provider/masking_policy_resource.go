@@ -24,7 +24,7 @@ type maskingPolicyResource struct {
 
 // maskingPolicyModel is the Terraform state of a masking policy.
 type maskingPolicyModel struct {
-	// ID records the warehouse/database/policy identity.
+	// ID records the database/policy identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database is the local database that holds the policy.
 	Database types.String `tfsdk:"database"`
@@ -200,7 +200,7 @@ func (r *maskingPolicyResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 	// A failed verification must still record the created policy with serializable state.
 	data.DefinitionFingerprint = types.StringNull()
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -234,6 +234,7 @@ func (r *maskingPolicyResource) Read(ctx context.Context, req resource.ReadReque
 	}
 
 	data.Expression, data.DefinitionFingerprint = reconcileDefinition(data.Expression, data.DefinitionFingerprint, text)
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

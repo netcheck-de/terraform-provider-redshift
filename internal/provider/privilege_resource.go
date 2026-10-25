@@ -316,6 +316,7 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 	}
 
 	*data = withGrantOptions(withPrivileges(*data, values), optionValues)
+	lookupValue(data, "id", normalizeLegacyIdentity(data.Attributes()["id"].(types.String), false))
 
 	return target, true, nil
 }
@@ -526,7 +527,7 @@ func (r *privilegeResource) Create(ctx context.Context, req resource.CreateReque
 	}
 
 	attributes := data.Attributes()
-	attributes["id"] = r.identity(r.database.ValueString(), fields)
+	attributes["id"] = identity(fields)
 	data = types.ObjectValueMust(data.AttributeTypes(ctx), attributes)
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 

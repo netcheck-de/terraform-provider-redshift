@@ -45,7 +45,7 @@ output "events_column_grants" {
 ### Read-Only
 
 - `column_grants` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--column_grants))
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 
 <a id="nestedatt--column_grants"></a>
 ### Nested Schema for `column_grants`
@@ -63,4 +63,4 @@ Read-Only:
 
 All filters are optional and combine with AND; an empty result is an empty list. The view shows only grants visible
 to the provider's identity (superusers and users with `ACCESS SYSTEM TABLE` see all). Column grants have no grant
-option. `id` is the listing's JSON identity: the warehouse binding, the provider database, and the configured filters.
+option. `id` is the listing's provider-relative JSON identity: the target `database_name` and the configured filters.

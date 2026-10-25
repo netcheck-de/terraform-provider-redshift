@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"maps"
 	"strings"
 	"testing"
 
@@ -23,20 +22,20 @@ import (
 )
 
 // assertLookupIdentity checks resource identity parity and the exact persisted keys independently.
-func assertLookupIdentity(t *testing.T, id types.String, database string, fields map[string]string) {
+func assertLookupIdentity(t *testing.T, id types.String, fields map[string]string) {
 	t.Helper()
 	require.False(t, id.IsNull())
 	require.False(t, id.IsUnknown())
 
-	expected := map[string]string{}
-	maps.Copy(expected, fields)
+	if fields == nil {
+		fields = map[string]string{}
+	}
 
-	client := resourceClient{warehouse: warehouseBinding{field: "workgroup_name", value: types.StringValue("warehouse")}}
-	assert.Equal(t, client.identity(database, expected), id)
+	assert.Equal(t, identity(fields), id)
 
 	var decoded map[string]string
 	require.NoError(t, json.Unmarshal([]byte(id.ValueString()), &decoded))
-	assert.Equal(t, expected, decoded)
+	assert.Equal(t, fields, decoded)
 }
 
 // catalogLookupObject builds a typed lookup configuration with null computed fields.
@@ -86,12 +85,7 @@ func exerciseCatalogLookup(t *testing.T, factory func() datasource.DataSource, f
 		assert.True(t, value.Equal(observed.Attributes()[name]), "%s: expected %v, got %v", name, value, observed.Attributes()[name])
 	}
 
-	database := "admin"
-	if value, ok := fields["database"]; ok {
-		database = value
-	}
-
-	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), database, fields)
+	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), fields)
 	// A computed identity from an earlier observation must not prevent a fresh lookup or survive absence.
 	lookupValue(&data, "id", types.StringValue("stale observation"))
 
@@ -131,7 +125,7 @@ func TestPrivilegeLookupsReturnEmptySetsAndGrantOptions(t *testing.T) {
 		var observed types.Object
 		require.False(t, state.Get(context.Background(), &observed).HasError())
 		assert.Len(t, observed.Attributes()["privileges"].(types.Set).Elements(), len(values))
-		assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", fields)
+		assertLookupIdentity(t, observed.Attributes()["id"].(types.String), fields)
 		assert.Empty(t, client.writes)
 	}
 }
@@ -354,7 +348,7 @@ func TestLookupBlocksRead(t *testing.T) {
 	assert.Equal(t, types.Int64Value(1), column["identity"].(types.Object).Attributes()["seed"])
 	assert.True(t, observed.Attributes()["unique"].IsNull())
 	assert.True(t, observed.Attributes()["distribution"].IsNull())
-	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "analytics", map[string]string{"name": "events"})
+	assertLookupIdentity(t, observed.Attributes()["id"].(types.String), map[string]string{"database": "analytics", "name": "events"})
 }
 
 // TestLookupDescriptionRegexSemantics preserves the regex boundary and whitespace rules in the fast path.

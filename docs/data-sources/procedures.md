@@ -40,7 +40,7 @@ output "definer_procedures" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `procedures` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--procedures))
 
 <a id="nestedatt--procedures"></a>

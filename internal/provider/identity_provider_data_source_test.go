@@ -28,7 +28,7 @@ func TestIdentityProviderLookup(t *testing.T) {
 	assert.Equal(t, "arn:aws:sso:::instance/ssoins-1234567890abcdef", data.IdentityCenterInstanceARN.ValueString())
 	assert.True(t, data.AutoCreateRoles.IsNull(), "role creation is not in the catalog")
 	assert.Empty(t, c.writes, "lookups never write")
-	assertLookupIdentity(t, data.ID, "admin", map[string]string{"name": "identity"})
+	assertLookupIdentity(t, data.ID, map[string]string{"name": "identity"})
 }
 
 // TestIdentityProviderLookupAzure checks the Azure parameters and that the lookup schema omits the secret.

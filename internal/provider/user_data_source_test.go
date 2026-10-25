@@ -27,7 +27,7 @@ func TestUserLookup(t *testing.T) {
 	assert.True(t, data.ExternalID.IsNull())
 	assert.Nil(t, data.SearchPath)
 	assert.Nil(t, data.SessionDefaults)
-	assertLookupIdentity(t, data.ID, "admin", map[string]string{"name": "grafana"})
+	assertLookupIdentity(t, data.ID, map[string]string{"name": "grafana"})
 }
 
 // TestUserLookupReportsOptions checks that the lookup reports stored defaults, expiration, and SVV_USER_INFO

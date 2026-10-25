@@ -30,7 +30,7 @@ func TestGroupImport(t *testing.T) {
 	r := &groupResource{testResourceClient(&catalog{group: true})}
 	state := testState(t, r, readersGroup())
 	resp := resource.ImportStateResponse{State: state}
-	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","name":"readers"}`}, &resp)
+	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"name":"readers"}`}, &resp)
 	require.False(t, resp.Diagnostics.HasError())
 }
 
@@ -98,7 +98,7 @@ func TestGroupCreateVerificationFailureKeepsKnownState(t *testing.T) {
 
 	var recorded groupModel
 	require.False(t, state.Get(context.Background(), &recorded).HasError())
-	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","name":"readers"}`, recorded.ID.ValueString())
+	assert.JSONEq(t, `{"name":"readers"}`, recorded.ID.ValueString())
 	assert.True(t, recorded.GroupID.IsNull())
 	assert.True(t, recorded.Members.IsNull())
 }

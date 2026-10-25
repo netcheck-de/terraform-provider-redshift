@@ -72,7 +72,7 @@ resource "redshift_materialized_view" "revenue_by_region" {
 ### Read-Only
 
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed outside literals, quoted identifiers, and comments; detects definition changes made outside Terraform.
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 
 <a id="nestedblock--distribution"></a>
 ### Nested Schema for `distribution`
@@ -261,23 +261,18 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_materialized_view.revenue_by_region
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    schema         = "reporting"
-    name           = "revenue_by_region"
+    database = "analytics"
+    schema   = "reporting"
+    name     = "revenue_by_region"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_materialized_view.revenue_by_region \
-  '{"workgroup_name":"warehouse","database":"analytics","schema":"reporting","name":"revenue_by_region"}'
+  '{"database":"analytics","schema":"reporting","name":"revenue_by_region"}'
 ```
 
 Import reads `owner` and `auto_refresh` but leaves `query` and the storage options unset, and marks the state as

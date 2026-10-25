@@ -118,6 +118,6 @@ func (d *identityProviderDataSource) Read(ctx context.Context, req datasource.Re
 		Enabled: provider.Enabled, ProviderID: provider.ProviderID, InstanceID: provider.InstanceID,
 		IdentityCenterInstanceARN: provider.IdentityCenterInstanceARN,
 	}
-	data.ID = d.identity(d.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

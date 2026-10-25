@@ -14,8 +14,9 @@ var _ = registerDataSource(newTemplatesDataSource)
 // newTemplatesDataSource lists COPY templates of one schema, or of every local schema of a database.
 func newTemplatesDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
-		name:        "templates",
-		description: "Lists COPY templates visible in `SYS_REDSHIFT_TEMPLATE`. Superusers see all templates; regular users see only their own. No schema scan or schema USAGE privilege is required.",
+		name:          "templates",
+		databaseField: "database",
+		description:   "Lists COPY templates visible in `SYS_REDSHIFT_TEMPLATE`. Superusers see all templates; regular users see only their own. No schema scan or schema USAGE privilege is required.",
 		filters: map[string]schema.Attribute{
 			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Local database to list; the provider database when omitted."},
 			"schema":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only visible templates of this schema; all visible templates of the database when omitted."},

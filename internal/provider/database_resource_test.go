@@ -334,7 +334,7 @@ func TestDatabaseImportAllowsLocalDatabase(t *testing.T) {
 	r := &databaseResource{}
 	empty := databaseModel{ID: types.StringNull(), Name: types.StringNull(), DatashareARN: types.StringNull(), WithPermissions: types.BoolNull()}
 	resp := resource.ImportStateResponse{State: testState(t, r, empty)}
-	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","name":"warehouse"}`}, &resp)
+	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"name":"warehouse"}`}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 
 	var data databaseResourceModel
@@ -486,7 +486,7 @@ func TestDatabaseUnreadableCollation(t *testing.T) {
 	c.localDB = true
 	r := &databaseResource{testResourceClient(c)}
 	data := databaseLocalOptionsModel("etl", 25, "CASE_INSENSITIVE", "SERIALIZABLE")
-	data.ID = r.identity("admin", map[string]string{"name": "warehouse"})
+	data.ID = identity(map[string]string{"name": "warehouse"})
 	data.Collation = types.StringUnknown()
 	found, err := r.read(context.Background(), &data)
 	require.NoError(t, err)
@@ -522,7 +522,7 @@ func TestDatabaseUpdateReportsDisappearance(t *testing.T) {
 		return rows, err
 	}))}
 	prior := databaseLocalOptionsModel("admin", -1, "CASE_SENSITIVE", "SNAPSHOT")
-	prior.ID = r.identity("admin", map[string]string{"name": "warehouse"})
+	prior.ID = identity(map[string]string{"name": "warehouse"})
 	planned := prior
 	planned.Owner = types.StringValue("etl")
 	_, diagnostics := applyOperation(t, r, "update", prior, planned, nil)

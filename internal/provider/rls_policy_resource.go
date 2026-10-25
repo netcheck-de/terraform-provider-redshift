@@ -24,7 +24,7 @@ type rlsPolicyResource struct {
 
 // rlsPolicyModel is the Terraform state of one RLS policy.
 type rlsPolicyModel struct {
-	// ID records the warehouse/database/policy identity.
+	// ID records the database/policy identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database contains the policy.
 	Database types.String `tfsdk:"database"`
@@ -143,7 +143,7 @@ func (rlsPolicyAliasEquivalent) PlanModifyString(_ context.Context, req planmodi
 
 // rlsPolicyIdentity is the JSON identity shared by the resource, its lookup, and imports.
 func (r *rlsPolicyResource) rlsPolicyIdentity(data rlsPolicyModel) types.String {
-	return r.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	return identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 }
 
 // read refreshes the policy's columns and alias and returns the catalog predicate, which callers reconcile with
@@ -318,6 +318,7 @@ func (r *rlsPolicyResource) Read(ctx context.Context, req resource.ReadRequest, 
 	}
 
 	data.Predicate, data.DefinitionFingerprint = reconcileDefinition(data.Predicate, data.DefinitionFingerprint, predicate)
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

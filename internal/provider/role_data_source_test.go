@@ -25,5 +25,5 @@ func TestRoleLookup(t *testing.T) {
 	assert.Equal(t, "ABC123", data.ExternalID.ValueString())
 	assert.Equal(t, int64(100), data.RoleID.ValueInt64())
 	assert.Empty(t, c.writes, "lookups never write")
-	assertLookupIdentity(t, data.ID, "admin", map[string]string{"name": "example:readers"})
+	assertLookupIdentity(t, data.ID, map[string]string{"name": "example:readers"})
 }

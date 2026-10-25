@@ -23,7 +23,7 @@ type viewResource struct {
 
 // viewModel is the Terraform state of one view.
 type viewModel struct {
-	// ID records the warehouse/database/schema/name identity.
+	// ID records the database/schema/name identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database contains the view.
 	Database types.String `tfsdk:"database"`
@@ -193,7 +193,7 @@ func (r *viewResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	planned := data
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
 	// A failed ownership change or verification must still record the created view in serializable state.
 	if data.Owner.IsUnknown() {
 		data.Owner = types.StringNull()
@@ -251,6 +251,7 @@ func (r *viewResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 
 	data.Owner, data.LateBinding = types.StringValue(entry.owner), types.BoolValue(entry.lateBinding)
 	data.Query, data.DefinitionFingerprint = reconcileDefinition(data.Query, data.DefinitionFingerprint, entry.definition)
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 

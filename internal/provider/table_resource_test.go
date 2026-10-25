@@ -1054,8 +1054,8 @@ func TestTableCreateDetectsDivergence(t *testing.T) {
 func TestTableImport(t *testing.T) {
 	r := newTableResource().(*tableResource)
 	for id, valid := range map[string]bool{
-		`{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"events"}`: true,
-		`{"workgroup_name":"warehouse","database":"admin","name":"events"}`:                    false,
+		`{"database":"admin","schema":"serving","name":"events"}`: true,
+		`{"database":"admin","name":"events"}`:                    false,
 	} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)

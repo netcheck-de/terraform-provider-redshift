@@ -50,7 +50,7 @@ func TestDatasharesList(t *testing.T) {
 
 			identity := map[string]string{}
 			maps.Copy(identity, test.filters)
-			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", identity)
+			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), identity)
 			items := collectionResult(source, observed).Elements()
 			require.Len(t, items, len(test.shares))
 

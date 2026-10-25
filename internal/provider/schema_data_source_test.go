@@ -20,5 +20,5 @@ func TestSchemaLookup(t *testing.T) {
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.Equal(t, "admin", data.Owner.ValueString())
 	assert.Equal(t, int64(-1), data.Quota.ValueInt64(), "a schema without a quota reports UNLIMITED")
-	assertLookupIdentity(t, data.ID, "admin", map[string]string{"name": "serving"})
+	assertLookupIdentity(t, data.ID, map[string]string{"database": "admin", "name": "serving"})
 }

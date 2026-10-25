@@ -87,7 +87,7 @@ func TestObjectGrantSharedLifecycle(t *testing.T) {
 	local, err := r.target(data)
 	require.NoError(t, err)
 	assert.Equal(t, "shared_db", local.database, "existing local contract is unchanged")
-	assert.Contains(t, r.identity("admin", fields).ValueString(), `"database_type":"shared"`)
+	assert.Contains(t, identity(fields).ValueString(), `"database_type":"shared"`)
 }
 
 // TestObjectGrantSharedReadErrorsKeepState keeps state unchanged and writes nothing when any check or read for a shared

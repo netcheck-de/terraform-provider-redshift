@@ -79,7 +79,7 @@ resource "redshift_role_grant" "grafana_monitor" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## Lifecycle and Ownership
@@ -194,22 +194,16 @@ Use an `import` block with a JSON identity:
 import {
   to = redshift_user.grafana
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    name           = "grafana"
+    name = "grafana"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_user.grafana \
-  '{"workgroup_name":"warehouse","database":"admin","name":"grafana"}'
+  '{"name":"grafana"}'
 ```
 
 Import sets `password_wo_version` to `0` and `password_disabled` to `false`, and does **not** rotate the existing

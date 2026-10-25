@@ -38,7 +38,7 @@ type databaseResource struct {
 
 // databaseModel is the Terraform state for a local or shared database.
 type databaseModel struct {
-	// ID binds the database to its administration warehouse and database.
+	// ID identifies the database and any producer or integration binding within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Name identifies the managed database.
 	Name types.String `tfsdk:"name"`
@@ -470,7 +470,7 @@ func (r *databaseResource) read(ctx context.Context, data *databaseModel) (bool,
 		return found, err
 	}
 
-	observed.ID, observed.DatashareARN = data.ID, data.DatashareARN
+	observed.ID, observed.DatashareARN = normalizeLegacyIdentity(data.ID, false), data.DatashareARN
 	if data.DatashareARN.IsNull() {
 		if data.Integration != nil {
 			if err := r.databaseReadIntegration(ctx, data.Integration, &observed); err != nil {
@@ -584,17 +584,17 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 			return
 		}
 
-		identity := map[string]string{"name": data.Name.ValueString()}
+		fields := map[string]string{"name": data.Name.ValueString()}
 
 		data.DatabaseType = types.StringValue(databaseTypeLocal)
 		if data.Integration != nil {
 			// The integration binds the database like a datashare does, so the identity carries it for import.
-			identity["integration_id"] = data.Integration.IntegrationID.ValueString()
+			fields["integration_id"] = data.Integration.IntegrationID.ValueString()
 			// The type of a zero-ETL destination is only known from the catalog.
 			data.DatabaseType = types.StringNull()
 		}
 
-		data.ID = r.identity(r.database.ValueString(), identity)
+		data.ID = identity(fields)
 		data.ShareName, data.ProducerAccount, data.ProducerNamespace = types.StringNull(), types.StringNull(), types.StringNull()
 		databaseClearUnknown(&data.databaseModel)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -649,7 +649,7 @@ func (r *databaseResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	data.ID = r.identity(r.database.ValueString(), map[string]string{"name": data.Name.ValueString(), "datashare_arn": data.DatashareARN.ValueString()})
+	data.ID = identity(map[string]string{"name": data.Name.ValueString(), "datashare_arn": data.DatashareARN.ValueString()})
 	data.DatabaseType = types.StringValue(databaseTypeShared)
 	data.ShareName = types.StringValue(source.Name)
 	data.ProducerAccount = types.StringValue(source.Account)

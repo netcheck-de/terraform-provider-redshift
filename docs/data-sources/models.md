@@ -39,7 +39,7 @@ output "ml_model_names" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `models` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--models))
 
 <a id="nestedatt--models"></a>
@@ -53,7 +53,7 @@ Read-Only:
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 `database` defaults to the provider's `database`; `SHOW MODEL ALL` covers only the database it runs in, so the listing
-runs in the listed database. `id` combines the warehouse binding, the listed database, and the configured filters.
+runs in the listed database. `id` combines the listed database and configured filters within the warehouse.
 Items are ordered by schema and name; no match returns an empty `models` list. `SHOW MODEL ALL` has no filter clause,
 so `schema` is applied to its rows. It lists only the models the provider's SQL identity can use. Only read-only SQL
 is executed.

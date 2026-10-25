@@ -110,7 +110,7 @@ func TestViewImportFillsCatalogDefinition(t *testing.T) {
 	r := newViewResource()
 	configureTestResource(t, r, c)
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
-	id := `{"workgroup_name":"warehouse","database":"admin","schema":"serving","name":"sales_view"}`
+	id := `{"database":"admin","schema":"serving","name":"sales_view"}`
 	r.(resource.ResourceWithImportState).ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
 	resp := resource.ReadResponse{State: imported.State}
