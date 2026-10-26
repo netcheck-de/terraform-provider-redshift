@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleExemption("redshift_comment", "TestCommentLifecycle and TestCommentMissingTargets use an annotation fixture.")
+
 var _ = registerValidateConfigCase("comment", validateConfigCase{
 	new:     newCommentResource,
 	valid:   commentModel{DatabaseName: types.StringValue("analytics"), ObjectType: types.StringValue("SCHEMA"), ObjectName: types.StringValue("serving"), Text: types.StringValue("note")},
@@ -70,13 +72,22 @@ func TestCommentLifecycle(t *testing.T) {
 				})
 				r := &commentResource{testResourceClient(client)}
 
-				diagnostics := invoke(t, r, operation, schemaComment())
+				state, diagnostics := invokeWithState(t, r, operation, schemaComment())
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
 
 					queries = calls
 				} else {
 					require.True(t, diagnostics.HasError(), "query %d", failAt)
+
+					if operation == "read" || operation == "delete" {
+						assert.True(t, state.Raw.Equal(testState(t, r, schemaComment()).Raw), "query failure must preserve prior state")
+					}
+
+					if operation == "create" && text == "after" {
+						assert.False(t, state.Raw.IsNull(), "a written comment must remain tracked")
+						assert.True(t, state.Raw.IsFullyKnown())
+					}
 				}
 			}
 		})
@@ -149,7 +160,12 @@ func TestCommentMissingTargets(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, operation := range []string{"create", "read", "update", "delete"} {
-				assert.Equal(t, operation == "create" || operation == "update", invoke(t, r, operation, data).HasError())
+				state, diagnostics := invokeWithState(t, r, operation, data)
+				assert.Equal(t, operation == "create" || operation == "update", diagnostics.HasError())
+
+				if operation == "read" {
+					assert.True(t, state.Raw.IsNull(), "a missing comment target must remove the resource from state")
+				}
 			}
 		} else {
 			require.Error(t, err)

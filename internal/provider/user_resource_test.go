@@ -17,6 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleExemption("redshift_user", "TestUserLifecycleErrorPaths and TestUserUpdateFailures supply separate write-only passwords.")
+
 var _ = registerReplacementPolicy("redshift_user", map[string]replaceRule{
 	"name":                replaceAlways,
 	"superuser":           replaceNever,
@@ -59,6 +61,15 @@ func grafanaUser() userModel {
 func runUser(t *testing.T, r *userResource, operation string, plan, previous userModel, secret string) diag.Diagnostics {
 	t.Helper()
 
+	_, diagnostics := runUserWithState(t, r, operation, plan, previous, secret)
+
+	return diagnostics
+}
+
+// runUserWithState retains returned state while keeping the write-only password separate from the plan.
+func runUserWithState(t *testing.T, r *userResource, operation string, plan, previous userModel, secret string) (tfsdk.State, diag.Diagnostics) {
+	t.Helper()
+
 	ctx := context.Background()
 	planState := testState(t, r, plan)
 	priorState := testState(t, r, previous)
@@ -73,25 +84,25 @@ func runUser(t *testing.T, r *userResource, operation string, plan, previous use
 
 	switch operation {
 	case "create":
-		resp := resource.CreateResponse{State: tfsdk.State{Schema: planState.Schema}}
+		resp := resource.CreateResponse{State: emptyState(t, r)}
 		r.Create(ctx, resource.CreateRequest{Plan: tfsdk.Plan(planState), Config: tfsdk.Config(configured)}, &resp)
 
-		return resp.Diagnostics
+		return resp.State, resp.Diagnostics
 	case "update":
 		resp := resource.UpdateResponse{State: priorState}
 		r.Update(ctx, resource.UpdateRequest{Plan: tfsdk.Plan(planState), State: priorState, Config: tfsdk.Config(configured)}, &resp)
 
-		return resp.Diagnostics
+		return resp.State, resp.Diagnostics
 	case "read":
 		resp := resource.ReadResponse{State: priorState}
 		r.Read(ctx, resource.ReadRequest{State: priorState}, &resp)
 
-		return resp.Diagnostics
+		return resp.State, resp.Diagnostics
 	default:
 		resp := resource.DeleteResponse{State: priorState}
 		r.Delete(ctx, resource.DeleteRequest{State: priorState}, &resp)
 
-		return resp.Diagnostics
+		return resp.State, resp.Diagnostics
 	}
 }
 
@@ -257,7 +268,23 @@ func TestUserLifecycleErrorPaths(t *testing.T) {
 		r := &userResource{testResourceClient(&catalog{})}
 		data := grafanaUser()
 		data.ID = identity(map[string]string{"name": "grafana"})
-		assert.False(t, runUser(t, r, operation, data, data, "").HasError())
+		state, diagnostics := runUserWithState(t, r, operation, data, data, "")
+		assert.False(t, diagnostics.HasError())
+
+		if operation == "read" {
+			assert.True(t, state.Raw.IsNull(), "a missing user must be removed from state")
+		}
+	}
+
+	for _, operation := range []string{"read", "delete"} {
+		r := &userResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+			return nil, errors.New("catalog unavailable")
+		}))}
+		data := grafanaUser()
+		data.ID = identity(map[string]string{"name": "grafana"})
+		state, diagnostics := runUserWithState(t, r, operation, data, data, "")
+		require.True(t, diagnostics.HasError())
+		assert.True(t, state.Raw.Equal(testState(t, r, data).Raw), "query failure must preserve user ownership")
 	}
 
 	for _, stage := range []string{"create", "create verification", "create missing", "create mismatch"} {
@@ -289,9 +316,48 @@ func TestUserLifecycleErrorPaths(t *testing.T) {
 				data.Superuser = types.BoolValue(true)
 			}
 
-			assert.True(t, runUser(t, r, "create", data, data, "InitialPass123").HasError())
+			state, diagnostics := runUserWithState(t, r, "create", data, data, "InitialPass123")
+			assert.True(t, diagnostics.HasError())
+
+			if c.user {
+				assert.False(t, state.Raw.IsNull(), "a created user must remain tracked when verification fails")
+				assert.True(t, state.Raw.IsFullyKnown())
+			}
 		})
 	}
+}
+
+// TestUserPartialCreateRecovery refreshes the state returned after CREATE USER succeeds but verification fails.
+func TestUserPartialCreateRecovery(t *testing.T) {
+	c := &catalog{}
+	r := &userResource{testResourceClient(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
+		if c.user && strings.HasPrefix(sql, "SELECT usename") {
+			return nil, errors.New("catalog unavailable")
+		}
+
+		return c.Query(ctx, target, sql, params)
+	}))}
+	data := grafanaUser()
+	partial, diagnostics := runUserWithState(t, r, "create", data, data, "InitialPass123")
+	require.True(t, diagnostics.HasError())
+	require.True(t, c.user)
+	require.False(t, partial.Raw.IsNull())
+	require.True(t, partial.Raw.IsFullyKnown())
+
+	writes := len(c.writes)
+
+	r = &userResource{testResourceClient(c)}
+	refreshed := resource.ReadResponse{State: partial}
+	r.Read(context.Background(), resource.ReadRequest{State: partial}, &refreshed)
+	require.False(t, refreshed.Diagnostics.HasError(), "%v", refreshed.Diagnostics)
+	require.False(t, refreshed.State.Raw.IsNull())
+
+	var recovered userModel
+	require.False(t, refreshed.State.Get(context.Background(), &recovered).HasError())
+	assert.JSONEq(t, `{"name":"grafana"}`, recovered.ID.ValueString())
+	assert.True(t, recovered.Password.IsNull(), "recovery must not persist the write-only password")
+	assert.True(t, refreshed.State.Raw.IsFullyKnown())
+	assert.Len(t, c.writes, writes, "recovery must not recreate the user or reset its password")
 }
 
 // TestUserUpdateFailures checks password-version, configuration, and SQL update failure branches, and that each

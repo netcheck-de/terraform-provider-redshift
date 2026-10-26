@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleExemption("redshift_policy_grant", "TestPolicyGrantLifecycle uses policyGrantTestCatalog because policy grants have no catalog readback.")
+
 var _ = registerReplacementPolicy("redshift_policy_grant", map[string]replaceRule{
 	"database_name": replaceAlways,
 	"schema_name":   replaceAlways,
@@ -101,20 +103,28 @@ func TestPolicyGrantLifecycle(t *testing.T) {
 					return c.Query(ctx, connection, sql, parameters)
 				}))
 
-				diagnostics := invoke(t, r, operation, data)
+				state, diagnostics := invokeWithState(t, r, operation, data)
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
 
 					queries = calls
 				} else {
 					require.True(t, diagnostics.HasError(), "failure %d: %v", failAt, diagnostics)
+
+					if operation == "read" || operation == "delete" {
+						assert.True(t, state.Raw.Equal(testState(t, r, data).Raw), "query failure must preserve policy grant ownership")
+					}
 				}
 			}
 
 			r := newPolicyGrantResource()
 			configureTestResource(t, r, &policyGrantTestCatalog{missing: true})
-			diagnostics := invoke(t, r, operation, data)
+			state, diagnostics := invokeWithState(t, r, operation, data)
 			assert.Equal(t, operation == "create" || operation == "update", diagnostics.HasError(), "%v", diagnostics)
+
+			if operation == "read" {
+				assert.True(t, state.Raw.IsNull(), "a missing policy grant parent must remove the resource from state")
+			}
 		})
 	}
 }

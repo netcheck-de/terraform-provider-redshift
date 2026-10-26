@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleExemption("redshift_default_privileges", "TestDefaultPrivilegesLifecycle uses exercisePrivilege and privilegeCatalog.")
+
 var _ = registerReplacementPolicy("redshift_default_privileges", map[string]replaceRule{
 	"restore_default_on_destroy": replaceNever,
 	"database_name":              replaceAlways,

@@ -21,34 +21,44 @@ import (
 func invoke(t *testing.T, r resource.Resource, operation string, model any) diag.Diagnostics {
 	t.Helper()
 
+	_, diagnostics := invokeWithState(t, r, operation, model)
+
+	return diagnostics
+}
+
+// invokeWithState retains the lifecycle response so shared tests can assert ownership as well as diagnostics.
+func invokeWithState(t *testing.T, r resource.Resource, operation string, model any) (tfsdk.State, diag.Diagnostics) {
+	t.Helper()
+
 	ctx := context.Background()
 	state := testState(t, r, model)
 	plan := tfsdk.Plan(state)
+	config := tfsdk.Config(state)
 
 	switch operation {
 	case "create":
-		resp := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
-		r.Create(ctx, resource.CreateRequest{Plan: plan}, &resp)
+		resp := resource.CreateResponse{State: emptyState(t, r)}
+		r.Create(ctx, resource.CreateRequest{Plan: plan, Config: config}, &resp)
 
-		return resp.Diagnostics
+		return resp.State, resp.Diagnostics
 	case "read":
 		resp := resource.ReadResponse{State: state}
 		r.Read(ctx, resource.ReadRequest{State: state}, &resp)
 
-		return resp.Diagnostics
+		return resp.State, resp.Diagnostics
 	case "update":
 		resp := resource.UpdateResponse{State: state}
-		r.Update(ctx, resource.UpdateRequest{Plan: plan, State: state}, &resp)
+		r.Update(ctx, resource.UpdateRequest{Plan: plan, State: state, Config: config}, &resp)
 
-		return resp.Diagnostics
+		return resp.State, resp.Diagnostics
 	case "delete":
 		resp := resource.DeleteResponse{State: state}
 		r.Delete(ctx, resource.DeleteRequest{State: state}, &resp)
 
-		return resp.Diagnostics
+		return resp.State, resp.Diagnostics
 	default:
 		t.Fatalf("unknown lifecycle operation %q", operation)
-		return nil
+		return tfsdk.State{}, nil
 	}
 }
 
@@ -88,6 +98,14 @@ type lifecycleCase struct {
 
 // lifecycleRegistry holds the cases each type's test file registers.
 var lifecycleRegistry testRegistry[lifecycleCase]
+
+// lifecycleExemptions documents dedicated lifecycle coverage that needs a different catalog or configuration.
+var lifecycleExemptions testRegistry[string]
+
+// registerLifecycleExemption declares dedicated coverage from the resource's own test file.
+func registerLifecycleExemption(name, reason string) bool {
+	return lifecycleExemptions.add(name, reason)
+}
 
 // registerLifecycleCase declares a resource's shared error-path case from its own test file.
 func registerLifecycleCase(test lifecycleCase) bool {
@@ -194,14 +212,28 @@ func withID(model any, id types.String) any {
 // TestLifecycleCasesAreRegistered checks that registered cases are complete and name registered resources.
 func TestLifecycleCasesAreRegistered(t *testing.T) {
 	require.Empty(t, lifecycleRegistry.duplicates, "duplicate lifecycle cases")
+	require.Empty(t, lifecycleExemptions.duplicates, "duplicate lifecycle exemptions")
 	require.NotEmpty(t, lifecycleCases())
 
 	resources, _ := registeredTypeNames()
+	covered := map[string]bool{}
 
 	for _, test := range lifecycleCases() {
 		require.NotNil(t, test.new, test.name)
 		require.NotNil(t, test.model, test.name)
-		assert.Contains(t, resources, "redshift_"+resourceTypeName(test.new), test.name)
+		name := "redshift_" + resourceTypeName(test.new)
+		assert.Contains(t, resources, name, test.name)
+		covered[name] = true
+	}
+
+	for _, name := range resources {
+		assert.True(t, covered[name] || lifecycleExemptions.entries[name] != "", "%s must register a lifecycle case or document dedicated coverage", name)
+	}
+
+	for name, reason := range lifecycleExemptions.entries {
+		assert.Contains(t, resources, name, "stale lifecycle exemption")
+		assert.False(t, covered[name], "%s has both a lifecycle case and an exemption", name)
+		assert.NotEmpty(t, reason, "%s must explain its dedicated coverage", name)
 	}
 }
 
@@ -236,17 +268,101 @@ func TestLifecycleSQLBoundaryErrors(t *testing.T) {
 					r := test.new()
 					configureTestResource(t, r, client)
 
-					diagnostics := invoke(t, r, operation, test.model)
+					state, diagnostics := invokeWithState(t, r, operation, test.model)
 					if failAt == 0 {
 						require.False(t, diagnostics.HasError(), "%v", diagnostics)
 
 						queries = calls
 					} else {
 						require.True(t, diagnostics.HasError(), "query %d failure must be reported", failAt)
+
+						if operation == "read" || operation == "delete" {
+							assert.True(t, state.Raw.Equal(testState(t, r, test.model).Raw), "query %d failure must preserve prior state", failAt)
+						}
+
+						if operation == "create" && len(c.writes) > 0 {
+							require.False(t, state.Raw.IsNull(), "query %d failure after mutation must retain ownership", failAt)
+							require.True(t, state.Raw.IsFullyKnown(), "partial-create state must be usable by a later refresh")
+
+							var id types.String
+							require.False(t, state.GetAttribute(context.Background(), path.Root("id"), &id).HasError())
+							require.NotEmpty(t, id.ValueString())
+						}
 					}
 				}
 			})
 		}
+	}
+}
+
+// TestLifecyclePartialCreateRecovery refreshes the actual state returned after a successful mutation whose final
+// verification failed. A fresh resource instance must recover ownership without repeating the creation statements.
+func TestLifecyclePartialCreateRecovery(t *testing.T) {
+	for _, test := range lifecycleCases() {
+		t.Run(test.name, func(t *testing.T) {
+			newCatalog := func() *catalog {
+				c := test.catalog()
+				if test.absent != nil {
+					test.absent(c)
+				}
+
+				test.applyPrepare(c, "create")
+
+				return c
+			}
+
+			// Locate the final mutation in a successful create, not a hard-coded query number.
+			baseline := newCatalog()
+			calls, lastMutation := 0, 0
+			r := test.new()
+			configureTestResource(t, r, queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+				calls++
+
+				rows, err := baseline.Query(ctx, target, sql, parameters)
+				if err == nil && !fakeRead(sql) {
+					lastMutation = calls
+				}
+
+				return rows, err
+			}))
+			require.False(t, invoke(t, r, "create", test.model).HasError())
+			require.Positive(t, lastMutation, "the fixture must exercise creation, not an existing converged object")
+			require.Greater(t, calls, lastMutation, "creation must verify its final mutation")
+
+			c := newCatalog()
+			calls = 0
+			r = test.new()
+			configureTestResource(t, r, queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+				calls++
+				if calls == lastMutation+1 {
+					return nil, errors.New("create verification unavailable")
+				}
+
+				return c.Query(ctx, target, sql, parameters)
+			}))
+			partial, diagnostics := invokeWithState(t, r, "create", test.model)
+			require.True(t, diagnostics.HasError())
+			require.False(t, partial.Raw.IsNull())
+			require.True(t, partial.Raw.IsFullyKnown())
+
+			var id types.String
+			require.False(t, partial.GetAttribute(context.Background(), path.Root("id"), &id).HasError())
+			require.NotEmpty(t, id.ValueString())
+
+			r = test.new()
+			configureTestResource(t, r, c)
+			writes := len(c.writes)
+			refreshed := resource.ReadResponse{State: partial}
+			r.Read(context.Background(), resource.ReadRequest{State: partial}, &refreshed)
+			require.False(t, refreshed.Diagnostics.HasError(), "%v", refreshed.Diagnostics)
+			require.False(t, refreshed.State.Raw.IsNull(), "refresh must recover the created object")
+
+			var recoveredID types.String
+			require.False(t, refreshed.State.GetAttribute(context.Background(), path.Root("id"), &recoveredID).HasError())
+			assert.Equal(t, id, recoveredID, "recovery must retain the original identity")
+			assert.True(t, refreshed.State.Raw.IsFullyKnown())
+			assert.Len(t, c.writes, writes, "recovery must not repeat mutations")
+		})
 	}
 }
 
@@ -264,8 +380,12 @@ func TestLifecycleMissingObjects(t *testing.T) {
 				})
 				r := test.new()
 				configureTestResource(t, r, client)
-				diagnostics := invoke(t, r, operation, test.model)
+				state, diagnostics := invokeWithState(t, r, operation, test.model)
 				assert.Equal(t, operation == "create" || operation == "update", diagnostics.HasError(), "%v", diagnostics)
+
+				if operation == "read" {
+					assert.True(t, state.Raw.IsNull(), "confirmed absence must remove the resource from state")
+				}
 			})
 		}
 	}
@@ -294,16 +414,21 @@ func TestLifecycleMissingDatabase(t *testing.T) {
 
 					return nil, nil
 				}))
-				diagnostics := invoke(t, r, operation, local.Interface())
+				state, diagnostics := invokeWithState(t, r, operation, local.Interface())
 				assert.False(t, diagnostics.HasError(), "%v", diagnostics)
+
+				if operation == "read" {
+					assert.True(t, state.Raw.IsNull(), "a missing parent database must remove the resource from state")
+				}
 
 				r = test.new()
 				configureTestResource(t, r, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 					return nil, errors.New("database lookup failed")
 				}))
-				diagnostics = invoke(t, r, operation, local.Interface())
+				state, diagnostics = invokeWithState(t, r, operation, local.Interface())
 				require.True(t, diagnostics.HasError())
 				assert.Contains(t, diagnostics.Errors()[0].Detail(), "database lookup failed")
+				assert.True(t, state.Raw.Equal(testState(t, r, local.Interface()).Raw), "a database lookup failure must preserve prior state")
 			})
 		}
 	}
