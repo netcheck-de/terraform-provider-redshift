@@ -84,7 +84,12 @@ data "redshift_grant" "schema" {
 			{ResourceName: "redshift_grant.schema", ImportState: true, ImportStateVerify: true},
 			{Config: configuration(true, `["USAGE", "CREATE"]`), Check: resource.TestCheckResourceAttr("data.redshift_grant.schema", "privileges.#", "2")},
 			{Config: configuration(false, `["USAGE", "CREATE"]`), PlanOnly: true},
-			{Config: configuration(true, `["USAGE", "CREATE"]`)},
+			{Config: configuration(false, `["USAGE", "CREATE"]`), Check: resource.TestCheckResourceAttr("data.redshift_grant.schema", "privileges.#", "2")},
+			{ResourceName: "redshift_database.local", ImportState: true, ImportStateVerify: true},
+			{ResourceName: "redshift_schema.local", ImportState: true, ImportStateVerify: true},
+			{ResourceName: "redshift_role.reader", ImportState: true, ImportStateVerify: true},
+			{ResourceName: "redshift_grant.schema", ImportState: true, ImportStateVerify: true},
+			{Config: configuration(false, `["USAGE"]`), Check: resource.TestCheckResourceAttr("data.redshift_grant.schema", "privileges.#", "1")},
 		},
 	})
 }
