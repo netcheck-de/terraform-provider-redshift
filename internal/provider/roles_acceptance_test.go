@@ -67,6 +67,12 @@ data "redshift_role_grant" "this" {
   role    = redshift_role_grant.this.role
   to_user = redshift_role_grant.this.to_user
 }
+data "redshift_roles" "all" {
+  depends_on = [redshift_role.this]
+}
+data "redshift_role_grants" "this" {
+  role = redshift_role_grant.this.role
+}
 `, region, profile, workgroup, database, first, "AccPass1"+suffix, second, "AccPass2"+suffix, roleName, owner, admin)
 	}
 	ctx, client := context.Background(), testAccRolesClient(t, region, profile, workgroup)
@@ -88,12 +94,18 @@ data "redshift_role_grant" "this" {
 				resource.TestCheckResourceAttrSet("redshift_role.this", "role_id"),
 				resource.TestCheckResourceAttr("data.redshift_role.this", "owner", first),
 				resource.TestCheckResourceAttr("data.redshift_role_grant.this", "admin_option", "false"),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_roles.all", "roles.*", map[string]string{"name": roleName, "owner": first}),
+				resource.TestCheckResourceAttr("data.redshift_role_grants.this", "role_grants.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_role_grants.this", "role_grants.0.to_user", first),
+				resource.TestCheckResourceAttr("data.redshift_role_grants.this", "role_grants.0.admin_option", "false"),
 			)},
 			{Config: configuration("first", false), PlanOnly: true},
 			{Config: configuration("second", true), Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_role.this", "owner", second),
 				resource.TestCheckResourceAttr("redshift_role_grant.this", "admin_option", "true"),
 				resource.TestCheckResourceAttr("data.redshift_role_grant.this", "admin_option", "true"),
+				resource.TestCheckResourceAttr("data.redshift_role_grants.this", "role_grants.0.admin_option", "true"),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_roles.all", "roles.*", map[string]string{"name": roleName, "owner": second}),
 			)},
 			{ResourceName: "redshift_role.this", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_role_grant.this", ImportState: true, ImportStateVerify: true},
@@ -140,6 +152,9 @@ resource "redshift_identity_provider" "this" {
   auto_create_roles        = %t
 }
 data "redshift_identity_provider" "this" { name = redshift_identity_provider.this.name }
+data "redshift_identity_providers" "all" {
+  depends_on = [redshift_identity_provider.this]
+}
 `, region, profile, workgroup, database, name, namespace, issuer, clientID, version, version, autoCreate)
 	}
 	ctx, client := context.Background(), testAccRolesClient(t, region, profile, workgroup)
@@ -160,6 +175,9 @@ data "redshift_identity_provider" "this" { name = redshift_identity_provider.thi
 				resource.TestCheckResourceAttrSet("redshift_identity_provider.this", "provider_id"),
 				resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "issuer", issuer),
 				resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "audience.#", "1"),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_identity_providers.all", "identity_providers.*", map[string]string{
+					"name": name, "type": "AZURE", "issuer": issuer, "client_id": clientID, "audience.#": "1", "enabled": "true",
+				}),
 			)},
 			{Config: configuration("acc"+suffix, issuer, 1, true), PlanOnly: true},
 			{

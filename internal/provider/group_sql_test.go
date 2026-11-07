@@ -23,5 +23,6 @@ func TestGroupSQL(t *testing.T) {
 		{"drop_quoted", func() string { return dropGroupStatement(group(`Odd"Readers`)) }},
 		{"read", built(readGroupQuery(group(`Odd"Readers`)))},
 		{"read_empty_name", built(readGroupQuery(group("")))},
+		{"list", built(listGroupsQuery())},
 	})
 }

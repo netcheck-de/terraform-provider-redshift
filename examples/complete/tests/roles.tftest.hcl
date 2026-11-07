@@ -26,6 +26,15 @@ mock_provider "redshift" { alias = "consumer_direct_iam" }
 mock_provider "redshift" { alias = "producer_direct_password" }
 mock_provider "redshift" { alias = "consumer_direct_password" }
 
+override_data {
+  target = data.redshift_roles.all
+  values = { id = "roles-listing-identity" }
+}
+override_data {
+  target = data.redshift_role_grants.operators
+  values = { id = "operator-role-grants-listing-identity" }
+}
+
 run "roles_apply" {
   command = apply
   assert {
@@ -50,6 +59,16 @@ run "roles_apply" {
     )
     error_message = "Role lookups must follow the managed roles and grants, and outputs must expose their observations."
   }
+  assert {
+    condition = (
+      data.redshift_roles.all.id == "roles-listing-identity" &&
+      data.redshift_role_grants.operators.role == redshift_role.operators.name &&
+      data.redshift_role_grants.operators.to_user == null && data.redshift_role_grants.operators.to_role == null &&
+      output.role_listings.roles == [for role in data.redshift_roles.all.roles : role.name] &&
+      output.role_listings.identity_providers == null
+    )
+    error_message = "Role and role grant listings must reach role_listings, without identity providers when SSO is disabled."
+  }
 }
 
 run "roles_identity_center" {
@@ -67,6 +86,10 @@ run "roles_identity_center" {
     }
   }
   override_data {
+    target = data.redshift_identity_providers.all[0]
+    values = { id = "identity-providers-listing-identity" }
+  }
+  override_data {
     target = module.consumer_endpoints.data.aws_vpc_endpoint_service.this["sso_oauth"]
     values = { service_name = "com.amazonaws.eu-central-1.sso-oauth" }
   }
@@ -82,5 +105,12 @@ run "roles_identity_center" {
       output.identity_provider_details.identity_center_instance_arn == var.identity_center_instance_arn
     )
     error_message = "The Identity Center provider must leave group roles to Terraform, and its lookup details must reach the outputs."
+  }
+  assert {
+    condition = (
+      data.redshift_identity_providers.all[0].id == "identity-providers-listing-identity" &&
+      output.role_listings.identity_providers == [for provider in data.redshift_identity_providers.all[0].identity_providers : provider.name]
+    )
+    error_message = "The identity provider listing must reach role_listings when SSO is enabled."
   }
 }

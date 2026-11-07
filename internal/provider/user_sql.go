@@ -582,18 +582,36 @@ func dropUserStatement(data userModel) string {
 	return sqlclient.Stmt("DROP USER").Ident(data.Name.ValueString()).String()
 }
 
-// readUserQuery selects the capabilities, expiration, and stored session defaults of one user from pg_user, which
-// every user can read and which never exposes the password. useconfig is a text array that neither transport
-// decodes, so it is joined into one string.
-func readUserQuery(data userModel) sqlclient.Query {
-	return sqlclient.Select("usename", "usesuper", "usecreatedb", "valuntil", "array_to_string(useconfig, chr(30)) AS useconfig").From("pg_user").
-		Where("usename = :name", sqlclient.Bind("name", data.Name.ValueString()))
+// userCatalogQuery selects the capabilities, expiration, and stored session defaults of users from pg_user, which
+// every user can read in full and which never exposes the password. useconfig is a text array that neither
+// transport decodes, so it is joined into one string.
+func userCatalogQuery() sqlclient.Query {
+	return sqlclient.Select("usename", "usesuper", "usecreatedb", "valuntil", "array_to_string(useconfig, chr(30)) AS useconfig").From("pg_user")
 }
+
+// readUserQuery selects one user from pg_user.
+func readUserQuery(data userModel) sqlclient.Query {
+	return userCatalogQuery().Where("usename = :name", sqlclient.Bind("name", data.Name.ValueString()))
+}
+
+// listUsersQuery selects every user from pg_user by name.
+func listUsersQuery() sqlclient.Query {
+	return userCatalogQuery().OrderBy("usename")
+}
+
+// userInfoColumns are the options only SVV_USER_INFO reports.
+var userInfoColumns = []sqlclient.Keyword{"connection_limit", "syslog_access", "session_timeout", "external_user_id"}
 
 // readUserInfoQuery selects the options only SVV_USER_INFO reports. It is a separate query because joining a
 // system view with the leader-node pg_user catalog is not supported, and because regular users see only their
 // own row there.
 func readUserInfoQuery(data userModel) sqlclient.Query {
-	return sqlclient.Select("connection_limit", "syslog_access", "session_timeout", "external_user_id").From("svv_user_info").
+	return sqlclient.Select(userInfoColumns...).From("svv_user_info").
 		Where("user_name = :name", sqlclient.Bind("name", data.Name.ValueString()))
+}
+
+// listUserInfoQuery selects the SVV_USER_INFO options of every visible user, keyed by user_name: all users for a
+// superuser, only the caller otherwise.
+func listUserInfoQuery() sqlclient.Query {
+	return sqlclient.Select(append([]sqlclient.Keyword{"user_name"}, userInfoColumns...)...).From("svv_user_info").OrderBy("user_name")
 }

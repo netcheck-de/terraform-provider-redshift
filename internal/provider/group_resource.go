@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // groupResource manages a SQL user group independently of its members and privileges.
@@ -70,27 +71,56 @@ func (r *groupResource) read(ctx context.Context, data *groupModel) (bool, error
 		return false, err
 	}
 
-	id, err := strconv.ParseInt(rows[0]["grosysid"], 10, 64)
+	groups, err := groupsCatalog(rows)
 	if err != nil {
-		return false, fmt.Errorf("decode group ID: %w", err)
+		return false, err
 	}
 
-	members := []attr.Value{}
+	if len(groups) != 1 {
+		return false, fmt.Errorf("group %q is ambiguous in the catalog", data.Name.ValueString())
+	}
+
+	data.GroupID, data.Members = groups[0].GroupID, groups[0].Members
+
+	return true, nil
+}
+
+// groupsCatalog folds the per-member rows of groupCatalogQuery into one group each, in order of first appearance.
+// The member set is empty, not null, for a group without members.
+func groupsCatalog(rows []sqlclient.Row) ([]groupModel, error) {
+	var (
+		groups  []groupModel
+		members [][]attr.Value
+	)
+
+	index := map[string]int{}
 
 	for _, row := range rows {
-		if row["groname"] != rows[0]["groname"] {
-			return false, fmt.Errorf("group %q is ambiguous in the catalog", data.Name.ValueString())
+		name := row["groname"]
+
+		position, seen := index[name]
+		if !seen {
+			id, err := strconv.ParseInt(row["grosysid"], 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("decode group ID: %w", err)
+			}
+
+			position = len(groups)
+			index[name] = position
+			groups = append(groups, groupModel{Name: types.StringValue(name), GroupID: types.Int64Value(id)})
+			members = append(members, []attr.Value{})
 		}
 
 		if user := row["usename"]; user != "" {
-			members = append(members, types.StringValue(user))
+			members[position] = append(members[position], types.StringValue(user))
 		}
 	}
 
-	data.GroupID = types.Int64Value(id)
-	data.Members = types.SetValueMust(types.StringType, members)
+	for i := range groups {
+		groups[i].Members = types.SetValueMust(types.StringType, members[i])
+	}
 
-	return true, nil
+	return groups, nil
 }
 
 // Create creates an empty group and verifies it appears in the catalog.

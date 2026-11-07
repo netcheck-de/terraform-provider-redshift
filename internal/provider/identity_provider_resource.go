@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // identityProviderResource manages the SQL side of an AWS Identity Center or Microsoft Entra ID (Azure) integration.
@@ -240,19 +241,29 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 		return false, err
 	}
 
-	row := rows[0]
-	if len(rows) != 1 || row["namespc"] == "" {
+	if len(rows) != 1 {
 		return false, fmt.Errorf("identity provider %q has incomplete or ambiguous catalog metadata", data.Name.ValueString())
+	}
+
+	return true, identityProviderCatalog(data, rows[0])
+}
+
+// identityProviderCatalog applies an svv_identity_providers row. auto_create_roles, its filters, and the secret
+// version are not in the catalog and keep their current values.
+func identityProviderCatalog(data *identityProviderModel, row sqlclient.Row) error {
+	name := row["name"]
+	if row["namespc"] == "" {
+		return fmt.Errorf("identity provider %q has incomplete or ambiguous catalog metadata", name)
 	}
 
 	parameters, err := decodeIdentityProviderParameters(row["params"])
 	if err != nil {
-		return false, fmt.Errorf("decode identity provider parameters: %w", err)
+		return fmt.Errorf("decode identity provider parameters: %w", err)
 	}
 
 	enabled, err := strconv.ParseBool(row["enabled"])
 	if err != nil {
-		return false, fmt.Errorf("decode identity provider enabled flag: %w", err)
+		return fmt.Errorf("decode identity provider enabled flag: %w", err)
 	}
 
 	data.ApplicationARN, data.IAMRoleARN, data.IdentityCenterInstanceARN = types.StringNull(), types.StringNull(), types.StringNull()
@@ -262,11 +273,11 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 	switch kind {
 	case identityProviderAWSIDC:
 		if row["instanceid"] == "" {
-			return false, fmt.Errorf("identity provider %q has incomplete or ambiguous catalog metadata", data.Name.ValueString())
+			return fmt.Errorf("identity provider %q has incomplete or ambiguous catalog metadata", name)
 		}
 
 		if parameters.IAMRole == "" {
-			return false, fmt.Errorf("identity provider has no IAM role in its catalog parameters")
+			return fmt.Errorf("identity provider has no IAM role in its catalog parameters")
 		}
 
 		data.ApplicationARN = types.StringValue(row["instanceid"])
@@ -274,7 +285,7 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 		data.IdentityCenterInstanceARN = optionalString(parameters.InstanceARN)
 	case identityProviderAzure:
 		if parameters.Issuer == "" || parameters.ClientID == "" {
-			return false, fmt.Errorf("identity provider %q has no issuer or client_id in its catalog parameters", data.Name.ValueString())
+			return fmt.Errorf("identity provider %q has no issuer or client_id in its catalog parameters", name)
 		}
 
 		data.Issuer, data.ClientID = types.StringValue(parameters.Issuer), types.StringValue(parameters.ClientID)
@@ -282,7 +293,7 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 			data.Audience = identityProviderAudience(parameters.Audience)
 		}
 	default:
-		return false, fmt.Errorf("identity provider %q has unsupported type %q", data.Name.ValueString(), row["type"])
+		return fmt.Errorf("identity provider %q has unsupported type %q", name, row["type"])
 	}
 
 	data.ProviderID = types.Int64Null()
@@ -290,19 +301,19 @@ func (r *identityProviderResource) read(ctx context.Context, data *identityProvi
 	if row["uid"] != "" {
 		id, err := strconv.ParseInt(row["uid"], 10, 64)
 		if err != nil {
-			return false, fmt.Errorf("decode identity provider uid: %w", err)
+			return fmt.Errorf("decode identity provider uid: %w", err)
 		}
 
 		data.ProviderID = types.Int64Value(id)
 	}
 
-	data.Name = types.StringValue(row["name"])
+	data.Name = types.StringValue(name)
 	data.Type = keywordValue(data.Type, kind)
 	data.Namespace = types.StringValue(row["namespc"])
 	data.InstanceID = optionalString(row["instanceid"])
 	data.Enabled = types.BoolValue(enabled)
 
-	return true, nil
+	return nil
 }
 
 // identityProviderConverged reports whether the observed provider matches every planned, observable setting.

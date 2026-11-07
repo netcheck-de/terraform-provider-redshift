@@ -179,6 +179,14 @@ data "redshift_identity_provider" "this" {
   name     = redshift_identity_provider.this[0].name
 }
 
+# Lists every provider of the warehouse, which needs a superuser like the provider itself.
+data "redshift_identity_providers" "all" {
+  provider = redshift.consumer
+  count    = local.sso_enabled ? 1 : 0
+
+  depends_on = [redshift_identity_provider.this]
+}
+
 resource "redshift_role" "sso_readers" {
   provider = redshift.consumer
   count    = local.sso_enabled ? 1 : 0

@@ -308,12 +308,21 @@ func dropIdentityProviderStatement(data identityProviderModel) string {
 	return sqlclient.Stmt("DROP IDENTITY PROVIDER").Ident(data.Name.ValueString()).String()
 }
 
-// readIdentityProviderQuery selects the catalog row of one identity provider; DESC IDENTITY PROVIDER returns the same
-// columns, but only the view takes a bound name.
+// identityProviderCatalogQuery selects identity providers from svv_identity_providers, which only superusers can
+// read; DESC IDENTITY PROVIDER returns the same columns, but only the view takes a bound name or lists every provider.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_IDENTITY_PROVIDERS.html
+func identityProviderCatalogQuery() sqlclient.Query {
+	return sqlclient.Select("name", "type", "instanceid", "namespc", "params", "enabled", "uid").From("svv_identity_providers")
+}
+
+// readIdentityProviderQuery selects the catalog row of one identity provider.
 func readIdentityProviderQuery(data identityProviderModel) sqlclient.Query {
-	return sqlclient.Select("name", "type", "instanceid", "namespc", "params", "enabled", "uid").From("svv_identity_providers").
-		Where("name = :name", sqlclient.Bind("name", data.Name.ValueString()))
+	return identityProviderCatalogQuery().Where("name = :name", sqlclient.Bind("name", data.Name.ValueString()))
+}
+
+// listIdentityProvidersQuery selects every identity provider by name.
+func listIdentityProvidersQuery() sqlclient.Query {
+	return identityProviderCatalogQuery().OrderBy("name")
 }
 
 // readIdentityProviderUsersQuery finds federated users carrying the provider's namespace prefix. LEFT avoids

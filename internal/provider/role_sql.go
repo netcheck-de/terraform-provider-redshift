@@ -67,9 +67,18 @@ func dropRoleStatement(data roleModel) string {
 	return sqlclient.Stmt("DROP ROLE").Ident(data.Name.ValueString()).String()
 }
 
-// readRoleQuery looks up the role by its exact catalog name, with the owner and external ID that svv_roles reports.
+// roleCatalogQuery selects roles with the owner and external ID that svv_roles reports to every user.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ROLES.html
+func roleCatalogQuery() sqlclient.Query {
+	return sqlclient.Select("role_id", "role_name", "role_owner", "external_id").From("svv_roles")
+}
+
+// readRoleQuery looks up the role by its exact catalog name.
 func readRoleQuery(data roleModel) sqlclient.Query {
-	return sqlclient.Select("role_id", "role_name", "role_owner", "external_id").From("svv_roles").
-		Where("role_name = :name", sqlclient.Bind("name", data.Name.ValueString()))
+	return roleCatalogQuery().Where("role_name = :name", sqlclient.Bind("name", data.Name.ValueString()))
+}
+
+// listRolesQuery selects every role by name, including the built-in sys: roles.
+func listRolesQuery() sqlclient.Query {
+	return roleCatalogQuery().OrderBy("role_name")
 }

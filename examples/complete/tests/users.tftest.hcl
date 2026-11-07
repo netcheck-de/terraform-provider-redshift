@@ -40,6 +40,18 @@ override_data {
   target = data.redshift_group.readers
   values = { group_id = 104, members = ["example_reader"] }
 }
+override_data {
+  target = data.redshift_users.all
+  values = { id = "users-listing-identity" }
+}
+override_data {
+  target = data.redshift_groups.all
+  values = { id = "groups-listing-identity" }
+}
+override_data {
+  target = data.redshift_group_memberships.readers
+  values = { id = "reader-group-memberships-listing-identity" }
+}
 
 run "users_apply" {
   command = apply
@@ -75,5 +87,19 @@ run "users_apply" {
       }
     )
     error_message = "User and group lookups must expose the reader's options and the reader group's members."
+  }
+
+  assert {
+    condition = (
+      data.redshift_users.all.id == "users-listing-identity" && data.redshift_groups.all.id == "groups-listing-identity" &&
+      data.redshift_group_memberships.readers.group == redshift_group_membership.reader.group &&
+      data.redshift_group_memberships.readers.user == null &&
+      output.user_listings.users == [for user in data.redshift_users.all.users : user.name] &&
+      output.user_listings.groups == { for group in data.redshift_groups.all.groups : group.name => group.members } &&
+      output.user_listings.reader_group_members == [
+        for membership in data.redshift_group_memberships.readers.group_memberships : membership.user
+      ]
+    )
+    error_message = "User, group, and membership listings must reach user_listings, with the membership listing narrowed to the reader group."
   }
 }

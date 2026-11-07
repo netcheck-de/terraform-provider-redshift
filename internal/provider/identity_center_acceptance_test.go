@@ -39,6 +39,9 @@ resource "redshift_identity_provider" "test" {
 data "redshift_identity_provider" "test" {
   name = redshift_identity_provider.test.name
 }
+data "redshift_identity_providers" "all" {
+  depends_on = [redshift_identity_provider.test]
+}
 `, name, namespace, os.Getenv("REDSHIFT_ACC_IDC_APPLICATION_ARN"), os.Getenv("REDSHIFT_ACC_IDC_ROLE_ARN"), enabled)
 		if group != "" {
 			text += fmt.Sprintf("resource \"redshift_role\" \"group\" {\n name = %q\n}\n", "${redshift_identity_provider.test.namespace}:"+group)
@@ -54,6 +57,10 @@ data "redshift_identity_provider" "test" {
 		{Config: initial, Check: resource.ComposeAggregateTestCheckFunc(
 			resource.TestCheckResourceAttr(address, "enabled", "true"),
 			resource.TestCheckResourceAttr("data.redshift_identity_provider.test", "application_arn", os.Getenv("REDSHIFT_ACC_IDC_APPLICATION_ARN")),
+			resource.TestCheckTypeSetElemNestedAttrs("data.redshift_identity_providers.all", "identity_providers.*", map[string]string{
+				"name": name, "type": "AWSIDC", "namespace": namespace, "application_arn": os.Getenv("REDSHIFT_ACC_IDC_APPLICATION_ARN"),
+				"iam_role_arn": os.Getenv("REDSHIFT_ACC_IDC_ROLE_ARN"), "enabled": "true",
+			}),
 		)},
 		{ResourceName: address, ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"auto_create_roles"}},
 		{Config: configuration(name, namespace, false), Check: resource.TestCheckResourceAttr(address, "enabled", "false")},
