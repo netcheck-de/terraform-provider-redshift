@@ -32,7 +32,7 @@ run "discovery_apply" {
   assert {
     condition = (
       data.redshift_databases.example.database_type == "local" && data.redshift_databases.example.name_like == "example_%" &&
-      data.redshift_schemas.local.database == redshift_database.local.name && data.redshift_schemas.local.schema_type == "local" &&
+      data.redshift_schemas.local.database == redshift_database.local.name &&
       data.redshift_tables.fixture.database == redshift_database.producer.name && data.redshift_tables.fixture.schema == "public" &&
       data.redshift_tables.fixture.table_type == "TABLE" &&
       data.redshift_columns.fixture.table == "fixture" && data.redshift_columns.fixture.schema == "public" &&

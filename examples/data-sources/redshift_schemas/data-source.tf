@@ -1,8 +1,7 @@
-data "redshift_schemas" "external" {
-  database    = "analytics"
-  schema_type = "external"
+data "redshift_schemas" "analytics" {
+  database = "analytics"
 }
 
-output "external_schema_sources" {
-  value = { for schema in data.redshift_schemas.external.schemas : schema.name => schema.source_database }
+output "schema_quotas" {
+  value = { for schema in data.redshift_schemas.analytics.schemas : schema.name => schema.quota }
 }

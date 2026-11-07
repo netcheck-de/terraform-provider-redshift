@@ -38,7 +38,6 @@ type discoveryListing struct {
 // discoveryListings are the reads of the discovery data sources.
 var discoveryListings = []discoveryListing{
 	{name: "databases", source: string(databasesSource), equal: map[string]string{"database_type": "database_type"}, like: map[string]string{"name_like": "database_name"}},
-	{name: "schemas", source: string(schemasSource), equal: map[string]string{"database": "database_name", "schema_type": "schema_type"}},
 	{name: "tables", source: string(tablesSource), equal: map[string]string{"database": "database_name", "schema": "schema_name", "table_type": "table_type"}},
 	// SVV_MV_INFO lists only the materialized views of the connected database.
 	{name: "materialized", source: "svv_mv_info", selects: "TRIM(schema_name) AS schema_name", equal: map[string]string{"database": "database_name", "schema": "schema_name"}, connected: true},
@@ -119,7 +118,7 @@ func (f *discoveryFamily) query(_ *catalog, connection sqlclient.Connection, sql
 	return nil, false, nil
 }
 
-// populate adds a representative warehouse: local and shared databases, local and external schemas, a table with
+// populate adds a representative warehouse: local and shared databases, a table with
 // a view and a materialized view over it, and key constraints.
 func (f *discoveryFamily) populate() {
 	f.rows = map[string][]sqlclient.Row{
@@ -127,12 +126,6 @@ func (f *discoveryFamily) populate() {
 			{"database_name": "admin", "owner": "rdsdb", "database_type": "local", "isolation_level": "Snapshot Isolation"},
 			{"database_name": "analytics", "owner": "admin", "database_type": "local", "isolation_level": "Serializable"},
 			{"database_name": "consumer_db", "owner": "", "database_type": "shared", "isolation_level": ""},
-		},
-		"schemas": {
-			{"database_name": "analytics", "schema_name": "public", "owner": "rdsdb", "schema_type": "local", "source_database": ""},
-			{"database_name": "analytics", "schema_name": "serving", "owner": "admin", "schema_type": "local", "source_database": ""},
-			{"database_name": "analytics", "schema_name": "spectrum", "owner": "admin", "schema_type": "external", "source_database": "glue_events"},
-			{"database_name": "consumer_db", "schema_name": "public", "owner": "", "schema_type": "shared", "source_database": ""},
 		},
 		"tables": {
 			{"database_name": "analytics", "schema_name": "serving", "table_name": "orders", "table_type": "TABLE", "owner": "admin", "remarks": "Order facts."},

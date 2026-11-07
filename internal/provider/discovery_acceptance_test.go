@@ -44,7 +44,6 @@ data "redshift_databases" "acc" {
 }
 data "redshift_schemas" "acc" {
   database = redshift_database.local.name
-  schema_type = "LOCAL"
 }
 data "redshift_tables" "views" {
   database = redshift_database.local.name
@@ -86,6 +85,12 @@ data "redshift_comment" "key" {
   schema_name = redshift_comment.key.schema_name
   object_name = redshift_comment.key.object_name
   constraint_name = redshift_comment.key.constraint_name
+}
+data "redshift_comments" "keys" {
+  database_name = redshift_comment.key.database_name
+  object_type = "CONSTRAINT"
+  schema_name = redshift_comment.key.schema_name
+  depends_on = [redshift_comment.key]
 }
 `, text)
 	}
@@ -141,7 +146,7 @@ data "redshift_comment" "key" {
 					resource.TestCheckResourceAttr("data.redshift_databases.acc", "databases.#", "1"),
 					resource.TestCheckResourceAttr("data.redshift_databases.acc", "databases.0.database_type", "LOCAL"),
 					resource.TestCheckResourceAttrSet("data.redshift_databases.acc", "databases.0.owner"),
-					resource.TestCheckTypeSetElemNestedAttrs("data.redshift_schemas.acc", "schemas.*", map[string]string{"name": "public", "schema_type": "LOCAL"}),
+					resource.TestCheckTypeSetElemNestedAttrs("data.redshift_schemas.acc", "schemas.*", map[string]string{"database": name, "name": "public", "quota": "-1"}),
 					resource.TestCheckResourceAttr("data.redshift_tables.views", "tables.#", "1"),
 					resource.TestCheckResourceAttr("data.redshift_tables.views", "tables.0.name", "order_labels"),
 					resource.TestCheckResourceAttr("data.redshift_tables.materialized", "tables.#", "1"),
@@ -164,6 +169,11 @@ data "redshift_comment" "key" {
 					resource.TestCheckResourceAttr("data.redshift_constraints.orders", "constraints.0.columns.#", "2"),
 					resource.TestCheckResourceAttr("data.redshift_constraints.orders", "constraints.0.columns.1", regionColumn),
 					resource.TestCheckResourceAttr("data.redshift_comment.key", "text", "O'Reilly key"),
+					resource.TestCheckResourceAttr("data.redshift_comments.keys", "comments.#", "1"),
+					resource.TestCheckResourceAttr("data.redshift_comments.keys", "comments.0.object_name", "orders"),
+					resource.TestCheckResourceAttr("data.redshift_comments.keys", "comments.0.constraint_name", "orders_pkey"),
+					resource.TestCheckResourceAttr("data.redshift_comments.keys", "comments.0.text", "O'Reilly key"),
+					resource.TestCheckNoResourceAttr("data.redshift_comments.keys", "comments.0.column_name"),
 				),
 			},
 			{Config: configuration("O'Reilly key", true), PlanOnly: true},

@@ -60,5 +60,7 @@ func TestSchemaSQL(t *testing.T) {
 		{"read_empty_name", built(readSchemaQuery(schema("")), nil)},
 		{"read_quota", built(readSchemaQuotaQuery(quoted), map[string]string{"database": `it's\db`, "name": `Odd"Serving`})},
 		{"read_session", built(readSchemaSessionQuery(), nil)},
+		{"list", built(listSchemasQuery(), nil)},
+		{"list_quotas", built(listSchemaQuotasQuery(`it's\db`), map[string]string{"database": `it's\db`})},
 	})
 }

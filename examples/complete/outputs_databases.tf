@@ -28,3 +28,14 @@ output "shared_external_schema" {
     owner           = data.redshift_external_schema.shared.owner
   }
 }
+
+output "database_listings" {
+  description = "External schemas and comments listed in the consumer-local database."
+  value = {
+    external_schemas = { for schema in data.redshift_external_schemas.local.external_schemas : schema.name => schema.source_type }
+    comments = [
+      for comment in data.redshift_comments.local.comments :
+      { object_type = comment.object_type, object_name = comment.object_name, text = comment.text }
+    ]
+  }
+}

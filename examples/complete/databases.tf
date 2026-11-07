@@ -75,6 +75,14 @@ data "redshift_external_schema" "shared" {
   name     = redshift_external_schema.shared.name
 }
 
+# Lists the local database's external schemas in the shape of redshift_external_schema.
+data "redshift_external_schemas" "local" {
+  provider = redshift.consumer
+  database = redshift_external_schema.shared.database
+
+  depends_on = [redshift_external_schema.shared]
+}
+
 data "redshift_schema" "local" {
   provider = redshift.consumer
   database = redshift_schema.local.database
@@ -136,4 +144,15 @@ resource "redshift_comment" "local_view" {
   text          = "Labels projected from the example events table."
 
   depends_on = [aws_redshiftdata_statement.local_view]
+}
+
+# Lists every comment in the consumer-local database: the database, schema, table, column, and view comments above.
+data "redshift_comments" "local" {
+  provider      = redshift.consumer
+  database_name = redshift_database.local.name
+
+  depends_on = [
+    redshift_comment.local_database, redshift_comment.local_schema, redshift_comment.local_table,
+    redshift_comment.local_column, redshift_comment.local_view,
+  ]
 }
