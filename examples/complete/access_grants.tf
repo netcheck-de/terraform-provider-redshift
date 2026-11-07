@@ -108,7 +108,7 @@ resource "redshift_assumerole_grant" "reader" {
   depends_on = [aws_redshiftdata_statement.assumerole_policy]
 }
 
-resource "redshift_default_privileges" "reader_tables" {
+resource "redshift_default_privilege" "reader_tables" {
   provider      = redshift.consumer
   database_name = redshift_database.local.name
   owner         = redshift_user.reader.name
@@ -141,7 +141,7 @@ resource "redshift_object_grant" "loader_schema" {
   privileges    = ["CREATE", "USAGE"]
 }
 
-resource "redshift_default_privileges" "reader_schema_tables" {
+resource "redshift_default_privilege" "reader_schema_tables" {
   provider      = redshift.consumer
   database_name = redshift_schema.local.database
   schema_name   = redshift_schema.local.name
@@ -154,7 +154,7 @@ resource "redshift_default_privileges" "reader_schema_tables" {
   depends_on = [redshift_object_grant.loader_schema]
 }
 
-resource "redshift_default_privileges" "operator_routines" {
+resource "redshift_default_privilege" "operator_routines" {
   for_each      = toset(["FUNCTIONS", "PROCEDURES"])
   provider      = redshift.consumer
   database_name = redshift_database.local.name
@@ -202,13 +202,13 @@ data "redshift_assumerole_grant" "reader" {
   grantee_type = "ROLE"
 }
 
-data "redshift_default_privileges" "reader_tables" {
+data "redshift_default_privilege" "reader_tables" {
   provider      = redshift.consumer
-  database_name = redshift_default_privileges.reader_tables.database_name
-  owner         = redshift_default_privileges.reader_tables.owner
-  object_type   = redshift_default_privileges.reader_tables.object_type
-  grantee       = redshift_default_privileges.reader_tables.grantee
-  grantee_type  = redshift_default_privileges.reader_tables.grantee_type
+  database_name = redshift_default_privilege.reader_tables.database_name
+  owner         = redshift_default_privilege.reader_tables.owner
+  object_type   = redshift_default_privilege.reader_tables.object_type
+  grantee       = redshift_default_privilege.reader_tables.grantee
+  grantee_type  = redshift_default_privilege.reader_tables.grantee_type
 }
 
 # A user recipient of scoped grants can pass SELECT on, but not INSERT, to others.
@@ -276,7 +276,7 @@ resource "redshift_object_grant" "reader_events_option" {
 }
 
 # New functions of the loader no longer run for everyone; deleting this tuple restores the Redshift default.
-resource "redshift_default_privileges" "loader_functions_public" {
+resource "redshift_default_privilege" "loader_functions_public" {
   restore_default_on_destroy = true
   provider                   = redshift.consumer
   database_name              = redshift_database.local.name
@@ -287,7 +287,7 @@ resource "redshift_default_privileges" "loader_functions_public" {
   privileges                 = []
 }
 
-resource "redshift_default_privileges" "loader_tables_reader_option" {
+resource "redshift_default_privilege" "loader_tables_reader_option" {
   provider                = redshift.consumer
   database_name           = redshift_database.local.name
   owner                   = redshift_user.loader.name
@@ -335,13 +335,13 @@ data "redshift_object_grant" "operators_public_tables" {
   grantee_type  = redshift_object_grant.operators_public_tables.grantee_type
 }
 
-data "redshift_default_privileges" "loader_functions_public" {
+data "redshift_default_privilege" "loader_functions_public" {
   provider      = redshift.consumer
-  database_name = redshift_default_privileges.loader_functions_public.database_name
-  owner         = redshift_default_privileges.loader_functions_public.owner
-  object_type   = redshift_default_privileges.loader_functions_public.object_type
-  grantee       = redshift_default_privileges.loader_functions_public.grantee
-  grantee_type  = redshift_default_privileges.loader_functions_public.grantee_type
+  database_name = redshift_default_privilege.loader_functions_public.database_name
+  owner         = redshift_default_privilege.loader_functions_public.owner
+  object_type   = redshift_default_privilege.loader_functions_public.object_type
+  grantee       = redshift_default_privilege.loader_functions_public.grantee
+  grantee_type  = redshift_default_privilege.loader_functions_public.grantee_type
 }
 
 # These explicit consumer tuples belong to the user, not the role-wide scoped grants above.

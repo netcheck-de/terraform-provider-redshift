@@ -1,10 +1,10 @@
 ---
 subcategory: Permissions
-page_title: redshift_default_privileges Resource - terraform-provider-redshift
+page_title: redshift_default_privilege Resource - terraform-provider-redshift
 description: Manages explicit default permissions for future objects created by one SQL user.
 ---
 
-# redshift_default_privileges (Resource)
+# redshift_default_privilege (Resource)
 
 Owns default privileges for future objects created by one user in one local database, optionally restricted to a schema.
 See AWS [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
@@ -12,7 +12,7 @@ See AWS [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/d
 ## Example Usage
 
 ```terraform
-resource "redshift_default_privileges" "reports" {
+resource "redshift_default_privilege" "reports" {
   database_name = "analytics"
   owner         = redshift_user.loader.name
   schema_name   = "reporting"
@@ -99,7 +99,7 @@ this grant.
 
 ```terraform
 # Stop granting EXECUTE on new functions of the loader to everyone, then grant it to one group.
-resource "redshift_default_privileges" "no_public_functions" {
+resource "redshift_default_privilege" "no_public_functions" {
   # Deliberately restore the built-in default for future functions when this tuple is destroyed.
   restore_default_on_destroy = true
   database_name              = "analytics"
@@ -110,7 +110,7 @@ resource "redshift_default_privileges" "no_public_functions" {
   privileges                 = []
 }
 
-resource "redshift_default_privileges" "developer_functions" {
+resource "redshift_default_privilege" "developer_functions" {
   database_name = "analytics"
   owner         = redshift_user.loader.name
   object_type   = "FUNCTIONS"
@@ -168,7 +168,7 @@ checks and the catalog read, the changes, and the read that verifies them.
 The role `readers` receives `INSERT` instead of `SELECT` on tables that `loader` creates in `serving` from now on:
 
 ```terraform
-resource "redshift_default_privileges" "loader_tables" {
+resource "redshift_default_privilege" "loader_tables" {
   database_name = "warehouse"
   owner         = "loader"
   schema_name   = "serving"
@@ -235,7 +235,7 @@ Use an `import` block with a JSON identity:
 
 ```terraform
 import {
-  to = redshift_default_privileges.reports
+  to = redshift_default_privilege.reports
   id = jsonencode({
     database_name = "analytics"
     owner         = "loader"
@@ -250,11 +250,11 @@ import {
 Alternatively, use `terraform import`:
 
 ```shell
-terraform import redshift_default_privileges.reports \
+terraform import redshift_default_privilege.reports \
   '{"database_name":"analytics","owner":"loader","schema_name":"reporting","object_type":"TABLES","grantee":"report_readers","grantee_type":"GROUP"}'
 
 # Defaults of the connection user: no owner key
-terraform import redshift_default_privileges.mine \
+terraform import redshift_default_privilege.mine \
   '{"database_name":"analytics","object_type":"TABLES","grantee":"analyst","grantee_type":"USER"}'
 ```
 

@@ -7,17 +7,17 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
-// TestDefaultPrivilegesSQL pins the catalog read and ALTER DEFAULT PRIVILEGES statements for every object kind,
+// TestDefaultPrivilegeSQL pins the catalog read and ALTER DEFAULT PRIVILEGES statements for every object kind,
 // with and without a schema.
-func TestDefaultPrivilegesSQL(t *testing.T) {
+func TestDefaultPrivilegeSQL(t *testing.T) {
 	tables := map[string]string{"database_name": "warehouse", "owner": "loader", "schema_name": "serving", "object_type": "TABLES", "grantee_type": "ROLE", "grantee": "readers"}
 	render := func(changes map[string]string, privilege sqlclient.Keyword) func() ([]string, error) {
 		fields := maps.Clone(tables)
 		maps.Copy(fields, changes)
 
-		return privilegeTargetCase(t, newDefaultPrivilegesResource, fields, privilege)
+		return privilegeTargetCase(t, newDefaultPrivilegeResource, fields, privilege)
 	}
-	checkSQL(t, "default_privileges", []sqlCase{
+	checkSQL(t, "default_privilege", []sqlCase{
 		{"tables_in_schema_role", render(nil, "SELECT")},
 		{"tables_database_wide", render(map[string]string{"schema_name": ""}, "REFERENCES")},
 		{"functions_user", render(map[string]string{"object_type": "FUNCTIONS", "grantee_type": "USER", "grantee": "analyst"}, "EXECUTE")},
@@ -33,7 +33,7 @@ func TestDefaultPrivilegesSQL(t *testing.T) {
 		{"functions_public_in_schema", render(map[string]string{"object_type": "FUNCTIONS", "grantee_type": "PUBLIC", "grantee": "public"}, "EXECUTE")},
 		{"quoted_implicit_owner", render(map[string]string{"database_name": `Odd"Database`, "owner": `Odd"Owner`, "schema_name": "", "object_type": "FUNCTIONS", "grantee_type": "PUBLIC", "grantee": "public"}, "EXECUTE")},
 		{"option_user", func() ([]string, error) {
-			r := newDefaultPrivilegesResource().(*privilegeResource)
+			r := newDefaultPrivilegeResource().(*privilegeResource)
 			fields := map[string]string{"database_name": "warehouse", "owner": `Odd"Owner`, "schema_name": "serving", "object_type": "TABLES", "grantee_type": "USER", "grantee": `Odd"User`}
 
 			target, err := r.prepare(privilegeObject(t, r, fields))

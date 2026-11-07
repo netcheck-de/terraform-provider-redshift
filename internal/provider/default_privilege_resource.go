@@ -4,10 +4,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 )
 
-var _ = registerResource(newDefaultPrivilegesResource)
+var _ = registerResource(newDefaultPrivilegeResource)
 
-// newDefaultPrivilegesResource defines creator-specific future object permission tuples.
-func newDefaultPrivilegesResource() resource.Resource {
+// newDefaultPrivilegeResource defines creator-specific future object permission tuples.
+func newDefaultPrivilegeResource() resource.Resource {
 	attributes := privilegeAttributes()
 	attributes["restore_default_on_destroy"] = restoreDefaultAttribute()
 	grantRecipientAttributes(attributes)
@@ -17,5 +17,5 @@ func newDefaultPrivilegesResource() resource.Resource {
 	attributes["schema_name"] = privilegeString("Schema whose future objects receive the privileges (`IN SCHEMA`); omit it for database-wide defaults. Schema defaults add to the database-wide ones and cannot remove them.", true)
 	attributes["object_type"] = privilegeString("`TABLES` (tables and views), `FUNCTIONS`, or `PROCEDURES`.", false, "TABLES", "FUNCTIONS", "PROCEDURES")
 
-	return &privilegeResource{name: "default_privileges", attributes: attributes, fields: []string{"database_name", "owner", "schema_name", "object_type", "grantee", "grantee_type"}, prepare: defaultPrivilegesTarget, grantOptions: true, destroyPrivileges: defaultPrivilegesDestroyPrivileges, partialAllowed: defaultPrivilegesConfigAllowed, folded: []string{"database_name", "schema_name"}}
+	return &privilegeResource{name: "default_privilege", attributes: attributes, fields: []string{"database_name", "owner", "schema_name", "object_type", "grantee", "grantee_type"}, prepare: defaultPrivilegeTarget, grantOptions: true, destroyPrivileges: defaultPrivilegeDestroyPrivileges, partialAllowed: defaultPrivilegeConfigAllowed, folded: []string{"database_name", "schema_name"}, previousNames: []string{"default_privileges"}}
 }

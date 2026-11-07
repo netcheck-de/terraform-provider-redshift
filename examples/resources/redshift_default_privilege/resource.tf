@@ -1,4 +1,4 @@
-resource "redshift_default_privileges" "reports" {
+resource "redshift_default_privilege" "reports" {
   database_name = "analytics"
   owner         = redshift_user.loader.name
   schema_name   = "reporting"

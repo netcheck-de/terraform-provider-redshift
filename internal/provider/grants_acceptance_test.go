@@ -69,7 +69,7 @@ resource "redshift_grant" "templates" {
   scope         = "TEMPLATES"
   privileges    = ["USAGE"]
 }
-resource "redshift_default_privileges" "public_functions" {
+resource "redshift_default_privilege" "public_functions" {
   database_name = redshift_database.local.name
   owner         = redshift_user.analyst.name
   object_type   = "FUNCTIONS"
@@ -84,14 +84,14 @@ resource "redshift_default_privileges" "public_functions" {
 		Steps: []resource.TestStep{
 			{Config: configuration(`"SELECT"`, `"EXECUTE"`), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_grant.analyst_tables", "grant_option_privileges.#", "1"),
-				resource.TestCheckResourceAttr("redshift_default_privileges.public_functions", "privileges.#", "1"),
+				resource.TestCheckResourceAttr("redshift_default_privilege.public_functions", "privileges.#", "1"),
 			)},
 			{Config: configuration(`"SELECT"`, `"EXECUTE"`), PlanOnly: true},
 			{ResourceName: "redshift_grant.analyst_tables", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_grant.copy_jobs", ImportState: true, ImportStateVerify: true},
 			{Config: configuration(``, ``), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_grant.analyst_tables", "grant_option_privileges.#", "0"),
-				resource.TestCheckResourceAttr("redshift_default_privileges.public_functions", "privileges.#", "0"),
+				resource.TestCheckResourceAttr("redshift_default_privilege.public_functions", "privileges.#", "0"),
 			)},
 			{Config: configuration(``, ``), PlanOnly: true},
 		},

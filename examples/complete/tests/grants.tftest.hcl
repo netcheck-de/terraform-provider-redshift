@@ -35,7 +35,7 @@ override_data {
   values = { privileges = ["SELECT"] }
 }
 override_data {
-  target = data.redshift_default_privileges.loader_functions_public
+  target = data.redshift_default_privilege.loader_functions_public
   values = { privileges = [] }
 }
 
@@ -88,7 +88,7 @@ run "grants_apply" {
 
   assert {
     condition = (
-      redshift_default_privileges.loader_functions_public.restore_default_on_destroy &&
+      redshift_default_privilege.loader_functions_public.restore_default_on_destroy &&
       contains(redshift_assumerole_grant.operators_any_role[0].privileges, "RESULT_OFFLOAD") &&
       output.grant_checks.offload_commands == toset(["UNLOAD", "RESULT_OFFLOAD"]) &&
       redshift_object_grant.shared_function.arguments == null &&
@@ -125,9 +125,9 @@ run "grants_apply" {
     condition = (
       redshift_object_grant.operators_public_tables.object_type == "ALL TABLES" && redshift_object_grant.operators_public_tables.object_name == null &&
       redshift_object_grant.reader_events_option.grant_option_privileges == toset(["SELECT"]) &&
-      redshift_default_privileges.loader_functions_public.grantee_type == "PUBLIC" &&
-      length(redshift_default_privileges.loader_functions_public.privileges) == 0 &&
-      redshift_default_privileges.loader_tables_reader_option.grant_option_privileges == toset(["SELECT"]) &&
+      redshift_default_privilege.loader_functions_public.grantee_type == "PUBLIC" &&
+      length(redshift_default_privilege.loader_functions_public.privileges) == 0 &&
+      redshift_default_privilege.loader_tables_reader_option.grant_option_privileges == toset(["SELECT"]) &&
       length(redshift_assumerole_grant.operators_any_role) == 1 && redshift_assumerole_grant.operators_any_role[0].iam_role_arn == "ALL"
     )
     error_message = "Schema snapshots, object and default grant options, the implicit PUBLIC EXECUTE revocation, and ON ALL roles must be wired."

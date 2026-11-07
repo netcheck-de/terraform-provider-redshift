@@ -12,9 +12,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// defaultPrivilegesPublicCatalog emulates PG_DEFAULT_ACL for PUBLIC's function defaults: without an entry PUBLIC
+// defaultPrivilegePublicCatalog emulates PG_DEFAULT_ACL for PUBLIC's function defaults: without an entry PUBLIC
 // keeps the implicit EXECUTE, and the entry Redshift creates on the first change records whether it was revoked.
-type defaultPrivilegesPublicCatalog struct {
+type defaultPrivilegePublicCatalog struct {
 	// entry records whether a database-wide function default ACL exists.
 	entry bool
 	// execute records whether that entry keeps EXECUTE for PUBLIC.
@@ -24,7 +24,7 @@ type defaultPrivilegesPublicCatalog struct {
 }
 
 // Query answers the parent checks and the implicit-aware read, and applies GRANT and REVOKE to PUBLIC.
-func (c *defaultPrivilegesPublicCatalog) Query(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+func (c *defaultPrivilegePublicCatalog) Query(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 	switch {
 	case strings.HasPrefix(sql, "SELECT privilege_type, admin_option FROM (SELECT"):
 		if !c.entry || c.execute {
@@ -43,13 +43,13 @@ func (c *defaultPrivilegesPublicCatalog) Query(_ context.Context, _ sqlclient.Co
 	return nil, nil
 }
 
-// TestDefaultPrivilegesImplicitPublicExecute revokes PUBLIC's implicit EXECUTE on new functions. Deleting the tuple
+// TestDefaultPrivilegeImplicitPublicExecute revokes PUBLIC's implicit EXECUTE on new functions. Deleting the tuple
 // never grants it back, so removing the resource cannot widen access; a tuple that kept the default revokes it like
 // any owned privilege.
-func TestDefaultPrivilegesImplicitPublicExecute(t *testing.T) {
+func TestDefaultPrivilegeImplicitPublicExecute(t *testing.T) {
 	fields := map[string]string{"database_name": "warehouse", "owner": "loader", "object_type": "FUNCTIONS", "grantee_type": "PUBLIC", "grantee": "public"}
-	c := &defaultPrivilegesPublicCatalog{}
-	r := newDefaultPrivilegesResource().(*privilegeResource)
+	c := &defaultPrivilegePublicCatalog{}
+	r := newDefaultPrivilegeResource().(*privilegeResource)
 	r.resourceClient = testResourceClient(c)
 	data := privilegeObject(t, r, fields)
 	_, found, err := r.read(context.Background(), &data)
@@ -66,9 +66,9 @@ func TestDefaultPrivilegesImplicitPublicExecute(t *testing.T) {
 	assert.Equal(t, `ALTER DEFAULT PRIVILEGES FOR USER "loader" REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC`, c.writes[len(c.writes)-1])
 }
 
-// TestDefaultPrivilegesImplicitScope reads the implicit default only for PUBLIC's database-wide function tuple.
-func TestDefaultPrivilegesImplicitScope(t *testing.T) {
-	r := newDefaultPrivilegesResource().(*privilegeResource)
+// TestDefaultPrivilegeImplicitScope reads the implicit default only for PUBLIC's database-wide function tuple.
+func TestDefaultPrivilegeImplicitScope(t *testing.T) {
+	r := newDefaultPrivilegeResource().(*privilegeResource)
 
 	for _, test := range []struct {
 		fields   map[string]string
@@ -88,10 +88,10 @@ func TestDefaultPrivilegesImplicitScope(t *testing.T) {
 	}
 }
 
-// TestDefaultPrivilegesOptionsAndCurrentUser manages a user's grant options on the connecting user's defaults.
-func TestDefaultPrivilegesOptionsAndCurrentUser(t *testing.T) {
-	exercisePrivilege(t, newDefaultPrivilegesResource, map[string]string{"database_name": "warehouse", "object_type": "TABLES", "grantee_type": "USER", "grantee": "analyst"}, []string{"SELECT", "INSERT"})
-	r := newDefaultPrivilegesResource().(*privilegeResource)
+// TestDefaultPrivilegeOptionsAndCurrentUser manages a user's grant options on the connecting user's defaults.
+func TestDefaultPrivilegeOptionsAndCurrentUser(t *testing.T) {
+	exercisePrivilege(t, newDefaultPrivilegeResource, map[string]string{"database_name": "warehouse", "object_type": "TABLES", "grantee_type": "USER", "grantee": "analyst"}, []string{"SELECT", "INSERT"})
+	r := newDefaultPrivilegeResource().(*privilegeResource)
 	c := optionCatalog(map[string]string{"grantee": "analyst"}, []string{"SELECT"}, nil)
 	r.resourceClient = testResourceClient(c)
 	fields := map[string]string{"database_name": "warehouse", "object_type": "TABLES", "grantee_type": "USER", "grantee": "analyst"}

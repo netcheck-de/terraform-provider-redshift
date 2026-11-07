@@ -1,10 +1,10 @@
 ---
 subcategory: Permissions
-page_title: redshift_default_privileges Data Source - terraform-provider-redshift
+page_title: redshift_default_privilege Data Source - terraform-provider-redshift
 description: Reads explicit creator-specific default permissions for future objects.
 ---
 
-# redshift_default_privileges (Data Source)
+# redshift_default_privilege (Data Source)
 
 Reads one default-privilege tuple without changing permissions on current or future objects. See AWS
 [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
@@ -12,7 +12,7 @@ Reads one default-privilege tuple without changing permissions on current or fut
 ## Example Usage
 
 ```terraform
-data "redshift_default_privileges" "reports" {
+data "redshift_default_privilege" "reports" {
   database_name = "analytics"
   owner         = "report_loader"
   schema_name   = "reporting"

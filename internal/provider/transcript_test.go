@@ -518,7 +518,7 @@ func TestPrivilegeTranscripts(t *testing.T) {
 			},
 		},
 		{
-			factory:    newDefaultPrivilegesResource,
+			factory:    newDefaultPrivilegeResource,
 			fields:     map[string]string{"database_name": "warehouse", "owner": "loader", "schema_name": "serving", "object_type": "TABLES", "grantee_type": "ROLE", "grantee": "readers"},
 			privileges: []string{"SELECT", "INSERT"},
 			variants: []privilegeTranscript{

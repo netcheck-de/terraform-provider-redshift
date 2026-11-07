@@ -91,7 +91,7 @@ Redshift overloads routine names, so `arguments` lists the argument types that s
 because Redshift identifies overloads by type names alone; omit `arguments` for a routine without arguments. The
 configured spelling is kept in state and in the import identity. Redshift grants `EXECUTE` on a new function to
 `PUBLIC` implicitly; the function catalog reports that grant only once the function's privileges have been changed, so
-use [default privileges](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/default_privileges)
+use [default privileges](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/default_privilege)
 to stop granting it to future functions.
 
 ```terraform

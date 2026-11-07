@@ -1,17 +1,17 @@
 ---
 subcategory: Permissions
-page_title: redshift_default_privileges Resource - terraform-provider-redshift
+page_title: redshift_default_privilege Resource - terraform-provider-redshift
 description: Manages explicit default permissions for future objects created by one SQL user.
 ---
 
-# redshift_default_privileges (Resource)
+# redshift_default_privilege (Resource)
 
 Owns default privileges for future objects created by one user in one local database, optionally restricted to a schema.
 See AWS [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
 
 ## Example Usage
 
-{{ tffile "examples/resources/redshift_default_privileges/resource.tf" }}
+{{ tffile "examples/resources/redshift_default_privilege/resource.tf" }}
 
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 
@@ -67,7 +67,7 @@ owner fails until the database is dropped; in one configuration, let the databas
 `redshift_user` so Terraform drops it first. Schema-specific defaults add to the database-wide ones and cannot remove
 this grant.
 
-{{ tffile "examples/resources/redshift_default_privileges/public_functions.tf" }}
+{{ tffile "examples/resources/redshift_default_privilege/public_functions.tf" }}
 
 ## Lifecycle and Ownership
 
@@ -117,7 +117,7 @@ checks and the catalog read, the changes, and the read that verifies them.
 The role `readers` receives `INSERT` instead of `SELECT` on tables that `loader` creates in `serving` from now on:
 
 ```terraform
-resource "redshift_default_privileges" "loader_tables" {
+resource "redshift_default_privilege" "loader_tables" {
   database_name = "warehouse"
   owner         = "loader"
   schema_name   = "serving"
@@ -128,16 +128,16 @@ resource "redshift_default_privileges" "loader_tables" {
 }
 ```
 
-{{ codefile "sql" "internal/provider/testdata/sql/privilege/default_privileges/update_replace.sql" }}
+{{ codefile "sql" "internal/provider/testdata/sql/privilege/default_privilege/update_replace.sql" }}
 
 ## Import
 
 Use an `import` block with a JSON identity:
 
-{{ tffile "examples/resources/redshift_default_privileges/import.tf" }}
+{{ tffile "examples/resources/redshift_default_privilege/import.tf" }}
 
 Alternatively, use `terraform import`:
 
-{{ codefile "shell" "examples/resources/redshift_default_privileges/import.sh" }}
+{{ codefile "shell" "examples/resources/redshift_default_privilege/import.sh" }}
 
 Omit `owner` from the identity for the connection user's defaults.

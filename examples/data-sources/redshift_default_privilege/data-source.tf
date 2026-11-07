@@ -1,4 +1,4 @@
-data "redshift_default_privileges" "reports" {
+data "redshift_default_privilege" "reports" {
   database_name = "analytics"
   owner         = "report_loader"
   schema_name   = "reporting"

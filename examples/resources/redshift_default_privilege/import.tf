@@ -1,5 +1,5 @@
 import {
-  to = redshift_default_privileges.reports
+  to = redshift_default_privilege.reports
   id = jsonencode({
     database_name = "analytics"
     owner         = "loader"

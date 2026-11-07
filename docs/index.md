@@ -274,16 +274,16 @@ navigation. AWS infrastructure remains with the `hashicorp/aws` provider.
 
 ### Permissions
 
-| Resource                                                         | Manages                                                                                         |
-|------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
-| [`redshift_grant`](resources/grant.md)                           | Scoped privileges of a role, user, or datashare in a database or schema                         |
-| [`redshift_object_grant`](resources/object_grant.md)             | Explicit privileges on one object or a schema snapshot                                          |
-| [`redshift_column_grant`](resources/column_grant.md)             | Column-level `SELECT` and `UPDATE`                                                              |
-| [`redshift_language_grant`](resources/language_grant.md)         | `USAGE` on the `sql` or `plpgsql` language                                                      |
-| [`redshift_system_grant`](resources/system_grant.md)             | Role system privileges                                                                          |
-| [`redshift_assumerole_grant`](resources/assumerole_grant.md)     | IAM role command permissions                                                                    |
-| [`redshift_default_privileges`](resources/default_privileges.md) | Privileges on future objects of one creator                                                     |
-| [`redshift_debug_grant`](resources/debug_grant.md)               | `DEBUG` on a federated-permissions database for a global identity, IdC group, or account admins |
+| Resource                                                       | Manages                                                                                         |
+|----------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
+| [`redshift_grant`](resources/grant.md)                         | Scoped privileges of a role, user, or datashare in a database or schema                         |
+| [`redshift_object_grant`](resources/object_grant.md)           | Explicit privileges on one object or a schema snapshot                                          |
+| [`redshift_column_grant`](resources/column_grant.md)           | Column-level `SELECT` and `UPDATE`                                                              |
+| [`redshift_language_grant`](resources/language_grant.md)       | `USAGE` on the `sql` or `plpgsql` language                                                      |
+| [`redshift_system_grant`](resources/system_grant.md)           | Role system privileges                                                                          |
+| [`redshift_assumerole_grant`](resources/assumerole_grant.md)   | IAM role command permissions                                                                    |
+| [`redshift_default_privilege`](resources/default_privilege.md) | Privileges on future objects of one creator                                                     |
+| [`redshift_debug_grant`](resources/debug_grant.md)             | `DEBUG` on a federated-permissions database for a global identity, IdC group, or account admins |
 
 ### Row-Level Security and Masking
 
@@ -392,9 +392,9 @@ itself and the namespace resource policy belong to the AWS provider.
 
 ### Future Objects
 
-| Concern                                      | Owning resource               |
-|----------------------------------------------|-------------------------------|
-| Privileges on objects one user creates later | `redshift_default_privileges` |
+| Concern                                      | Owning resource              |
+|----------------------------------------------|------------------------------|
+| Privileges on objects one user creates later | `redshift_default_privilege` |
 
 ### Models
 
@@ -491,18 +491,18 @@ SQL connection. Local database lookups and shared database resource refreshes do
 
 ### Permissions
 
-| Data source                                                              | Reads                                       |
-|--------------------------------------------------------------------------|---------------------------------------------|
-| [`data.redshift_grant`](data-sources/grant.md)                           | Explicit scoped privileges                  |
-| [`data.redshift_object_grant`](data-sources/object_grant.md)             | Explicit object or snapshot privileges      |
-| [`data.redshift_column_grant`](data-sources/column_grant.md)             | Column privileges of one grantee            |
-| [`data.redshift_language_grant`](data-sources/language_grant.md)         | Language `USAGE`                            |
-| [`data.redshift_system_grant`](data-sources/system_grant.md)             | Role system capabilities                    |
-| [`data.redshift_assumerole_grant`](data-sources/assumerole_grant.md)     | IAM role command permissions                |
-| [`data.redshift_default_privileges`](data-sources/default_privileges.md) | Creator-specific defaults                   |
-| [`data.redshift_debug_grant`](data-sources/debug_grant.md)               | `DEBUG` grant of one grantee on a database  |
-| [`data.redshift_grants`](data-sources/grants.md)                         | List of grants on an object or of a grantee |
-| [`data.redshift_column_grants`](data-sources/column_grants.md)           | List of column-level grants                 |
+| Data source                                                            | Reads                                       |
+|------------------------------------------------------------------------|---------------------------------------------|
+| [`data.redshift_grant`](data-sources/grant.md)                         | Explicit scoped privileges                  |
+| [`data.redshift_object_grant`](data-sources/object_grant.md)           | Explicit object or snapshot privileges      |
+| [`data.redshift_column_grant`](data-sources/column_grant.md)           | Column privileges of one grantee            |
+| [`data.redshift_language_grant`](data-sources/language_grant.md)       | Language `USAGE`                            |
+| [`data.redshift_system_grant`](data-sources/system_grant.md)           | Role system capabilities                    |
+| [`data.redshift_assumerole_grant`](data-sources/assumerole_grant.md)   | IAM role command permissions                |
+| [`data.redshift_default_privilege`](data-sources/default_privilege.md) | Creator-specific defaults                   |
+| [`data.redshift_debug_grant`](data-sources/debug_grant.md)             | `DEBUG` grant of one grantee on a database  |
+| [`data.redshift_grants`](data-sources/grants.md)                       | List of grants on an object or of a grantee |
+| [`data.redshift_column_grants`](data-sources/column_grants.md)         | List of column-level grants                 |
 
 ### Row-Level Security and Masking
 

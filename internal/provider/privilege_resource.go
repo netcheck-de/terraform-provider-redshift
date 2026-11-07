@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -52,6 +53,9 @@ type privilegeResource struct {
 	partialAllowed func(types.Object) ([]sqlclient.Keyword, error)
 	// folded lists the identity attributes that name objects Redshift folds to lowercase.
 	folded []string
+	// previousNames lists earlier resource suffixes of this contract with an identical schema, whose state a moved
+	// block transfers unchanged.
+	previousNames []string
 }
 
 // catalogCheck is a parameterized statement used for parent existence or permission reads.
@@ -168,6 +172,33 @@ func grantOptionPrivileges(data types.Object) []string {
 	}
 
 	return knownStrings(value)
+}
+
+// providerSourceAddress ends every registry address of this provider, whatever host serves it.
+const providerSourceAddress = "netcheck-de/redshift"
+
+// MoveState transfers state recorded under one of the contract's previous type names of this provider, so a moved
+// block renames the resource without reimporting it. The schema is unchanged, so the state transfers as is.
+func (r *privilegeResource) MoveState(ctx context.Context) []resource.StateMover {
+	if len(r.previousNames) == 0 {
+		return nil
+	}
+
+	var current resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &current)
+
+	return []resource.StateMover{{
+		SourceSchema: &current.Schema,
+		StateMover: func(_ context.Context, req resource.MoveStateRequest, resp *resource.MoveStateResponse) {
+			if !strings.HasSuffix(req.SourceProviderAddress, providerSourceAddress) || req.SourceState == nil ||
+				!slices.Contains(r.previousNames, strings.TrimPrefix(req.SourceTypeName, "redshift_")) {
+				// Leaving the target state unset lets Terraform report that no mover accepts the source.
+				return
+			}
+
+			resp.TargetState.Raw = req.SourceState.Raw.Copy()
+		},
+	}}
 }
 
 // Metadata identifies the concrete permission resource selected by its SQL contract.
