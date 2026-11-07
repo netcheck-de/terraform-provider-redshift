@@ -31,9 +31,11 @@ func (s grantSpec) statement(grant bool, privilege sqlclient.Keyword) string {
 	if s.render != nil {
 		return s.render(grant, privilege)
 	}
+
 	if grant {
 		return s.prefix.Kw("GRANT", privilege).Append(s.object).Kw("TO").Append(s.grantee).OptKw(s.option).String()
 	}
+
 	return s.prefix.Kw("REVOKE", privilege).Append(s.object).Kw("FROM").Append(s.grantee).String()
 }
 
@@ -49,13 +51,16 @@ func (s grantSpec) optionStatement(grant bool, privilege sqlclient.Keyword) (str
 	if s.render != nil || s.option != "" {
 		return "", fmt.Errorf("grant options are not supported for this permission")
 	}
+
 	if grant {
 		return s.prefix.Kw("GRANT", privilege).Append(s.object).Kw("TO").Append(s.grantee).Kw("WITH GRANT OPTION").String(), nil
 	}
+
 	revoke := s.optionRevoke
 	if revoke == "" {
 		revoke = "REVOKE GRANT OPTION FOR"
 	}
+
 	return s.prefix.Kw(revoke, privilege).Append(s.object).Kw("FROM").Append(s.grantee).String(), nil
 }
 
@@ -80,6 +85,7 @@ type privilegeSets struct {
 // granted with it directly instead of being granted twice.
 func privilegeOptionStatements(spec grantSpec, allowed []sqlclient.Keyword, current, desired privilegeSets) ([]string, error) {
 	var statements []string
+
 	for _, step := range []struct {
 		grant, option bool
 		from, to      []string
@@ -94,30 +100,36 @@ func privilegeOptionStatements(spec grantSpec, allowed []sqlclient.Keyword, curr
 			if slices.Contains(step.to, privilege) || slices.Contains(step.skip, privilege) {
 				continue
 			}
+
 			keyword, err := sqlclient.OneOf(privilege, allowed...)
 			if err != nil {
 				return nil, fmt.Errorf("unsupported privilege: %w", err)
 			}
+
 			statement := spec.statement(step.grant, keyword)
 			if step.option {
 				if statement, err = spec.optionStatement(step.grant, keyword); err != nil {
 					return nil, err
 				}
 			}
+
 			statements = append(statements, statement)
 		}
 	}
+
 	return statements, nil
 }
 
 // privilegesAbsent returns the values of from that are absent from in.
 func privilegesAbsent(in, from []string) []string {
 	var absent []string
+
 	for _, value := range from {
 		if !slices.Contains(in, value) {
 			absent = append(absent, value)
 		}
 	}
+
 	return absent
 }
 
@@ -132,6 +144,7 @@ func privilegeNames(allowed []sqlclient.Keyword) []string {
 	for i, keyword := range allowed {
 		names[i] = string(keyword)
 	}
+
 	return names
 }
 
@@ -150,8 +163,10 @@ func newCatalogChecks(queries ...sqlclient.Query) ([]catalogCheck, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		checks = append(checks, check)
 	}
+
 	return checks, nil
 }
 
@@ -180,8 +195,12 @@ func privilegeSchemaQuery(database, schema string) sqlclient.Query {
 // principal renders a grantee and supplies its catalog existence check; PUBLIC needs none.
 func principal(data types.Object) (sqlclient.Statement, catalogCheck, error) {
 	name, kind := objectString(data, "grantee"), objectString(data, "grantee_type")
-	var grantee sqlclient.Statement
-	var query sqlclient.Query
+
+	var (
+		grantee sqlclient.Statement
+		query   sqlclient.Query
+	)
+
 	switch kind {
 	case "ROLE":
 		grantee, query = sqlclient.Kw("ROLE").Ident(name), privilegeRoleQuery(name)
@@ -193,10 +212,13 @@ func principal(data types.Object) (sqlclient.Statement, catalogCheck, error) {
 		if name != "public" {
 			return grantee, catalogCheck{}, fmt.Errorf("PUBLIC requires grantee = public")
 		}
+
 		return sqlclient.Kw("PUBLIC"), catalogCheck{}, nil
 	default:
 		return grantee, catalogCheck{}, fmt.Errorf("unsupported grantee_type %q", kind)
 	}
+
 	check, err := newCatalogCheck(query)
+
 	return grantee, check, err
 }

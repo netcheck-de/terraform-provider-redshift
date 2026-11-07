@@ -26,6 +26,7 @@ func TestKeywordChanged(t *testing.T) {
 		if test.unknown {
 			after = types.StringUnknown()
 		}
+
 		var resp stringplanmodifier.RequiresReplaceIfFuncResponse
 		keywordChanged(context.Background(), planmodifier.StringRequest{StateValue: types.StringValue(test.before), PlanValue: after}, &resp)
 		assert.Equal(t, test.replace, resp.RequiresReplace, "%s -> %s", test.before, test.after)
@@ -61,6 +62,7 @@ func TestAssumeroleGrantRoleChanged(t *testing.T) {
 		assumeroleGrantRoleChanged(context.Background(), planmodifier.StringRequest{StateValue: types.StringValue(test.before), PlanValue: types.StringValue(test.after)}, &resp)
 		assert.Equal(t, test.replace, resp.RequiresReplace, "%s -> %s", test.before, test.after)
 	}
+
 	fields := map[string]string{"iam_role_arn": "Default"}
 	assumeroleGrantCanonical(fields)
 	assert.Equal(t, "DEFAULT", fields["iam_role_arn"])

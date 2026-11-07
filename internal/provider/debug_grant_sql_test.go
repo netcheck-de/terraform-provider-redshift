@@ -23,10 +23,12 @@ func TestDebugGrantSQL(t *testing.T) {
 			if err != nil {
 				return nil, err
 			}
+
 			drop, err := dropDebugGrantStatement(data)
 			if err != nil {
 				return nil, err
 			}
+
 			read := readDebugGrantStatement(data.Database.ValueString())
 			if strings.Contains(data.Database.ValueString(), "@") {
 				read, err = readDebugGrantRemoteStatement(data)
@@ -34,6 +36,7 @@ func TestDebugGrantSQL(t *testing.T) {
 					return nil, err
 				}
 			}
+
 			return []string{read, create, drop}, nil
 		}
 	}

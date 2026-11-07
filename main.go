@@ -19,7 +19,9 @@ var version = "dev"
 // main starts the Terraform protocol server, optionally enabling debugger attachment.
 func main() {
 	debug := flag.Bool("debug", false, "Enable debugger support")
+
 	flag.Parse()
+
 	if err := providerserver.Serve(context.Background(), provider.New(version), providerserver.ServeOpts{
 		Address: "registry.terraform.io/netcheck-de/redshift",
 		Debug:   *debug,

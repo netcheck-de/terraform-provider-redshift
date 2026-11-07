@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestCopyJobDefinitionDrift reads every field back from the job's COPY text except the redacted IAM role, and fails
+// Read on definitions it cannot parse instead of keeping stale state.
 func TestCopyJobDefinitionDrift(t *testing.T) {
 	c := fullCatalog()
 	fake := fakeState[*copyJobFake](c, copyJobFakeFamily)
@@ -22,6 +24,7 @@ func TestCopyJobDefinitionDrift(t *testing.T) {
 	configureTestResource(t, r, c)
 	state, diagnostics := applyOperation(t, r, "read", copyJobLifecycleModel, nil, nil)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed copyJobModel
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	assert.Equal(t, "other schema", copyJobTarget(observed.Table).schema)
@@ -42,6 +45,8 @@ func TestCopyJobDefinitionDrift(t *testing.T) {
 	}
 }
 
+// TestCopyJobDefinitionConvergence fails Create when the stored definition differs from the plan, but keeps the created
+// job in state so it can still be destroyed.
 func TestCopyJobDefinitionConvergence(t *testing.T) {
 	c := fullCatalog()
 	fakeState[*copyJobFake](c, copyJobFakeFamily).exists = false
@@ -52,6 +57,7 @@ func TestCopyJobDefinitionConvergence(t *testing.T) {
 			fake := fakeState[*copyJobFake](c, copyJobFakeFamily)
 			fake.definition = strings.ReplaceAll(fake.definition, "s3://example-bucket/events/", "s3://wrong-bucket/events/")
 		}
+
 		return rows, err
 	}))
 	state, diagnostics := applyOperation(t, r, "create", nil, copyJobLifecycleModel, nil)
@@ -59,13 +65,19 @@ func TestCopyJobDefinitionConvergence(t *testing.T) {
 	assert.False(t, state.Raw.IsNull(), "a created job must remain tracked when definition verification fails")
 }
 
+// TestCopyPartialKnownValidation rejects known invalid COPY parameters and format combinations at plan time, for
+// templates and jobs alike, even while other values are unknown.
 func TestCopyPartialKnownValidation(t *testing.T) {
 	ctx := context.Background()
+
 	for _, job := range []bool{false, true} {
 		t.Run(map[bool]string{false: "template", true: "job"}[job], func(t *testing.T) {
 			validate := func(parameters types.Map, format, argument types.String) bool {
-				var r resource.Resource
-				var model any
+				var (
+					r     resource.Resource
+					model any
+				)
+
 				if job {
 					r = newCopyJobResource()
 					data := copyJobLifecycleModel
@@ -79,8 +91,10 @@ func TestCopyPartialKnownValidation(t *testing.T) {
 					data.Parameters, data.Format, data.FormatArgument = parameters, format, argument
 					model = data
 				}
+
 				var resp resource.ValidateConfigResponse
 				r.(resource.ResourceWithValidateConfig).ValidateConfig(ctx, resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, model))}, &resp)
+
 				return resp.Diagnostics.HasError()
 			}
 			partial := types.MapValueMust(types.StringType, map[string]attr.Value{"IGNOREHEADER": types.StringValue("bad"), "DELIMITER": types.StringUnknown()})
@@ -94,15 +108,19 @@ func TestCopyPartialKnownValidation(t *testing.T) {
 	}
 }
 
+// TestCopyRenderersRejectUnknownDefinitions makes template and job renderers fail on unknown parameters, source, or
+// target columns instead of rendering placeholder SQL.
 func TestCopyRenderersRejectUnknownDefinitions(t *testing.T) {
 	template := templateLifecycleModel
 	template.Parameters = types.MapUnknown(types.StringType)
 	_, err := createTemplateStatements(template)
 	require.Error(t, err)
+
 	job := copyJobLifecycleModel
 	job.Source = types.StringUnknown()
 	_, err = createCopyJobStatement(job)
 	require.Error(t, err)
+
 	job = copyJobLifecycleModel
 	target := job.Table.Attributes()
 	target["columns"] = types.ListValueMust(types.StringType, []attr.Value{types.StringUnknown()})
@@ -111,6 +129,8 @@ func TestCopyRenderersRejectUnknownDefinitions(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestCopyShapefileSimplify round-trips every SHAPEFILE SIMPLIFY spelling, rejects malformed tolerances, and parses the
+// SHOW TEMPLATE order that prints SIMPLIFY before the format.
 func TestCopyShapefileSimplify(t *testing.T) {
 	for _, argument := range []string{"SIMPLIFY", "SIMPLIFY AUTO", "SIMPLIFY 0.01", "SIMPLIFY AUTO 0.000001", "simplify auto 1e-06"} {
 		t.Run(argument, func(t *testing.T) {
@@ -119,15 +139,18 @@ func TestCopyShapefileSimplify(t *testing.T) {
 			require.NoError(t, err)
 			definition, err := parseTemplateDefinition(statements[0])
 			require.NoError(t, err)
+
 			entry := templateCatalog{definition: definition}
 			entry.applyCatalog(&model)
 			assert.Equal(t, argument, model.FormatArgument.ValueString())
 		})
 	}
+
 	for _, argument := range []string{"AUTO", "SIMPLIFY -1", "SIMPLIFY NaN", "SIMPLIFY Inf", "SIMPLIFY 1; DROP", "SIMPLIFY AUTO 1 2"} {
 		_, err := copyCheckFormat("SHAPEFILE", argument)
 		require.Error(t, err, argument)
 	}
+
 	definition, err := parseTemplateDefinition(`CREATE TEMPLATE spatial FOR COPY AS SHAPEFILE SIMPLIFY AUTO 0.000001;`)
 	require.NoError(t, err)
 	assert.Equal(t, "SIMPLIFY AUTO 0.000001", definition.formatArgument)

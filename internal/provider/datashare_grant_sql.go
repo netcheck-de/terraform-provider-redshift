@@ -11,6 +11,7 @@ func (data datashareGrantModel) spec() (grantSpec, error) {
 	if err != nil {
 		return grantSpec{}, err
 	}
+
 	return grantSpec{
 		object:  sqlclient.Fragment().KwIdent("ON DATASHARE", data.Datashare.ValueString()),
 		grantee: sqlclient.Fragment().KwLit(consumerType, value).If(data.ViaDataCatalog.ValueBool(), "VIA DATA CATALOG"),
@@ -23,6 +24,7 @@ func createDatashareGrantStatement(data datashareGrantModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return spec.statement(true, "USAGE"), nil
 }
 
@@ -32,6 +34,7 @@ func dropDatashareGrantStatement(data datashareGrantModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return spec.statement(false, "USAGE"), nil
 }
 
@@ -43,8 +46,18 @@ func readDatashareGrantQuery(data datashareGrantModel) (sqlclient.Query, error) 
 	if err != nil {
 		return sqlclient.Query{}, err
 	}
+
 	return sqlclient.Select("consumer_account", "consumer_namespace").From("svv_datashare_consumers").
 		Where("share_name = :share", sqlclient.Bind("share", data.Datashare.ValueString())).
 		WhereEither(consumerType == datashareGrantNamespace, "consumer_namespace = :namespace", "consumer_account = :account AND NVL(consumer_namespace, '') = ''",
 			sqlclient.Bind("namespace", value), sqlclient.Bind("account", value)), nil
+}
+
+// listDatashareGrantsQuery lists consumer usage of the namespace's outbound shares, optionally of one share. The
+// consumer view has no database column, so the producer database comes from svv_datashares.
+func listDatashareGrantsQuery(share string) sqlclient.Query {
+	return sqlclient.Select("BTRIM(d.source_database) AS source_database", "c.share_name", "c.consumer_account", "c.consumer_namespace").
+		From("svv_datashare_consumers c JOIN svv_datashares d ON d.share_name = c.share_name AND d.share_type = 'OUTBOUND'").
+		OptEq("c.share_name", "share", share).
+		OrderBy("c.share_name", "c.consumer_account", "c.consumer_namespace")
 }

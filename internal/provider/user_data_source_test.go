@@ -15,6 +15,7 @@ var _ = registerParity(parityCase{source: newUserDataSource, resource: newUserRe
 func TestUserLookup(t *testing.T) {
 	state, diagnostics := readSource(t, newUserDataSource(), userData{Name: types.StringValue("grafana")}, &catalog{user: true, createDB: true})
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var data userData
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.False(t, data.Superuser.ValueBool())
@@ -26,7 +27,7 @@ func TestUserLookup(t *testing.T) {
 	assert.True(t, data.ExternalID.IsNull())
 	assert.Nil(t, data.SearchPath)
 	assert.Nil(t, data.SessionDefaults)
-	assertLookupIdentity(t, data.ID, "admin", map[string]string{"name": "grafana"})
+	assertLookupIdentity(t, data.ID, map[string]string{"name": "grafana"})
 }
 
 // TestUserLookupReportsOptions checks that the lookup reports stored defaults, expiration, and SVV_USER_INFO
@@ -39,6 +40,7 @@ func TestUserLookupReportsOptions(t *testing.T) {
 	family.config = []string{`search_path="$user", public`, "statement_timeout=1000"}
 	state, diagnostics := readSource(t, newUserDataSource(), userData{Name: types.StringValue("grafana")}, c)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var data userData
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.Equal(t, types.StringValue("2030-01-01T00:00:00Z"), data.ValidUntil)

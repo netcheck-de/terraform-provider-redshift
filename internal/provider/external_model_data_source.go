@@ -22,6 +22,7 @@ func newExternalModelDataSource() datasource.DataSource {
 			Function: types.StringNull(), IAMRole: types.StringNull(), ModelID: types.StringNull(), Prompt: types.StringNull(), Suffix: types.StringNull(),
 			RequestType: types.StringNull(), ResponseType: types.StringNull(), Owner: types.StringNull(),
 		}
+
 		found, err := (&externalModelResource{*client}).read(ctx, &model)
 		if err == nil && found {
 			for name, value := range map[string]attr.Value{
@@ -31,6 +32,7 @@ func newExternalModelDataSource() datasource.DataSource {
 				lookupValue(data, name, value)
 			}
 		}
+
 		return found, err
 	}}), map[string]string{
 		"function":      "Name of the model's inference function, without its schema; null when `SHOW MODEL` does not report it.",

@@ -13,14 +13,16 @@ import (
 )
 
 // TestAccExternalFunctionLifecycle creates a Lambda UDF in a disposable database, restates it in place, lists it with
-// the routine lookups, imports it, and drops it with the database. REDSHIFT_ACC_LAMBDA_FUNCTION names an existing
+// the routine listings, imports it, and drops it with the database. REDSHIFT_ACC_LAMBDA_FUNCTION names an existing
 // Lambda function; REDSHIFT_ACC_LAMBDA_ROLE optionally names an associated role ARN instead of the default role.
 func TestAccExternalFunctionLifecycle(t *testing.T) {
 	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_LAMBDA_FUNCTION")
+
 	role := os.Getenv("REDSHIFT_ACC_LAMBDA_ROLE")
 	if role == "" {
 		role = "DEFAULT"
 	}
+
 	name := "acc_exfunc_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(retryTimeout int, volatility string) string {
 		return fmt.Sprintf(`
@@ -42,7 +44,7 @@ resource "redshift_external_function" "upper" {
   iam_role        = %q
   retry_timeout   = %d
 }
-data "redshift_functions" "upper" {
+data "redshift_external_functions" "upper" {
   database = redshift_external_function.upper.database
   schema   = redshift_external_function.upper.schema
   name     = redshift_external_function.upper.name
@@ -60,15 +62,15 @@ data "redshift_routine_parameters" "upper" {
 			{Config: configuration(0, "VOLATILE"), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_external_function.upper", "volatility", "VOLATILE"),
 				resource.TestCheckResourceAttrSet("redshift_external_function.upper", "owner"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.#", "1"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.language", "EXFUNC"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.arguments.0", "CHARACTER VARYING"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.arguments.1", "INTEGER"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.return_type", "CHARACTER VARYING"),
+				resource.TestCheckResourceAttr("data.redshift_external_functions.upper", "external_functions.#", "1"),
+				resource.TestCheckResourceAttrPair("data.redshift_external_functions.upper", "external_functions.0.owner", "redshift_external_function.upper", "owner"),
+				resource.TestCheckResourceAttr("data.redshift_external_functions.upper", "external_functions.0.arguments.0", "CHARACTER VARYING"),
+				resource.TestCheckResourceAttr("data.redshift_external_functions.upper", "external_functions.0.arguments.1", "INTEGER"),
+				resource.TestCheckResourceAttr("data.redshift_external_functions.upper", "external_functions.0.return_type", "CHARACTER VARYING"),
 			)},
 			{Config: configuration(3000, "STABLE"), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_external_function.upper", "volatility", "STABLE"),
-				resource.TestCheckResourceAttr("data.redshift_functions.upper", "functions.0.volatility", "STABLE"),
+				resource.TestCheckResourceAttr("data.redshift_external_functions.upper", "external_functions.0.volatility", "STABLE"),
 			)},
 			{Config: configuration(3000, "STABLE"), PlanOnly: true},
 			{

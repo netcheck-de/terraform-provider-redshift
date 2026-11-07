@@ -9,12 +9,6 @@ description: Reads an ordinary or late-binding view's definition and owner.
 Reads an existing ordinary or late-binding view without managing it. See AWS
 [CREATE VIEW](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_VIEW.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_views WHERE schemaname = '...' AND viewname = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -43,6 +37,17 @@ data "redshift_view" "daily_sales" {
 - `owner` (String) SQL user owning the view.
 - `query` (String) Catalog definition from `pg_views`, as Redshift prints it.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the view definition and owner.
+SELECT ... FROM pg_views WHERE schemaname = '...' AND viewname = '...';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed view's JSON identity, using the same warehouse, database, schema, and name keys
 as the paired resource.

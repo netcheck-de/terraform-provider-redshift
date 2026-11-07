@@ -14,6 +14,7 @@ func TestAssumeroleGrantSQL(t *testing.T) {
 	render := func(changes map[string]string, command sqlclient.Keyword) func() ([]string, error) {
 		fields := maps.Clone(defaults)
 		maps.Copy(fields, changes)
+
 		return privilegeTargetCase(t, newAssumeroleGrantResource, fields, command)
 	}
 	checkSQL(t, "assumerole_grant", []sqlCase{

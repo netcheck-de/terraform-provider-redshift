@@ -10,15 +10,6 @@ Exclusively manages all current tables/views or SQL functions in a producer data
 schema-and-kind owner, not a creation-time snapshot. See AWS
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
-## SQL Statements
-
-```sql
-ALTER DATASHARE datashare ADD ALL TABLES IN SCHEMA schema;
-ALTER DATASHARE datashare ADD ALL FUNCTIONS IN SCHEMA schema;
-ALTER DATASHARE datashare REMOVE ALL TABLES IN SCHEMA schema;
-ALTER DATASHARE datashare REMOVE ALL FUNCTIONS IN SCHEMA schema;
-```
-
 ## Example Usage
 
 ```terraform
@@ -49,8 +40,26 @@ resource "redshift_datashare_membership" "functions" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Add all tables in the schema to the datashare.
+ALTER DATASHARE datashare ADD ALL TABLES IN SCHEMA schema;
+
+-- Add all functions in the schema to the datashare.
+ALTER DATASHARE datashare ADD ALL FUNCTIONS IN SCHEMA schema;
+
+-- Remove all tables in the schema from the datashare.
+ALTER DATASHARE datashare REMOVE ALL TABLES IN SCHEMA schema;
+
+-- Remove all functions in the schema from the datashare.
+ALTER DATASHARE datashare REMOVE ALL FUNCTIONS IN SCHEMA schema;
+```
 
 ## Lifecycle and Ownership
 
@@ -111,28 +120,25 @@ ALTER DATASHARE "producer" ADD ALL FUNCTIONS IN SCHEMA "serving";
 
 ## Import
 
-Import acknowledges ownership of every member of the selected kind, not just the memberships originally added in bulk.
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_datashare_membership.functions
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    datashare      = "reporting"
-    schema         = "reporting"
-    kind           = "FUNCTIONS"
+    database  = "analytics"
+    datashare = "reporting"
+    schema    = "reporting"
+    kind      = "FUNCTIONS"
   })
 }
 ```
 
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
-
-Alternatively:
+Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_datashare_membership.functions \
-  '{"workgroup_name":"warehouse","database":"analytics","datashare":"reporting","schema":"reporting","kind":"FUNCTIONS"}'
+  '{"database":"analytics","datashare":"reporting","schema":"reporting","kind":"FUNCTIONS"}'
 ```
+
+Import acknowledges ownership of every member of the selected kind, not just the memberships originally added in bulk.

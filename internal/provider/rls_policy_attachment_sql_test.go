@@ -19,6 +19,7 @@ func TestRlsPolicyAttachmentSQL(t *testing.T) {
 	with := func(change func(*rlsPolicyAttachmentModel)) rlsPolicyAttachmentModel {
 		data := rlsPolicyAttachmentSample()
 		change(&data)
+
 		return data
 	}
 	user := with(func(d *rlsPolicyAttachmentModel) {
@@ -59,5 +60,7 @@ func TestRlsPolicyAttachmentSQL(t *testing.T) {
 		{"read_role", read(quoted)},
 		{"read_user", read(user)},
 		{"read_public", read(public)},
+		{"list", maskingQuerySQL(listRlsPolicyAttachmentsQuery("", "", ""))},
+		{"list_filtered", maskingQuerySQL(listRlsPolicyAttachmentsQuery("region_filter", "public", "events"))},
 	})
 }

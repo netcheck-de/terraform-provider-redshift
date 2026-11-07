@@ -9,12 +9,6 @@ description: Checks whether a row-level security policy is attached to a relatio
 Checks whether one policy is attached to one relation for one user, role, or `PUBLIC`. See AWS
 [SVV_RLS_ATTACHED_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_ATTACHED_POLICY.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_rls_attached_policy WHERE polname = 'policy' AND relname = 'relation' ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -46,6 +40,17 @@ data "redshift_rls_policy_attachment" "analysts" {
 - `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Check the row-level security policy attachment.
+SELECT ... FROM svv_rls_attached_policy WHERE polname = 'policy' AND relname = 'relation' ...;
+```
+
+## Read Behavior
 
 `id` (String, computed) is the attachment's JSON identity, using the same keys as the paired resource. It is null when
 `exists` is false.

@@ -29,11 +29,13 @@ func passwordProvider() providerModel {
 // connectionProviderConfig serializes a complete provider model using the actual schema, including nested blocks.
 func connectionProviderConfig(t *testing.T, p *redshiftProvider, data providerModel) tfsdk.Config {
 	t.Helper()
+
 	var schema framework.SchemaResponse
 	p.Schema(context.Background(), framework.SchemaRequest{}, &schema)
 	state := tfsdk.State{Schema: schema.Schema}
 	diagnostics := state.Set(context.Background(), &data)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	return tfsdk.Config(state)
 }
 
@@ -41,6 +43,7 @@ func connectionProviderConfig(t *testing.T, p *redshiftProvider, data providerMo
 func TestConnectionSelectionAndIdentity(t *testing.T) {
 	for _, mode := range []string{"workgroup", "cluster", "password", "serverless IAM", "cluster IAM", "unknown host", "unknown port", "unknown username", "unknown password", "unknown IAM host", "unknown IAM port", "new warehouse and secret"} {
 		data := providerModel{Region: types.StringValue("eu-central-1"), Database: types.StringValue("admin")}
+
 		switch mode {
 		case "workgroup":
 			data.Workgroup = types.StringValue("warehouse")
@@ -53,12 +56,15 @@ func TestConnectionSelectionAndIdentity(t *testing.T) {
 			if mode == "unknown username" {
 				data.Connection.Username = types.StringUnknown()
 			}
+
 			if mode == "unknown password" {
 				data.Connection.Password = types.StringUnknown()
 			}
+
 			if mode == "unknown host" {
 				data.Connection.Host = types.StringUnknown()
 			}
+
 			if mode == "unknown port" {
 				data.Connection.Port = types.Int64Unknown()
 			}
@@ -71,8 +77,10 @@ func TestConnectionSelectionAndIdentity(t *testing.T) {
 		case "cluster IAM":
 			data.Connection = &directConnectionModel{IAM: &iamConnectionModel{ClusterIdentifier: types.StringValue("cluster"), DBUser: types.StringValue("reader")}}
 		}
+
 		require.NoError(t, data.validate(data.deferred()), mode)
 		binding := data.binding()
+
 		switch mode {
 		case "unknown username", "unknown password", "unknown IAM host", "unknown IAM port":
 			// The warehouse is known, but SQL must still wait for the deferred credentials or endpoint.
@@ -85,19 +93,24 @@ func TestConnectionSelectionAndIdentity(t *testing.T) {
 		case "password":
 			assert.Equal(t, "endpoint", binding.field)
 			assert.Equal(t, "warehouse.example.com:5439", binding.value.ValueString())
+
 			data.Connection.Port = types.Int64Value(5440)
 			assert.Equal(t, "warehouse.example.com:5440", data.binding().value.ValueString())
 		default:
 			assert.True(t, binding.value.IsUnknown())
 		}
+
 		p := New("test")().(*redshiftProvider)
 		config := connectionProviderConfig(t, p, data)
+
 		var validated framework.ValidateConfigResponse
 		p.ValidateConfig(context.Background(), framework.ValidateConfigRequest{Config: config}, &validated)
 		require.False(t, validated.Diagnostics.HasError(), "%v", validated.Diagnostics)
+
 		var resp framework.ConfigureResponse
 		p.Configure(context.Background(), framework.ConfigureRequest{Config: config}, &resp)
 		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 		switch {
 		case data.deferred():
 			assert.Nil(t, p.client)
@@ -114,6 +127,7 @@ func TestConnectionSelectionAndIdentity(t *testing.T) {
 func TestConnectionValidationRejectsAmbiguousAuthentication(t *testing.T) {
 	for _, mode := range []string{"none", "two selectors", "cluster auth missing", "serverless user", "two credentials", "unknown user", "unknown secret", "empty workgroup", "connection plus auth", "port low", "port high", "unknown CA", "host absent", "username absent", "password empty", "IAM plus password", "IAM selector missing", "IAM selectors both", "serverless IAM user", "cluster IAM user missing", "cluster IAM user unknown", "empty IAM selector", "empty IAM host"} {
 		data := passwordProvider()
+
 		switch mode {
 		case "none":
 			data.Connection = nil
@@ -158,29 +172,39 @@ func TestConnectionValidationRejectsAmbiguousAuthentication(t *testing.T) {
 			if mode == "IAM selectors both" {
 				data.Connection.IAM.Workgroup, data.Connection.IAM.ClusterIdentifier = types.StringValue("warehouse"), types.StringValue("cluster")
 			}
+
 			if mode == "serverless IAM user" {
 				data.Connection.IAM.Workgroup, data.Connection.IAM.DBUser = types.StringValue("warehouse"), types.StringValue("reader")
 			}
+
 			if mode == "cluster IAM user missing" {
 				data.Connection.IAM.ClusterIdentifier = types.StringValue("cluster")
 			}
+
 			if mode == "cluster IAM user unknown" {
 				data.Connection.IAM.ClusterIdentifier, data.Connection.IAM.DBUser = types.StringValue("cluster"), types.StringUnknown()
 			}
+
 			if mode == "empty IAM selector" {
 				data.Connection.IAM.Workgroup = types.StringValue("")
 			}
+
 			if mode == "empty IAM host" {
 				data.Connection.IAM.Workgroup, data.Connection.Host = types.StringValue("warehouse"), types.StringValue("")
 			}
 		}
+
 		require.Error(t, data.validate(false), mode)
+
 		p := New("test")().(*redshiftProvider)
 		config := connectionProviderConfig(t, p, data)
+
 		var validated framework.ValidateConfigResponse
 		p.ValidateConfig(context.Background(), framework.ValidateConfigRequest{Config: config}, &validated)
+
 		deferred := mode == "unknown user" || mode == "unknown secret" || mode == "unknown CA" || mode == "cluster IAM user unknown"
 		assert.Equal(t, !deferred, validated.Diagnostics.HasError(), mode)
+
 		var configured framework.ConfigureResponse
 		p.Configure(context.Background(), framework.ConfigureRequest{Config: config}, &configured)
 		assert.Equal(t, mode != "unknown user" && mode != "unknown secret" && mode != "cluster IAM user unknown", configured.Diagnostics.HasError(), mode)
@@ -190,21 +214,26 @@ func TestConnectionValidationRejectsAmbiguousAuthentication(t *testing.T) {
 // TestDirectConfigurationDoesNotLoadAWSAndReconfiguresRouting ensures password clients ignore broken AWS profiles.
 func TestDirectConfigurationDoesNotLoadAWSAndReconfiguresRouting(t *testing.T) {
 	t.Setenv("AWS_PROFILE", "profile-that-does-not-exist")
+
 	p := New("test")().(*redshiftProvider)
 	data := passwordProvider()
+
 	var resp framework.ConfigureResponse
 	p.Configure(context.Background(), framework.ConfigureRequest{Config: connectionProviderConfig(t, p, data)}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 	data.Connection.Host = types.StringValue("another.example.com")
 	p.Configure(context.Background(), framework.ConfigureRequest{Config: connectionProviderConfig(t, p, data)}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
 	assert.Equal(t, "another.example.com", p.client.(*redshiftconn.Client).Credentials.Host)
+
 	data.Connection.Port = types.Int64Value(5440)
 	p.Configure(context.Background(), framework.ConfigureRequest{Config: connectionProviderConfig(t, p, data)}, &resp)
 	require.False(t, resp.Diagnostics.HasError())
 	assert.Equal(t, uint16(5440), p.client.(*redshiftconn.Client).Credentials.Port)
 	config := connectionProviderConfig(t, p, data)
 	config.Raw = tftypes.NewValue(tftypes.String, "invalid")
+
 	var validated framework.ValidateConfigResponse
 	p.ValidateConfig(context.Background(), framework.ValidateConfigRequest{Config: config}, &validated)
 	require.True(t, validated.Diagnostics.HasError())
@@ -218,6 +247,7 @@ func TestDirectSSLModeConfiguration(t *testing.T) {
 	client, err := data.sqlClient(context.Background(), "test")
 	require.NoError(t, err)
 	assert.Equal(t, redshiftconn.SSLModeRequire, client.(*redshiftconn.Client).SSLMode)
+
 	data.Connection.CACertFile = types.StringValue("ca.pem")
 	require.ErrorContains(t, data.validate(false), "no effect")
 	data.Connection.SSLMode = types.StringValue(redshiftconn.SSLModeVerifyCA)
@@ -230,18 +260,22 @@ func TestDirectSSLModeConfiguration(t *testing.T) {
 // environment, and defaults for both transports.
 func TestTransportSettingsDefaultsAndOverrides(t *testing.T) {
 	t.Setenv(queryTimeoutEnv, "")
+
 	data := passwordProvider()
 	client, err := data.sqlClient(context.Background(), "1.2.3")
 	require.NoError(t, err)
+
 	direct := client.(*redshiftconn.Client)
 	assert.Equal(t, 5*time.Minute, direct.Timeout)
 	assert.Equal(t, 30*time.Second, direct.ConnectTimeout)
 	assert.Equal(t, "terraform-provider-redshift/1.2.3", direct.ApplicationName)
 
 	t.Setenv(queryTimeoutEnv, "90s")
+
 	data.Connection.ConnectTimeout, data.ApplicationName = types.StringValue("10s"), types.StringValue("deploy pipeline")
 	client, err = data.sqlClient(context.Background(), "1.2.3")
 	require.NoError(t, err)
+
 	direct = client.(*redshiftconn.Client)
 	assert.Equal(t, 90*time.Second, direct.Timeout)
 	assert.Equal(t, 10*time.Second, direct.ConnectTimeout)
@@ -253,17 +287,22 @@ func TestTransportSettingsDefaultsAndOverrides(t *testing.T) {
 	assert.Equal(t, 2*time.Hour, client.(*redshiftconn.Client).Timeout)
 
 	data.QueryTimeout = types.StringNull()
+
 	t.Setenv(queryTimeoutEnv, "soon")
+
 	_, err = data.sqlClient(context.Background(), "1.2.3")
 	require.ErrorContains(t, err, queryTimeoutEnv)
 
 	t.Setenv(queryTimeoutEnv, "")
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+
 	p := New("1.2.3")().(*redshiftProvider)
 	workgroup := providerModel{Region: types.StringValue("eu-central-1"), Database: types.StringValue("admin"), Workgroup: types.StringValue("warehouse"), QueryTimeout: types.StringValue("45s")}
+
 	var resp framework.ConfigureResponse
 	p.Configure(context.Background(), framework.ConfigureRequest{Config: connectionProviderConfig(t, p, workgroup)}, &resp)
 	require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 	dataAPI := p.client.(*dataapi.Client)
 	assert.Equal(t, 45*time.Second, dataAPI.Timeout)
 	assert.Equal(t, "terraform-provider-redshift/1.2.3", dataAPI.StatementName)
@@ -297,6 +336,7 @@ func TestTransportSettingsValidation(t *testing.T) {
 			data := passwordProvider()
 			change(&data)
 			require.Error(t, data.validate(false))
+
 			unknown := strings.HasPrefix(name, "unknown")
 			if unknown {
 				require.NoError(t, data.validate(true))
@@ -305,6 +345,7 @@ func TestTransportSettingsValidation(t *testing.T) {
 			}
 		})
 	}
+
 	data := passwordProvider()
 	data.QueryTimeout, data.Connection.ConnectTimeout = types.StringValue("1h30m"), types.StringValue("500ms")
 	data.MaxRetries, data.RetryMode = types.Int64Value(maxRetries), types.StringValue("adaptive")
@@ -322,6 +363,7 @@ func TestDurationValidator(t *testing.T) {
 		durationValidator{}.ValidateString(context.Background(), validator.StringRequest{Path: path.Root("query_timeout"), ConfigValue: value}, &resp)
 		assert.Equal(t, valid, !resp.Diagnostics.HasError(), value.String())
 	}
+
 	assert.NotEmpty(t, durationValidator{}.MarkdownDescription(context.Background()))
 }
 
@@ -330,6 +372,7 @@ func TestAWSConfigRetrySettings(t *testing.T) {
 	t.Setenv("AWS_MAX_ATTEMPTS", "")
 	t.Setenv("AWS_RETRY_MODE", "")
 	t.Setenv("AWS_EC2_METADATA_DISABLED", "true")
+
 	data := providerModel{Region: types.StringValue("eu-central-1")}
 	cfg, err := data.awsConfig(context.Background())
 	require.NoError(t, err)
@@ -337,6 +380,7 @@ func TestAWSConfigRetrySettings(t *testing.T) {
 	assert.Empty(t, cfg.RetryMode)
 	t.Setenv("AWS_MAX_ATTEMPTS", "7")
 	t.Setenv("AWS_RETRY_MODE", "adaptive")
+
 	cfg, err = data.awsConfig(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, 7, cfg.RetryMaxAttempts)
@@ -353,16 +397,19 @@ func TestAWSConfigRetrySettings(t *testing.T) {
 // SDK default quota refuses retries after 100 failures without an intervening success.
 func TestRetryerHasNoRetryQuota(t *testing.T) {
 	throttled := &smithy.GenericAPIError{Code: "ThrottlingException"}
+
 	for _, mode := range []aws.RetryMode{"", aws.RetryModeStandard, aws.RetryModeAdaptive} {
 		t.Run(string(mode), func(t *testing.T) {
 			retryer := newRetryer(mode, maxRetries+1)
 			assert.Equal(t, maxRetries+1, retryer.MaxAttempts())
 			assert.True(t, retryer.IsErrorRetryable(throttled))
+
 			for range 1000 {
 				_, err := retryer.GetRetryToken(context.Background(), throttled)
 				require.NoError(t, err)
 			}
 		})
 	}
+
 	assert.Equal(t, 3, newRetryer("", 0).MaxAttempts())
 }

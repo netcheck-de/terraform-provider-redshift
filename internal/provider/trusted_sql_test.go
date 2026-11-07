@@ -29,6 +29,7 @@ const trustedAnnotation = "//sql:trusted"
 // Shadowing is ignored; a variable reusing a constant's name would be a review smell of its own.
 func packageConstants(files []*ast.File) map[string]bool {
 	constants := map[string]bool{}
+
 	for _, file := range files {
 		ast.Inspect(file, func(node ast.Node) bool {
 			if declaration, ok := node.(*ast.GenDecl); ok && declaration.Tok == token.CONST {
@@ -38,9 +39,11 @@ func packageConstants(files []*ast.File) map[string]bool {
 					}
 				}
 			}
+
 			return true
 		})
 	}
+
 	return constants
 }
 
@@ -49,16 +52,20 @@ func packageConstants(files []*ast.File) map[string]bool {
 // nested trusted conversions of those, which covers every form the compiler would also accept implicitly.
 func untrustedConversions(fileSet *token.FileSet, file *ast.File, constants map[string]bool) []string {
 	var aliases []string
+
 	for _, spec := range file.Imports {
 		if path, _ := strconv.Unquote(spec.Path.Value); path == sqlclientImportPath {
 			alias := filepath.Base(path)
 			if spec.Name != nil {
 				alias = spec.Name.Name
 			}
+
 			aliases = append(aliases, alias)
 		}
 	}
+
 	annotated := map[int]bool{}
+
 	for _, group := range file.Comments {
 		for _, comment := range group.List {
 			if strings.HasPrefix(comment.Text, trustedAnnotation) {
@@ -66,10 +73,12 @@ func untrustedConversions(fileSet *token.FileSet, file *ast.File, constants map[
 			}
 		}
 	}
+
 	trustedConversion := func(call *ast.CallExpr) bool {
 		if len(call.Args) != 1 {
 			return false
 		}
+
 		switch function := ast.Unparen(call.Fun).(type) {
 		case *ast.SelectorExpr:
 			qualifier, ok := function.X.(*ast.Ident)
@@ -78,9 +87,12 @@ func untrustedConversions(fileSet *token.FileSet, file *ast.File, constants map[
 			// A dot import makes the bare type name a conversion.
 			return trustedTextTypes[function.Name] && slices.Contains(aliases, ".")
 		}
+
 		return false
 	}
+
 	var constant func(ast.Expr) bool
+
 	constant = func(expression ast.Expr) bool {
 		switch expression := ast.Unparen(expression).(type) {
 		case *ast.BasicLit:
@@ -92,20 +104,26 @@ func untrustedConversions(fileSet *token.FileSet, file *ast.File, constants map[
 		case *ast.CallExpr:
 			return trustedConversion(expression) && constant(expression.Args[0])
 		}
+
 		return false
 	}
+
 	var findings []string
+
 	ast.Inspect(file, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
 		if !ok || !trustedConversion(call) || constant(call.Args[0]) {
 			return true
 		}
+
 		position := fileSet.Position(call.Pos())
 		if !annotated[position.Line] && !annotated[position.Line-1] {
 			findings = append(findings, fmt.Sprintf("%s:%d: %s", filepath.Base(position.Filename), position.Line, types.ExprString(call)))
 		}
+
 		return true
 	})
+
 	return findings
 }
 
@@ -116,13 +134,18 @@ func TestNoUntrustedKeywordConversions(t *testing.T) {
 	paths, err := filepath.Glob("*.go")
 	require.NoError(t, err)
 	require.NotEmpty(t, paths)
+
 	fileSet := token.NewFileSet()
+
 	var files []*ast.File
+
 	for _, path := range paths {
 		file, err := parser.ParseFile(fileSet, path, nil, parser.ParseComments|parser.SkipObjectResolution)
 		require.NoError(t, err)
+
 		files = append(files, file)
 	}
+
 	constants := packageConstants(files)
 	for _, file := range files {
 		assert.Empty(t, untrustedConversions(fileSet, file, constants),

@@ -3,6 +3,7 @@ package sqlclient
 
 import (
 	"context"
+	"errors"
 	"strings"
 )
 
@@ -18,11 +19,17 @@ type Row map[string]string
 // Client executes each statement in autocommit mode and waits for completion.
 // Implementations bind named parameters safely, honor cancellation, and return
 // textual results. Warehouse routing, authentication, and connections belong to
-// the implementation. Construction must not connect to the database.
+// the implementation. Construction must not connect to the database. An error
+// after the statement may have reached the warehouse without a confirmed outcome
+// wraps ErrUnsettled.
 type Client interface {
 	// Query binds named parameters and returns all textual rows after statement completion.
-	Query(context.Context, Connection, string, map[string]string) ([]Row, error)
+	Query(ctx context.Context, target Connection, sql string, parameters map[string]string) ([]Row, error)
 }
+
+// ErrUnsettled marks a failed query whose statement may still be running or may have committed; SerializeMutations
+// stops sending mutations after one, because a later change could overlap it.
+var ErrUnsettled = errors.New("the statement may still be running")
 
 // Identifier quotes a Redshift SQL identifier.
 func Identifier(value string) string {

@@ -33,22 +33,23 @@ func TestDatashareSQL(t *testing.T) {
 	})
 }
 
-// TestDatashareListSQL pins the listing for every filter combination. Filter values are bound parameters, so a
-// name with quotes and backslashes never reaches the SQL text.
+// TestDatashareListSQL pins the outbound and inbound listings with and without a name. Filter values are bound
+// parameters, so a name with quotes and backslashes never reaches the SQL text.
 func TestDatashareListSQL(t *testing.T) {
-	built := func(shareType, name string) func() (string, error) {
+	built := func(outbound bool, name string) func() (string, error) {
 		return func() (string, error) {
-			sql, parameters, err := listDatasharesQuery(shareType, name).Build()
+			sql, parameters, err := listDatasharesQuery(outbound, name).Build()
 			if err == nil && name != "" && parameters["name"] != name {
 				return "", fmt.Errorf("name bound as %q", parameters["name"])
 			}
+
 			return sql, err
 		}
 	}
 	checkSQL(t, "datashares", []sqlCase{
-		{"all", built("", "")},
-		{"outbound", built("OUTBOUND", "")},
-		{"named", built("", `Odd"Share\'s`)},
-		{"inbound_named", built("INBOUND", "source")},
+		{"outbound", built(true, "")},
+		{"outbound_named", built(true, `Odd"Share\'s`)},
+		{"inbound", built(false, "")},
+		{"inbound_named", built(false, "source")},
 	})
 }

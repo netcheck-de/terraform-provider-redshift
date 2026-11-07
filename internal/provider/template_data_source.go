@@ -20,6 +20,7 @@ func newTemplateDataSource() datasource.DataSource {
 				ID: types.StringNull(), Database: attributes["database"].(types.String), Schema: attributes["schema"].(types.String), Name: attributes["name"].(types.String),
 				Owner: types.StringNull(), Format: types.StringNull(), FormatArgument: types.StringNull(), Parameters: types.MapNull(types.StringType),
 			}
+
 			entry, found, err := readTemplateCatalog(ctx, client, model)
 			if err == nil && found {
 				entry.applyCatalog(&model)
@@ -28,6 +29,7 @@ func newTemplateDataSource() datasource.DataSource {
 				lookupValue(data, "format_argument", model.FormatArgument)
 				lookupValue(data, "parameters", model.Parameters)
 			}
+
 			return found, err
 		},
 	}), templateOutputDescriptions)

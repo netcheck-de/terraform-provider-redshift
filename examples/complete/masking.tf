@@ -93,3 +93,10 @@ data "redshift_masking_policies" "local" {
   provider = redshift.consumer
   database = redshift_masking_policy.email.database
 }
+
+data "redshift_masking_policy_attachments" "customers" {
+  provider = redshift.consumer
+  database = redshift_masking_policy_attachment.email_readers.database
+  schema   = redshift_masking_policy_attachment.email_readers.schema
+  relation = redshift_masking_policy_attachment.email_readers.relation
+}

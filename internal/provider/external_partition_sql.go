@@ -30,16 +30,21 @@ func validateExternalPartitionValues(values map[string]string) error {
 	if len(values) == 0 {
 		return fmt.Errorf("values must name at least one partition key")
 	}
+
 	seen := map[string]string{}
+
 	for _, key := range slices.Sorted(maps.Keys(values)) {
 		if strings.TrimSpace(key) == "" {
 			return fmt.Errorf("values need nonempty partition key names")
 		}
+
 		if previous, ok := seen[strings.ToLower(key)]; ok {
 			return fmt.Errorf("values keys %q and %q name the same partition key", previous, key)
 		}
+
 		seen[strings.ToLower(key)] = key
 	}
+
 	return nil
 }
 
@@ -48,19 +53,23 @@ func validateExternalPartitionKnownConfig(data externalPartitionModel) error {
 	if (!data.Schema.IsUnknown() && data.Schema.ValueString() == "") || (!data.Table.IsUnknown() && data.Table.ValueString() == "") {
 		return fmt.Errorf("external partition requires a nonempty schema and table")
 	}
+
 	if !data.Values.IsUnknown() {
 		// Keys are known even when a partition value is not yet available.
 		values := make(map[string]string, len(data.Values.Elements()))
 		for key := range data.Values.Elements() {
 			values[key] = ""
 		}
+
 		if err := validateExternalPartitionValues(values); err != nil {
 			return err
 		}
 	}
+
 	if !data.Location.IsUnknown() {
 		return externalLocation(data.Location.ValueString())
 	}
+
 	return nil
 }
 
@@ -69,9 +78,11 @@ func validateExternalPartitionConfig(data externalPartitionModel) error {
 	if data.Schema.ValueString() == "" || data.Table.ValueString() == "" {
 		return fmt.Errorf("external partition requires a nonempty schema and table")
 	}
+
 	if err := validateExternalPartitionValues(knownMap(data.Values)); err != nil {
 		return err
 	}
+
 	return externalLocation(data.Location.ValueString())
 }
 
@@ -83,27 +94,34 @@ func externalPartitionSpecFrom(data externalPartitionModel, partitionKeys []stri
 	if spec.schema == "" || spec.table == "" {
 		return spec, fmt.Errorf("external partition requires a nonempty schema and table")
 	}
+
 	values := knownMap(data.Values)
 	if err := validateExternalPartitionValues(values); err != nil {
 		return spec, err
 	}
+
 	if len(partitionKeys) == 0 {
 		return spec, fmt.Errorf("external table %q has no partition keys", spec.table)
 	}
+
 	for _, key := range partitionKeys {
 		found := false
+
 		for configured, value := range values {
 			if strings.EqualFold(configured, key) {
 				spec.keys, spec.values, found = append(spec.keys, configured), append(spec.values, value), true
 			}
 		}
+
 		if !found {
 			return spec, fmt.Errorf("values must set every partition key of the table: %s", strings.Join(partitionKeys, ", "))
 		}
 	}
+
 	if len(values) != len(partitionKeys) {
 		return spec, fmt.Errorf("values must set only the partition keys of the table: %s", strings.Join(partitionKeys, ", "))
 	}
+
 	return spec, nil
 }
 
@@ -112,15 +130,18 @@ func externalPartitionKeysMatch(values map[string]string, partitionKeys []string
 	if len(values) != len(partitionKeys) || len(values) == 0 {
 		return false
 	}
+
 	for _, key := range partitionKeys {
 		found := false
 		for configured := range values {
 			found = found || strings.EqualFold(configured, key)
 		}
+
 		if !found {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -130,6 +151,7 @@ func externalPartitionClause(spec externalPartitionSpec) sqlclient.Statement {
 	for i, key := range spec.keys {
 		items[i] = sqlclient.Ident(key).Kw("=").Lit(spec.values[i])
 	}
+
 	return sqlclient.Kw("PARTITION").Paren(items...)
 }
 
@@ -166,22 +188,44 @@ func dropExternalPartitionStatement(spec externalPartitionSpec) string {
 	return externalPartitionAlter(spec).Kw("DROP").Append(externalPartitionClause(spec)).String()
 }
 
-// readExternalPartitionsQuery lists the table's partitions. Matching happens in Go, because the view reports
-// values as a JSON array whose exact spelling the reference does not pin down.
+// externalPartitionsSource selects partitions with their tables. Matching values happens in Go, because the view
+// reports values as a JSON array whose exact spelling the reference does not pin down.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_PARTITIONS.html
+func externalPartitionsSource() sqlclient.Query {
+	return sqlclient.Select("values", "location", "schemaname", "tablename").From("svv_external_partitions")
+}
+
+// readExternalPartitionsQuery lists the table's partitions, matching names as readExternalTableQuery does.
 func readExternalPartitionsQuery(spec externalPartitionSpec) sqlclient.Query {
-	return sqlclient.Select("values", "location").
-		From("svv_external_partitions").
+	return externalPartitionsSource().
 		Where("LOWER(schemaname) = LOWER(:schema)", sqlclient.Bind("schema", spec.schema)).
 		Where("LOWER(tablename) = LOWER(:table)", sqlclient.Bind("table", spec.table))
 }
 
-// externalPartitionValuesMatch reports whether a catalog values array holds the spec's values in key order.
-func externalPartitionValuesMatch(spec externalPartitionSpec, catalog string) (bool, error) {
+// listExternalPartitionsQuery lists partitions, optionally of one schema and table.
+func listExternalPartitionsQuery(schema, table string) sqlclient.Query {
+	return externalPartitionsSource().
+		WhereIf(schema != "", "LOWER(schemaname) = LOWER(:schema)", sqlclient.Bind("schema", schema)).
+		WhereIf(table != "", "LOWER(tablename) = LOWER(:table)", sqlclient.Bind("table", table))
+}
+
+// externalPartitionCatalogValues decodes a catalog values array, which holds the values in partition-key order.
+func externalPartitionCatalogValues(catalog string) ([]string, error) {
 	var values []string
 	if err := json.Unmarshal([]byte(catalog), &values); err != nil {
-		return false, fmt.Errorf("decode external partition values %q: %w", catalog, err)
+		return nil, fmt.Errorf("decode external partition values %q: %w", catalog, err)
 	}
+
+	return values, nil
+}
+
+// externalPartitionValuesMatch reports whether a catalog values array holds the spec's values in key order.
+func externalPartitionValuesMatch(spec externalPartitionSpec, catalog string) (bool, error) {
+	values, err := externalPartitionCatalogValues(catalog)
+	if err != nil {
+		return false, err
+	}
+
 	return slices.Equal(values, spec.values), nil
 }
 

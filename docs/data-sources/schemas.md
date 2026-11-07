@@ -1,30 +1,24 @@
 ---
-subcategory: Catalog Discovery
+subcategory: Databases and Schemas
 page_title: redshift_schemas Data Source - terraform-provider-redshift
-description: Lists the local, external, and datashare schemas of one database.
+description: Lists the local schemas of one database with their owners and quotas.
 ---
 
 # redshift_schemas (Data Source)
 
-Lists the schemas of one database with their owner and type. See AWS
-[SVV_ALL_SCHEMAS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ALL_SCHEMAS.html).
-
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_all_schemas WHERE database_name = '...' AND schema_type = '...';
-```
+Lists the local schemas of one database with their owners and disk quotas, in the shape of `redshift_schema`. See AWS
+[PG_EXTERNAL_SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_EXTERNAL_SCHEMA.html) and
+[SVV_REDSHIFT_SCHEMA_QUOTA](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_SCHEMA_QUOTA.html).
 
 ## Example Usage
 
 ```terraform
-data "redshift_schemas" "external" {
-  database    = "analytics"
-  schema_type = "external"
+data "redshift_schemas" "analytics" {
+  database = "analytics"
 }
 
-output "external_schema_sources" {
-  value = { for schema in data.redshift_schemas.external.schemas : schema.name => schema.source_database }
+output "schema_quotas" {
+  value = { for schema in data.redshift_schemas.analytics.schemas : schema.name => schema.quota }
 }
 ```
 
@@ -34,12 +28,11 @@ output "external_schema_sources" {
 
 ### Optional
 
-- `database` (String) Database whose schemas are listed; defaults to the provider's `database`.
-- `schema_type` (String) Only schemas of this type, in any case: `LOCAL`, `EXTERNAL`, or `SHARED`.
+- `database` (String) Database whose local schemas are listed; defaults to the provider's `database`.
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `schemas` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--schemas))
 
 <a id="nestedatt--schemas"></a>
@@ -49,16 +42,38 @@ Read-Only:
 
 - `database` (String) Database containing the schema.
 - `name` (String) Schema name.
-- `owner` (String) SQL user owning the schema; null for shared schemas, whose owner belongs to the producer.
-- `schema_type` (String) `LOCAL`, `EXTERNAL`, or `SHARED`.
-- `source_database` (String) Source database of an external schema, such as its AWS Glue database; null otherwise.
+- `owner` (String) SQL user owning the schema.
+- `quota` (Number) Disk quota in megabytes; `-1` means `UNLIMITED`. Null when the connection is neither a superuser nor the schema owner, because `SVV_REDSHIFT_SCHEMA_QUOTA` shows a regular user only their own schemas.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
-`database` defaults to the provider's `database`. The read always runs in the provider's database, because
-`SVV_ALL_SCHEMAS` spans every database of the warehouse, so datashare databases can be listed without connecting to
-them. `id` combines the warehouse binding, the listed database, and the configured filters. Items are ordered by
-name; no match returns an empty `schemas` list.
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
+-- List local schemas with their owners, leaving out external schemas.
+SELECT ... FROM pg_namespace JOIN pg_user ... LEFT JOIN pg_external_schema ... WHERE esoid IS NULL;
+-- Read the visible quotas of the database's schemas.
+SELECT ... FROM svv_redshift_schema_quota WHERE database_name = '...';
+-- Read whether the connected user is a superuser.
+SELECT ... FROM pg_user WHERE usename = current_user;
+```
+
+## Read Behavior
+
+`database` defaults to the provider's `database`, and the read runs in that database. After the database check, the
+listing takes three queries however many schemas the database holds. `id` combines the listed database within the
+warehouse. Items are ordered by name; a database without visible schemas returns an empty `schemas` list.
 
 System schemas such as `pg_catalog` and `information_schema` are included; filter them in Terraform when needed.
-Superusers see every schema; other users see only schemas they own or may use. Owner IDs of shared schemas belong to
-the producer warehouse, so their `owner` is null.
+External schemas are left out and listed by `redshift_external_schemas`. `PG_EXTERNAL_SCHEMA` shows a regular user only
+the external schemas whose metadata they may access, so for a regular user other external schemas appear as local
+ones.
+
+`quota` is read as `redshift_schema` reads it: a quota row in `SVV_REDSHIFT_SCHEMA_QUOTA` gives the quota in megabytes,
+and a schema without one is `-1` (`UNLIMITED`). That view shows a regular user only their own schemas, so the quota of
+another owner's schema is null unless the connection is a superuser.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

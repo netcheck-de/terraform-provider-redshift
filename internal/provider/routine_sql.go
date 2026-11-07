@@ -32,6 +32,7 @@ func routineBaseType(name sqlclient.Keyword) sqlclient.Keyword {
 	if open := strings.IndexByte(string(name), '('); open >= 0 {
 		return name[:open]
 	}
+
 	return name
 }
 
@@ -44,8 +45,10 @@ func routineSignature(argumentTypes []string) (sqlclient.Keyword, error) {
 		if err != nil {
 			return "", fmt.Errorf("argument %d: %w", i+1, err)
 		}
+
 		bases[i] = string(routineBaseType(name))
 	}
+
 	return sqlclient.Signature(bases...)
 }
 
@@ -62,6 +65,7 @@ func routineCatalogSignature(catalog string) string {
 	for i, name := range names {
 		names[i] = sqlclient.CatalogType(name)
 	}
+
 	return strings.Join(names, ", ")
 }
 
@@ -70,10 +74,12 @@ func routineSignatureTypes(signature string) []string {
 	if strings.TrimSpace(signature) == "" {
 		return nil
 	}
+
 	parts := strings.Split(signature, ",")
 	for i := range parts {
 		parts[i] = strings.TrimSpace(parts[i])
 	}
+
 	return parts
 }
 
@@ -81,10 +87,12 @@ func routineSignatureTypes(signature string) []string {
 // int and integer. Invalid spellings compare literally, so ValidateConfig reports them instead of a plan diff.
 func routineTypesEquivalent(a, b string) bool {
 	left, leftErr := routineType(a)
+
 	right, rightErr := routineType(b)
 	if leftErr != nil || rightErr != nil {
 		return a == b
 	}
+
 	return left == right
 }
 
@@ -96,10 +104,12 @@ func routineTypeReplaces(before, after string) bool {
 	if routineTypesEquivalent(before, after) {
 		return false
 	}
+
 	stored, err := routineType(before)
 	if err != nil || routineBaseType(stored) != stored {
 		return true
 	}
+
 	return !routineCatalogTypeMatches(after, before)
 }
 
@@ -109,10 +119,12 @@ func routineDeclaredTypes(unknown bool, values ...string) attr.Value {
 	if unknown {
 		return types.StringUnknown()
 	}
+
 	canonical := make([]string, len(values))
 	for i, value := range values {
 		canonical[i] = routineCatalogType(value)
 	}
+
 	return types.StringValue(strings.Join(canonical, ", "))
 }
 
@@ -120,10 +132,12 @@ func routineDeclaredTypes(unknown bool, values ...string) attr.Value {
 // keeps of a routine argument or return type.
 func routineCatalogTypeMatches(configured, catalog string) bool {
 	left, leftErr := routineType(configured)
+
 	right, rightErr := routineType(catalog)
 	if leftErr != nil || rightErr != nil {
 		return strings.EqualFold(configured, catalog)
 	}
+
 	return routineBaseType(left) == routineBaseType(right)
 }
 
@@ -141,6 +155,7 @@ func routineRejectedType(name sqlclient.Keyword, kind string) error {
 	case name == "REFCURSOR" && kind == "function":
 		return fmt.Errorf("REFCURSOR is supported only by stored procedures")
 	}
+
 	return nil
 }
 
@@ -149,12 +164,15 @@ func routineStrings(value types.List) []string {
 	if value.IsNull() || value.IsUnknown() {
 		return nil
 	}
+
 	var values []string
+
 	for _, element := range value.Elements() {
 		if text, ok := element.(types.String); ok && !text.IsNull() && !text.IsUnknown() {
 			values = append(values, text.ValueString())
 		}
 	}
+
 	return values
 }
 
@@ -169,6 +187,7 @@ func routineOwner(configured types.String, catalog string) types.String {
 	if routineOwnerMatches(configured, catalog) {
 		return configured
 	}
+
 	return types.StringValue(catalog)
 }
 
@@ -182,6 +201,7 @@ func routineVolatility(code string) (string, error) {
 	case "i":
 		return "IMMUTABLE", nil
 	}
+
 	return "", fmt.Errorf("unknown routine volatility %q", code)
 }
 
@@ -196,6 +216,7 @@ func routineOwnerStep[M any](owner func(M) types.String, alter func(M) sqlclient
 			if name == "" {
 				return nil
 			}
+
 			return []string{alter(plan).KwIdent("OWNER TO", name).String()}
 		},
 	}
@@ -224,10 +245,12 @@ func routineRedefinitionSteps[M any](statement string, attributes ...routineDefi
 						return nil
 					}
 				}
+
 				return []string{statement}
 			},
 		}
 	}
+
 	return steps
 }
 
@@ -238,13 +261,16 @@ func routineImportArguments(id string) ([]string, sqlclient.Keyword, error) {
 	if err := json.Unmarshal([]byte(id), &values); err != nil {
 		return nil, "", fmt.Errorf("expected a JSON object: %w", err)
 	}
+
 	text, ok := values[routineIdentityArguments]
 	if !ok {
 		return nil, "", fmt.Errorf(`missing field %s; use "" for a routine without input arguments`, routineIdentityArguments)
 	}
+
 	signature, err := routineSignature(routineSignatureTypes(text))
 	if err != nil {
 		return nil, "", err
 	}
+
 	return routineSignatureTypes(string(signature)), signature, nil
 }

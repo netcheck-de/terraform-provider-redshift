@@ -9,12 +9,6 @@ description: Checks whether a masking policy is attached to columns of a relatio
 Checks one masking policy attachment and reads its input mapping and priority. See AWS
 [SVV_ATTACHED_MASKING_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ATTACHED_MASKING_POLICY.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_attached_masking_policy WHERE policy_name = '...' AND schema_name = '...' AND table_name = '...';
-```
-
 ## Example Usage
 
 {{ tffile "examples/data-sources/redshift_masking_policy_attachment/data-source.tf" }}
@@ -22,6 +16,17 @@ SELECT ... FROM svv_attached_masking_policy WHERE policy_name = '...' AND schema
 <!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Check the masking policy attachment on the selected relation.
+SELECT ... FROM svv_attached_masking_policy WHERE policy_name = '...' AND schema_name = '...' AND table_name = '...';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the attachment's JSON identity, using the paired resource's warehouse, `database`, `policy`,
 `schema`, `relation`, `columns` (a JSON list), `grantee`, and `grantee_type` keys. It is null when `exists` is false,

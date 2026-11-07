@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -28,7 +30,7 @@ func TestGroupImport(t *testing.T) {
 	r := &groupResource{testResourceClient(&catalog{group: true})}
 	state := testState(t, r, readersGroup())
 	resp := resource.ImportStateResponse{State: state}
-	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","name":"readers"}`}, &resp)
+	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"name":"readers"}`}, &resp)
 	require.False(t, resp.Diagnostics.HasError())
 }
 
@@ -74,4 +76,29 @@ func TestGroupReadRejectsInvalidRows(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+}
+
+// TestGroupCreateVerificationFailureKeepsKnownState checks recovery from successful DDL followed by a failed read.
+func TestGroupCreateVerificationFailureKeepsKnownState(t *testing.T) {
+	created := false
+	r := &groupResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+		if strings.HasPrefix(sql, "CREATE GROUP") {
+			created = true
+			return nil, nil
+		}
+
+		return nil, errors.New("catalog unavailable")
+	}))}
+	plan := readersGroup()
+	plan.GroupID, plan.Members = types.Int64Unknown(), types.SetUnknown(types.StringType)
+	state, diagnostics := applyOperation(t, r, "create", nil, plan, nil)
+	require.True(t, diagnostics.HasError())
+	require.True(t, created)
+	require.True(t, state.Raw.IsFullyKnown())
+
+	var recorded groupModel
+	require.False(t, state.Get(context.Background(), &recorded).HasError())
+	assert.JSONEq(t, `{"name":"readers"}`, recorded.ID.ValueString())
+	assert.True(t, recorded.GroupID.IsNull())
+	assert.True(t, recorded.Members.IsNull())
 }

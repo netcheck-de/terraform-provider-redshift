@@ -14,6 +14,7 @@ import (
 // TestContractCopyJobPlan drives real plans: the required table block, an in-place AUTO change, and a replacing source change.
 func TestContractCopyJobPlan(t *testing.T) {
 	t.Parallel()
+
 	c := &catalog{identity: true, privileges: map[string]bool{}}
 	configuration := func(source, auto, table string) string {
 		return fmt.Sprintf(`

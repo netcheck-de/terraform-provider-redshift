@@ -19,18 +19,6 @@ selects procedures only.
 Shared routine and snapshot lookups require a SQL superuser so filtered metadata cannot report false absence or an
 incomplete common privilege set.
 
-## Catalog Query
-
-```sql
-SHOW GRANTS ON ...;
-SELECT usesuper FROM pg_user WHERE usename = current_user;
-SELECT ... FROM svv_function_privileges WHERE namespace_name = '...' ...;
-SELECT ... FROM svv_relation_privileges WHERE namespace_name = '...' ...;
-SELECT ... FROM svv_ml_model_privileges WHERE namespace_name = '...' AND model_name = '...' ...;
-SELECT DISTINCT ... FROM svv_all_tables WHERE database_name = '...' AND schema_name = '...';
-SELECT DISTINCT ... FROM svv_redshift_functions WHERE database_name = '...' AND schema_name = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -69,6 +57,35 @@ data "redshift_object_grant" "report" {
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `privileges` (Set of String) Current explicit privileges for the selected tuple; inherited privileges are excluded.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read explicit grants on the selected object.
+SHOW GRANTS ON ...;
+
+-- Check superuser access for reads that require complete catalog visibility.
+SELECT usesuper FROM pg_user WHERE usename = current_user;
+
+-- Read local routine privileges.
+SELECT ... FROM svv_function_privileges WHERE namespace_name = '...' ...;
+
+-- Read local relation privileges.
+SELECT ... FROM svv_relation_privileges WHERE namespace_name = '...' ...;
+
+-- Read machine learning model privileges.
+SELECT ... FROM svv_ml_model_privileges WHERE namespace_name = '...' AND model_name = '...' ...;
+
+-- Enumerate shared tables for a schema snapshot.
+SELECT DISTINCT ... FROM svv_all_tables WHERE database_name = '...' AND schema_name = '...';
+
+-- Enumerate shared routines for a schema snapshot.
+SELECT DISTINCT ... FROM svv_redshift_functions WHERE database_name = '...' AND schema_name = '...';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the permission tuple's JSON identity, using the paired resource's warehouse, provider
 database, `database_name`, `database_type`, `schema_name`, `object_name`, `object_type`, `arguments`, `grantee`, and

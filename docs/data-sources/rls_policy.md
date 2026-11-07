@@ -9,12 +9,6 @@ description: Looks up a row-level security policy definition.
 Reads one row-level security policy without managing it. See AWS
 [SVV_RLS_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_POLICY.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_rls_policy WHERE poldb = 'database' AND polname = 'name';
-```
-
 ## Example Usage
 
 ```terraform
@@ -49,6 +43,17 @@ Read-Only:
 - `name` (String) Column name in the attached relations.
 - `type` (String) Redshift data type in the catalog's canonical form, in uppercase, such as `CHARACTER VARYING(64)`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the row-level security policy definition.
+SELECT ... FROM svv_rls_policy WHERE poldb = 'database' AND polname = 'name';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the policy's JSON identity, using the same warehouse, database, and name keys as the paired
 resource. `predicate` is the catalog's rewritten form of the `USING` expression.

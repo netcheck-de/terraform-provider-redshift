@@ -13,6 +13,7 @@ import (
 // TestContractReferencedRoleNameChangeReplacesMembership verifies Terraform propagates names without caller lifecycle triggers.
 func TestContractReferencedRoleNameChangeReplacesMembership(t *testing.T) {
 	t.Parallel()
+
 	c := &catalog{identity: true, privileges: map[string]bool{}}
 	configuration := func(name string) string {
 		return fmt.Sprintf(`

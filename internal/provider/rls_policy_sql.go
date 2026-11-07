@@ -27,22 +27,27 @@ func rlsPolicyColumns(value types.List) ([]rlsPolicyColumn, error) {
 	if value.IsNull() || value.IsUnknown() {
 		return nil, nil
 	}
+
 	columns := make([]rlsPolicyColumn, 0, len(value.Elements()))
 	for index, element := range value.Elements() {
 		object, ok := element.(types.Object)
 		if !ok || object.IsNull() || object.IsUnknown() {
 			return nil, fmt.Errorf("column[%d] must be a known object", index)
 		}
+
 		name, dataType := objectString(object, "name"), objectString(object, "type")
 		if name == "" {
 			return nil, fmt.Errorf("column[%d] needs a nonempty name", index)
 		}
+
 		canonical, err := sqlclient.ColumnType(dataType)
 		if err != nil {
 			return nil, fmt.Errorf("column[%d] (%s): %w", index, name, err)
 		}
+
 		columns = append(columns, rlsPolicyColumn{name: name, dataType: canonical})
 	}
+
 	return columns, nil
 }
 
@@ -59,13 +64,16 @@ func parseRlsPolicyColumns(polatts string) ([]rlsPolicyCatalogColumn, error) {
 	if strings.TrimSpace(polatts) == "" {
 		return nil, nil
 	}
+
 	var columns []rlsPolicyCatalogColumn
 	if err := json.Unmarshal([]byte(polatts), &columns); err != nil {
 		return nil, fmt.Errorf("decode RLS policy attributes %q: %w", polatts, err)
 	}
+
 	for i := range columns {
 		columns[i].Type = sqlclient.CatalogType(columns[i].Type)
 	}
+
 	return columns, nil
 }
 
@@ -74,10 +82,12 @@ func rlsPolicyColumnsList(columns []rlsPolicyCatalogColumn) types.List {
 	if len(columns) == 0 {
 		return types.ListNull(rlsPolicyColumnType)
 	}
+
 	elements := make([]attr.Value, len(columns))
 	for i, column := range columns {
 		elements[i] = types.ObjectValueMust(rlsPolicyColumnType.AttrTypes, map[string]attr.Value{"name": types.StringValue(column.Name), "type": types.StringValue(column.Type)})
 	}
+
 	return types.ListValueMust(rlsPolicyColumnType, elements)
 }
 
@@ -86,14 +96,17 @@ func rlsPolicyCatalogColumnsOf(value types.List) []rlsPolicyCatalogColumn {
 	if value.IsNull() || value.IsUnknown() {
 		return nil
 	}
+
 	columns := make([]rlsPolicyCatalogColumn, 0, len(value.Elements()))
 	for _, element := range value.Elements() {
 		object, ok := element.(types.Object)
 		if !ok || object.IsNull() || object.IsUnknown() {
 			continue
 		}
+
 		columns = append(columns, rlsPolicyCatalogColumn{Name: objectString(object, "name"), Type: objectString(object, "type")})
 	}
+
 	return columns
 }
 
@@ -104,12 +117,14 @@ func rlsPolicyColumnsMatch(configured []rlsPolicyColumn, catalog []rlsPolicyCata
 	if len(configured) != len(catalog) {
 		return false
 	}
+
 	for i, column := range configured {
 		catalogType, err := sqlclient.ColumnType(catalog[i].Type)
 		if !strings.EqualFold(column.name, catalog[i].Name) || err != nil || catalogType != column.dataType {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -119,6 +134,7 @@ func rlsPolicyPredicate(data rlsPolicyModel) (sqlclient.UserSQL, error) {
 	if err != nil {
 		return "", fmt.Errorf("predicate: %w", err)
 	}
+
 	return predicate, nil
 }
 
@@ -134,27 +150,33 @@ func createRlsPolicyStatement(data rlsPolicyModel) (string, error) {
 	if data.Name.ValueString() == "" {
 		return "", fmt.Errorf("RLS policy requires a nonempty name")
 	}
+
 	columns, err := rlsPolicyColumns(data.Column)
 	if err != nil {
 		return "", err
 	}
+
 	alias := knownString(data.Alias)
 	if alias != "" && len(columns) == 0 {
 		return "", fmt.Errorf("alias requires at least one column block, because it is part of the WITH clause")
 	}
+
 	predicate, err := rlsPolicyPredicate(data)
 	if err != nil {
 		return "", err
 	}
+
 	items := make([]sqlclient.Statement, len(columns))
 	for i, column := range columns {
 		items[i] = sqlclient.Ident(column.name).Kw(column.dataType)
 	}
+
 	statement := sqlclient.Stmt("CREATE RLS POLICY").Ident(data.Name.ValueString()).
 		When(len(columns) > 0, func(s sqlclient.Statement) sqlclient.Statement {
 			return s.Kw("WITH").Paren(items...).OptIdent("AS", alias)
 		}).
 		Append(rlsPolicyUsing(predicate))
+
 	return statement.String(), statement.Err()
 }
 
@@ -179,6 +201,7 @@ func alterRlsPolicyStatements(prev, plan rlsPolicyModel) ([]string, error) {
 			return nil, err
 		}
 	}
+
 	return alterStatements(prev, plan, rlsPolicyAlterSteps), nil
 }
 

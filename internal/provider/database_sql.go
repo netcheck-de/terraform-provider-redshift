@@ -29,6 +29,7 @@ func databaseConnectionLimit(statement sqlclient.Statement, limit int64) sqlclie
 	if limit == databaseUnlimited {
 		return statement.Kw("CONNECTION LIMIT UNLIMITED")
 	}
+
 	return statement.KwInt("CONNECTION LIMIT", limit)
 }
 
@@ -38,10 +39,13 @@ func databaseOptions(data databaseModel) (collation, isolation sqlclient.Keyword
 	if limit := knownInt64(data.ConnectionLimit); limit != nil && *limit < databaseUnlimited {
 		return "", "", fmt.Errorf("connection_limit must be -1 (UNLIMITED) or at least 0, got %d", *limit)
 	}
+
 	if collation, err = optOneOf(data.Collation, databaseCollations...); err != nil {
 		return "", "", err
 	}
+
 	isolation, err = optOneOf(data.IsolationLevel, databaseIsolationLevels...)
+
 	return collation, isolation, err
 }
 
@@ -53,31 +57,40 @@ func createDatabaseStatement(data databaseModel) (string, error) {
 	if err := validateDatabaseIntegration(data); err != nil {
 		return "", err
 	}
+
 	if data.DatashareARN.IsNull() {
 		collation, isolation, err := databaseOptions(data)
 		if err != nil {
 			return "", err
 		}
+
 		if data.Integration != nil {
 			statement = statement.Append(databaseIntegrationSource(*data.Integration))
 		}
+
 		statement = statement.OptIdent("OWNER", knownString(data.Owner))
 		if limit := knownInt64(data.ConnectionLimit); limit != nil {
 			statement = databaseConnectionLimit(statement, *limit)
 		}
+
 		statement = statement.When(collation != "", func(s sqlclient.Statement) sqlclient.Statement { return s.Kw("COLLATE", collation) }).
 			When(isolation != "", func(s sqlclient.Statement) sqlclient.Statement { return s.Kw("ISOLATION LEVEL", isolation) })
+
 		return statement.String(), statement.Err()
 	}
+
 	if err := validateDatabase(data); err != nil {
 		return "", err
 	}
+
 	source, err := parseShare(data.DatashareARN.ValueString())
 	if err != nil {
 		return "", err
 	}
+
 	statement = statement.If(data.WithPermissions.ValueBool(), "WITH PERMISSIONS").
 		KwIdent("FROM DATASHARE", source.Name).KwLit("OF ACCOUNT", source.Account).KwLit("NAMESPACE", source.Namespace)
+
 	return statement.String(), statement.Err()
 }
 
@@ -124,17 +137,20 @@ var databaseAlterSteps = []alterStep[databaseModel]{
 }
 
 // alterDatabaseStatements renders the in-place changes from prev to plan. A null plan value means the option
-// is not managed (a shared database, or state written before the option existed), so it never renders a reset.
+// is not managed (a shared database), so it never renders a reset.
 func alterDatabaseStatements(prev, plan databaseModel) ([]string, error) {
 	if _, _, err := databaseOptions(plan); err != nil {
 		return nil, err
 	}
+
 	var managed []alterStep[databaseModel]
+
 	for _, step := range databaseAlterSteps {
 		if !step.value(plan).IsNull() {
 			managed = append(managed, step)
 		}
 	}
+
 	return alterStatements(prev, plan, managed), nil
 }
 

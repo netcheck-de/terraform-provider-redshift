@@ -9,12 +9,6 @@ description: Reads a local object's annotation without adopting or clearing it.
 Reads a local database, schema, table, view, column, or table constraint annotation. See AWS
 [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_description ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -48,6 +42,17 @@ data "redshift_comment" "column" {
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `text` (String) Comment text. An empty string represents no annotation and clears it with `IS NULL`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the selected object's comment.
+SELECT ... FROM pg_description ...;
+```
+
+## Read Behavior
 
 `id` (String, computed) is the object's JSON identity in the paired resource format. It includes the warehouse, provider
 database, `database_name`, `object_type`, and `object_name`; `schema_name`, `column_name`, and `constraint_name` are

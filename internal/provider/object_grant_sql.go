@@ -64,6 +64,7 @@ func objectGrantRoutineKind(alias sqlclient.Keyword, procedures bool) sqlclient.
 	if procedures {
 		return "NVL(" + alias + "function_type, '') ILIKE '%PROCEDURE%'"
 	}
+
 	return "NVL(" + alias + "function_type, '') NOT ILIKE '%PROCEDURE%'"
 }
 
@@ -124,17 +125,21 @@ func objectGrantRoutineSnapshot(procedures bool) (source, count sqlclient.Keywor
 		" AND r.function_name = f.function_name AND NVL(r.argument_type, '') = NVL(f.argument_types, '') AND " + objectGrantRoutineKind("r.", procedures) + ")" +
 		" GROUP BY function_name, NVL(argument_types, ''), privilege_type) AS per_object GROUP BY privilege_type) AS granted"
 	count = "objects = (SELECT COUNT(*) FROM svv_redshift_functions WHERE database_name = :database AND schema_name = :schema AND " + objectGrantRoutineKind("", procedures) + ")"
+
 	return source, count
 }
 
 // readObjectGrantSnapshotQuery reads the privileges a grantee holds on every current object of one kind in a schema.
 func readObjectGrantSnapshotQuery(kind, database, schema, grantee, granteeType string) sqlclient.Query {
 	identity := []sqlclient.Param{sqlclient.Bind("schema", schema), sqlclient.Bind("grantee", grantee), sqlclient.Bind("kind", granteeType)}
+
 	source, count := objectGrantAllTables, objectGrantAllTablesCount
 	if kind != "ALL TABLES" {
 		source, count = objectGrantRoutineSnapshot(kind == "ALL PROCEDURES")
+
 		identity = append(identity, sqlclient.Bind("database", database))
 	}
+
 	return sqlclient.Select("privilege_type", "admin_option").From(source, identity...).
 		Where(count, sqlclient.Bind("database", database), sqlclient.Bind("schema", schema))
 }
@@ -146,8 +151,11 @@ func objectGrantSignature(arguments string) (sqlclient.Keyword, error) {
 	if strings.TrimSpace(arguments) == "" {
 		return "", nil
 	}
+
 	var types []string
+
 	depth, start := 0, 0
+
 	for i, char := range arguments {
 		switch char {
 		case '(':
@@ -161,17 +169,21 @@ func objectGrantSignature(arguments string) (sqlclient.Keyword, error) {
 			}
 		}
 	}
+
 	types = append(types, arguments[start:])
 	for i, argument := range types {
 		name, err := sqlclient.TypeName(strings.TrimSpace(argument))
 		if err != nil {
 			return "", fmt.Errorf("arguments: %w", err)
 		}
+
 		if open := strings.IndexByte(string(name), '('); open >= 0 {
 			name = name[:open]
 		}
+
 		types[i] = string(name)
 	}
+
 	return sqlclient.Signature(types...)
 }
 
@@ -180,20 +192,25 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 	if objectString(data, "database_type") != "" {
 		return sharedObjectGrantTarget(data)
 	}
+
 	grantee, check, err := principal(data)
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	database, schemaName, name, kind := objectString(data, "database_name"), objectString(data, "schema_name"), objectString(data, "object_name"), objectString(data, "object_type")
 	arguments := objectString(data, "arguments")
+
 	allowed, ok := objectGrantPrivileges[kind]
 	if !ok {
 		return privilegeTarget{}, fmt.Errorf("unsupported object_type %q", kind)
 	}
+
 	routine := kind == "FUNCTION" || kind == "PROCEDURE"
 	if arguments != "" && !routine {
 		return privilegeTarget{}, fmt.Errorf("arguments is only valid for FUNCTION and PROCEDURE")
 	}
+
 	named := kind == "TABLE" || kind == "MODEL" || kind == "TEMPLATE" || routine
 	switch {
 	case kind == "DATABASE" && (schemaName != "" || name != ""):
@@ -205,16 +222,23 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 	case !named && name != "":
 		return privilegeTarget{}, fmt.Errorf("%s does not accept object_name", kind)
 	}
+
 	signature, err := objectGrantSignature(arguments)
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	queries := []sqlclient.Query{localDatabaseQuery(database)}
 	granteeName, granteeType := objectString(data, "grantee"), objectString(data, "grantee_type")
-	var object sqlclient.Statement
-	var read sqlclient.Query
-	var extra []catalogCheck
+
+	var (
+		object sqlclient.Statement
+		read   sqlclient.Query
+		extra  []catalogCheck
+	)
+
 	showGrants := false
+
 	switch kind {
 	case "DATABASE":
 		object, showGrants = sqlclient.Kw("ON DATABASE").Ident(database), true
@@ -226,19 +250,23 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 		object, showGrants = sqlclient.Kw("ON TABLE").Qualified(database, schemaName, name), true
 	case "FUNCTION", "PROCEDURE":
 		queries = append(queries, privilegeSchemaQuery(database, schemaName), objectGrantRoutineQuery(database, schemaName, name, routineCatalogArguments(signature)))
+
 		keyword, err := sqlclient.OneOf(kind, "FUNCTION", "PROCEDURE")
 		if err != nil {
 			return privilegeTarget{}, err
 		}
+
 		object = sqlclient.Kw("ON", keyword).Qualified(database, schemaName, name).Args(sqlclient.Kw(signature))
 		read = readObjectGrantRoutineQuery(schemaName, name, routineCatalogArguments(signature), granteeName, granteeType)
 	case "MODEL":
 		// GRANT ON MODEL takes a schema-qualified name; the statement runs in the model's database.
 		queries = append(queries, privilegeSchemaQuery(database, schemaName))
+
 		model, err := newCatalogCheck(objectGrantModelQuery(database, schemaName, name))
 		if err != nil {
 			return privilegeTarget{}, err
 		}
+
 		model.local = true
 		extra = append(extra, model)
 		object = sqlclient.Kw("ON MODEL").Qualified(schemaName, name)
@@ -257,26 +285,41 @@ func objectGrantTarget(data types.Object) (privilegeTarget, error) {
 	default:
 		// A schema holding only the other routine kind has nothing for this snapshot to cover.
 		queries = append(queries, objectGrantMembersQuery("svv_redshift_functions", database, schemaName).Where(objectGrantRoutineKind("", kind == "ALL PROCEDURES")))
+
 		keyword, err := sqlclient.OneOf(kind, "ALL FUNCTIONS", "ALL PROCEDURES")
 		if err != nil {
 			return privilegeTarget{}, err
 		}
+
 		object = sqlclient.Kw("ON", keyword).KwIdent("IN SCHEMA", schemaName)
 		read = readObjectGrantSnapshotQuery(kind, database, schemaName, granteeName, granteeType)
 	}
+
 	checks, err := newCatalogChecks(queries...)
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	checks = append(checks, extra...)
 	target := privilegeTarget{database: database, checks: append([]catalogCheck{check}, checks...), allowed: allowed, grant: grantSpec{object: object, grantee: grantee}}
+
+	target.scopeWide = strings.HasPrefix(kind, "ALL ")
+	if target.scopeWide {
+		// The snapshot read reports only privileges every object holds, so privileges and grant options held on some
+		// objects stay invisible. Revoke every undesired one, so update and destroy cannot leave partial grants behind.
+		target.implicit, target.implicitOptions = privilegeNames(allowed), true
+	}
+
 	if showGrants {
 		target.query = catalogCheck{sql: sqlclient.Stmt("SHOW GRANTS").Append(object).String()}
 		target.filter = func(row sqlclient.Row) bool {
 			return row["identity_name"] == granteeName && strings.EqualFold(row["identity_type"], granteeType) && row["privilege_scope"] == kind
 		}
+
 		return target, nil
 	}
+
 	target.query, err = newCatalogCheck(read)
+
 	return target, err
 }

@@ -13,14 +13,6 @@ on for the relation with `redshift_table_security`. See AWS
 [ALTER RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_RLS_POLICY.html), and
 [DROP RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_RLS_POLICY.html).
 
-## SQL Statements
-
-```sql
-CREATE RLS POLICY name ... USING (predicate);
-ALTER RLS POLICY name USING (predicate);
-DROP RLS POLICY name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -66,8 +58,8 @@ resource "redshift_rls_policy" "tenant" {
 
 ### Read-Only
 
-- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed outside literals, quoted identifiers, and comments; detects definition changes made outside Terraform.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 
 <a id="nestedblock--column"></a>
 ### Nested Schema for `column`
@@ -77,6 +69,21 @@ Required:
 - `name` (String) Column name in the attached relations.
 - `type` (String) Redshift data type, such as `VARCHAR(64)` or `INTEGER`; compared with the catalog in canonical form.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the row-level security policy.
+CREATE RLS POLICY name ... USING (predicate);
+
+-- Update the row-filtering predicate.
+ALTER RLS POLICY name USING (predicate);
+
+-- Delete the row-level security policy.
+DROP RLS POLICY name;
+```
 
 ## Lifecycle and Ownership
 
@@ -121,28 +128,23 @@ the catalog. A dropped policy is removed from state, and the next plan creates i
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_rls_policy.own_region
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    name           = "own_region"
+    database = "analytics"
+    name     = "own_region"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_rls_policy.own_region \
-  '{"workgroup_name":"warehouse","database":"analytics","name":"own_region"}'
+  '{"database":"analytics","name":"own_region"}'
 ```
 
 Refresh reads the columns, alias, and the catalog form of the predicate. Columns and alias that match configuration

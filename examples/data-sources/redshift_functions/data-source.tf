@@ -3,6 +3,6 @@ data "redshift_functions" "public" {
   schema   = "public"
 }
 
-output "lambda_udfs" {
-  value = [for function in data.redshift_functions.public.functions : function.name if function.language == "exfunc"]
+output "immutable_udfs" {
+  value = [for function in data.redshift_functions.public.functions : "${function.name}(${function.signature})" if function.volatility == "IMMUTABLE"]
 }

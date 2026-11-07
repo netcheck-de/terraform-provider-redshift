@@ -9,12 +9,6 @@ description: Reads explicit USAGE on the sql or plpgsql language for one SQL ide
 Reads whether one grantee holds `USAGE` on `sql` or `plpgsql` in one local database, and whether a user holds it with
 grant option. See AWS [SVV_LANGUAGE_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_LANUGAGE_PRIVILEGES.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_language_privileges WHERE language_name = '...' AND identity_name = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -43,6 +37,17 @@ data "redshift_language_grant" "developers_plpgsql" {
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `privileges` (Set of String) Current explicit privileges for the selected tuple; inherited privileges are excluded.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read explicit language privileges for the selected grantee.
+SELECT ... FROM svv_language_privileges WHERE language_name = '...' AND identity_name = '...';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the tuple's JSON identity, using the paired resource's warehouse, provider database,
 `database_name`, `language_name`, `grantee`, and `grantee_type` keys.

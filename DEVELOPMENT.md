@@ -1,214 +1,190 @@
 # Development and releases
 
-Use the AWS [Redshift SQL reference](https://docs.aws.amazon.com/redshift/latest/dg/c_SQL_commands.html) for syntax,
-catalog behavior, and privileges. See [AGENTS.md](AGENTS.md) for repository layout and implementation guardrails.
+The `netcheck-de/redshift` provider manages Redshift SQL objects using terraform-plugin-framework, protocol 6,
+through the Data API or direct TLS. Use the AWS
+[Redshift SQL reference](https://docs.aws.amazon.com/redshift/latest/dg/c_SQL_commands.html) for SQL behavior.
+
+## Repository layout
+
+```text
+.
+|-- docs/               # Generated documentation
+|-- examples/
+|   |-- complete/       # Integrated usage
+|   |   `-- tests/      # Mocked composition tests
+|   |       `-- mocks/  # Shared provider mocks
+|   |-- data-sources/   # Data-source examples
+|   |-- provider/       # Provider configuration examples
+|   `-- resources/      # Resource and import examples
+|-- internal/
+|   |-- provider/       # Resources, data sources, and provider wiring
+|   |-- redshiftconn/   # Direct pgx transport
+|   |-- redshiftdata/   # Data API transport
+|   `-- sqlclient/      # Client interface, SQL builders, mutation serialization
+`-- templates/          # Documentation templates
+```
 
 ## Local checks
 
-Install Go matching `go.mod`, Terraform 1.14+, Task v3, `curl`, yamllint, and markdownlint-cli. The pinned golangci-lint
-release is installed automatically. Run commands from the repository root.
+Install Go matching `go.mod`, Terraform 1.16+, Task v3, `curl`, yamllint, and markdownlint-cli
+(`brew install yamllint markdownlint-cli`). Run commands from the repository root.
 
-| Command                                        | Purpose                                                                                     |
-|------------------------------------------------|---------------------------------------------------------------------------------------------|
-| `task check`                                   | Formatting, lint, vet, offline race tests with coverage, and generated documentation checks |
-| `task test`                                    | Run all offline tests with race detection, coverage, and Go's default test-result caching   |
-| `task fmt` / `task markdown-fmt`               | Format Go / repository Markdown                                                             |
-| `task lint` / `task lint-fix`                  | Run the pinned Go linter / apply autofixes                                                  |
-| `task golden`                                  | Rewrite SQL goldens; review every change                                                    |
-| `task docs` / `task docs-check`                | Regenerate documentation / validate it and detect stale output                              |
-| `task terraform-check` / `task terraform-test` | Validate examples / run mocked composition tests                                            |
-| `task terraform -- <args>`                     | Run Terraform with the local provider; override `TF_DIR` if needed                          |
-| `task snapshot`                                | Build unsigned release archives without publishing                                          |
+| Command                                        | Purpose                                                  |
+|------------------------------------------------|----------------------------------------------------------|
+| `task check`                                   | Lint, formatting, offline race tests, coverage, and docs |
+| `task test`                                    | Offline tests with race detection and coverage           |
+| `task fmt` / `task markdown-fmt`               | Format Go / Markdown                                     |
+| `task lint` / `task lint-fix`                  | Go lint / autofix                                        |
+| `task golden`                                  | Regenerate SQL goldens                                   |
+| `task docs` / `task docs-check`                | Generate / validate documentation                        |
+| `task terraform-check` / `task terraform-test` | Validate / test examples                                 |
+| `task terraform -- <args>`                     | Local provider CLI; `TF_DIR` selects the configuration   |
 
-Development files and build caches live in `.cache/`. Tools are pinned in `go.mod` (`go tool <name>`) or
-`.golangci-lint-version`; lint configuration lives in `.golangci.yml`, `.markdownlint.yml`, and `.yamllint.yml`.
-Refresh Go dependencies with `go get -u ./...` followed by `go mod tidy`; update a tool with
-`go get -tool <module>@<version>`. Keep golangci-lint compatible with the Go version in `go.mod`.
+Builds and caches live in `.cache/`. Task installs the golangci-lint version in `.golangci-lint-version`; other pinned
+tools are `tool` directives in `go.mod`, invoked with `go tool <name>`.
+
+Run `task check` before submitting changes; also run `task terraform-check` and `task terraform-test` when examples change.
+
+## Architecture and lifecycle
+
+- Resources access Redshift through `sqlclient.Client`; transport and AWS service clients belong in provider wiring.
+- Validate tuples before the first `State.Set` in Create, and expose the same check in `ValidateConfig`.
+- Create/Update re-read the catalog to verify convergence. Read calls `RemoveResource` when the object or its parent
+  is gone; genuine query failures remain errors.
+- Synchronous DROP needs no post-delete refresh. Use only checks needed for safe deletion; retain convergence checks
+  for permission reconciliation and asynchronous operations.
 
 ## Go test conventions
 
-- `go test ./...` includes unit tests and Terraform CLI contracts. Terraform must be installed; AWS credentials and
-  warehouse connectivity are unnecessary. `task test` adds race detection and coverage. There are no build tags or
-  separate execution modes for offline tests.
-- Keep unit tests and shared fixtures in `*_test.go`; Terraform scenarios in neighboring `*_contract_test.go` files,
-  named `TestContract...`, using `resource.UnitTest`. Fake SQL through `queryFunc` or the stateful `catalog`.
+- `go test ./...` runs offline unit tests and Terraform CLI contracts; Terraform is required, AWS credentials are not.
+  Contracts use `*_contract_test.go`, `TestContract...`, and `resource.UnitTest`. Fake SQL with `queryFunc` or `catalog`.
 - Live tests use `*_acceptance_test.go`, `TestAcc...`, and `resource.Test`, gated by `testAccPreCheck` /
-  `testAccWorkgroup` and `TF_ACC=1`. Skipped live tests are not verification.
-- Use `t.Parallel()` with isolated fixtures only. Tests or parents that mutate environment variables, working
-  directories, or shared globals stay serial. Register shared fixtures during package initialization.
-- Use `testing/synctest` for in-process timeout, retry, and concurrency tests, not real sleeps or tiny deadlines.
-  Virtual time does not control Terraform subprocesses or socket I/O.
-- Use testify: `require` for preconditions and errors, `assert` for independent checks.
-- Successful `resource.UnitTest` applies already check empty plans without and with refresh. Add explicit `PlanOnly`
-  steps only for distinct behavior: changed configuration, drift, validation errors, failed applies, or import-only
-  convergence.
-- Check built-in plan modifiers through schema wiring; test conditional/custom behavior with realistic resource
-  requests or Terraform plan checks. Avoid simulating the framework, testing unused attribute kinds, or repeating
-  malformed framework-request tests for each resource.
-- Prefer final-state and mutation assertions for ordinary lifecycles. Keep exact transcripts where mutation ordering
-  matters, not to freeze incidental refresh/import query sequences. Test partial-create recovery with returned state,
-  separately from tests that inject errors at SQL boundaries.
+  `testAccWorkgroup` and `TF_ACC=1`.
+- Use testify: `require` for preconditions/errors, `assert` for independent checks. Use `testing/synctest` for in-process
+  timeout/retry/concurrency tests; it does not control Terraform subprocesses or socket I/O.
+- Test provider behavior, not framework internals or invalid synthetic schemas. Check built-in plan modifiers through
+  schema wiring; test custom planning and partial-failure recovery behavior.
+  Successful `resource.UnitTest` applies already check empty plans with and without refresh; avoid redundant plan steps.
+- Assert state and mutations for ordinary lifecycles; use transcripts only for significant mutation ordering, not routine
+  refresh/import queries. Test recovery from returned partial-create state separately from SQL error injection.
 
 ## Adding resources and data sources
 
-New types add files rather than modifying shared infrastructure. Follow this checklist:
+Use the registration hooks rather than adding per-type branches to shared infrastructure. Keep `TODO.md` limited to
+open work.
 
-1. Register the type in its own file with `registerResource(newX)` or `registerDataSource(newX)`.
-2. Put pure renderers in `<type>_sql.go`: create, alter (using `alterStep`), drop, and catalog read. Resource methods
-   execute through `resourceClient`; permission resources reuse `privilegeResource` and `grantSpec` where applicable.
-3. Pin renderers with `checkSQL` and lifecycle transcripts with `runTranscripts`. Register replacement policy,
-   data-source parity or an exemption, lifecycle cases, and a fake family in the type's test files.
-4. Add a template and per-type examples, including resource import instructions, then run `task docs`.
-5. Add usage to `examples/complete/<block>.tf`, data-source outputs to `outputs_<block>.tf`, and mocked assertions to
-   `tests/<block>.tftest.hcl` using the shared mocks.
-6. Update provider-index tables and ownership entries in `templates/index.md.tmpl`, and any affected README or backlog
-   entries. Registration/documentation tests check completeness without pinned type counts. Run `task check` and the
-   Terraform checks.
+1. Register in the type's own file: `var _ = registerResource(newX)` or `registerDataSource(newX)`.
+2. Put pure renderers in `<type>_sql.go`, using `alterStep` for alterations. Reuse `privilegeResource` / `grantSpec` for
+   permission resources where applicable. Pin SQL with `checkSQL`; use `runTranscripts` for ordering-sensitive flows.
+3. Register `registerReplacementPolicy`, `registerParity` (or an exemption), `registerLifecycleCase`, and the catalog
+   fake's `registerFakeFamily` in the type's tests. Cover every configurable input in the replacement policy.
+4. Add `templates/<kind>/<name>.md.tmpl` and per-type examples. Resource examples include `resource.tf`, `import.tf`, and
+   `import.sh`; data sources use `data-source.tf`. Follow the [documentation format](#documentation).
+5. Extend `examples/complete/<block>.tf`, `outputs_<block>.tf`, and `tests/<block>.tftest.hcl`, using shared mocks.
+   Update the type tables and ownership matrix in `templates/index.md.tmpl`, then run `task check`,
+   `task terraform-check`, and `task terraform-test`.
 
 ### Schema conventions
 
 - Nested configuration uses singular blocks (`column`, `distribution`); lists of plain values use plural attributes.
   Required blocks use the matching `IsRequired()` validator, plus `SizeAtLeast(1)` for lists/sets. Their descriptions
-  start with "At least one … is required." Blocks themselves have no `Required`, `Computed`, or `Default` fields.
-- Absent list/set blocks are null. Block plan modifiers cannot add/remove elements; applied list order must match
-  the plan.
-- Data sources never declare blocks. `newCatalogDataSource` / `collectionElement` convert resource blocks to computed
-  nested attributes. Lookup-only inputs go in `catalogSpec.selectors`; listing results use the data-source name.
-  Use `lookupDescriptions` for resource wording that does not apply to lookups.
-- Resource descriptions say what a field holds, not whether changing it replaces the object; the template's
-  Reconciliation table records that, so lookups reuse resource descriptions verbatim.
-- Register replacement rules for every configurable attribute/block. Parity registration covers shared readable
-  fields and lookup-only selectors; unpaired lookups use `standalone`, and resources without lookups need exemptions.
-- Keep validation rules in one place: schema validators handle local constraints, while shared domain checks handle
-  relationships between fields. Partial-known validation checks each rule once its own dependencies are known.
-- Long-running resources use `operationTimeoutsBlock`, a resource-specific model with `timeouts.Value`, and
-  `boundOperation` around Create/Update/Delete. Lookups and replacement/alter checks exclude the timeouts block.
+  start with "At least one … is required." Absent list/set blocks are null; modifiers must preserve collection shape.
+- Data sources never declare blocks. `newCatalogDataSource` / `collectionElement` expose computed nested attributes;
+  lookup-only inputs use `catalogSpec.selectors`, and listing results use the data-source name. Parity registration
+  covers shared fields/selectors; unpaired lookups use `standalone`, resources without lookups need exemptions.
+- Use `foldNames` at the end of `Schema` (`folded` for privilege contracts) for names Redshift folds to lowercase;
+  `TestEveryIdentifierRejectsUppercase` lists exemptions.
+- Attribute descriptions describe values; Reconciliation tables explain replacement. Use `lookupDescriptions` when
+  resource wording does not fit a lookup.
+- Schema validators check local constraints; shared domain checks validate relationships as their inputs become known.
+- Long-running operations use `operationTimeoutsBlock`, `timeouts.Value`, and `boundOperation`; exclude timeouts from
+  lookups and replacement/alter comparisons.
+- IDs are provider-relative JSON tuples containing only object-identifying fields.
 
 ### SQL and golden files
 
 - Build SQL with `sqlclient.Stmt` / `Fragment` and catalog queries with `Select(...).Build()`, never concatenation.
-  Quote values with the builder. Unquoted `Keyword` values must be constants, validated constructors (`OneOf`,
-  `TypeName`, `ColumnType`, `Signature`), or reviewed `//sql:trusted` conversions. Configured SQL passes through
-  `CheckUserSQL` and enters statements as `UserSQL` via `Verbatim`.
-- Goldens live in `internal/provider/testdata/sql/<group>/<case>.sql`. Each group belongs to one renderer test or one
-  transcript test because `task golden` removes stale files. Regeneration is refused when `CI` is set. Review changes
-  against the AWS reference; never rewrite goldens merely to make a failing test pass.
-- Keep SQL type names and keyword-like values uppercase in generated SQL, catalog readback, documentation, and
-  examples. Preserve canonically equivalent configured spelling and never rewrite user-supplied SQL. Hand-written
-  example SQL uses uppercase keywords/functions/casts; Terraform function names remain lowercase.
-- Both transports wait for statement completion. Ordinary synchronous DROP needs no catalog readback. Delete checks
-  existence with the resource's read, or with a minimal catalog read only where the full read issues extra queries.
-  Keep missing-parent and warehouse ownership checks, and retain verification for permission reconciliation or
-  asynchronous operations.
+  Unquoted `Keyword` values must be constants, validated constructors (`OneOf`, `TypeName`, `ColumnType`, `Signature`),
+  or reviewed `//sql:trusted` conversions. Configured SQL uses `CheckUserSQL` and `UserSQL` via `Verbatim`.
+- SQL types and keywords use uppercase; preserve equivalent configured spelling and never rewrite user-supplied SQL.
+  Catalog privilege names may differ from configuration names; see `normalizePrivilege`.
 
-### Shared infrastructure
+Golden files are checked-in expectations under `internal/provider/testdata/sql/<group>/<case>.sql`. Normal tests compare
+current SQL output against them, catching unintended changes and making intentional changes reviewable as diffs:
 
-Feature blocks do not edit these shared files; a missing hook is a separate foundation change:
+- Renderer goldens (`checkSQL`) record generated statements and catalog queries.
+- Transcript goldens (`runTranscripts`) record significant SQL sequences, particularly mutation ordering.
 
-- `provider.go`, `registry.go`, `resource.go`, `privilege_resource.go`, `catalog_data_source.go`.
-- Shared tests: `main_test.go`, `resource_test.go`, `golden_test.go`, `transcript_test.go`, `lifecycle_test.go`,
-  `fake_catalog_test.go`, `replacement_policy_test.go`, `data_source_parity_test.go`, `documentation_contract_test.go`,
-  `example_contract_test.go`, and `privilege_resource_test.go`.
-- `examples/complete/tests/composition.tftest.hcl`, `examples/complete/outputs.tf`, `templates/index.md.tmpl`,
-  `README.md`, `TODO.md`, and `go.mod`.
+When SQL output intentionally changes:
 
-After parallel feature blocks merge, one integration change updates shared counts, tables, examples, and backlog.
+1. Run the tests and inspect the differences.
+2. Run `task golden` to regenerate the expectations from the current implementation.
+3. Review every changed golden against the AWS SQL reference, then commit it with the code.
+
+Regeneration accepts the current output; it does not prove the SQL is correct or validate it against a live Redshift
+warehouse. The task needs no warehouse connection. It also removes stale files within each group, so each group must
+have exactly one owning renderer or transcript test.
 
 ## Terraform example tests
 
-The complete example lives in `examples/complete`; small per-type snippets feed generated documentation.
-`task terraform-test` builds the local provider, initializes Terraform without a backend, and runs mocked applies.
-AWS, Redshift, and Random are mocked; no cloud credentials are required. Each suite explicitly references its mocks
-under `tests/mocks/` because Terraform does not share mock-provider declarations between test files.
+`task terraform-test` builds the local provider and runs mocked applies in `examples/complete`, without cloud credentials.
+Each suite must declare its mocks from `tests/mocks/`; Terraform does not share declarations between test files.
 
 ```sh
-task terraform-test
 task terraform-test -- -filter=tests/composition.tftest.hcl -verbose
 ```
 
-Override `TF_DIR` to use another configuration. These tests check example composition; Go tests check provider
-behavior, and live acceptance tests check Redshift itself.
+Override `TF_DIR` to use another configuration. These tests check composition, not SQL behavior.
 
 ## Connection acceptance tests
 
 Start with the [acceptance instructions](README.md#acceptance-test) and the
-[complete example](examples/complete/README.md). Fixture selectors and prechecks live in `internal/provider/acc_test.go`
-and the relevant `*_acceptance_test.go` files.
+[complete example](examples/complete/README.md); fixture prechecks live in `internal/provider/acc_test.go`.
 
 - Direct Serverless tests additionally use `REDSHIFT_ACC_DIRECT=1`; provisioned tests need `REDSHIFT_ACC_CLUSTER` and
   `REDSHIFT_ACC_DB_USER`. Secret-mode tests use `REDSHIFT_ACC_SECRET_ARN`.
-- Prefer `verify-full`. Use `REDSHIFT_ACC_CA_CERT_FILE` for a trusted CA bundle; `REDSHIFT_ACC_SSLMODE=require` encrypts
-  without authenticating the server and is only suitable for disposable fixtures.
-- Keep warehouse/account environments and Terraform states isolated. Register cleanup before mutations, verify final
-  inventories, and never use shared production warehouses or existing directory memberships as fixtures.
-- Destructive opt-ins, including integration mutations and system-setting probes, require disposable fixtures and
-  restoration checks. Remove zero-ETL integrations before destination databases, and consumer associations before
-  producer shares and warehouses. Large-table tests can load about 1 GiB; model metadata tests do not invoke Bedrock
-  or train models.
+- Prefer `verify-full`, with `REDSHIFT_ACC_CA_CERT_FILE` if needed; `REDSHIFT_ACC_SSLMODE=require` is for disposable fixtures.
+- Use isolated, disposable warehouses/accounts and state. Register cleanup before mutations and verify restoration;
+  never use production warehouses or existing directory memberships as fixtures.
+- Remove zero-ETL integrations before destination databases, and consumer associations before producer shares/warehouses.
+  Large-table tests can load about 1 GiB; model metadata tests do not invoke Bedrock or train models.
 
 ## Documentation
 
-Never edit generated `docs/` directly. Change `templates/`, per-type examples, or schema `MarkdownDescription`, then
-run `task docs`. `task docs-check` validates Registry layout and regenerates pages to detect missing or stale output.
-Publish end-user guides under `docs/guides/`; keep contributor guidance at the repository root.
+Do not hand-edit generated `docs/`: edit templates, examples, or schema `MarkdownDescription`, then run `task docs`.
+End-user guides belong under `docs/guides/`; contributor guidance stays at the repository root. Templates need
+hand-aligned tables and prose within 120 columns; `task markdown-fmt` does not format them.
 
-Resource templates must contain:
+Templates must contain:
 
-- `## SQL Statements` after the introduction: a short SQL block with one line per statement kind, identifying
-  attribute names, and `...` for options. Data-source templates use `## Catalog Query` with the catalog source.
-- `## Reconciliation` immediately before `## Import`: an opening summary; a `| Change | Result |` table naming every
-  configurable argument and nested `block.field` in backticks, including write-only fields, triggers, and timeouts;
-  and a **Drift.** paragraph covering readback and its limits. Results name the SQL operation, "no SQL", or replacement
-  and its conditions. Ownership/permissions belong under `## Lifecycle and Ownership`.
-- Worked examples for non-trivial reconciliation, embedding SQL from existing goldens with
-  `{{ codefile "sql" "internal/provider/testdata/sql/<group>/<case>.sql" }}`, not hand-written copies.
+- Immediately after the schema, `## SQL Statements` with simplified SQL: one line per statement kind, identifying names,
+  `...` for options. Add a short SQL comment before each statement explaining its purpose.
+  Data sources name the catalog source.
+- For resources, `## Reconciliation` immediately before `## Import`: a summary, a `| Change | Result |` table covering
+  every argument and nested `block.field` in backticks, and a **Drift.** paragraph. Name the SQL operation, "no SQL", or
+  replacement conditions. Keep ownership details under `## Lifecycle and Ownership`.
+- Worked examples for non-trivial reconciliation, embedding existing SQL goldens via `codefile`, not copying them.
+- For resources, import examples rendering `import.tf` first and `import.sh` second.
 
-Derive reconciliation claims from plan modifiers, replacement policies, alter steps, Update/Read, and goldens.
-Documentation contract tests enforce input coverage and section structure. Templates are not formatted by
-`task markdown-fmt`: align their tables by hand and keep prose within 120 columns. Generated pages follow the
-[Terraform Registry guidelines](https://developer.hashicorp.com/terraform/registry/providers/docs).
+## Versioning and releases
 
-## GitHub Actions
+Versions come only from `vX.Y.Z` tags. Before 1.0, minor releases may break schemas/behavior; patch releases must remain
+compatible. From 1.0, breaking changes require a major version and state upgraders or documented migration.
 
-`ci.yml` runs Go/project lint, one offline Go race/coverage job with Terraform installed, example validation and mocked
-tests, documentation checks, and unsigned platform builds. These checks need no organization secrets or cloud
-credentials. CI uses the same local tasks, plus the lint and GoReleaser actions.
+Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for commits and PR titles (`!` for breaking
+changes). Subjects become release notes, so describe user-visible effects. `.goreleaser.yml` defines release assets and
+note grouping; `task snapshot` builds unsigned archives without publishing.
 
-`release.yml` accepts only `vMAJOR.MINOR.PATCH` tags on `main`, runs full CI, then publishes signed assets. Only the
-publishing job has repository write permission. Dependabot proposes weekly Go module/tool and Actions updates.
+1. Confirm `main` CI is green and run live acceptance tests when warranted.
+2. For a new series, update constraints in `README.md`, `examples/provider/provider.tf`, and
+   `examples/complete/versions.tf`; regenerate docs and run project and Terraform checks.
+3. Only when authorized, create and push an annotated `vX.Y.Z` tag on the intended `main` commit.
+4. Verify the signed GitHub release, checksum signature, Registry version, and `terraform init`.
+   Never reuse a published tag.
 
-## Terraform Registry publication
+### Release signing key
 
-The provider address is `netcheck-de/redshift`. `.goreleaser.yml` builds Linux/macOS/Windows ZIPs for amd64/arm64,
-SHA256 checksums, a detached GPG signature, and a protocol-6 manifest. The Registry ingests signed GitHub releases;
-`task snapshot` builds unsigned archives locally without publishing.
-
-### Versioning and releases
-
-The SemVer tag is the only release version source; local builds use the newest tag. Before 1.0, minor releases may
-break schemas/behavior; patch releases contain compatible additions/fixes. From 1.0, breaking changes require a major
-version and state upgraders or documented migration.
-
-Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for commits and PR titles; `!` marks breaking
-changes. Release notes use commit subjects since the previous tag: merge commits preserve individual entries, while
-squashing uses the squash subject. `.goreleaser.yml` defines grouping and exclusions; the PR-title check validates
-titles but does not determine the merge strategy.
-
-1. Confirm `main` CI is green; run live acceptance tests when warranted by the changes.
-2. For a new series, update provider constraints in `README.md`, `examples/provider/provider.tf`, and
-   `examples/complete/versions.tf`; regenerate docs and run `task check` plus Terraform checks.
-3. When explicitly authorized, create and push a new annotated `vX.Y.Z` tag on the intended `main` commit.
-4. Confirm the signed GitHub release, checksum signature, Registry version, and a successful `terraform init`.
-5. Never move or reuse a published tag; fix a release with a new patch version.
-
-### Create and configure the release signing key
-
-Follow HashiCorp's [signing-key instructions](https://developer.hashicorp.com/terraform/registry/providers/publishing#preparing-and-adding-a-signing-key).
-Use a dedicated, passphrase-protected RSA 4096-bit signing key; the Registry does not accept the default ECC type.
-Register the armored public key for the `netcheck-de` namespace and configure repository Actions secrets
-`GPG_PRIVATE_KEY` and `PASSPHRASE`. The workflow derives `GPG_FINGERPRINT`; no separate fingerprint secret is needed.
-
-Never commit private keys or passphrases. Export outside the repository with restrictive permissions; protect backups
-and the revocation certificate. Verify published checksums with `gpg --verify` and the expected fingerprint. Before
-expiry, renew/re-export and update the Registry public key and GitHub private-key secret; rotation requires updating
-the registered public key and both repository secrets.
+Follow HashiCorp's [signing-key instructions](https://developer.hashicorp.com/terraform/registry/providers/publishing#preparing-and-adding-a-signing-key)
+using a dedicated, passphrase-protected RSA 4096-bit key, not the default ECC type. Register the armored public key for
+`netcheck-de`; store the private key and passphrase in Actions secrets `GPG_PRIVATE_KEY` and `PASSPHRASE`. The workflow
+derives `GPG_FINGERPRINT`. Renew before expiry; rotation requires updating the Registry key and both secrets.

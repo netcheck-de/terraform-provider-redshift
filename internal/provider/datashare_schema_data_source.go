@@ -16,6 +16,7 @@ func newDatashareSchemaDataSource() datasource.DataSource {
 		model := datashareSchemaModel{Database: attributes["database"].(types.String), Datashare: attributes["datashare"].(types.String), Schema: attributes["schema"].(types.String), IncludeNew: types.BoolValue(false)}
 		found, err := (&datashareSchemaResource{*client}).read(ctx, &model)
 		lookupValue(data, "include_new", model.IncludeNew)
+
 		return found, err
 	}})
 }

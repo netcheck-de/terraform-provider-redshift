@@ -17,9 +17,11 @@ func TestRoleSQL(t *testing.T) {
 		if owner != "" {
 			model.Owner = types.StringValue(owner)
 		}
+
 		if external != "" {
 			model.ExternalID = types.StringValue(external)
 		}
+
 		return model
 	}
 	built := func(query sqlclient.Query) func() (string, error) {
@@ -44,5 +46,6 @@ func TestRoleSQL(t *testing.T) {
 		{"drop_quoted", func() string { return dropRoleStatement(role(`Odd"Readers`)) }},
 		{"read", built(readRoleQuery(role(`Odd"Readers`)))},
 		{"read_empty_name", built(readRoleQuery(role("")))},
+		{"list", built(listRolesQuery())},
 	})
 }

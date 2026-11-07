@@ -54,20 +54,24 @@ func (d *databaseDataSource) Schema(_ context.Context, _ datasource.SchemaReques
 func (d *databaseDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data databaseData
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	observed, found, err := d.databaseCatalog(ctx, data.Name.ValueString(), true)
 	if err != nil {
 		resp.Diagnostics.AddError("Read database", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("Database not found", "No database named "+data.Name.ValueString()+" exists.")
 		return
 	}
+
 	data = observed
-	identity := map[string]string{"name": data.Name.ValueString()}
+	fields := map[string]string{"name": data.Name.ValueString()}
 	// SHOW DATABASES does not document the type of a zero-ETL destination, which may report as local, so every
 	// database but a shared one is looked up in SVV_INTEGRATION. This supplementary metadata must not prevent a
 	// non-superuser from looking up an ordinary local database; Redshift denies access to the view rather than
@@ -77,38 +81,47 @@ func (d *databaseDataSource) Read(ctx context.Context, req datasource.ReadReques
 		if err != nil && strings.Contains(strings.ToLower(err.Error()), "permission denied for relation svv_integration") {
 			resp.Diagnostics.AddWarning("Database integration metadata unavailable",
 				"SVV_INTEGRATION requires a superuser. The database metadata is returned, but integration is null because the provider SQL identity cannot inspect the view.")
+
 			err = nil
 		}
+
 		if err != nil {
 			resp.Diagnostics.AddError("Read database integration", err.Error())
 			return
 		}
+
 		if found {
 			data.Integration = &integration
-			identity["integration_id"] = integration.IntegrationID.ValueString()
+			fields["integration_id"] = integration.IntegrationID.ValueString()
 		}
 	}
 	// A destination takes no collation, so the collation is read after the integration, which skips it.
 	d.databaseReadCollation(ctx, &data, &resp.Diagnostics)
+
 	if data.DatabaseType.ValueString() == databaseTypeShared {
 		if d.datashareARN == nil {
 			resp.Diagnostics.AddError("Discover datashare ARN", "The provider has no datashare metadata discovery client.")
 			return
 		}
+
 		source := shareSource{Account: data.ProducerAccount.ValueString(), Namespace: data.ProducerNamespace.ValueString(), Name: data.ShareName.ValueString()}
+
 		value, err := d.datashareARN(ctx, source)
 		if err != nil {
 			resp.Diagnostics.AddError("Discover datashare ARN", err.Error())
 			return
 		}
+
 		binding, err := parseShare(value)
 		if err != nil || binding != source {
 			resp.Diagnostics.AddError("Discover datashare ARN", "The discovered ARN does not match the database's producer binding.")
 			return
 		}
+
 		data.DatashareARN = types.StringValue(value)
-		identity["datashare_arn"] = value
+		fields["datashare_arn"] = value
 	}
-	data.ID = d.identity(d.database.ValueString(), identity)
+
+	data.ID = identity(fields)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

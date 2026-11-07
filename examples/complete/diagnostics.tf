@@ -78,3 +78,10 @@ data "redshift_debug_grant" "account_admins" {
   grantee      = redshift_debug_grant.account_admins[0].grantee
   grantee_type = redshift_debug_grant.account_admins[0].grantee_type
 }
+
+data "redshift_debug_grants" "federated" {
+  provider   = redshift.consumer
+  count      = local.debug_grant_enabled ? 1 : 0
+  database   = var.federated_debug_database
+  depends_on = [redshift_debug_grant.account_admins]
+}

@@ -42,20 +42,27 @@ func TestCommentConstraintTranscripts(t *testing.T) {
 // and leaves state once the constraint or its table disappears.
 func TestCommentConstraintLifecycle(t *testing.T) {
 	var reads []string
+
 	exists := true
 	r := &commentResource{testResourceClient(queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		if strings.HasPrefix(sql, "SELECT database_name") {
 			return []sqlclient.Row{{"database_name": "analytics"}}, nil
 		}
+
 		assert.Equal(t, "analytics", connection.Database)
+
 		if strings.HasPrefix(sql, "COMMENT ON CONSTRAINT") {
 			return nil, nil
 		}
+
 		reads = append(reads, sql)
+
 		assert.Equal(t, map[string]string{"constraint": "orders_pkey", "name": "orders", "schema": "serving"}, parameters)
+
 		if !exists {
 			return nil, nil
 		}
+
 		return []sqlclient.Row{{"text": "note"}}, nil
 	}))}
 	require.False(t, invoke(t, r, "read", commentConstraintModel()).HasError())
@@ -72,8 +79,9 @@ func TestCommentConstraintLifecycle(t *testing.T) {
 	assert.False(t, invoke(t, r, "delete", commentConstraintModel()).HasError(), "clearing a vanished constraint's comment is a no-op")
 
 	imported := resource.ImportStateResponse{State: emptyState(t, r)}
-	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","object_type":"CONSTRAINT","object_name":"orders","schema_name":"serving","constraint_name":"orders_pkey"}`}, &imported)
+	r.ImportState(context.Background(), resource.ImportStateRequest{ID: `{"database_name":"analytics","object_type":"CONSTRAINT","object_name":"orders","schema_name":"serving","constraint_name":"orders_pkey"}`}, &imported)
 	require.False(t, imported.Diagnostics.HasError(), "%v", imported.Diagnostics)
+
 	var restored commentModel
 	require.False(t, imported.State.Get(context.Background(), &restored).HasError())
 	assert.Equal(t, types.StringValue("orders_pkey"), restored.ConstraintName)
@@ -83,6 +91,7 @@ func TestCommentConstraintLifecycle(t *testing.T) {
 // TestCommentConstraintValidateConfig mirrors the Create-time target check for constraint annotations at plan time.
 func TestCommentConstraintValidateConfig(t *testing.T) {
 	r := newCommentResource()
+
 	for name, test := range map[string]struct {
 		mutate  func(*commentModel)
 		invalid bool
@@ -97,6 +106,7 @@ func TestCommentConstraintValidateConfig(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			data := commentConstraintModel()
 			test.mutate(&data)
+
 			var resp resource.ValidateConfigResponse
 			r.(resource.ResourceWithValidateConfig).ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, data))}, &resp)
 			assert.Equal(t, test.invalid, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)

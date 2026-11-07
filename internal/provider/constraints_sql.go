@@ -19,8 +19,7 @@ var constraintsNames = []string{"PRIMARY KEY", "UNIQUE", "FOREIGN KEY"}
 // conkey arrays are an unsupported type for both transports.
 const constraintsSource sqlclient.Keyword = "pg_constraint k JOIN pg_class c ON c.oid = k.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace LEFT JOIN pg_class f ON f.oid = k.confrelid LEFT JOIN pg_namespace fn ON fn.oid = f.relnamespace"
 
-// constraintsTypeColumn renders contype as its constraint_type name on the server. contype has PostgreSQL's
-// one-byte "char" type, which the direct transport decodes as a rune and would hand back as its decimal code.
+// constraintsTypeColumn renders contype's one-letter code as its constraint_type name on the server.
 const constraintsTypeColumn = "CASE k.contype WHEN 'p' THEN 'PRIMARY KEY' WHEN 'u' THEN 'UNIQUE' WHEN 'f' THEN 'FOREIGN KEY' END AS constraint_type"
 
 // readConstraintsQuery lists the key constraints of the current database. pg_constraint only covers the database
@@ -31,6 +30,7 @@ func readConstraintsQuery(schemaName, table, constraintType string) (sqlclient.Q
 	if constraintType != "" && !known {
 		return sqlclient.Query{}, fmt.Errorf("unsupported constraint_type %q", constraintType)
 	}
+
 	return sqlclient.Select("n.nspname AS schema_name", "c.relname AS table_name", "k.conname AS constraint_name", constraintsTypeColumn, "pg_get_constraintdef(k.oid) AS definition", "fn.nspname AS referenced_schema", "f.relname AS referenced_table").
 		From(constraintsSource).
 		Where("k.contype IN ('p', 'u', 'f')").
@@ -48,13 +48,16 @@ func constraintsKeyColumns(definition string, foreign bool) ([]string, []string,
 	if err != nil {
 		return nil, nil, fmt.Errorf("constraint definition %q: %w", definition, err)
 	}
+
 	if !foreign {
 		return columns, nil, nil
 	}
+
 	referenced, _, err := constraintsIdentifierList(rest)
 	if err != nil {
 		return nil, nil, fmt.Errorf("constraint definition %q: referenced columns: %w", definition, err)
 	}
+
 	return columns, referenced, nil
 }
 
@@ -70,31 +73,42 @@ func constraintsIdentifierList(text string) ([]string, string, error) {
 			start = i + 1
 		}
 	}
+
 	if start < 0 {
 		return nil, "", fmt.Errorf("missing column list")
 	}
+
 	var names []string
+
 	i := start
 	for {
 		for i < len(text) && text[i] == ' ' {
 			i++
 		}
+
 		var name strings.Builder
+
 		if i < len(text) && text[i] == '"' {
 			i++
 			for {
 				if i >= len(text) {
 					return nil, "", fmt.Errorf("unterminated quoted identifier")
 				}
+
 				if text[i] == '"' {
 					if i+1 < len(text) && text[i+1] == '"' {
 						name.WriteByte('"')
+
 						i += 2
+
 						continue
 					}
+
 					i++
+
 					break
 				}
+
 				name.WriteByte(text[i])
 				i++
 			}
@@ -104,16 +118,21 @@ func constraintsIdentifierList(text string) ([]string, string, error) {
 				i++
 			}
 		}
+
 		if name.Len() == 0 {
 			return nil, "", fmt.Errorf("empty column name")
 		}
+
 		names = append(names, name.String())
+
 		for i < len(text) && text[i] == ' ' {
 			i++
 		}
+
 		if i >= len(text) {
 			return nil, "", fmt.Errorf("unterminated column list")
 		}
+
 		switch text[i] {
 		case ',':
 			i++

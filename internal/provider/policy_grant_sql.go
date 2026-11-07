@@ -31,6 +31,7 @@ func policyGrantPolicyQuery(kind sqlclient.Keyword, database, name string) sqlcl
 			Where("poldb = :database", sqlclient.Bind("database", database)).
 			Where("polname = :name", sqlclient.Bind("name", name))
 	}
+
 	return sqlclient.Select("policy_name").From("svv_masking_policy").
 		Where("policy_database = :database", sqlclient.Bind("database", database)).
 		Where("policy_name = :name", sqlclient.Bind("name", name))
@@ -43,10 +44,12 @@ func policyGrantRecipient(data types.Object) (sqlclient.Statement, error) {
 	if err != nil {
 		return sqlclient.Statement{}, fmt.Errorf("policy_type: %w", err)
 	}
+
 	name := objectString(data, "policy_name")
 	if name == "" {
 		return sqlclient.Statement{}, fmt.Errorf("policy_name must not be empty")
 	}
+
 	return sqlclient.Kw(kind, "POLICY").Ident(name), nil
 }
 
@@ -59,12 +62,16 @@ func policyGrantTarget(data types.Object) (privilegeTarget, error) {
 	if err != nil {
 		return privilegeTarget{}, fmt.Errorf("policy_type: %w", err)
 	}
+
 	database, schemaName, table, policy := objectString(data, "database_name"), objectString(data, "schema_name"), objectString(data, "object_name"), objectString(data, "policy_name")
+
 	checks, err := newCatalogChecks(localDatabaseQuery(database), privilegeSchemaQuery(database, schemaName), policyGrantTableQuery(database, schemaName, table), policyGrantPolicyQuery(kind, database, policy))
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	object := sqlclient.Kw("ON TABLE").Qualified(database, schemaName, table)
+
 	return privilegeTarget{
 		database: database, checks: checks, allowed: policyGrantPrivileges,
 		grant: grantSpec{object: object},

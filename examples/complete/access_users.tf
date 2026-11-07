@@ -79,3 +79,21 @@ data "redshift_group_membership" "reader" {
   group    = redshift_group_membership.reader.group
   user     = redshift_group_membership.reader.user
 }
+
+# Warehouse-wide listings; the reader appears once its group membership exists.
+data "redshift_users" "all" {
+  provider = redshift.consumer
+
+  depends_on = [redshift_user.reader, redshift_user.iam_auditor, redshift_user.loader]
+}
+
+data "redshift_groups" "all" {
+  provider = redshift.consumer
+
+  depends_on = [redshift_group_membership.reader]
+}
+
+data "redshift_group_memberships" "readers" {
+  provider = redshift.consumer
+  group    = redshift_group_membership.reader.group
+}

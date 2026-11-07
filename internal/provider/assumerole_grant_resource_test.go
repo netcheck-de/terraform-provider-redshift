@@ -29,6 +29,7 @@ func TestAssumeroleGrantIAMRoleValidation(t *testing.T) {
 			require.Error(t, err)
 		}
 	}
+
 	_, err := r.prepare(privilegeObject(t, r, map[string]string{"grantee_type": "invalid"}))
 	require.Error(t, err)
 }

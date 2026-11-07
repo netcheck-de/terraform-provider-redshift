@@ -10,14 +10,6 @@ Manages one database role, its owner, and its identity-provider external ID, ind
 See AWS [CREATE ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_ROLE.html) and
 [ALTER ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_ROLE.html).
 
-## SQL Statements
-
-```sql
-CREATE ROLE name ...;
-ALTER ROLE name ...;
-DROP ROLE name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -53,9 +45,24 @@ resource "redshift_role" "entra_finance" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `role_id` (Number) Catalog role ID (`svv_roles.role_id`).
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the role.
+CREATE ROLE name ...;
+
+-- Update role settings.
+ALTER ROLE name ...;
+
+-- Delete the role.
+DROP ROLE name;
+```
 
 ## Lifecycle and Ownership
 
@@ -86,26 +93,20 @@ read; the grant resources manage them.
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_role.readers
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    name           = "ncidc:analytics-readers"
+    name = "ncidc:analytics-readers"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_role.readers \
-  '{"workgroup_name":"warehouse","database":"admin","name":"ncidc:analytics-readers"}'
+  '{"name":"ncidc:analytics-readers"}'
 ```

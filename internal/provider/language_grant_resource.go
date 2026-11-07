@@ -14,8 +14,10 @@ func newLanguageGrantResource() resource.Resource {
 	attributes["language_name"] = privilegeKeyword("`SQL` (SQL user-defined functions) or `PLPGSQL` (stored procedures), in any case; another case of the same language is recorded in place.", privilegeNames(languageGrantLanguages)...)
 	attributes["grantee"] = privilegeString("Receiving identity name; use `public` for `PUBLIC`.", false)
 	attributes["grantee_type"] = privilegeString("`ROLE`, `USER`, `GROUP`, or `PUBLIC`.", false, "ROLE", "USER", "GROUP", "PUBLIC")
+
 	return &privilegeResource{
 		name: "language_grant", attributes: attributes, grantOptions: true, prepare: languageGrantTarget, canonical: languageGrantCanonical, partialAllowed: fixedPrivilegeAllowlist(languageGrantPrivileges),
 		fields: []string{"database_name", "language_name", "grantee", "grantee_type"}, destroyPrivileges: languageGrantDestroyPrivileges,
+		folded: []string{"database_name"},
 	}
 }

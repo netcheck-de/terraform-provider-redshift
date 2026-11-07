@@ -80,9 +80,11 @@ func TestDatasharePrivilegeLifecycle(t *testing.T) {
 // the option on a datashare and a plain REVOKE would silently drop it.
 func TestDatasharePrivilegeRejectsGrantOptions(t *testing.T) {
 	r := newDatasharePrivilegeResource().(*privilegeResource)
+
 	var response resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &response)
 	assert.NotContains(t, response.Schema.Attributes, "grant_option_privileges")
+
 	c := fullCatalog()
 	fakeState[*fakeDatashares](c, "datashare").adminOption = true
 	r.resourceClient = testResourceClient(c)
@@ -107,6 +109,7 @@ func TestDatasharePrivilegeCatalog(t *testing.T) {
 	r.resourceClient = testResourceClient(client)
 	data := privilegeObject(t, r, fields, "ALTER", "SHARE")
 	require.NoError(t, r.reconcile(context.Background(), data))
+
 	family := fakeState[*fakeDatashares](c, "datashare")
 	assert.Equal(t, map[string]bool{"ALTER": true, "SHARE": true}, family.privileges["public"])
 	assert.Equal(t, map[string]bool{"ALTER": true}, family.privileges["role:example:readers"], "other grantees stay untouched")
@@ -147,6 +150,7 @@ func TestDatasharePrivilegeValidation(t *testing.T) {
 			fields := maps.Clone(datasharePrivilegeFields)
 			maps.Copy(fields, test.changes)
 			data := privilegeObject(t, r, fields, test.privileges...)
+
 			var schema resource.SchemaResponse
 			r.Schema(context.Background(), resource.SchemaRequest{}, &schema)
 			plan := tfsdk.Plan{Schema: schema.Schema}
@@ -155,12 +159,15 @@ func TestDatasharePrivilegeValidation(t *testing.T) {
 			r.Create(context.Background(), resource.CreateRequest{Plan: plan}, &resp)
 			require.True(t, resp.Diagnostics.HasError())
 			assert.True(t, resp.State.Raw.IsNull(), "invalid tuple must not be recorded in state")
+
 			var validated resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(plan)}, &validated)
 			assert.True(t, validated.Diagnostics.HasError(), "invalid tuple must be reported during planning")
 		})
 	}
+
 	r := newDatasharePrivilegeResource().(*privilegeResource)
+
 	var schema resource.SchemaResponse
 	r.Schema(context.Background(), resource.SchemaRequest{}, &schema)
 	unknown := privilegeObject(t, r, datasharePrivilegeFields, "ALTER")
@@ -169,6 +176,7 @@ func TestDatasharePrivilegeValidation(t *testing.T) {
 	config := tfsdk.Config{Schema: schema.Schema}
 	plan := tfsdk.Plan(config)
 	require.False(t, plan.Set(context.Background(), types.ObjectValueMust(unknown.AttributeTypes(context.Background()), attributes)).HasError())
+
 	var validated resource.ValidateConfigResponse
 	r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(plan)}, &validated)
 	assert.False(t, validated.Diagnostics.HasError(), "unknown values defer validation: %v", validated.Diagnostics)

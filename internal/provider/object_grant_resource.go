@@ -17,8 +17,10 @@ func newObjectGrantResource() resource.Resource {
 	attributes["object_type"] = privilegeString("`DATABASE`, `SCHEMA`, `TABLE` (including views), `FUNCTION`, `PROCEDURE`, `MODEL` (a machine learning model, whose prediction or inference function is granted through it), `TEMPLATE` (a COPY template), or a snapshot of a schema's current objects: `ALL TABLES`, `ALL FUNCTIONS`, or `ALL PROCEDURES`.", false, objectGrantKinds...)
 	attributes["arguments"] = privilegeString("Comma-separated argument types of a local `FUNCTION` or `PROCEDURE`, such as `INTEGER, VARCHAR`, which select one overload; omit it for a routine without arguments. Shared routine permissions cover every overload of the name, so shared grants must omit this argument. Types are canonicalized and lengths dropped, because Redshift identifies local overloads by type names only.", true)
 	attributes["privileges"] = grantPrivilegesAttribute("Exact explicit privilege set; updated in place. An empty set revokes owned privileges. `DATABASE`: `CREATE`, `USAGE`, `TEMPORARY`, `ALTER`. `SCHEMA`: `CREATE`, `USAGE`, `ALTER`, `DROP`. `TABLE`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `ALTER`, `TRUNCATE`. `FUNCTION`, `PROCEDURE`, `MODEL`, `ALL FUNCTIONS`, and `ALL PROCEDURES`: `EXECUTE`. `TEMPLATE`: `USAGE`, `ALTER`, `DROP`. `ALL TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`. A snapshot reports only the privileges every current object holds.")
+
 	return &privilegeResource{
 		name: "object_grant", attributes: attributes, grantOptions: true, prepare: objectGrantTarget, partialAllowed: objectGrantConfigAllowed,
 		fields: []string{"database_name", "database_type", "schema_name", "object_name", "object_type", "arguments", "grantee", "grantee_type"},
+		folded: []string{"database_name", "schema_name", "object_name"},
 	}
 }

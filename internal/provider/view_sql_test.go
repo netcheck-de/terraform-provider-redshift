@@ -21,6 +21,7 @@ func TestViewSQL(t *testing.T) {
 	with := func(change func(*viewModel)) viewModel {
 		data := testViewModel()
 		change(&data)
+
 		return data
 	}
 	quoted := with(func(data *viewModel) {
@@ -71,6 +72,7 @@ func TestViewSQL(t *testing.T) {
 		{"read", func() (string, error) {
 			sql, parameters, err := readViewQuery(quoted).Build()
 			assert.Equal(t, map[string]string{"schema": `Odd"Schema`, "name": `My"View`}, parameters)
+
 			return sql, err
 		}},
 	})

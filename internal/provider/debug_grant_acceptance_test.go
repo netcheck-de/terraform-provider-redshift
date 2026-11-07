@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,7 +28,9 @@ func TestAccDebugGrantFederated(t *testing.T) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+
 	for _, test := range []struct{ kind, flag string }{
 		{"USER", "REDSHIFT_ACC_DEBUG_USER"},
 		{"ROLE", "REDSHIFT_ACC_DEBUG_ROLE"},
@@ -37,24 +41,30 @@ func TestAccDebugGrantFederated(t *testing.T) {
 			if grantee == "" {
 				t.Skipf("set %s to a dedicated federated recipient", test.flag)
 			}
+
 			model := debugGrantFixture(target, grantee, test.kind)
 			if err := model.validateRemote(); err != nil {
 				t.Skip(err.Error())
 			}
+
 			recipient, _, err := debugRecipient(grantee, test.kind)
 			require.NoError(t, err)
+
 			reader := &debugGrantResource{testResourceClient(client)}
 			reader.database = types.StringValue(database)
 			found, err := reader.read(ctx, model)
 			require.NoError(t, err)
+
 			if found {
 				t.Skip("recipient already has DEBUG; refusing to take ownership of an existing grant")
 			}
+
 			t.Cleanup(func() {
 				statement := sqlclient.Stmt("REVOKE DEBUG ON DATABASE").Ident(target).Kw("FROM").Append(recipient).String()
 				_, err := client.Query(ctx, sqlclient.Connection{Database: database}, statement, nil)
 				require.NoError(t, err, "remove the test-owned DEBUG grant")
 			})
+
 			configuration := fmt.Sprintf(`
 provider "redshift" {
   region = %q
@@ -72,10 +82,23 @@ data "redshift_debug_grant" "test" {
   grantee = redshift_debug_grant.test.grantee
   grantee_type = redshift_debug_grant.test.grantee_type
 }`, region, profile, workgroup, database, target, grantee, test.kind)
+			checks := []resource.TestCheckFunc{resource.TestCheckResourceAttr("data.redshift_debug_grant.test", "exists", "true")}
+			// The listing reads only producer-local databases; global identity names compare without case.
+			if !strings.Contains(target, "@") {
+				configuration += `
+data "redshift_debug_grants" "test" {
+  database = redshift_debug_grant.test.database
+}`
+
+				checks = append(checks, resource.TestMatchTypeSetElemNestedAttrs("data.redshift_debug_grants.test", "debug_grants.*", map[string]*regexp.Regexp{
+					"grantee": regexp.MustCompile("(?i)^" + regexp.QuoteMeta(grantee) + "$"), "grantee_type": regexp.MustCompile("^" + test.kind + "$"),
+				}))
+			}
+
 			resource.Test(t, resource.TestCase{
 				ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 				Steps: []resource.TestStep{
-					{Config: configuration, Check: resource.TestCheckResourceAttr("data.redshift_debug_grant.test", "exists", "true")},
+					{Config: configuration, Check: resource.ComposeAggregateTestCheckFunc(checks...)},
 					{ResourceName: "redshift_debug_grant.test", ImportState: true, ImportStateVerify: true},
 					{Config: configuration, PlanOnly: true},
 				},

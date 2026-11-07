@@ -1,5 +1,5 @@
 ---
-subcategory: Catalog Discovery
+subcategory: Tables and Views
 page_title: redshift_columns Data Source - terraform-provider-redshift
 description: Lists relation columns with their position, type, nullability, and default.
 ---
@@ -8,12 +8,6 @@ description: Lists relation columns with their position, type, nullability, and 
 
 Lists the columns of one database's tables, views, and external tables. See AWS
 [SVV_ALL_COLUMNS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ALL_COLUMNS.html).
-
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_all_columns WHERE database_name = '...' AND schema_name = '...' AND table_name = '...';
-```
 
 ## Example Usage
 
@@ -42,7 +36,7 @@ output "required_columns" {
 ### Read-Only
 
 - `columns` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--columns))
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 
 <a id="nestedatt--columns"></a>
 ### Nested Schema for `columns`
@@ -63,10 +57,22 @@ Read-Only:
 - `table` (String) Relation containing the column.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
-`database` defaults to the provider's `database`; the read runs in the provider's database. `id` combines the
-warehouse binding, the listed database, and the configured filters. Items are ordered by schema, table, and
-`ordinal_position`; no match returns an empty `columns` list. Without a `table` filter, the listing covers every
-relation of the database, so filter as narrowly as possible on large warehouses.
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List columns matching the configured filters.
+SELECT ... FROM svv_all_columns WHERE database_name = '...' AND schema_name = '...' AND table_name = '...';
+```
+
+## Read Behavior
+
+`database` defaults to the provider's `database`; the read runs in the provider's database. `id` combines the listed
+database and configured filters within the warehouse. Items are ordered by schema, table, and `ordinal_position`; no
+match returns an empty `columns` list. Without a `table` filter, the listing covers every relation of the database, so
+filter as narrowly as possible on large warehouses. A database that does not exist lists nothing; a shared (datashare
+consumer) database is read from the provider database like a local one, because `SVV_ALL_COLUMNS` covers both.
 
 `data_type` is the bare type name; length, precision, and scale are separate attributes. `nullable` is null when the
 catalog has no nullability information, for example for some external columns. An empty `column_default` or remarks

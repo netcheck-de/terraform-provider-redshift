@@ -9,12 +9,6 @@ description: Lists the row-level security policies of a database.
 Lists every row-level security policy of one database, including policies Terraform does not manage. See AWS
 [SVV_RLS_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_POLICY.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_rls_policy WHERE poldb = 'database';
-```
-
 ## Example Usage
 
 ```terraform
@@ -33,11 +27,11 @@ output "rls_policy_names" {
 
 ### Optional
 
-- `database` (String) Database whose policies are listed; defaults to the provider database.
+- `database` (String) Database whose policies are listed; defaults to the provider's `database`.
 
 ### Read-Only
 
-- `id` (String) JSON identity of this listing: the warehouse binding, the database, and the configured filters.
+- `id` (String) JSON identity of this listing within the configured warehouse: its database scope and configured filters.
 - `rls_policies` (Attributes List) Matching objects; empty when nothing matches. (see [below for nested schema](#nestedatt--rls_policies))
 
 <a id="nestedatt--rls_policies"></a>
@@ -61,4 +55,18 @@ Read-Only:
 - `type` (String) Redshift data type in the catalog's canonical form, in uppercase, such as `CHARACTER VARYING(64)`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
-Items are sorted by name; an empty database yields an empty list. Regular users see only their own policies.
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
+-- List visible row-level security policies in the selected database.
+SELECT ... FROM svv_rls_policy WHERE poldb = 'database';
+```
+
+## Read Behavior
+
+Items are sorted by name; an empty database yields an empty list. Superusers see every policy; other users see only
+their own. A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

@@ -17,6 +17,7 @@ func newRlsPolicyAttachmentDataSource() datasource.DataSource {
 			Policy: attributes["policy"].(types.String), Database: attributes["database"].(types.String), Schema: attributes["schema"].(types.String),
 			Relation: attributes["relation"].(types.String), Grantee: attributes["grantee"].(types.String), GranteeType: attributes["grantee_type"].(types.String),
 		}
+
 		return (&rlsPolicyAttachmentResource{*client}).read(ctx, model)
 	}})
 }

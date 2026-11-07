@@ -36,7 +36,7 @@ type tableResource struct {
 
 // tableModel is the Terraform state of a table definition.
 type tableModel struct {
-	// ID records the warehouse/database/schema/table identity.
+	// ID records the database/schema/table identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database contains the table.
 	Database types.String `tfsdk:"database"`
@@ -69,6 +69,7 @@ type tableModel struct {
 // tableResourceModel is the resource state: the definition the lookup shares, plus the timeouts only the resource has.
 type tableResourceModel struct {
 	tableModel
+
 	// Timeouts bounds create, update, and delete.
 	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
@@ -218,6 +219,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 		for i, name := range names {
 			expressions[i] = path.MatchRelative().AtName(name)
 		}
+
 		return []validator.Object{objectvalidator.AlsoRequires(expressions...)}
 	}
 	resp.Schema = schema.Schema{
@@ -243,7 +245,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 			},
 			"backup": schema.StringAttribute{
 				Optional: true, Computed: true, Default: stringdefault.StaticString("YES"),
-				MarkdownDescription: "`YES` or `NO` (defaults to `YES`): whether snapshots include the table. RA3 and Serverless always back up tables. Redshift has no ALTER form, so a change replaces the table, except after import, when the value is only recorded; the setting is not read back from the catalog.",
+				MarkdownDescription: "`YES` or `NO` (defaults to `YES`): whether snapshots include the table. RA3 and Serverless always back up tables. The setting is not read back from the catalog.",
 				Validators:          []validator.String{stringvalidator.OneOf(tableKeywordStrings(tableBackupModes)...)},
 				PlanModifiers:       []planmodifier.String{replaceString("backup")},
 			},
@@ -280,7 +282,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 					"In place, a new column is added with `ALTER TABLE ADD COLUMN` wherever its block appears (not an identity column, and a NOT NULL column only with a default), " +
 					"although Redshift stores it after the existing ones; a removed column is dropped with `DROP COLUMN`, never `CASCADE`; " +
 					"`ALTER COLUMN ... ENCODE` re-encodes a column (not with an interleaved sort key), and VARCHAR or VARBYTE columns without a default, " +
-					"constraint, or `BYTEDICT`/`RUNLENGTH`/`TEXT255`/`TEXT32K` encoding can be widened with `ALTER COLUMN ... TYPE`. Set `renamed_from` to rename a column without losing its data; without that hint, changing a name drops the old column and adds the new one. Any other change to a column's type, nullability, default, or identity replaces the table. New columns are added before removed ones are dropped, so the existing and new columns together must not exceed 1600.",
+					"constraint, or `BYTEDICT`/`RUNLENGTH`/`TEXT255`/`TEXT32K` encoding can be resized with `ALTER COLUMN ... TYPE`, which Redshift refuses when existing values are longer than a smaller new length. Set `renamed_from` to rename a column without losing its data; without that hint, changing a name drops the old column and adds the new one. New columns are added before removed ones are dropped, so the existing and new columns together must not exceed 1600.",
 				Validators:    []validator.List{listvalidator.IsRequired(), listvalidator.SizeBetween(1, tableMaxColumns)},
 				PlanModifiers: []planmodifier.List{tableColumnDefaults{}, replaceList("column")},
 				NestedObject: schema.NestedBlockObject{
@@ -306,7 +308,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 						},
 						"default": schema.StringAttribute{
 							Optional:            true,
-							MarkdownDescription: "DEFAULT expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default, and a change replaces the table.",
+							MarkdownDescription: "DEFAULT expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default.",
 							Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
 						},
 					},
@@ -327,7 +329,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"primary_key": schema.SingleNestedBlock{
-				MarkdownDescription: "Primary key. Redshift does not enforce it but uses it for planning. It is added and dropped with `ALTER TABLE ADD PRIMARY KEY` and `DROP CONSTRAINT`; a new primary key on an existing nullable column, or on a new column without a default, replaces the table.",
+				MarkdownDescription: "Primary key. Redshift does not enforce it but uses it for planning. It is added and dropped with `ALTER TABLE ADD PRIMARY KEY` and `DROP CONSTRAINT`.",
 				PlanModifiers:       []planmodifier.Object{replaceObject("primary_key")},
 				Validators:          requires("columns"),
 				Attributes: map[string]schema.Attribute{
@@ -360,7 +362,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"distribution": schema.SingleNestedBlock{
-				MarkdownDescription: "Declared distribution; omit the block for `AUTO`. Changes use `ALTER TABLE ALTER DISTSTYLE` or `ALTER DISTKEY`; with an interleaved sort key they replace the table. " +
+				MarkdownDescription: "Declared distribution; omit the block for `AUTO`. Changes use `ALTER TABLE ALTER DISTSTYLE` or `ALTER DISTKEY`. " +
 					"`ALTER DISTSTYLE AUTO` keeps the current key, so a move to `AUTO` that drops the key column, and dropping a key column Redshift chose itself, distribute `EVEN` until the column is dropped. " +
 					"Without the block, a distribution changed outside Terraform is reported here and planned back to `AUTO`.",
 				PlanModifiers: []planmodifier.Object{replaceObject("distribution")},
@@ -379,7 +381,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 			},
 			"sort_key": schema.SingleNestedBlock{
 				MarkdownDescription: "Declared sort key; omit the block for `AUTO`. Changes to `AUTO`, `NONE`, or a compound key use `ALTER TABLE ALTER SORTKEY`; a move to `AUTO` from an interleaved key or off a dropped column, and dropping a sort key column Redshift chose itself, first run `ALTER SORTKEY NONE`. " +
-					"Creating or changing an interleaved sort key replaces the table. Without the block, a sort key changed outside Terraform is reported here and planned back to `AUTO`.",
+					"Without the block, a sort key changed outside Terraform is reported here and planned back to `AUTO`.",
 				PlanModifiers: []planmodifier.Object{replaceObject("sort_key")},
 				Attributes: map[string]schema.Attribute{
 					"style": schema.StringAttribute{
@@ -398,6 +400,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database")
 }
 
 // tableKeywordStrings converts an allowlist for schema validators.
@@ -406,6 +409,7 @@ func tableKeywordStrings(keywords []sqlclient.Keyword) []string {
 	for i, keyword := range keywords {
 		values[i] = string(keyword)
 	}
+
 	return values
 }
 
@@ -418,17 +422,21 @@ func tableRequiresReplace(ctx context.Context, config tfsdk.Config, state tfsdk.
 	if config.Get(ctx, &configured).HasError() || state.Get(ctx, &prior).HasError() || plan.Get(ctx, &planned).HasError() {
 		return true
 	}
+
 	if tableStyleUnknown(configured.Distribution) || tableStyleUnknown(configured.SortKey) {
 		return true
 	}
+
 	prevSpec, err := tableObservedSpecOf(prior.tableModel)
 	if err != nil {
 		return true
 	}
+
 	planSpec, err := tableSpecOf(planned.tableModel)
 	if err != nil {
 		return true
 	}
+
 	return tableReplacements(prevSpec, planSpec)[attribute] != ""
 }
 
@@ -452,13 +460,16 @@ func (m tableDerivedStyle) PlanModifyString(ctx context.Context, req planmodifie
 	if !req.ConfigValue.IsNull() {
 		return
 	}
+
 	sibling := req.Path.ParentPath().AtName(m.source)
 	if m.source == "key" {
 		var key types.String
 		resp.Diagnostics.Append(req.Config.GetAttribute(ctx, sibling, &key)...)
+
 		if resp.Diagnostics.HasError() {
 			return
 		}
+
 		switch {
 		case key.IsUnknown():
 			resp.PlanValue = types.StringUnknown()
@@ -467,13 +478,17 @@ func (m tableDerivedStyle) PlanModifyString(ctx context.Context, req planmodifie
 		default:
 			resp.PlanValue = types.StringValue("KEY")
 		}
+
 		return
 	}
+
 	var columns types.List
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, sibling, &columns)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	switch {
 	case columns.IsUnknown():
 		resp.PlanValue = types.StringUnknown()
@@ -504,21 +519,28 @@ func (tableColumnDefaults) PlanModifyList(ctx context.Context, req planmodifier.
 	if req.PlanValue.IsNull() || req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
 		return
 	}
+
 	var planned, configured, existing []tableColumnModel
 	if req.PlanValue.ElementsAs(ctx, &planned, false).HasError() || req.ConfigValue.ElementsAs(ctx, &configured, false).HasError() || len(planned) != len(configured) {
 		return
 	}
+
 	prior := map[string]tableColumnModel{}
+
 	if !req.StateValue.IsNull() && !req.StateValue.IsUnknown() && !req.StateValue.ElementsAs(ctx, &existing, false).HasError() {
 		for _, column := range existing {
 			prior[column.Name.ValueString()] = column
 		}
 	}
+
 	var primaryKey types.Object
+
 	keyed := !req.Config.GetAttribute(ctx, path.Root("primary_key"), &primaryKey).HasError() && !primaryKey.IsUnknown()
 	keys := map[string]bool{}
+
 	if keyed && !primaryKey.IsNull() {
 		columns, ok := primaryKey.Attributes()["columns"].(types.List)
+
 		keyed = ok && !columns.IsUnknown()
 		for _, element := range columns.Elements() {
 			if name, ok := element.(types.String); ok {
@@ -526,19 +548,25 @@ func (tableColumnDefaults) PlanModifyList(ctx context.Context, req planmodifier.
 			}
 		}
 	}
+
 	moved, allMoved := tableSortKeyMoves(ctx, req.Config, req.State)
+
 	for i := range planned {
 		name := planned[i].Name.ValueString()
+
 		before, existed := prior[name]
 		if !existed && !configured[i].RenamedFrom.IsUnknown() {
 			before, existed = prior[configured[i].RenamedFrom.ValueString()]
 		}
+
 		if configured[i].Encoding.IsNull() && existed && !before.Encoding.IsUnknown() && !allMoved && !moved[name] {
 			planned[i].Encoding = before.Encoding
 		}
+
 		if !configured[i].Nullable.IsNull() {
 			continue
 		}
+
 		switch {
 		case !configured[i].Identity.IsNull() || keys[name]:
 			planned[i].Nullable = types.BoolValue(false)
@@ -548,10 +576,12 @@ func (tableColumnDefaults) PlanModifyList(ctx context.Context, req planmodifier.
 			planned[i].Nullable = types.BoolValue(true)
 		}
 	}
+
 	list, diagnostics := types.ListValueFrom(ctx, req.PlanValue.ElementType(ctx), planned)
 	if diagnostics.HasError() {
 		return
 	}
+
 	resp.PlanValue = list
 }
 
@@ -564,40 +594,50 @@ func tableSortKeyBlock(block types.Object) (string, []string, bool) {
 	case block.IsNull():
 		return "AUTO", nil, true
 	}
+
 	var model tableSortKeyModel
 	if block.As(context.Background(), &model, basetypes.ObjectAsOptions{}).HasError() || model.Style.IsUnknown() {
 		return "", nil, false
 	}
+
 	columns, err := tableStringList(model.Columns, "sort_key.columns")
 	if err != nil {
 		return "", nil, false
 	}
+
 	switch {
 	case !model.Style.IsNull():
 		return model.Style.ValueString(), columns, true
 	case len(columns) > 0:
 		return "COMPOUND", columns, true
 	}
+
 	return "AUTO", columns, true
 }
 
 // tableConfiguredColumnNames returns the names of the configured column blocks, or false when they are not known.
 func tableConfiguredColumnNames(ctx context.Context, config tfsdk.Config) (map[string]bool, bool) {
-	var list types.List
-	var columns []tableColumnModel
+	var (
+		list    types.List
+		columns []tableColumnModel
+	)
 	if config.GetAttribute(ctx, path.Root("column"), &list).HasError() || list.IsUnknown() || list.ElementsAs(ctx, &columns, false).HasError() {
 		return nil, false
 	}
+
 	names := map[string]bool{}
+
 	for _, column := range columns {
 		if column.Name.IsUnknown() {
 			return nil, false
 		}
+
 		names[column.Name.ValueString()] = true
 		if !column.RenamedFrom.IsNull() && !column.RenamedFrom.IsUnknown() {
 			names[column.RenamedFrom.ValueString()] = true
 		}
 	}
+
 	return names, true
 }
 
@@ -611,20 +651,26 @@ func tableSortKeyMoves(ctx context.Context, config tfsdk.Config, state tfsdk.Sta
 	if state.Raw.IsNull() {
 		return nil, false
 	}
+
 	var configured, stored, effective types.Object
 	if config.GetAttribute(ctx, path.Root("sort_key"), &configured).HasError() || state.GetAttribute(ctx, path.Root("sort_key"), &stored).HasError() ||
 		state.GetAttribute(ctx, path.Root("effective_sort_key"), &effective).HasError() {
 		return nil, false
 	}
+
 	to, toNames, toKnown := tableSortKeyBlock(configured)
 	from, fromNames, fromKnown := tableSortKeyBlock(stored)
-	var columnList types.List
-	var configuredColumns []tableColumnModel
+
+	var (
+		columnList        types.List
+		configuredColumns []tableColumnModel
+	)
 	if !config.GetAttribute(ctx, path.Root("column"), &columnList).HasError() && !columnList.ElementsAs(ctx, &configuredColumns, false).HasError() {
 		for _, column := range configuredColumns {
 			if column.RenamedFrom.IsNull() || column.RenamedFrom.IsUnknown() || column.Name.IsUnknown() {
 				continue
 			}
+
 			for i, name := range fromNames {
 				if name == column.RenamedFrom.ValueString() {
 					fromNames[i] = column.Name.ValueString()
@@ -632,27 +678,34 @@ func tableSortKeyMoves(ctx context.Context, config tfsdk.Config, state tfsdk.Sta
 			}
 		}
 	}
+
 	if !toKnown || !fromKnown {
 		return nil, true
 	}
+
 	if from != to || !slices.Equal(fromNames, toNames) {
 		columns := map[string]bool{}
 		for _, name := range append(fromNames, toNames...) {
 			columns[name] = true
 		}
+
 		return columns, from == "AUTO"
 	}
+
 	chosen := tableEffectiveSortColumns(effective)
 	if to != "AUTO" || len(chosen) == 0 {
 		return nil, false
 	}
+
 	names, known := tableConfiguredColumnNames(ctx, config)
 	if !known {
 		return nil, true
 	}
+
 	if !slices.ContainsFunc(chosen, func(name string) bool { return !names[name] }) {
 		return nil, false
 	}
+
 	columns := map[string]bool{}
 	for _, name := range chosen {
 		columns[name] = true
@@ -662,6 +715,7 @@ func tableSortKeyMoves(ctx context.Context, config tfsdk.Config, state tfsdk.Sta
 			}
 		}
 	}
+
 	return columns, false
 }
 
@@ -672,52 +726,66 @@ func (r *tableResource) read(ctx context.Context, data *tableModel) (bool, map[s
 	if err := r.bound(data.ID, database); err != nil {
 		return false, nil, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, database); err != nil || !exists {
 		return false, nil, err
 	}
+
 	spec := tableSpec{schema: data.Schema.ValueString(), name: data.Name.ValueString()}
+
 	tables, err := r.selectRows(ctx, database, readTableQuery(spec))
 	if err != nil || len(tables) == 0 {
 		return false, nil, err
 	}
+
 	if len(tables) != 1 {
 		return false, nil, fmt.Errorf("table %q.%q has ambiguous catalog metadata", spec.schema, spec.name)
 	}
+
 	attributes, err := r.selectRows(ctx, database, readTableAttributesQuery(spec))
 	if err != nil {
 		return false, nil, err
 	}
+
 	columns, err := r.selectRows(ctx, database, readTableColumnsQuery(database, spec))
 	if err != nil {
 		return false, nil, err
 	}
+
 	constraints, err := r.selectRows(ctx, database, readTableConstraintsQuery(spec))
 	if err != nil {
 		return false, nil, err
 	}
+
 	sortKeys, err := r.selectRows(ctx, database, readTableSortKeyQuery(spec))
 	if err != nil {
 		return false, nil, err
 	}
+
 	catalog, err := tableCatalogFrom(tables[0], attributes, columns, constraints, sortKeys)
 	if err != nil {
 		return false, nil, fmt.Errorf("table %q.%q: %w", spec.schema, spec.name, err)
 	}
+
 	observed, names, err := tableReconcile(*data, catalog)
 	if err != nil {
 		return false, nil, fmt.Errorf("table %q.%q: %w", spec.schema, spec.name, err)
 	}
+
 	*data = observed
+
 	return true, names, nil
 }
 
 // tableNullOf returns the null value of a framework type.
 func tableNullOf(attributeType attr.Type) attr.Value {
 	ctx := context.Background()
+
 	value, err := attributeType.ValueFromTerraform(ctx, tftypes.NewValue(attributeType.TerraformType(ctx), nil))
 	if err != nil {
 		panic(fmt.Sprintf("null %s: %v", attributeType, err))
 	}
+
 	return value
 }
 
@@ -729,12 +797,14 @@ func tableKnownObject(value types.Object, attributeTypes map[string]attr.Type) t
 	case value.IsNull():
 		return value
 	}
+
 	attributes := value.Attributes()
 	for name, attribute := range attributes {
 		if attribute.IsUnknown() {
 			attributes[name] = tableNullOf(attributeTypes[name])
 		}
 	}
+
 	return types.ObjectValueMust(attributeTypes, attributes)
 }
 
@@ -746,31 +816,38 @@ func tableKnownState(data tableModel) tableModel {
 			*value = types.StringNull()
 		}
 	}
+
 	data.Distribution = tableKnownObject(data.Distribution, tableDistributionAttributeTypes)
 	data.SortKey = tableKnownObject(data.SortKey, tableSortKeyAttributeTypes)
 	data.EffectiveDistribution = tableKnownObject(data.EffectiveDistribution, tableEffectiveDistributionAttributeTypes)
 	data.EffectiveSortKey = tableKnownObject(data.EffectiveSortKey, tableEffectiveSortKeyAttributeTypes)
+
 	var columns []tableColumnModel
 	if data.Column.ElementsAs(context.Background(), &columns, false).HasError() {
 		return data
 	}
+
 	for i := range columns {
 		if columns[i].Encoding.IsUnknown() {
 			columns[i].Encoding = types.StringNull()
 		}
+
 		if columns[i].Nullable.IsUnknown() {
 			columns[i].Nullable = types.BoolNull()
 		}
 	}
+
 	if list, diagnostics := types.ListValueFrom(context.Background(), types.ObjectType{AttrTypes: tableColumnAttributeTypes}, columns); !diagnostics.HasError() {
 		data.Column = list
 	}
+
 	return data
 }
 
 // verify re-reads the table after Create or Update and stores it once the catalog matches the plan.
 func (r *tableResource) verify(ctx context.Context, plan tableResourceModel, state *tfsdk.State, diagnostics *diag.Diagnostics, absent string) {
 	observed := plan
+
 	found, _, err := r.read(ctx, &observed.tableModel)
 	switch {
 	case err != nil:
@@ -780,6 +857,7 @@ func (r *tableResource) verify(ctx context.Context, plan tableResourceModel, sta
 		diagnostics.AddError("Verify table", absent)
 		return
 	}
+
 	planSpec, err := tableSpecOf(plan.tableModel)
 	if err == nil {
 		var observedSpec tableSpec
@@ -787,10 +865,12 @@ func (r *tableResource) verify(ctx context.Context, plan tableResourceModel, sta
 			err = tableConverged(planSpec, observedSpec)
 		}
 	}
+
 	if err != nil {
 		diagnostics.AddError("Verify table", "The catalog does not match the configuration after the change: "+err.Error())
 		return
 	}
+
 	diagnostics.Append(state.Set(ctx, &observed)...)
 }
 
@@ -798,33 +878,42 @@ func (r *tableResource) verify(ctx context.Context, plan tableResourceModel, sta
 func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data tableResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	ctx, done := boundOperation(ctx, "create", data.Timeouts.Create, &resp.Diagnostics)
 	defer done()
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	spec, err := tableSpecOf(data.tableModel)
+
 	var statements []string
 	if err == nil {
 		statements, err = createTableStatements(spec)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid table", err.Error())
 		return
 	}
+
 	database := data.Database.ValueString()
 	if err := r.exec(ctx, database, statements[0]); err != nil {
 		resp.Diagnostics.AddError("Create table", err.Error())
 		return
 	}
-	data.ID = r.identity(database, map[string]string{"schema": spec.schema, "name": spec.name})
+
+	data.ID = identity(map[string]string{"database": database, "schema": spec.schema, "name": spec.name})
 	// A failed follow-up statement or verification must still leave state for the created table.
 	known := tableResourceModel{tableModel: tableKnownState(data.tableModel), Timeouts: data.Timeouts}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &known)...)
+
 	if err := r.exec(ctx, database, statements[1:]...); err != nil {
 		resp.Diagnostics.AddError("Configure table", err.Error())
 		return
 	}
+
 	r.verify(ctx, data, &resp.State, &resp.Diagnostics, "The table is absent after creation.")
 }
 
@@ -832,15 +921,18 @@ func (r *tableResource) Create(ctx context.Context, req resource.CreateRequest, 
 func (r *tableResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data tableResourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	var err error
 	if req.Config.Raw.IsFullyKnown() {
 		_, err = tableSpecOf(data.tableModel)
 	} else {
 		err = tableValidateKnown(data.tableModel)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid table", err.Error())
 	}
@@ -852,6 +944,7 @@ func (r *tableResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanR
 	if req.Plan.Raw.IsNull() {
 		return
 	}
+
 	var plan tableResourceModel
 	if req.Plan.Get(ctx, &plan).HasError() {
 		return
@@ -862,6 +955,7 @@ func (r *tableResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanR
 		var state tableResourceModel
 		if !req.State.Get(ctx, &state).HasError() {
 			before, beforeErr := tableObservedSpecOf(state.tableModel)
+
 			after, afterErr := tableSpecOf(plan.tableModel)
 			if beforeErr == nil && afterErr == nil {
 				if _, _, err := tableRenameSpec(before, after); err != nil {
@@ -869,15 +963,18 @@ func (r *tableResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanR
 					return
 				}
 			}
+
 			unchanged := req.Plan
 			resp.Diagnostics.Append(unchanged.SetAttribute(ctx, path.Root("effective_distribution"), state.EffectiveDistribution)...)
 			resp.Diagnostics.Append(unchanged.SetAttribute(ctx, path.Root("effective_sort_key"), state.EffectiveSortKey)...)
+
 			if !resp.Diagnostics.HasError() && unchanged.Raw.Equal(req.State.Raw) {
 				resp.Plan = unchanged
 				return
 			}
 		}
 	}
+
 	distribution, sortKey := tablePlannedEffective(plan.tableModel)
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("effective_distribution"), distribution)...)
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("effective_sort_key"), sortKey)...)
@@ -888,16 +985,20 @@ func (r *tableResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanR
 func tablePlannedEffective(plan tableModel) (types.Object, types.Object) {
 	distribution := types.ObjectUnknown(tableEffectiveDistributionAttributeTypes)
 	sortKey := types.ObjectUnknown(tableEffectiveSortKeyAttributeTypes)
+
 	spec, err := tableSpecOf(plan)
 	if err != nil {
 		return distribution, sortKey
 	}
+
 	if spec.distStyle != "AUTO" && !tableStyleUnknown(plan.Distribution) {
 		distribution = tableEffectiveDistributionValue(string(spec.distStyle), spec.distKey, false)
 	}
+
 	if spec.sortStyle != "AUTO" && !tableStyleUnknown(plan.SortKey) {
 		sortKey = tableEffectiveSortKeyValue(string(spec.sortStyle), spec.sortKey, false)
 	}
+
 	return distribution, sortKey
 }
 
@@ -907,7 +1008,9 @@ func tableStyleUnknown(block types.Object) bool {
 	if block.IsUnknown() {
 		return true
 	}
+
 	style, ok := block.Attributes()["style"].(types.String)
+
 	return !block.IsNull() && (!ok || style.IsUnknown())
 }
 
@@ -915,9 +1018,11 @@ func tableStyleUnknown(block types.Object) bool {
 func (r *tableResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data tableResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, _, err := r.read(ctx, &data.tableModel)
 	switch {
 	case err != nil:
@@ -925,6 +1030,7 @@ func (r *tableResource) Read(ctx context.Context, req resource.ReadRequest, resp
 	case !found:
 		resp.State.RemoveResource(ctx)
 	default:
+		data.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 }
@@ -932,12 +1038,14 @@ func (r *tableResource) Read(ctx context.Context, req resource.ReadRequest, resp
 // tableColumnNames returns the names of a model's column blocks.
 func tableColumnNames(data tableModel) map[string]bool {
 	names := map[string]bool{}
+
 	var columns []tableColumnModel
 	if !data.Column.IsNull() && !data.Column.IsUnknown() && !data.Column.ElementsAs(context.Background(), &columns, false).HasError() {
 		for _, column := range columns {
 			names[column.Name.ValueString()] = true
 		}
 	}
+
 	return names
 }
 
@@ -946,17 +1054,22 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	var plan, prior tableResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	ctx, done := boundOperation(ctx, "update", plan.Timeouts.Update, &resp.Diagnostics)
 	defer done()
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if _, err := tableSpecOf(plan.tableModel); err != nil {
 		resp.Diagnostics.AddError("Invalid table", err.Error())
 		return
 	}
+
 	current := prior.tableModel
 	planned := tableColumnNames(current)
+
 	found, constraints, err := r.read(ctx, &current)
 	switch {
 	case err != nil:
@@ -966,10 +1079,12 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 		resp.Diagnostics.AddError("Update table", "The table disappeared during the update; refresh the plan.")
 		return
 	}
+
 	before, after, err := tableAlterStates(current, constraints, plan.tableModel)
 	if err == nil {
 		err = tableStaleDrops(before.spec, after.spec, planned)
 	}
+
 	database := plan.Database.ValueString()
 	if err == nil {
 		err = r.exec(ctx, database, tableAlterPhaseStatements(before, after, tablePhaseRenameColumns, tablePhaseDropConstraints, tablePhaseAddColumns, tablePhaseKeys)...)
@@ -980,16 +1095,20 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 	if err == nil && tableSortKeyReencodes(before.spec, after.spec) {
 		encodings, err = r.refreshEncodings(ctx, plan.tableModel)
 	}
+
 	if err == nil {
 		err = r.exec(ctx, database, tableAlterPhaseStatements(encodings, after, tablePhaseAlterColumns)...)
 	}
+
 	if err == nil {
 		err = r.exec(ctx, database, tableAlterPhaseStatements(before, after, tablePhaseDropColumns, tablePhaseRestoreKeys, tablePhaseAddConstraints, tablePhaseOwner)...)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Update table", err.Error())
 		return
 	}
+
 	r.verify(ctx, plan, &resp.State, &resp.Diagnostics, "The table disappeared during the update.")
 }
 
@@ -997,6 +1116,7 @@ func (r *tableResource) Update(ctx context.Context, req resource.UpdateRequest, 
 // encodings Redshift assigned during the sort key change.
 func (r *tableResource) refreshEncodings(ctx context.Context, plan tableModel) (tableAlterState, error) {
 	refreshed := plan
+
 	found, names, err := r.read(ctx, &refreshed)
 	switch {
 	case err != nil:
@@ -1004,10 +1124,12 @@ func (r *tableResource) refreshEncodings(ctx context.Context, plan tableModel) (
 	case !found:
 		return tableAlterState{}, fmt.Errorf("the table disappeared during the update")
 	}
+
 	spec, err := tableObservedSpecOf(refreshed)
 	if err != nil {
 		return tableAlterState{}, fmt.Errorf("table definition after the sort key change: %w", err)
 	}
+
 	return tableAlterState{model: refreshed, spec: spec, constraints: names}, nil
 }
 
@@ -1015,29 +1137,37 @@ func (r *tableResource) refreshEncodings(ctx context.Context, plan tableModel) (
 func (r *tableResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state tableResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
 	ctx, done := boundOperation(ctx, "delete", state.Timeouts.Delete, &resp.Diagnostics)
 	defer done()
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	data := state.tableModel
+
 	database := data.Database.ValueString()
 	if err := r.bound(data.ID, database); err != nil {
 		resp.Diagnostics.AddError("Delete table", err.Error())
 		return
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, database); err != nil || !exists {
 		if err != nil {
 			resp.Diagnostics.AddError("Delete table", err.Error())
 		}
+
 		return
 	}
+
 	spec := tableSpec{schema: data.Schema.ValueString(), name: data.Name.ValueString()}
 	// Dropping a table needs its identity, not a decodable definition or visible constraint metadata.
 	rows, err := r.selectRows(ctx, database, readTableQuery(spec))
 	if err == nil && len(rows) > 0 {
 		err = r.exec(ctx, database, dropTableStatement(spec))
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete table", err.Error())
 	}

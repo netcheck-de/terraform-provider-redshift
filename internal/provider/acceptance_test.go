@@ -74,7 +74,7 @@ resource "redshift_system_grant" "reader" {
   role       = redshift_role.reader.name
   privileges = ["CREATE ROLE"]
 }
-resource "redshift_default_privileges" "reader" {
+resource "redshift_default_privilege" "reader" {
   database_name = redshift_database.local.name
   owner         = redshift_user.reader.name
   object_type   = "TABLES"
@@ -106,12 +106,12 @@ data "redshift_assumerole_grant" "reader" {
   grantee = redshift_role.reader.name
   grantee_type = "ROLE"
 }
-data "redshift_default_privileges" "reader" {
-  database_name = redshift_default_privileges.reader.database_name
-  owner = redshift_default_privileges.reader.owner
-  object_type = redshift_default_privileges.reader.object_type
-  grantee = redshift_default_privileges.reader.grantee
-  grantee_type = redshift_default_privileges.reader.grantee_type
+data "redshift_default_privilege" "reader" {
+  database_name = redshift_default_privilege.reader.database_name
+  owner = redshift_default_privilege.reader.owner
+  object_type = redshift_default_privilege.reader.object_type
+  grantee = redshift_default_privilege.reader.grantee
+  grantee_type = redshift_default_privilege.reader.grantee_type
 }
 data "redshift_grant" "schema" {
   database_name = redshift_grant.schema.database_name
@@ -124,6 +124,7 @@ data "redshift_grant" "schema" {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	connection := sqlclient.Connection{Database: database}
 
@@ -142,10 +143,12 @@ data "redshift_grant" "schema" {
 				if err != nil {
 					return err
 				}
+
 				if len(rows) != 0 {
 					return fmt.Errorf("%s still exists after destroy", check.name)
 				}
 			}
+
 			return nil
 		},
 		Steps: []resource.TestStep{
@@ -158,7 +161,7 @@ data "redshift_grant" "schema" {
 				resource.TestCheckResourceAttr("data.redshift_object_grant.schema", "privileges.#", "1"),
 				resource.TestCheckResourceAttr("data.redshift_system_grant.reader", "privileges.#", "1"),
 				resource.TestCheckResourceAttr("data.redshift_assumerole_grant.reader", "privileges.#", "0"),
-				resource.TestCheckResourceAttr("data.redshift_default_privileges.reader", "privileges.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_default_privilege.reader", "privileges.#", "1"),
 				resource.TestCheckResourceAttr("data.redshift_grant.schema", "privileges.#", "1"),
 			)},
 			{Config: configSQL(`["USAGE"]`), PlanOnly: true},
@@ -172,12 +175,12 @@ data "redshift_grant" "schema" {
 			{ResourceName: "redshift_user.reader", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"password_wo_version"}},
 			{ResourceName: "redshift_object_grant.schema", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_system_grant.reader", ImportState: true, ImportStateVerify: true},
-			{ResourceName: "redshift_default_privileges.reader", ImportState: true, ImportStateVerify: true},
+			{ResourceName: "redshift_default_privilege.reader", ImportState: true, ImportStateVerify: true},
 			{Config: configSQL(`["USAGE", "CREATE"]`), Check: resource.TestCheckResourceAttr("redshift_grant.schema", "privileges.#", "2")},
 			{
 				Config: configSQL(`["USAGE", "CREATE"]`), PlanOnly: true, ExpectNonEmptyPlan: true,
 				PreConfig: func() {
-					_, err := client.Query(ctx, sqlclient.Connection{Database: dbName}, "REVOKE CREATE ON SCHEMA "+sqlclient.Identifier(dbName)+"."+sqlclient.Identifier(schemaName)+" FROM ROLE "+sqlclient.Identifier(roleName), nil)
+					_, err := client.Query(ctx, sqlclient.Connection{Database: dbName}, sqlclient.Stmt("REVOKE CREATE ON SCHEMA").Qualified(dbName, schemaName).Kw("FROM ROLE").Ident(roleName).String(), nil)
 					require.NoError(t, err)
 				},
 			},

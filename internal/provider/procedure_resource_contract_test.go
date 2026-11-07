@@ -15,6 +15,7 @@ import (
 // respelled argument, an import, and a replacement for a changed type.
 func TestContractProcedureArgumentBlockPlans(t *testing.T) {
 	t.Parallel()
+
 	configuration := func(factor, factorType string) string {
 		return fmt.Sprintf(`
 provider "redshift" {

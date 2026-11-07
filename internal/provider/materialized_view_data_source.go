@@ -20,26 +20,34 @@ func newMaterializedViewDataSource() datasource.DataSource {
 	return lookupDescriptions(newCatalogDataSource(catalogSpec{name: "materialized_view", factory: newMaterializedViewResource, computed: []string{"query", "backup"}, identityFields: []string{"schema", "name"}, identityDatabase: "database", lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
 		attributes := data.Attributes()
 		model := materializedViewModel{ID: types.StringNull(), Database: attributes["database"].(types.String), Schema: attributes["schema"].(types.String), Name: attributes["name"].(types.String)}
+
 		observed, found, err := (&materializedViewResource{*client}).read(ctx, model)
 		if err == nil && found {
 			lookupValue(data, "query", types.StringValue(observed.view.definition))
+
 			if !observed.refreshHidden {
 				lookupValue(data, "auto_refresh", types.BoolValue(observed.autoRefresh))
 			}
+
 			lookupValue(data, "owner", types.StringValue(observed.view.owner))
 			lookupValue(data, "definition_fingerprint", types.StringValue(definitionFingerprint(observed.view.definition)))
 		}
+
 		return found, err
-	}}), map[string]string{
-		"query":                  "Catalog definition from `pg_views`: the complete `CREATE MATERIALIZED VIEW` statement as Redshift prints it.",
-		"backup":                 materializedViewLookupStorageDescription,
-		"distribution":           materializedViewLookupStorageDescription,
-		"distribution.style":     "Distribution style: `EVEN`, `ALL`, or `KEY`.",
-		"distribution.key":       "Distribution key column.",
-		"sort_key":               materializedViewLookupStorageDescription,
-		"sort_key.columns":       "Compound sort key columns in order.",
-		"auto_refresh":           "Whether the materialized view refreshes automatically, from `SVV_MV_INFO`. Null when `SVV_MV_INFO` hides the view from a provider identity that neither owns it nor is a superuser.",
-		"owner":                  "SQL user owning the materialized view.",
-		"definition_fingerprint": viewLookupFingerprintDescription,
-	})
+	}}), materializedViewOutputDescriptions)
+}
+
+// materializedViewOutputDescriptions describe the catalog values the lookup reports; the listing uses the entries of
+// the attributes it lists.
+var materializedViewOutputDescriptions = map[string]string{
+	"query":                  "Catalog definition from `pg_views`: the complete `CREATE MATERIALIZED VIEW` statement as Redshift prints it.",
+	"backup":                 materializedViewLookupStorageDescription,
+	"distribution":           materializedViewLookupStorageDescription,
+	"distribution.style":     "Distribution style: `EVEN`, `ALL`, or `KEY`.",
+	"distribution.key":       "Distribution key column.",
+	"sort_key":               materializedViewLookupStorageDescription,
+	"sort_key.columns":       "Compound sort key columns in order.",
+	"auto_refresh":           "Whether the materialized view refreshes automatically, from `SVV_MV_INFO`. Null when `SVV_MV_INFO` hides the view from a provider identity that neither owns it nor is a superuser.",
+	"owner":                  "SQL user owning the materialized view.",
+	"definition_fingerprint": viewLookupFingerprintDescription,
 }

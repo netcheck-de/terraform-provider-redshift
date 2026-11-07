@@ -31,6 +31,8 @@ func TestAccSpectrumExternalTableLifecycle(t *testing.T) {
 	}
 }
 
+// testAccSpectrumExternalTableLifecycle runs the external table lifecycle for one columnar format and drops leftover
+// tables from the shared Glue database afterwards.
 func testAccSpectrumExternalTableLifecycle(t *testing.T, format string) {
 	t.Helper()
 	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SPECTRUM_ROLE_ARN", "REDSHIFT_ACC_SPECTRUM_GLUE_DATABASE", "REDSHIFT_ACC_SPECTRUM_LOCATION")
@@ -41,16 +43,19 @@ func testAccSpectrumExternalTableLifecycle(t *testing.T, format string) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+
 	t.Cleanup(func() {
 		// A failed run may leave the table in the shared Glue database, which restrictive DROP SCHEMA cannot remove.
 		for _, table := range []string{"events", "metrics"} {
-			_, err := client.Query(ctx, sqlclient.Connection{Database: database}, "DROP TABLE IF EXISTS "+sqlclient.Identifier(schema)+"."+table, nil)
+			_, err := client.Query(ctx, sqlclient.Connection{Database: database}, sqlclient.Stmt("DROP TABLE IF EXISTS").Qualified(schema, table).String(), nil)
 			if err != nil {
 				t.Logf("external table cleanup: %v", err)
 			}
 		}
 	})
+
 	configuration := func(tableLocation, partitionLocation, extraColumn, numRows, mappedColumns string) string {
 		return fmt.Sprintf(`
 provider "redshift" {
@@ -124,6 +129,17 @@ data "redshift_external_partition" "first" {
   schema = redshift_external_partition.first.schema
   table = redshift_external_partition.first.table
   values = redshift_external_partition.first.values
+}
+data "redshift_external_tables" "lake" {
+  database = redshift_external_schema.lake.database
+  schema = redshift_external_schema.lake.name
+  depends_on = [redshift_external_table.events, redshift_external_table.metrics]
+}
+data "redshift_external_partitions" "events" {
+  database = redshift_external_partition.first.database
+  schema = redshift_external_partition.first.schema
+  table = redshift_external_partition.first.table
+  depends_on = [redshift_external_partition.first]
 }`, region, profile, workgroup, database, schema, glue, role, extraColumn, tableLocation, numRows, partitionLocation, mappedColumns, metrics, format)
 	}
 	moved := location + "v2/"
@@ -144,6 +160,17 @@ data "redshift_external_partition" "first" {
 				resource.TestCheckResourceAttr("data.redshift_external_table.events", "field_delimiter", "\t"),
 				resource.TestCheckResourceAttr("data.redshift_external_table.events", "partition_key.0.name", "event_date"),
 				resource.TestCheckResourceAttrSet("data.redshift_external_partition.first", "location"),
+				resource.TestCheckResourceAttr("data.redshift_external_tables.lake", "external_tables.#", "2"),
+				resource.TestCheckResourceAttr("data.redshift_external_tables.lake", "external_tables.0.name", "events"),
+				resource.TestCheckResourceAttr("data.redshift_external_tables.lake", "external_tables.0.stored_as", "TEXTFILE"),
+				resource.TestCheckResourceAttr("data.redshift_external_tables.lake", "external_tables.0.field_delimiter", "\t"),
+				resource.TestCheckResourceAttr("data.redshift_external_tables.lake", "external_tables.0.column.0.type", "INTEGER"),
+				resource.TestCheckResourceAttr("data.redshift_external_tables.lake", "external_tables.0.partition_key.0.name", "event_date"),
+				resource.TestCheckResourceAttr("data.redshift_external_tables.lake", "external_tables.1.name", "metrics"),
+				resource.TestCheckResourceAttr("data.redshift_external_tables.lake", "external_tables.1.stored_as", format),
+				resource.TestCheckResourceAttr("data.redshift_external_partitions.events", "external_partitions.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_external_partitions.events", "external_partitions.0.values.event_date", "2024-01-01"),
+				resource.TestCheckResourceAttrPair("data.redshift_external_partitions.events", "external_partitions.0.location", "data.redshift_external_partition.first", "location"),
 			)},
 			{Config: initial, PlanOnly: true},
 			{Config: changed, ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{

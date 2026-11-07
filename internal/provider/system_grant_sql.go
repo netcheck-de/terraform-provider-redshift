@@ -29,16 +29,27 @@ func readSystemGrantQuery(role string) sqlclient.Query {
 // systemGrantTarget renders the role check, catalog read, and GRANT/REVOKE statements for role system privileges.
 func systemGrantTarget(data types.Object) (privilegeTarget, error) {
 	role := objectString(data, "role")
+
 	checks, err := newCatalogChecks(privilegeRoleQuery(role))
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	query, err := newCatalogCheck(readSystemGrantQuery(role))
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	return privilegeTarget{
 		checks: checks, query: query, allowed: systemPrivileges,
 		grant: grantSpec{grantee: sqlclient.Kw("ROLE").Ident(role)},
 	}, nil
+}
+
+// listSystemGrantsQuery lists the system privileges granted directly to roles, narrowed to one role when set.
+func listSystemGrantsQuery(role string) sqlclient.Query {
+	return sqlclient.Select("identity_name", "system_privilege AS privilege_type").From("svv_system_privileges").
+		Where("identity_type = 'role'").
+		OptEq("identity_name", "role", role).
+		OrderBy("identity_name", "system_privilege")
 }

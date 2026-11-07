@@ -16,6 +16,7 @@ func TestSchemaSQL(t *testing.T) {
 	options := func(name, owner string, quota int64) schemaModel {
 		data := schema(name)
 		data.Owner, data.Quota = types.StringValue(owner), types.Int64Value(quota)
+
 		return data
 	}
 	create := func(data schemaModel) func() (string, error) {
@@ -28,6 +29,7 @@ func TestSchemaSQL(t *testing.T) {
 		return func() (string, error) {
 			sql, parameters, err := query.Build()
 			assert.Equal(t, expected, parameters)
+
 			return sql, err
 		}
 	}
@@ -58,5 +60,7 @@ func TestSchemaSQL(t *testing.T) {
 		{"read_empty_name", built(readSchemaQuery(schema("")), nil)},
 		{"read_quota", built(readSchemaQuotaQuery(quoted), map[string]string{"database": `it's\db`, "name": `Odd"Serving`})},
 		{"read_session", built(readSchemaSessionQuery(), nil)},
+		{"list", built(listSchemasQuery(), nil)},
+		{"list_quotas", built(listSchemaQuotasQuery(`it's\db`), map[string]string{"database": `it's\db`})},
 	})
 }

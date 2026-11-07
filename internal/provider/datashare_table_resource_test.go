@@ -31,6 +31,7 @@ func TestDatashareTableMembership(t *testing.T) {
 	found, err := r.read(context.Background(), data)
 	require.NoError(t, err)
 	assert.True(t, found)
+
 	c.shareTable = false
 	found, err = r.read(context.Background(), data)
 	require.NoError(t, err)
@@ -45,6 +46,7 @@ func TestDatashareTableRejectsEmptyNames(t *testing.T) {
 	}))}
 	valid := datashareTableModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), Schema: types.StringValue("serving"), Table: types.StringValue("table")}
 	emptySchema, emptyTable, unknown := valid, valid, valid
+
 	emptySchema.Schema, emptyTable.Table, unknown.Schema = types.StringValue(""), types.StringValue(""), types.StringUnknown()
 	for name, test := range map[string]struct {
 		model   datashareTableModel
@@ -54,6 +56,7 @@ func TestDatashareTableRejectsEmptyNames(t *testing.T) {
 		r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, test.model))}, &resp)
 		assert.Equal(t, test.invalid, resp.Diagnostics.HasError(), "%s: %v", name, resp.Diagnostics)
 	}
+
 	plan := testState(t, r, emptySchema)
 	resp := resource.CreateResponse{State: tfsdk.State{Schema: plan.Schema, Raw: tftypes.NewValue(plan.Raw.Type(), nil)}}
 	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(plan)}, &resp)

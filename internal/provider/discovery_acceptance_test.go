@@ -19,8 +19,8 @@ import (
 )
 
 // TestAccDiscoveryListings verifies the catalog listings and constraint comments against live system views, which
-// the offline fakes can only approximate: owner joins, materialized view detection, nullability spelling, and
-// pg_get_constraintdef output.
+// the offline fakes can only approximate: owners, table, view, and materialized view classification, nullability
+// spelling, and pg_get_constraintdef output.
 func TestAccDiscoveryListings(t *testing.T) {
 	region, profile, workgroup, database := testAccWorkgroup(t)
 	name := "acc_discovery_" + strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -37,23 +37,25 @@ resource "redshift_database" "local" { name = %q }
 		if !enabled {
 			return base
 		}
+
 		return base + fmt.Sprintf(`
 data "redshift_databases" "acc" {
   name_like = redshift_database.local.name
 }
 data "redshift_schemas" "acc" {
   database = redshift_database.local.name
-  schema_type = "LOCAL"
 }
-data "redshift_tables" "views" {
+data "redshift_tables" "acc" {
   database = redshift_database.local.name
   schema = "public"
-  table_type = "VIEW"
 }
-data "redshift_tables" "materialized" {
+data "redshift_views" "acc" {
   database = redshift_database.local.name
   schema = "public"
-  table_type = "MATERIALIZED VIEW"
+}
+data "redshift_materialized_views" "acc" {
+  database = redshift_database.local.name
+  schema = "public"
 }
 data "redshift_columns" "orders" {
   database = redshift_database.local.name
@@ -86,11 +88,18 @@ data "redshift_comment" "key" {
   object_name = redshift_comment.key.object_name
   constraint_name = redshift_comment.key.constraint_name
 }
+data "redshift_comments" "keys" {
+  database_name = redshift_comment.key.database_name
+  object_type = "CONSTRAINT"
+  schema_name = redshift_comment.key.schema_name
+  depends_on = [redshift_comment.key]
+}
 `, text)
 	}
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
 	require.NoError(t, err)
+
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// Quoted identifiers still fold unless the warehouse enables case-sensitive identifiers.
@@ -100,6 +109,7 @@ data "redshift_comment" "key" {
 	require.NoError(t, err)
 	caseSensitive, err := configurationValue("enable_case_sensitive_identifier", rows)
 	require.NoError(t, err)
+
 	regionColumn := "region"
 	if tableCatalogBool(caseSensitive) || strings.EqualFold(caseSensitive, "on") {
 		regionColumn = "Region"
@@ -108,17 +118,20 @@ data "redshift_comment" "key" {
 	t.Cleanup(func() {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
 			_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)
 		}
 	})
+
 	fixtures := []string{
 		`CREATE TABLE public.orders (id INTEGER NOT NULL, "Region" VARCHAR(16), label VARCHAR(64) DEFAULT 'none', PRIMARY KEY (id), UNIQUE (label, "Region"))`,
 		`CREATE TABLE public.order_lines (order_id INTEGER, line INTEGER, CONSTRAINT order_lines_order_fkey FOREIGN KEY (order_id) REFERENCES public.orders (id))`,
 		`CREATE VIEW public.order_labels AS SELECT id, label FROM public.orders`,
 		`CREATE MATERIALIZED VIEW public.order_totals AS SELECT COUNT(*) AS total FROM public.orders`,
 	}
+
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
@@ -135,12 +148,21 @@ data "redshift_comment" "key" {
 					resource.TestCheckResourceAttr("data.redshift_databases.acc", "databases.#", "1"),
 					resource.TestCheckResourceAttr("data.redshift_databases.acc", "databases.0.database_type", "LOCAL"),
 					resource.TestCheckResourceAttrSet("data.redshift_databases.acc", "databases.0.owner"),
-					resource.TestCheckTypeSetElemNestedAttrs("data.redshift_schemas.acc", "schemas.*", map[string]string{"name": "public", "schema_type": "LOCAL"}),
-					resource.TestCheckResourceAttr("data.redshift_tables.views", "tables.#", "1"),
-					resource.TestCheckResourceAttr("data.redshift_tables.views", "tables.0.name", "order_labels"),
-					resource.TestCheckResourceAttr("data.redshift_tables.materialized", "tables.#", "1"),
-					resource.TestCheckResourceAttr("data.redshift_tables.materialized", "tables.0.name", "order_totals"),
-					resource.TestCheckResourceAttrSet("data.redshift_tables.materialized", "tables.0.owner"),
+					resource.TestCheckTypeSetElemNestedAttrs("data.redshift_schemas.acc", "schemas.*", map[string]string{"database": name, "name": "public", "quota": "-1"}),
+					// Views, materialized views, and the materialized view's internal storage are not tables.
+					resource.TestCheckResourceAttr("data.redshift_tables.acc", "tables.#", "2"),
+					resource.TestCheckResourceAttr("data.redshift_tables.acc", "tables.0.name", "order_lines"),
+					resource.TestCheckResourceAttr("data.redshift_tables.acc", "tables.1.name", "orders"),
+					resource.TestCheckResourceAttrSet("data.redshift_tables.acc", "tables.1.owner"),
+					resource.TestCheckResourceAttr("data.redshift_views.acc", "views.#", "1"),
+					resource.TestCheckResourceAttr("data.redshift_views.acc", "views.0.name", "order_labels"),
+					resource.TestCheckResourceAttr("data.redshift_views.acc", "views.0.late_binding", "false"),
+					resource.TestCheckResourceAttrSet("data.redshift_views.acc", "views.0.owner"),
+					resource.TestCheckResourceAttrSet("data.redshift_views.acc", "views.0.definition_fingerprint"),
+					resource.TestCheckResourceAttr("data.redshift_materialized_views.acc", "materialized_views.#", "1"),
+					resource.TestCheckResourceAttr("data.redshift_materialized_views.acc", "materialized_views.0.name", "order_totals"),
+					resource.TestCheckResourceAttr("data.redshift_materialized_views.acc", "materialized_views.0.auto_refresh", "false"),
+					resource.TestCheckResourceAttrSet("data.redshift_materialized_views.acc", "materialized_views.0.owner"),
 					resource.TestCheckResourceAttr("data.redshift_columns.orders", "columns.#", "3"),
 					resource.TestCheckResourceAttr("data.redshift_columns.orders", "columns.0.name", "id"),
 					resource.TestCheckResourceAttr("data.redshift_columns.orders", "columns.0.nullable", "false"),
@@ -158,6 +180,11 @@ data "redshift_comment" "key" {
 					resource.TestCheckResourceAttr("data.redshift_constraints.orders", "constraints.0.columns.#", "2"),
 					resource.TestCheckResourceAttr("data.redshift_constraints.orders", "constraints.0.columns.1", regionColumn),
 					resource.TestCheckResourceAttr("data.redshift_comment.key", "text", "O'Reilly key"),
+					resource.TestCheckResourceAttr("data.redshift_comments.keys", "comments.#", "1"),
+					resource.TestCheckResourceAttr("data.redshift_comments.keys", "comments.0.object_name", "orders"),
+					resource.TestCheckResourceAttr("data.redshift_comments.keys", "comments.0.constraint_name", "orders_pkey"),
+					resource.TestCheckResourceAttr("data.redshift_comments.keys", "comments.0.text", "O'Reilly key"),
+					resource.TestCheckNoResourceAttr("data.redshift_comments.keys", "comments.0.column_name"),
 				),
 			},
 			{Config: configuration("O'Reilly key", true), PlanOnly: true},

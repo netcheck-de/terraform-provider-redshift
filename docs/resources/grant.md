@@ -11,16 +11,6 @@ and object-specific grants are independent. An empty `privileges` set revokes th
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 
-## SQL Statements
-
-```sql
-GRANT privilege ... TO ...;
-REVOKE privilege ... FROM ...;
-REVOKE GRANT OPTION ... FROM ...;
-```
-
-Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
-
 ## Example Usage
 
 ```terraform
@@ -58,8 +48,23 @@ resource "redshift_grant" "readers" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Grant privileges.
+GRANT privilege ... TO ...;
+
+-- Revoke privileges.
+REVOKE privilege ... FROM ...;
+
+-- Revoke permission to grant privileges to others.
+REVOKE GRANT OPTION ... FROM ...;
+```
 
 ## Scopes and Privileges
 
@@ -130,16 +135,6 @@ resource "redshift_grant" "reader_templates" {
 }
 ```
 
-## Lifecycle and Ownership
-
-A role's grants are read with `SHOW GRANTS FOR ROLE … FROM DATABASE`. A user's grants are read with
-`SHOW GRANTS ON DATABASE … FOR` or `SHOW GRANTS ON SCHEMA … FOR`, which report `admin_option`, so grant options are
-observed instead of being folded into plain privileges. Local databases are read in the target database and shared
-databases through the administration database. Direct system privileges belong to
-[system grants](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/system_grant).
-
-Reference managed role, user, and database names to establish creation order.
-
 ## Datashare Grants
 
 For a producer datashare, use `datashare` instead of `role`. `SCHEMA` supports `USAGE`; `TABLES` supports `SELECT`. Both
@@ -165,6 +160,18 @@ resource "redshift_grant" "share_tables" {
   depends_on    = [redshift_grant.share_schema]
 }
 ```
+
+## Lifecycle and Ownership
+
+Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
+
+A role's grants are read with `SHOW GRANTS FOR ROLE … FROM DATABASE`. A user's grants are read with
+`SHOW GRANTS ON DATABASE … FOR` or `SHOW GRANTS ON SCHEMA … FOR`, which report `admin_option`, so grant options are
+observed instead of being folded into plain privileges. Local databases are read in the target database and shared
+databases through the administration database. Direct system privileges belong to
+[system grants](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/system_grant).
+
+Reference managed role, user, and database names to establish creation order.
 
 ## Reconciliation
 
@@ -291,41 +298,37 @@ SHOW GRANTS ON DATABASE "analytics" FOR "scoped:analyst";
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_grant.readers["TABLES"]
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    database_name  = "analytics"
-    role           = "ncidc:analytics-readers"
-    scope          = "TABLES"
+    database_name = "analytics"
+    role          = "ncidc:analytics-readers"
+    scope         = "TABLES"
   })
 }
 ```
 
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
-
-Alternatively, use `terraform import`. The identity names the one configured recipient key (`role`, `user`, or
-`datashare`) and includes `schema_name` when set:
+Alternatively, use `terraform import`:
 
 ```shell
 # Role grant
 terraform import 'redshift_grant.readers["TABLES"]' \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","role":"ncidc:analytics-readers","scope":"TABLES"}'
+  '{"database_name":"analytics","role":"ncidc:analytics-readers","scope":"TABLES"}'
 
 # User grant: uses user in place of role and includes schema_name when set
 terraform import redshift_grant.analyst_tables \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","user":"analyst","schema_name":"serving","scope":"TABLES"}'
+  '{"database_name":"analytics","user":"analyst","schema_name":"serving","scope":"TABLES"}'
 
 # Datashare grant: uses datashare in place of role and includes schema_name
 terraform import redshift_grant.share_tables \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","datashare":"analytics_share","schema_name":"serving","scope":"TABLES"}'
+  '{"database_name":"analytics","datashare":"analytics_share","schema_name":"serving","scope":"TABLES"}'
 ```
+
+The identity names the one configured recipient key (`role`, `user`, or `datashare`) and includes `schema_name` when
+set.
 
 The actual privilege and grant option sets are read from the catalog during refresh; compare the next plan to the
 intended policy.

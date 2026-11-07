@@ -24,6 +24,7 @@ func keywordCanonical(value types.String) types.String {
 	if value.IsNull() || value.IsUnknown() {
 		return value
 	}
+
 	return types.StringValue(strings.ToUpper(value.ValueString()))
 }
 
@@ -33,5 +34,6 @@ func keywordValue(configured types.String, catalog string) types.String {
 	if !configured.IsNull() && !configured.IsUnknown() && strings.EqualFold(configured.ValueString(), catalog) {
 		return configured
 	}
+
 	return types.StringValue(catalog)
 }

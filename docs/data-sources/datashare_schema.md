@@ -9,12 +9,6 @@ description: Reads schema membership and future-object inclusion in a producer d
 Reads explicit schema membership and its actual future-object sharing policy. See AWS
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_datashare_objects WHERE share_name = 'datashare' ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -41,6 +35,17 @@ data "redshift_datashare_schema" "reporting" {
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `include_new` (Boolean) Automatically include future objects added to this schema; existing objects still need separate memberships.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Check schema membership and automatic inclusion of new objects.
+SELECT ... FROM svv_datashare_objects WHERE share_name = 'datashare' ...;
+```
+
+## Read Behavior
 
 `id` (String, computed) is the relationship's JSON identity, using the same warehouse, producer database, datashare, and
 schema keys as the paired resource. It is null when `exists` is false.

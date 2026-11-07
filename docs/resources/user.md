@@ -11,16 +11,6 @@ credentials or a federated identity. Role memberships and object privileges are 
 [CREATE USER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html) and
 [ALTER USER](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_USER.html).
 
-## SQL Statements
-
-```sql
-CREATE USER name PASSWORD { '...' | DISABLE } ...;
-ALTER USER name ...;
-ALTER USER name SET parameter TO '...';
-ALTER USER name RESET parameter;
-DROP USER name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -68,7 +58,7 @@ resource "redshift_role_grant" "grafana_monitor" {
 - `create_database` (Boolean) `CREATEDB` privilege; defaults to `false`. Updated in place.
 - `external_id` (String) Identifier of the user in a native identity provider (`EXTERNALID`); requires `password_disabled = true`. When unset, the current catalog value is recorded and left alone; Redshift has no statement that removes an external ID. Updated in place.
 - `password_disabled` (Boolean) `PASSWORD DISABLE`: the user has no password and signs in only with temporary IAM credentials or through a federated identity provider; defaults to `false`. Redshift refuses it for superusers. Changing it to `false` sets the password from `password_wo`. Kept from configuration rather than read back, because Redshift does not document where a disabled password is recorded; import records `false`. Updated in place.
-- `password_wo` (String, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only password (requires Terraform 1.11 or later); required on creation, on rotation, and when `password_disabled` changes to `false`, and not allowed while `password_disabled` is `true`. Never stored in this resource's plan or state.
+- `password_wo` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Write-only password; required on creation, on rotation, and when `password_disabled` changes to `false`, and not allowed while `password_disabled` is `true`. Never stored in this resource's plan or state.
 - `password_wo_version` (Number) Password rotation trigger; defaults to `0`. Increment to rotate `password_wo`. Imported users start at version 0 without changing their password. Ignored while `password_disabled` is `true`.
 - `search_path` (List of String) Stored `search_path` default (`ALTER USER ... SET search_path`) as schema names in search order; `$user` stands for the schema named after the session user. It takes effect at the user's next login. Removing it runs `RESET search_path`. Updated in place.
 - `session_defaults` (Map of String) Other stored session parameter defaults, set with `ALTER USER ... SET parameter TO 'value'` and removed with `RESET parameter`. They take effect at the user's next login. Keys are limited to the documented session parameters `analyze_threshold_percent`, `cast_super_null_on_error`, `datestyle`, `default_array_search_null_handling`, `default_geometry_encoding`, `describe_field_name_in_uppercase`, `downcase_delimited_identifier`, `enable_case_sensitive_identifier`, `enable_case_sensitive_super_attribute`, `enable_numeric_rounding`, `enable_result_cache_for_session`, `enable_spectrum_oid`, `enable_vacuum_boost`, `error_on_nondeterministic_update`, `extra_float_digits`, `interval_forbid_composite_literals`, `json_serialization_enable`, `json_serialization_parse_nested_strings`, `mv_enable_aqmv_for_session`, `navigate_super_null_on_error`, `parse_super_null_on_error`, `pg_federation_repeatable_read`, `query_group`, `spectrum_enable_pseudo_columns`, `spectrum_query_maxerror`, `statement_timeout`, `stored_proc_log_min_messages`, `timezone`, `wlm_query_slot_count`; values are strings as Redshift stores them, such as `Europe/Berlin` or `300000`. Refresh reads the stored defaults from `pg_user.useconfig`, not the values of a running session, and reports these parameters as set outside Terraform too. Updated in place.
@@ -79,8 +69,29 @@ resource "redshift_role_grant" "grafana_monitor" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the user.
+CREATE USER name PASSWORD { '...' | DISABLE } ...;
+
+-- Update user settings.
+ALTER USER name ...;
+
+-- Set a session parameter default for the user.
+ALTER USER name SET parameter TO '...';
+
+-- Reset a session parameter default for the user.
+ALTER USER name RESET parameter;
+
+-- Delete the user.
+DROP USER name;
+```
 
 ## Lifecycle and Ownership
 
@@ -89,7 +100,7 @@ Superusers see every row of [SVV_USER_INFO](https://docs.aws.amazon.com/redshift
 provider identity that is not a superuser sees only its own. `session_defaults` accepts only the documented session
 parameters listed above; cluster-wide parameters belong to the parameter group.
 
-`password_wo` is a write-only argument and requires Terraform 1.11 or later. Write-only values are absent from
+`password_wo` is a write-only argument. Write-only values are absent from
 **this resource's** state. The password source (for example, `random_password`) may
 still keep a value in its own Terraform state, and the Data API executes a SQL statement containing the password.
 Restrict Terraform state, provider logs, and Data API query-history access accordingly.
@@ -188,28 +199,22 @@ ALTER USER "grafana" SET timezone TO 'Europe/Berlin';
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_user.grafana
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    name           = "grafana"
+    name = "grafana"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_user.grafana \
-  '{"workgroup_name":"warehouse","database":"admin","name":"grafana"}'
+  '{"name":"grafana"}'
 ```
 
 Import sets `password_wo_version` to `0` and `password_disabled` to `false`, and does **not** rotate the existing

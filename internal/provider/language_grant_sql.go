@@ -41,19 +41,24 @@ func languageGrantTarget(data types.Object) (privilegeTarget, error) {
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	database := objectString(data, "database_name")
+
 	language, err := sqlclient.OneOf(objectString(data, "language_name"), languageGrantLanguages...)
 	if err != nil {
 		return privilegeTarget{}, fmt.Errorf("unsupported language_name: %w", err)
 	}
+
 	checks, err := newCatalogChecks(localDatabaseQuery(database))
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	query, err := newCatalogCheck(readLanguageGrantQuery(string(language), objectString(data, "grantee"), objectString(data, "grantee_type")))
 	if err != nil {
 		return privilegeTarget{}, err
 	}
+
 	target := privilegeTarget{
 		database: database, checks: append([]catalogCheck{check}, checks...), allowed: languageGrantPrivileges, query: query,
 		grant: grantSpec{object: sqlclient.Kw("ON LANGUAGE", language), grantee: grantee},
@@ -64,5 +69,15 @@ func languageGrantTarget(data types.Object) (privilegeTarget, error) {
 		// https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html
 		target.implicit = []string{string(languageGrantPrivileges[0])}
 	}
+
 	return target, nil
+}
+
+// listLanguageGrantsQuery lists the explicit privileges on the managed languages in the current database, narrowed
+// to one grantee when set.
+func listLanguageGrantsQuery(grantee string) sqlclient.Query {
+	return sqlclient.Select("language_name", "privilege_type", "identity_name", "identity_type", "admin_option").From("svv_language_privileges").
+		Where("language_name IN ('sql', 'plpgsql')").
+		OptEq("identity_name", "grantee", grantee).
+		OrderBy("language_name", "identity_type", "identity_name", "privilege_type")
 }

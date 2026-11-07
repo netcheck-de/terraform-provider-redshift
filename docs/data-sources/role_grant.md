@@ -10,12 +10,6 @@ Checks an explicit role grant, including grants of built-in system roles, and wh
 option. Inherited/transitive role access is not counted. See AWS
 [GRANT ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_user_grants | svv_role_grants WHERE ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -44,6 +38,17 @@ data "redshift_role_grant" "reader" {
 - `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Check role membership for a user or role recipient.
+SELECT ... FROM svv_user_grants | svv_role_grants WHERE ...;
+```
+
+## Read Behavior
 
 `id` (String, computed) is the relationship's JSON identity, using the same warehouse, provider database, role, and
 selected `to_user` or `to_role` keys as the paired resource. It is null when `exists` is false. `admin_option` is read

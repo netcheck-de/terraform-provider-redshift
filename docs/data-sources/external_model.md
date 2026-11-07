@@ -11,13 +11,6 @@ inference function, and the Amazon Bedrock settings where `SHOW MODEL` prints th
 [SHOW MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_MODEL.html) and
 [CREATE EXTERNAL MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_create_external_model.html).
 
-## Catalog Query
-
-```sql
-SHOW MODEL ALL;
-SHOW MODEL schema.name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -54,6 +47,20 @@ output "summarizer_function" {
 - `response_type` (String) Response format, `VARCHAR` or `SUPER`; null when `SHOW MODEL` does not report it.
 - `suffix` (String) Static prompt suffix; null when unset or not reported.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Locate the model among visible models.
+SHOW MODEL ALL;
+
+-- Read the model's settings.
+SHOW MODEL schema.name;
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed model's JSON identity, using the same warehouse, database, schema, and name keys
 as the paired resource.

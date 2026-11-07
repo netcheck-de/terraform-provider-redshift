@@ -12,7 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,25 +20,31 @@ import (
 // invoke executes a Terraform lifecycle method with the model as both plan and state.
 func invoke(t *testing.T, r resource.Resource, operation string, model any) diag.Diagnostics {
 	t.Helper()
+
 	ctx := context.Background()
 	state := testState(t, r, model)
 	plan := tfsdk.Plan(state)
+
 	switch operation {
 	case "create":
 		resp := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
 		r.Create(ctx, resource.CreateRequest{Plan: plan}, &resp)
+
 		return resp.Diagnostics
 	case "read":
 		resp := resource.ReadResponse{State: state}
 		r.Read(ctx, resource.ReadRequest{State: state}, &resp)
+
 		return resp.Diagnostics
 	case "update":
 		resp := resource.UpdateResponse{State: state}
 		r.Update(ctx, resource.UpdateRequest{Plan: plan, State: state}, &resp)
+
 		return resp.Diagnostics
 	case "delete":
 		resp := resource.DeleteResponse{State: state}
 		r.Delete(ctx, resource.DeleteRequest{State: state}, &resp)
+
 		return resp.Diagnostics
 	default:
 		t.Fatalf("unknown lifecycle operation %q", operation)
@@ -75,7 +81,7 @@ type lifecycleCase struct {
 	// prepare adjusts the catalog for one operation, for example drift that update must correct.
 	prepare func(c *catalog, operation string)
 	// missingRows answers queries against an otherwise empty catalog where the type needs a row to proceed.
-	missingRows func(operation, sql string) []dataapi.Row
+	missingRows func(operation, sql string) []sqlclient.Row
 	// isDeletion recognizes the statements that remove the object; nil uses defaultDeletion.
 	isDeletion func(sql string) bool
 }
@@ -94,6 +100,7 @@ func lifecycleCases() []lifecycleCase {
 	for _, name := range lifecycleRegistry.keys() {
 		cases = append(cases, lifecycleRegistry.entries[name])
 	}
+
 	return cases
 }
 
@@ -101,6 +108,7 @@ func lifecycleCases() []lifecycleCase {
 func (test lifecycleCase) catalog() *catalog {
 	c := fullCatalog()
 	test.applySetup(c)
+
 	return c
 }
 
@@ -124,6 +132,7 @@ func (test lifecycleCase) removable(c *catalog) {
 		c.membership = false
 		clear(c.privileges)
 	}
+
 	if test.dependents != nil {
 		test.dependents(c)
 	}
@@ -134,6 +143,7 @@ func (test lifecycleCase) deletion(sql string) bool {
 	if test.isDeletion != nil {
 		return test.isDeletion(sql)
 	}
+
 	return defaultDeletion(sql)
 }
 
@@ -145,11 +155,13 @@ func defaultDeletion(sql string) bool {
 	case "DROP", "REVOKE", "DETACH", "RESET":
 		return true
 	}
+
 	for _, clause := range []string{" REMOVE ", " DETACH ", " RESET ", " DROP USER "} {
 		if strings.Contains(sql, clause) {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -157,12 +169,14 @@ func defaultDeletion(sql string) bool {
 func fullCatalog() *catalog {
 	c := &catalog{group: true, groupMember: true, role: true, membership: true, identity: true, enabled: true, iamRole: "role-one", database: true, share: true, schema: true, external: true, shareSchema: true, shareTable: true, shareGrant: true, permissions: true, privileges: map[string]bool{"SELECT": true}}
 	c.populate()
+
 	return c
 }
 
 // configureTestResource binds a resource to the test warehouse and the supplied SQL client.
-func configureTestResource(t *testing.T, r resource.Resource, client dataapi.Client) {
+func configureTestResource(t *testing.T, r resource.Resource, client sqlclient.Client) {
 	t.Helper()
+
 	var configured resource.ConfigureResponse
 	r.(resource.ResourceWithConfigure).Configure(context.Background(), resource.ConfigureRequest{ProviderData: providerData{client: client, warehouse: warehouseBinding{field: "workgroup_name", value: types.StringValue("warehouse")}, database: types.StringValue("admin")}}, &configured)
 	require.False(t, configured.Diagnostics.HasError(), "%v", configured.Diagnostics)
@@ -173,6 +187,7 @@ func withID(model any, id types.String) any {
 	value := reflect.New(reflect.TypeOf(model)).Elem()
 	value.Set(reflect.ValueOf(model))
 	value.FieldByName("ID").Set(reflect.ValueOf(id))
+
 	return value.Interface()
 }
 
@@ -180,7 +195,9 @@ func withID(model any, id types.String) any {
 func TestLifecycleCasesAreRegistered(t *testing.T) {
 	require.Empty(t, lifecycleRegistry.duplicates, "duplicate lifecycle cases")
 	require.NotEmpty(t, lifecycleCases())
+
 	resources, _ := registeredTypeNames()
+
 	for _, test := range lifecycleCases() {
 		require.NotNil(t, test.new, test.name)
 		require.NotNil(t, test.model, test.name)
@@ -204,20 +221,25 @@ func TestLifecycleSQLBoundaryErrors(t *testing.T) {
 					case operation == "delete":
 						test.removable(c)
 					}
+
 					test.applyPrepare(c, operation)
+
 					calls := 0
-					client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+					client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 						calls++
 						if calls == failAt {
 							return nil, errors.New("injected API failure")
 						}
+
 						return c.Query(ctx, target, sql, parameters)
 					})
 					r := test.new()
 					configureTestResource(t, r, client)
+
 					diagnostics := invoke(t, r, operation, test.model)
 					if failAt == 0 {
 						require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 						queries = calls
 					} else {
 						require.True(t, diagnostics.HasError(), "query %d failure must be reported", failAt)
@@ -233,10 +255,11 @@ func TestLifecycleMissingObjects(t *testing.T) {
 	for _, test := range lifecycleCases() {
 		for _, operation := range []string{"create", "read", "update", "delete"} {
 			t.Run(test.name+"/"+operation, func(t *testing.T) {
-				client := queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+				client := queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 					if test.missingRows != nil {
 						return test.missingRows(operation, sql), nil
 					}
+
 					return nil, nil
 				})
 				r := test.new()
@@ -256,22 +279,26 @@ func TestLifecycleMissingDatabase(t *testing.T) {
 		if !reflect.ValueOf(test.model).FieldByName("Database").IsValid() {
 			continue
 		}
+
 		local := reflect.New(reflect.TypeOf(test.model)).Elem()
 		local.Set(reflect.ValueOf(test.model))
 		local.FieldByName("Database").Set(reflect.ValueOf(types.StringValue("warehouse")))
+
 		for _, operation := range []string{"read", "delete"} {
 			t.Run(test.name+"/"+operation, func(t *testing.T) {
 				r := test.new()
-				configureTestResource(t, r, queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+				configureTestResource(t, r, queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 					if test.missingRows != nil {
 						return test.missingRows(operation, sql), nil
 					}
+
 					return nil, nil
 				}))
 				diagnostics := invoke(t, r, operation, local.Interface())
 				assert.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 				r = test.new()
-				configureTestResource(t, r, queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+				configureTestResource(t, r, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 					return nil, errors.New("database lookup failed")
 				}))
 				diagnostics = invoke(t, r, operation, local.Interface())
@@ -290,11 +317,13 @@ func TestLifecycleImportRoundTrip(t *testing.T) {
 			if test.absent != nil {
 				test.absent(c)
 			}
+
 			test.applyPrepare(c, "create")
 			r := test.new()
 			configureTestResource(t, r, c)
 			state, diagnostics := applyOperation(t, r, "create", nil, test.model, nil)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 			var id types.String
 			require.False(t, state.GetAttribute(context.Background(), path.Root("id"), &id).HasError())
 			diagnostics = importAndRead(t, r, id.ValueString())
@@ -309,12 +338,14 @@ func TestPermissionDeletionVerifiesRemoval(t *testing.T) {
 		if test.kind != lifecyclePermission {
 			continue
 		}
+
 		t.Run(test.name, func(t *testing.T) {
 			c := test.catalog()
-			client := queryFunc(func(ctx context.Context, target dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if test.deletion(sql) {
 					return nil, nil // Simulate an acknowledged write that did not converge.
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			})
 			r := test.new()
@@ -333,11 +364,13 @@ func TestProviderBindingCannotAdoptAnotherWarehouse(t *testing.T) {
 			test.applySetup(c)
 			r := test.new()
 			configureTestResource(t, r, c)
+
 			model := withID(test.model, types.StringValue(`{"workgroup_name":"other","database":"admin"}`))
 			for _, operation := range []string{"read", "update", "delete"} {
 				diagnostics := invoke(t, r, operation, model)
 				require.True(t, diagnostics.HasError(), "%s must reject a different warehouse", operation)
 			}
+
 			assert.Empty(t, c.writes)
 		})
 	}

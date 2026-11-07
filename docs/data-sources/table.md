@@ -9,15 +9,6 @@ description: Looks up the definition of a local Redshift table.
 Reads the definition of an existing local table without managing it, with the same catalog reads as the
 `redshift_table` resource. See AWS [CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_class LEFT JOIN pg_class_info ... WHERE relname = 'name';
-SELECT ... FROM svv_redshift_columns WHERE schema_name = 'schema' AND table_name = 'name';
-SELECT ... FROM pg_constraint WHERE ...;
-SELECT sortkey1 FROM svv_table_info WHERE "schema" = 'schema' AND "table" = 'name';
-```
-
 ## Example Usage
 
 ```terraform
@@ -65,7 +56,7 @@ output "events_layout" {
 
 Read-Only:
 
-- `default` (String) DEFAULT expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default, and a change replaces the table.
+- `default` (String) DEFAULT expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default.
 - `encoding` (String) Compression encoding: `AZ64`, `BYTEDICT`, `DELTA`, `DELTA32K`, `LZO`, `MOSTLY8`, `MOSTLY16`, `MOSTLY32`, `RAW`, `RUNLENGTH`, `TEXT255`, `TEXT32K`, or `ZSTD`. Omit it to let Redshift choose; the chosen encoding is reported. A sort key change can re-encode columns of the old and new key, for example to `RAW`: their omitted encodings are then known after apply, and configured ones are applied again.
 - `identity` (Attributes) Makes an INTEGER or BIGINT column an `IDENTITY(seed, step)` column, which is always NOT NULL. (see [below for nested schema](#nestedatt--column--identity))
 - `name` (String) Column name, in lowercase.
@@ -156,6 +147,26 @@ Read-Only:
 
 - `columns` (List of String) Constrained columns in order.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read table ownership and distribution metadata.
+SELECT ... FROM pg_class LEFT JOIN pg_class_info ... WHERE relname = 'name';
+
+-- Read column definitions, encodings, and key membership.
+SELECT ... FROM svv_redshift_columns WHERE schema_name = 'schema' AND table_name = 'name';
+
+-- Read table constraints.
+SELECT ... FROM pg_constraint WHERE ...;
+
+-- Read sort key metadata.
+SELECT sortkey1 FROM svv_table_info WHERE "schema" = 'schema' AND "table" = 'name';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the table's JSON identity, using the same warehouse, database, schema, and name keys as the
 paired resource.

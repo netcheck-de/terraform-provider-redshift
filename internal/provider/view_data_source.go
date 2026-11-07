@@ -18,6 +18,7 @@ func newViewDataSource() datasource.DataSource {
 	return lookupDescriptions(newCatalogDataSource(catalogSpec{name: "view", factory: newViewResource, computed: []string{"query"}, identityFields: []string{"schema", "name"}, identityDatabase: "database", lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
 		attributes := data.Attributes()
 		model := viewModel{ID: types.StringNull(), Database: attributes["database"].(types.String), Schema: attributes["schema"].(types.String), Name: attributes["name"].(types.String)}
+
 		entry, found, err := (&viewResource{*client}).read(ctx, model)
 		if err == nil && found {
 			lookupValue(data, "query", types.StringValue(entry.definition))
@@ -25,11 +26,15 @@ func newViewDataSource() datasource.DataSource {
 			lookupValue(data, "owner", types.StringValue(entry.owner))
 			lookupValue(data, "definition_fingerprint", types.StringValue(definitionFingerprint(entry.definition)))
 		}
+
 		return found, err
-	}}), map[string]string{
-		"query":                  "Catalog definition from `pg_views`, as Redshift prints it.",
-		"late_binding":           "Whether the view is late-binding (`WITH NO SCHEMA BINDING`).",
-		"owner":                  "SQL user owning the view.",
-		"definition_fingerprint": viewLookupFingerprintDescription,
-	})
+	}}), viewOutputDescriptions)
+}
+
+// viewOutputDescriptions describe the catalog values that both the lookup and the listing report.
+var viewOutputDescriptions = map[string]string{
+	"query":                  "Catalog definition from `pg_views`, as Redshift prints it.",
+	"late_binding":           "Whether the view is late-binding (`WITH NO SCHEMA BINDING`).",
+	"owner":                  "SQL user owning the view.",
+	"definition_fingerprint": viewLookupFingerprintDescription,
 }

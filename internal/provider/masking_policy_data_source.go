@@ -16,12 +16,14 @@ func newMaskingPolicyDataSource() datasource.DataSource {
 		identityFields: []string{"name"}, identityDatabase: "database",
 		lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
 			model := maskingPolicyModel{ID: types.StringNull(), Database: data.Attributes()["database"].(types.String), Name: data.Attributes()["name"].(types.String), InputColumn: types.ListNull(maskingPolicyColumnType)}
+
 			text, found, err := (&maskingPolicyResource{*client}).read(ctx, &model)
 			if err == nil && found {
 				lookupValue(data, "input_column", model.InputColumn)
 				lookupValue(data, "expression", types.StringValue(text))
 				lookupValue(data, "definition_fingerprint", types.StringValue(definitionFingerprint(text)))
 			}
+
 			return found, err
 		},
 	}), maskingPolicyOutputDescriptions)

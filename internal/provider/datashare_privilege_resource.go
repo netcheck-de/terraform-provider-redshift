@@ -24,8 +24,10 @@ func newDatasharePrivilegeResource() resource.Resource {
 		Validators:          []validator.Set{setvalidator.ValueStringsAre(stringvalidator.OneOf(privilegeNames(datasharePrivileges)...))},
 		MarkdownDescription: "Exact explicit datashare permissions: `ALTER` adds or removes objects and sets `PUBLICACCESSIBLE`; `SHARE` grants consumers usage. Updated in place; an empty set revokes the owned permissions.",
 	}
+
 	return &privilegeResource{
 		name: "datashare_privilege", attributes: attributes, prepare: datasharePrivilegeTarget,
 		fields: []string{"database_name", "datashare_name", "grantee", "grantee_type"},
+		folded: []string{"database_name", "datashare_name"},
 	}
 }

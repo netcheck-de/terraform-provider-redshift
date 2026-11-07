@@ -17,6 +17,7 @@ func TestDatabaseSQL(t *testing.T) {
 		data := local(name)
 		data.Owner, data.ConnectionLimit = types.StringValue(owner), types.Int64Value(limit)
 		data.Collation, data.IsolationLevel = types.StringValue(collation), types.StringValue(isolation)
+
 		return data
 	}
 	shared := func(name, arn string, permissions bool) databaseModel {
@@ -32,6 +33,7 @@ func TestDatabaseSQL(t *testing.T) {
 		return func() (string, error) {
 			sql, parameters, err := query.Build()
 			assert.Equal(t, expected, parameters)
+
 			return sql, err
 		}
 	}

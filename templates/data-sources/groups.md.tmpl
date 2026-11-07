@@ -1,0 +1,33 @@
+---
+subcategory: Identity and Access
+page_title: redshift_groups Data Source - terraform-provider-redshift
+description: Lists SQL user groups with their IDs and members.
+---
+
+# redshift_groups (Data Source)
+
+Lists every SQL user group with its ID and member users. See AWS
+[Groups](https://docs.aws.amazon.com/redshift/latest/dg/r_Groups.html).
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_groups/data-source.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List every group with one row per member.
+SELECT ... FROM pg_group LEFT JOIN pg_user ...;
+```
+
+## Read Behavior
+
+Items are ordered by name; `members` is empty for a group without members. Every user can read `pg_group` and
+`pg_user`, so every group is listed. Values match what `redshift_group` reports for each group. `id` identifies the
+listing within the configured warehouse.

@@ -18,7 +18,7 @@ type configurationDataSource struct {
 
 // configurationModel is the configuration and result of one parameter read.
 type configurationModel struct {
-	// ID records the warehouse binding, the provider database, and the parameter name.
+	// ID records the parameter name within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Name is the lowercase parameter or dotted session context name.
 	Name types.String `tfsdk:"name"`
@@ -41,7 +41,7 @@ func (d *configurationDataSource) Schema(_ context.Context, _ datasource.SchemaR
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Reads the current value of one configuration parameter with `SHOW`, as the provider's own session sees it. Nothing is set or reset.",
 		Attributes: map[string]schema.Attribute{
-			"id": schema.StringAttribute{Computed: true, MarkdownDescription: "JSON identity of this read: the warehouse binding, the provider database, and `name`."},
+			"id": schema.StringAttribute{Computed: true, MarkdownDescription: "JSON identity containing `name` within the configured warehouse."},
 			"name": schema.StringAttribute{
 				Required: true, MarkdownDescription: "Lowercase parameter name, such as `search_path`, `datestyle`, or `enable_case_sensitive_identifier`, or a dotted session context name such as `app_context.user_id`. `all` is rejected. A context variable must exist in the provider's session; a value set in another session is not visible.",
 				Validators: []validator.String{stringvalidator.RegexMatches(configurationParameterName, "must be a lowercase parameter or dotted session context name such as app_context.user_id"), stringvalidator.NoneOf("all")},
@@ -55,26 +55,32 @@ func (d *configurationDataSource) Schema(_ context.Context, _ datasource.SchemaR
 func (d *configurationDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data configurationModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	name := data.Name.ValueString()
+
 	statement, err := readConfigurationStatement(name)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid configuration parameter", err.Error())
 		return
 	}
+
 	rows, err := d.query(ctx, statement, nil)
 	if err != nil {
 		resp.Diagnostics.AddError("Read configuration", err.Error())
 		return
 	}
+
 	value, err := configurationValue(name, rows)
 	if err != nil {
 		resp.Diagnostics.AddError("Read configuration", err.Error())
 		return
 	}
+
 	data.Value = types.StringValue(value)
-	data.ID = d.identity(d.database.ValueString(), map[string]string{"name": name})
+	data.ID = identity(map[string]string{"name": name})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

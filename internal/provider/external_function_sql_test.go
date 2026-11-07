@@ -33,6 +33,7 @@ func externalFunctionTestModel() externalFunctionModel {
 func externalFunctionWith(change func(*externalFunctionModel)) externalFunctionModel {
 	data := externalFunctionTestModel()
 	change(&data)
+
 	return data
 }
 
@@ -54,7 +55,9 @@ func TestExternalFunctionSQL(t *testing.T) {
 			if err != nil {
 				return "", err
 			}
+
 			sql, _, err := query.Build()
+
 			return sql, err
 		}
 	}
@@ -164,6 +167,7 @@ func TestExternalFunctionReadBindings(t *testing.T) {
 	_, parameters, err := query.Build()
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"schema": `Odd"Schema`, "name": `it's \f`, "arguments": "integer, character varying"}, parameters)
+
 	query, err = readExternalFunctionQuery(externalFunctionWith(func(data *externalFunctionModel) {
 		data.Arguments = externalFunctionTypeValues(nil)
 	}))
@@ -184,20 +188,24 @@ func TestExternalFunctionTypes(t *testing.T) {
 		_, err := externalFunctionType(accepted)
 		require.NoError(t, err, accepted)
 	}
+
 	for _, rejected := range []string{"super", "geometry", "timestamptz", "varbyte", "time", "interval year to month", "unknown"} {
 		_, err := externalFunctionType(rejected)
 		require.Error(t, err, rejected)
 	}
+
 	signature, err := externalFunctionSignature([]string{"int", "varchar(10)", "decimal(10,2)"})
 	require.NoError(t, err)
 	assert.Equal(t, "INTEGER, CHARACTER VARYING, NUMERIC", string(signature))
 	assert.Equal(t, []string{"INTEGER", "CHARACTER VARYING", "NUMERIC"}, externalFunctionSignatureTypes(string(signature)))
 	assert.Empty(t, externalFunctionSignatureTypes(""))
+
 	for code, keyword := range map[string]string{"v": "VOLATILE", "s": "STABLE", "i": "IMMUTABLE"} {
 		volatility, err := externalFunctionVolatility(code)
 		require.NoError(t, err)
 		assert.Equal(t, keyword, volatility)
 	}
+
 	_, err = externalFunctionVolatility("x")
 	assert.Error(t, err)
 }

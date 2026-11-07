@@ -25,6 +25,7 @@ func TestDebugGrantLookupOtherGrantee(t *testing.T) {
 	data := catalogLookupObject(t, source, map[string]string{"database": debugGrantTestDatabase, "grantee": "myidc:audit_team", "grantee_type": "ROLE"})
 	state, diagnostics := readSource(t, source, data, debugGrantCatalog())
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var observed types.Object
 	require.False(t, state.Get(context.Background(), &observed).HasError())
 	assert.Equal(t, types.BoolValue(false), observed.Attributes()["exists"])

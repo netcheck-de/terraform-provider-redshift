@@ -51,24 +51,31 @@ func (d *groupDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, 
 func (d *groupDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data groupData
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	group := groupModel{Name: data.Name, ID: types.StringNull()}
+
 	found, err := (&groupResource{d.resourceClient}).read(ctx, &group)
 	if err != nil {
 		resp.Diagnostics.AddError("Read Redshift group", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("Group not found", "No group named "+data.Name.ValueString()+" exists.")
 		return
 	}
+
 	data.GroupID = group.GroupID
+
 	data.Members = knownStrings(group.Members)
 	if data.Members == nil {
 		data.Members = []string{}
 	}
-	data.ID = d.identity(d.database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+
+	data.ID = identity(map[string]string{"name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

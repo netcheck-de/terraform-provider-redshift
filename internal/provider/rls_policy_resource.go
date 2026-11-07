@@ -24,7 +24,7 @@ type rlsPolicyResource struct {
 
 // rlsPolicyModel is the Terraform state of one RLS policy.
 type rlsPolicyModel struct {
-	// ID records the warehouse/database/policy identity.
+	// ID records the database/policy identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database contains the policy.
 	Database types.String `tfsdk:"database"`
@@ -84,6 +84,7 @@ func (r *rlsPolicyResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "name")
 }
 
 // rlsPolicyColumnsEquivalent plans the prior columns when the configuration only respells them. RequiresReplace
@@ -108,6 +109,7 @@ func (rlsPolicyColumnsEquivalent) PlanModifyList(_ context.Context, req planmodi
 	if req.StateValue.IsNull() || req.StateValue.IsUnknown() || req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() || req.PlanValue.Equal(req.StateValue) {
 		return
 	}
+
 	configured, err := rlsPolicyColumns(req.ConfigValue)
 	if err == nil && rlsPolicyColumnsMatch(configured, rlsPolicyCatalogColumnsOf(req.StateValue)) {
 		resp.PlanValue = req.StateValue
@@ -133,6 +135,7 @@ func (rlsPolicyAliasEquivalent) PlanModifyString(_ context.Context, req planmodi
 	if req.StateValue.IsNull() || req.StateValue.IsUnknown() || req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
 		return
 	}
+
 	if strings.EqualFold(req.ConfigValue.ValueString(), req.StateValue.ValueString()) {
 		resp.PlanValue = req.StateValue
 	}
@@ -140,7 +143,7 @@ func (rlsPolicyAliasEquivalent) PlanModifyString(_ context.Context, req planmodi
 
 // rlsPolicyIdentity is the JSON identity shared by the resource, its lookup, and imports.
 func (r *rlsPolicyResource) rlsPolicyIdentity(data rlsPolicyModel) types.String {
-	return r.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	return identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 }
 
 // read refreshes the policy's columns and alias and returns the catalog predicate, which callers reconcile with
@@ -149,31 +152,40 @@ func (r *rlsPolicyResource) read(ctx context.Context, data *rlsPolicyModel) (boo
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, "", err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, "", err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readRlsPolicyQuery(*data))
 	if err != nil || len(rows) == 0 {
 		return false, "", err
 	}
+
 	if len(rows) != 1 || rows[0]["polname"] == "" {
 		return false, "", fmt.Errorf("RLS policy %q has incomplete or ambiguous catalog metadata", data.Name.ValueString())
 	}
+
 	row := rows[0]
+
 	catalogColumns, err := parseRlsPolicyColumns(row["polatts"])
 	if err != nil {
 		return false, "", err
 	}
+
 	if configured, err := rlsPolicyColumns(data.Column); err != nil || !rlsPolicyColumnsMatch(configured, catalogColumns) {
 		data.Column = rlsPolicyColumnsList(catalogColumns)
 	}
+
 	if alias := row["polalias"]; !strings.EqualFold(knownString(data.Alias), alias) || data.Alias.IsUnknown() {
 		data.Alias = types.StringNull()
 		if alias != "" {
 			data.Alias = types.StringValue(alias)
 		}
 	}
+
 	data.Name = types.StringValue(row["polname"])
+
 	return true, row["polqual"], nil
 }
 
@@ -191,7 +203,9 @@ func (r *rlsPolicyResource) verify(ctx context.Context, data *rlsPolicyModel, pl
 	case !planned.Alias.IsUnknown() && !data.Alias.Equal(planned.Alias):
 		return fmt.Errorf("the catalog reports alias %s instead of the planned %s", data.Alias, planned.Alias)
 	}
+
 	data.Predicate, data.DefinitionFingerprint = recordDefinition(planned.Predicate, predicate)
+
 	return nil
 }
 
@@ -202,12 +216,15 @@ func (r *rlsPolicyResource) ModifyPlan(ctx context.Context, req resource.ModifyP
 	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
 		return
 	}
+
 	var plan, prior rlsPolicyModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	if resp.Diagnostics.HasError() || !plan.DefinitionFingerprint.IsUnknown() || !plan.Predicate.Equal(prior.Predicate) {
 		return
 	}
+
 	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("definition_fingerprint"), prior.DefinitionFingerprint)...)
 }
 
@@ -215,30 +232,37 @@ func (r *rlsPolicyResource) ModifyPlan(ctx context.Context, req resource.ModifyP
 func (r *rlsPolicyResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data rlsPolicyModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statement, err := createRlsPolicyStatement(data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid RLS policy", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), statement); err != nil {
 		resp.Diagnostics.AddError("Create RLS policy", err.Error())
 		return
 	}
+
 	data.ID = r.rlsPolicyIdentity(data)
 	planned := data
 	// A failed verification must still leave serializable state for the created policy.
 	if data.Alias.IsUnknown() {
 		data.Alias = types.StringNull()
 	}
+
 	data.DefinitionFingerprint = types.StringNull()
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if err := r.verify(ctx, &data, planned); err != nil {
 		resp.Diagnostics.AddError("Verify RLS policy", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -246,23 +270,28 @@ func (r *rlsPolicyResource) Create(ctx context.Context, req resource.CreateReque
 func (r *rlsPolicyResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data rlsPolicyModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if !req.Config.Raw.IsFullyKnown() {
 		if !data.Predicate.IsUnknown() && !data.Predicate.IsNull() {
 			if _, err := rlsPolicyPredicate(data); err != nil {
 				resp.Diagnostics.AddError("Invalid RLS policy", err.Error())
 			}
 		}
+
 		columns, err := data.Column.ToTerraformValue(ctx)
 		if err == nil && columns.IsFullyKnown() {
 			if _, err := rlsPolicyColumns(data.Column); err != nil {
 				resp.Diagnostics.AddError("Invalid RLS policy", err.Error())
 			}
 		}
+
 		return
 	}
+
 	if _, err := createRlsPolicyStatement(data); err != nil {
 		resp.Diagnostics.AddError("Invalid RLS policy", err.Error())
 	}
@@ -272,19 +301,24 @@ func (r *rlsPolicyResource) ValidateConfig(ctx context.Context, req resource.Val
 func (r *rlsPolicyResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data rlsPolicyModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, predicate, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read RLS policy", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	data.Predicate, data.DefinitionFingerprint = reconcileDefinition(data.Predicate, data.DefinitionFingerprint, predicate)
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -293,25 +327,31 @@ func (r *rlsPolicyResource) Update(ctx context.Context, req resource.UpdateReque
 	var plan, prior rlsPolicyModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.bound(prior.ID, prior.Database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update RLS policy", err.Error())
 		return
 	}
+
 	statements, err := alterRlsPolicyStatements(prior, plan)
 	if err == nil {
 		err = r.exec(ctx, plan.Database.ValueString(), statements...)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Update RLS policy", err.Error())
 		return
 	}
+
 	if err := r.verify(ctx, &plan, plan); err != nil {
 		resp.Diagnostics.AddError("Verify RLS policy", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -319,13 +359,16 @@ func (r *rlsPolicyResource) Update(ctx context.Context, req resource.UpdateReque
 func (r *rlsPolicyResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data rlsPolicyModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, _, err := r.read(ctx, &data)
 	if err == nil && found {
 		err = r.exec(ctx, data.Database.ValueString(), dropRlsPolicyStatement(data))
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete RLS policy", err.Error())
 	}
@@ -342,10 +385,12 @@ func rlsPolicyFromRow(row sqlclient.Row) (rlsPolicyModel, error) {
 	if err != nil {
 		return rlsPolicyModel{}, err
 	}
+
 	alias := types.StringNull()
 	if row["polalias"] != "" {
 		alias = types.StringValue(row["polalias"])
 	}
+
 	return rlsPolicyModel{
 		Database: types.StringValue(row["poldb"]), Name: types.StringValue(row["polname"]), Column: rlsPolicyColumnsList(columns),
 		Alias: alias, Predicate: types.StringValue(row["polqual"]), DefinitionFingerprint: types.StringValue(definitionFingerprint(row["polqual"])),

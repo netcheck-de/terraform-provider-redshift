@@ -15,6 +15,7 @@ func TestConstraintsSQL(t *testing.T) {
 			if err != nil {
 				return "", err
 			}
+
 			return discoverySQL(query)()
 		}
 	}
@@ -47,6 +48,7 @@ func TestConstraintsKeyColumns(t *testing.T) {
 		assert.Equal(t, test.columns, columns, test.definition)
 		assert.Equal(t, test.referenced, referenced, test.definition)
 	}
+
 	for _, test := range []struct {
 		definition string
 		foreign    bool

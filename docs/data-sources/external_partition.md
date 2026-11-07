@@ -9,12 +9,6 @@ description: Looks up one partition of a Redshift Spectrum external table.
 Looks up one partition of a partitioned external table by its partition values. See AWS
 [SVV_EXTERNAL_PARTITIONS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_PARTITIONS.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_external_partitions WHERE schemaname = 'schema' AND tablename = 'table';
-```
-
 ## Example Usage
 
 ```terraform
@@ -42,6 +36,17 @@ data "redshift_external_partition" "sales_2008_01" {
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `location` (String) S3 location the catalog records for the partition; the catalog drops a folder's trailing slash and truncates locations to 128 characters.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read partitions of the selected external table.
+SELECT ... FROM svv_external_partitions WHERE schemaname = 'schema' AND tablename = 'table';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed partition's JSON identity, using the same keys as the paired resource, with the
 values encoded as a JSON string.

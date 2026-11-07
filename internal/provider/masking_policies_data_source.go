@@ -15,9 +15,9 @@ var _ = registerDataSource(newMaskingPoliciesDataSource)
 func newMaskingPoliciesDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:        "masking_policies",
-		description: "Lists dynamic data masking policies from `SVV_MASKING_POLICY`, which covers every database of the warehouse. Only superusers and `sys:secadmin` members see policies.",
+		description: "Lists dynamic data masking policies from `SVV_MASKING_POLICY`, which covers every database of the warehouse. Superusers and users with the `sys:secadmin` role see every policy; other users see none.",
 		filters: map[string]schema.Attribute{
-			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Only policies of this database; all databases when omitted."},
+			"database": discoveryFilter("Only policies of this database; all databases when omitted."),
 		},
 		element: describedOutputs(collectionElement(newMaskingPolicyResource, "database", "name", "input_column", "expression", "definition_fingerprint"), maskingPolicyOutputDescriptions),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
@@ -25,12 +25,14 @@ func newMaskingPoliciesDataSource() datasource.DataSource {
 			if err != nil {
 				return nil, err
 			}
+
 			items := make([]map[string]attr.Value, 0, len(rows))
 			for _, row := range rows {
 				columns, err := maskingPolicyParseColumns(row["input_columns"])
 				if err != nil {
 					return nil, err
 				}
+
 				text := maskingPolicyExpressionText(row["policy_expression"])
 				items = append(items, map[string]attr.Value{
 					"database": types.StringValue(row["policy_database"]), "name": types.StringValue(row["policy_name"]),
@@ -38,6 +40,7 @@ func newMaskingPoliciesDataSource() datasource.DataSource {
 					"definition_fingerprint": types.StringValue(definitionFingerprint(text)),
 				})
 			}
+
 			return items, nil
 		},
 	})

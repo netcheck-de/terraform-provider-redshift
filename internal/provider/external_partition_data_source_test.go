@@ -18,10 +18,12 @@ func TestExternalPartitionLookup(t *testing.T) {
 	config.Location = types.StringNull()
 	state, diagnostics := readSource(t, newExternalPartitionDataSource(), config, fullCatalog())
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var data externalPartitionModel
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.Equal(t, "s3://example-bucket/events/event_date=2024-01-01", data.Location.ValueString())
-	assert.JSONEq(t, `{"workgroup_name":"warehouse","database":"admin","schema":"example_external","table":"events","values":"{\"event_date\":\"2024-01-01\"}"}`, data.ID.ValueString())
+	assert.JSONEq(t, `{"database":"admin","schema":"example_external","table":"events","values":"{\"event_date\":\"2024-01-01\"}"}`, data.ID.ValueString())
+
 	config.Values = externalTableTestMap("event_date", "1999-01-01")
 	_, diagnostics = readSource(t, newExternalPartitionDataSource(), config, fullCatalog())
 	assert.True(t, diagnostics.HasError())

@@ -8,12 +8,6 @@ description: Looks up an existing outbound datashare.
 
 Looks up an existing outbound datashare in its producer database.
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_datashares WHERE share_name = 'name' ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -43,6 +37,17 @@ data "redshift_datashare" "analytics" {
 - `share_id` (Number) Numeric datashare ID reported by `SVV_DATASHARES`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the selected outbound datashare.
+SELECT ... FROM svv_datashares WHERE share_name = 'name' ...;
+```
+
+## Read Behavior
+
 `id` (String, computed) is the observed datashare's JSON identity, using the same warehouse, producer database, and name
 keys as the paired resource.
 
@@ -50,4 +55,4 @@ A missing share, a share owned by another database, or a share managed by anothe
 share ID, producer account and namespace, and creation time come from
 [SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html). Use
 [redshift_datashares](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/data-sources/datashares)
-to list every share, including inbound ones.
+to list every outbound share, and `redshift_inbound_datashares` to list the inbound ones.

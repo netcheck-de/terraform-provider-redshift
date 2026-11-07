@@ -1,0 +1,3 @@
+-- database: admin
+SELECT columnname, external_type, columnnum, part_key, schemaname, tablename FROM svv_external_columns WHERE redshift_database_name = :database AND LOWER(tablename) = LOWER(:table) ORDER BY schemaname, tablename, columnnum;
+-- params: {"database":"admin","table":"metrics"}

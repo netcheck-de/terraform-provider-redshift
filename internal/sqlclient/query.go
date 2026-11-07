@@ -44,6 +44,7 @@ func (q Query) From(source Keyword, params ...Param) Query {
 	out := q.clone()
 	out.source = source
 	out.params = append(out.params, params...)
+
 	return out
 }
 
@@ -52,6 +53,7 @@ func (q Query) Where(condition Keyword, params ...Param) Query {
 	out := q.clone()
 	out.conditions = append(out.conditions, condition)
 	out.params = append(out.params, params...)
+
 	return out
 }
 
@@ -60,6 +62,7 @@ func (q Query) WhereIf(include bool, condition Keyword, params ...Param) Query {
 	if !include {
 		return q
 	}
+
 	return q.Where(condition, params...)
 }
 
@@ -70,13 +73,17 @@ func (q Query) WhereEither(choice bool, onTrue, onFalse Keyword, params ...Param
 	if choice {
 		condition = onTrue
 	}
+
 	used := placeholders(string(condition))
+
 	var kept []Param
+
 	for _, param := range params {
 		if slices.Contains(used, param.Name) {
 			kept = append(kept, param)
 		}
 	}
+
 	return q.Where(condition, kept...)
 }
 
@@ -85,6 +92,7 @@ func (q Query) OptEq(column Keyword, name, value string) Query {
 	if value == "" {
 		return q
 	}
+
 	return q.Where(column+" = :"+Keyword(name), Bind(name, value))
 }
 
@@ -92,6 +100,7 @@ func (q Query) OptEq(column Keyword, name, value string) Query {
 func (q Query) OrderBy(columns ...Keyword) Query {
 	out := q.clone()
 	out.order = append(out.order, columns...)
+
 	return out
 }
 
@@ -113,11 +122,14 @@ func (q Query) Build() (string, map[string]string, error) {
 	if len(q.columns) == 0 {
 		return "", nil, fmt.Errorf("query has no select list")
 	}
+
 	var sql strings.Builder
 	sql.WriteString("SELECT " + joinKeywords(q.columns, ", "))
+
 	if q.source != "" {
 		sql.WriteString(" FROM " + string(q.source))
 	}
+
 	if len(q.conditions) > 0 {
 		if len(q.conditions) > 1 {
 			for _, condition := range q.conditions {
@@ -126,36 +138,46 @@ func (q Query) Build() (string, map[string]string, error) {
 				}
 			}
 		}
+
 		sql.WriteString(" WHERE " + joinKeywords(q.conditions, " AND "))
 	}
+
 	if len(q.order) > 0 {
 		sql.WriteString(" ORDER BY " + joinKeywords(q.order, ", "))
 	}
+
 	text := sql.String()
+
 	var params map[string]string
 	for _, param := range q.params {
 		if param.Value == "" {
 			return "", nil, fmt.Errorf("query parameter :%s is empty", param.Name)
 		}
+
 		if previous, found := params[param.Name]; found && previous != param.Value {
 			return "", nil, fmt.Errorf("query parameter :%s is bound to different values", param.Name)
 		}
+
 		if params == nil {
 			params = map[string]string{}
 		}
+
 		params[param.Name] = param.Value
 	}
+
 	used := placeholders(text)
 	for _, name := range used {
 		if _, found := params[name]; !found {
 			return "", nil, fmt.Errorf("query placeholder :%s has no binding", name)
 		}
 	}
+
 	for _, param := range q.params {
 		if !slices.Contains(used, param.Name) {
 			return "", nil, fmt.Errorf("query parameter :%s is not used", param.Name)
 		}
 	}
+
 	return text, params, nil
 }
 
@@ -165,16 +187,19 @@ func joinKeywords(keywords []Keyword, separator string) string {
 	for i, keyword := range keywords {
 		parts[i] = string(keyword)
 	}
+
 	return strings.Join(parts, separator)
 }
 
 // hasTopLevelOr reports an OR outside parentheses, quotes and comments, which AND would bind more tightly than intended.
 func hasTopLevelOr(condition string) bool {
 	depth := 0
+
 	for _, item := range lex(condition, transportReading) {
 		if item.kind != lexCode {
 			continue
 		}
+
 		for i := 0; i < len(item.text); i++ {
 			switch char := item.text[i]; {
 			case char == '(':
@@ -186,12 +211,15 @@ func hasTopLevelOr(condition string) bool {
 				for end < len(item.text) && identifierByte(item.text[end], false) {
 					end++
 				}
+
 				if strings.EqualFold(item.text[i:end], "OR") {
 					return true
 				}
+
 				i = end - 1
 			}
 		}
 	}
+
 	return false
 }

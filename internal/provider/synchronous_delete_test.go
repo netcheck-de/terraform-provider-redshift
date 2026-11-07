@@ -36,6 +36,7 @@ func TestDeleteSkipsObservationQueries(t *testing.T) {
 			for _, denied := range []bool{false, true} {
 				t.Run(map[bool]string{false: "success", true: "drop denied"}[denied], func(t *testing.T) {
 					var calls []string
+
 					client := queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 						calls = append(calls, sql)
 						switch len(calls) {
@@ -44,9 +45,11 @@ func TestDeleteSkipsObservationQueries(t *testing.T) {
 							return []sqlclient.Row{test.row}, nil
 						case 2:
 							assert.True(t, strings.HasPrefix(sql, "DROP "), sql)
+
 							if denied {
 								return nil, errors.New("DROP denied")
 							}
+
 							return nil, nil
 						default:
 							t.Errorf("unexpected metadata or post-DROP query: %s", sql)
@@ -57,9 +60,11 @@ func TestDeleteSkipsObservationQueries(t *testing.T) {
 					configureTestResource(t, r, client)
 					_, diagnostics := applyOperation(t, r, "delete", test.model, nil, nil)
 					require.Equal(t, denied, diagnostics.HasError(), "%v", diagnostics)
+
 					if denied {
 						assert.Contains(t, diagnostics.Errors()[0].Detail(), "DROP denied")
 					}
+
 					assert.Len(t, calls, 2)
 				})
 			}

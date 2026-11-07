@@ -20,6 +20,7 @@ func TestTableSecuritySQL(t *testing.T) {
 	with := func(change func(*tableSecurityModel)) tableSecurityModel {
 		data := tableSecuritySample()
 		change(&data)
+
 		return data
 	}
 	create := func(data tableSecurityModel) func() ([]string, error) {
@@ -68,5 +69,7 @@ func TestTableSecuritySQL(t *testing.T) {
 		}},
 		{"read_relation", built(readTableSecurityRelationQuery(quoted))},
 		{"read", built(readTableSecurityQuery(quoted))},
+		{"list", built(listTableSecuritiesQuery("analytics", ""))},
+		{"list_schema", built(listTableSecuritiesQuery("analytics", "public"))},
 	})
 }
