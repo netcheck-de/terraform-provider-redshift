@@ -41,8 +41,14 @@ func (f *identityProviderFakeFamily) query(c *catalog, _ sqlclient.Connection, s
 			namespace = "example"
 		}
 
+		// The listing binds no name and reports the legacy provider "identity".
+		name := parameters["name"]
+		if name == "" {
+			name = "identity"
+		}
+
 		row := sqlclient.Row{
-			"name": parameters["name"], "type": "awsidc", "instanceid": "application", "namespc": namespace, "enabled": fmt.Sprint(c.enabled), "uid": "126692",
+			"name": name, "type": "awsidc", "instanceid": "application", "namespc": namespace, "enabled": fmt.Sprint(c.enabled), "uid": "126692",
 			"params": fmt.Sprintf(`{"iam_role":%q,"instance_arn":"arn:aws:sso:::instance/ssoins-1234567890abcdef","is_lakehouse_app":"false"}`, c.iamRole),
 		}
 		if f.azure {

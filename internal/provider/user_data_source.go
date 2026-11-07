@@ -93,11 +93,8 @@ func (d *userDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 		return
 	}
 
-	data.Name, data.Superuser, data.CreateDB, data.ValidUntil = user.Name, user.Superuser, user.CreateDB, user.ValidUntil
-	// The resource records no expiration as its infinity default; the lookup keeps reporting it as null.
-	if data.ValidUntil.ValueString() == userValidUntilInfinity {
-		data.ValidUntil = types.StringNull()
-	}
+	data.Name, data.Superuser, data.CreateDB = user.Name, user.Superuser, user.CreateDB
+	data.ValidUntil = userLookupValidUntil(user.ValidUntil)
 
 	data.ConnectionLimit, data.SessionTimeout = user.ConnectionLimit, user.SessionTimeout
 	data.SyslogAccess, data.ExternalID = user.SyslogAccess, user.ExternalID

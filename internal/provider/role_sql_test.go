@@ -46,5 +46,6 @@ func TestRoleSQL(t *testing.T) {
 		{"drop_quoted", func() string { return dropRoleStatement(role(`Odd"Readers`)) }},
 		{"read", built(readRoleQuery(role(`Odd"Readers`)))},
 		{"read_empty_name", built(readRoleQuery(role("")))},
+		{"list", built(listRolesQuery())},
 	})
 }
