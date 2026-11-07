@@ -67,6 +67,8 @@ func TestMaskingPolicyAttachmentSQL(t *testing.T) {
 		}},
 		{"read", maskingQuerySQL(readMaskingAttachmentQuery(quoted))},
 		{"read_peers", maskingQuerySQL(maskingAttachmentPeersQuery(quoted))},
+		{"list", maskingQuerySQL(listMaskingAttachmentsQuery("", "", ""))},
+		{"list_filtered", maskingQuerySQL(listMaskingAttachmentsQuery("mask_email", "public", "customers"))},
 		// A failed re-attach restores the attachment Update read from the catalog, which reports explicit inputs.
 		{"restore_after_failed_attach", func() (string, error) {
 			return attachMaskingPolicyStatement(maskingTestAttachment(func(m *maskingPolicyAttachmentModel) {

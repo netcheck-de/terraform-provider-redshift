@@ -60,5 +60,7 @@ func TestRlsPolicyAttachmentSQL(t *testing.T) {
 		{"read_role", read(quoted)},
 		{"read_user", read(user)},
 		{"read_public", read(public)},
+		{"list", maskingQuerySQL(listRlsPolicyAttachmentsQuery("", "", ""))},
+		{"list_filtered", maskingQuerySQL(listRlsPolicyAttachmentsQuery("region_filter", "public", "events"))},
 	})
 }

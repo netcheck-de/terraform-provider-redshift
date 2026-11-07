@@ -121,3 +121,16 @@ data "redshift_rls_policies" "local" {
   provider = redshift.consumer
   database = redshift_rls_policy.own_region.database
 }
+
+data "redshift_rls_policy_attachments" "rls_events" {
+  provider = redshift.consumer
+  database = redshift_rls_policy_attachment.readers.database
+  schema   = redshift_rls_policy_attachment.readers.schema
+  relation = redshift_rls_policy_attachment.readers.relation
+}
+
+data "redshift_table_securities" "local" {
+  provider = redshift.consumer
+  database = redshift_table_security.rls_events.database
+  schema   = redshift_table_security.rls_events.schema
+}
