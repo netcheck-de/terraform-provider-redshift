@@ -29,10 +29,10 @@ func newRlsPolicyAttachmentsDataSource() datasource.DataSource {
 		description: "Lists the row-level security policy attachments of one database from `SVV_RLS_ATTACHED_POLICY`, including attachments Terraform does not manage. " +
 			"Users with the `sys:secadmin` role see every attachment; AWS documents no other user as able to query the view. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
-			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database whose attachments are listed; defaults to the provider database."},
-			"policy":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only attachments of this policy; all policies when omitted."},
-			"schema":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only attachments to relations of this schema; all schemas when omitted."},
-			"relation": schema.StringAttribute{Optional: true, MarkdownDescription: "Only attachments to relations of this name; all relations when omitted."},
+			"database": discoveryDatabaseFilter("attachments"),
+			"policy":   discoveryFilter("Only attachments of this policy; all policies when omitted."),
+			"schema":   discoveryFilter("Only attachments to relations of this schema; all schemas when omitted."),
+			"relation": discoveryFilter("Only attachments to relations of this name; all relations when omitted."),
 		},
 		element: describedOutputs(collectionElement(newRlsPolicyAttachmentResource, "database", "policy", "schema", "relation", "grantee", "grantee_type"), rlsPolicyAttachmentOutputDescriptions),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {

@@ -16,11 +16,11 @@ var _ = registerDataSource(newObjectGrantsDataSource)
 // grantsGranteeFilters are the database, relation, and grantee filters shared by the object and column grant listings.
 func grantsGranteeFilters() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
-		"database_name": schema.StringAttribute{Optional: true, MarkdownDescription: "Local database whose grants are listed; defaults to the provider database.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
-		"schema_name":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only grants on objects in this schema.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
-		"object_name":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only grants on this table or view.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
-		"grantee":       schema.StringAttribute{Optional: true, MarkdownDescription: "Only grants to this identity name; `public` for `PUBLIC`.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
-		"grantee_type":  schema.StringAttribute{Optional: true, MarkdownDescription: "Only grants to `USER`, `ROLE`, `GROUP`, or `PUBLIC` identities.", Validators: []validator.String{stringvalidator.OneOf(grantGranteeTypes...)}},
+		"database_name": discoveryDatabaseFilter("grants"),
+		"schema_name":   discoveryFilter("Only grants on objects in this schema."),
+		"object_name":   discoveryFilter("Only grants on this table or view."),
+		"grantee":       discoveryFilter("Only grants to this identity name; `public` for `PUBLIC`."),
+		"grantee_type":  discoveryGranteeTypeFilter(),
 	}
 }
 
@@ -44,9 +44,9 @@ var objectGrantsOutputDescriptions = map[string]string{
 // newObjectGrantsDataSource lists the object grants SHOW GRANTS reports on one object or for one user or role.
 func newObjectGrantsDataSource() datasource.DataSource {
 	filters := grantsGranteeFilters()
-	filters["object_name"] = schema.StringAttribute{Optional: true, MarkdownDescription: "Table, view, or template whose grants are listed with `object_type`; otherwise only grants on objects of this name.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}}
+	filters["object_name"] = discoveryFilter("Table, view, or template whose grants are listed with `object_type`; otherwise only grants on objects of this name.")
 	filters["object_type"] = schema.StringAttribute{
-		Optional: true, Validators: []validator.String{stringvalidator.OneOf(privilegeNames(objectGrantsObjectTypes)...)},
+		Optional: true, Validators: []validator.String{stringvalidator.LengthAtLeast(1), stringvalidator.OneOf(privilegeNames(objectGrantsObjectTypes)...)},
 		MarkdownDescription: "`DATABASE`, `SCHEMA`, `TABLE` (including views), or `TEMPLATE` lists `SHOW GRANTS ON` that object, named by `database_name`, `schema_name`, and `object_name`. " +
 			"Omit it to list `SHOW GRANTS FOR` the `USER` or `ROLE` named by `grantee` and `grantee_type`. One of the two forms is required.",
 	}

@@ -32,10 +32,10 @@ func newMaskingPolicyAttachmentsDataSource() datasource.DataSource {
 		description: "Lists the dynamic data masking policy attachments of one database from `SVV_ATTACHED_MASKING_POLICY`, including attachments Terraform does not manage. " +
 			"Superusers and users with the `sys:secadmin` role see every attachment; other users see none. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
-			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database whose attachments are listed; defaults to the provider database."},
-			"policy":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only attachments of this policy; all policies when omitted."},
-			"schema":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only attachments to relations of this schema; all schemas when omitted."},
-			"relation": schema.StringAttribute{Optional: true, MarkdownDescription: "Only attachments to relations of this name; all relations when omitted."},
+			"database": discoveryDatabaseFilter("attachments"),
+			"policy":   discoveryFilter("Only attachments of this policy; all policies when omitted."),
+			"schema":   discoveryFilter("Only attachments to relations of this schema; all schemas when omitted."),
+			"relation": discoveryFilter("Only attachments to relations of this name; all relations when omitted."),
 		},
 		element: describedOutputs(collectionElement(newMaskingPolicyAttachmentResource, "database", "policy", "schema", "relation", "grantee", "grantee_type", "columns", "input_columns", "priority"), maskingAttachmentOutputDescriptions),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {

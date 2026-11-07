@@ -23,10 +23,10 @@ func newGrantsDataSource() datasource.DataSource {
 			"Elements cover roles, users, and producer datashares; grants to groups and `PUBLIC` are left out. `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope, which is listed under the name the catalog reports. " +
 			"Superusers see every grant; other users see only the grants `SHOW GRANTS` shows them. " + discoverySharedScope,
 		filters: map[string]schema.Attribute{
-			"database_name": schema.StringAttribute{Optional: true, MarkdownDescription: "Local or shared database whose scoped grants are listed; defaults to the provider database.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
-			"schema_name":   schema.StringAttribute{Optional: true, MarkdownDescription: "Lists the grants on this schema and the scoped grants limited to it; database-wide grants when omitted.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
+			"database_name": discoveryDatabaseFilter("scoped grants"),
+			"schema_name":   discoveryFilter("Lists the grants on this schema and the scoped grants limited to it; database-wide grants when omitted."),
 			"role":          schema.StringAttribute{Optional: true, MarkdownDescription: "Only grants to this role.", Validators: []validator.String{stringvalidator.LengthAtLeast(1), stringvalidator.ConflictsWith(path.MatchRoot("user"))}},
-			"user":          schema.StringAttribute{Optional: true, MarkdownDescription: "Only grants to this user.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
+			"user":          discoveryFilter("Only grants to this user."),
 		},
 		element: describedOutputs(collectionElement(newGrantResource, "database_name", "schema_name", "role", "user", "datashare", "scope", "privileges", "grant_option_privileges"), map[string]string{
 			"database_name":           "Database receiving the grants.",

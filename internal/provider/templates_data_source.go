@@ -18,8 +18,8 @@ func newTemplatesDataSource() datasource.DataSource {
 		databaseField: "database",
 		description:   "Lists the COPY templates of one database visible in `SYS_REDSHIFT_TEMPLATE`. Superusers see every template; other users see only their own. No schema scan or schema USAGE privilege is required. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
-			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Local database to list; the provider database when omitted."},
-			"schema":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only visible templates of this schema; all visible templates of the database when omitted."},
+			"database": discoveryDatabaseFilter("templates"),
+			"schema":   discoveryFilter("Only visible templates of this schema; all visible templates of the database when omitted."),
 		},
 		element: describedOutputs(collectionElement(newTemplateResource, "database", "schema", "name", "owner"), map[string]string{
 			"name":  templateOutputDescriptions["name"],

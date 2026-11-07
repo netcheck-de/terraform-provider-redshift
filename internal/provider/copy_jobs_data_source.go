@@ -19,7 +19,7 @@ func newCopyJobsDataSource() datasource.DataSource {
 		databaseField: "database",
 		description:   "Lists the copy jobs of one database from `SYS_COPY_JOB`. Superusers see every job; other users see only their own. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
-			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database whose jobs are listed; the provider database when omitted."},
+			"database": discoveryDatabaseFilter("copy jobs"),
 		},
 		element: describedOutputs(collectionElement(newCopyJobResource, "database", "name", "iam_role", "auto"), map[string]string{
 			"name":     copyJobOutputDescriptions["name"],

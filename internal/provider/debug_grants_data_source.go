@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
@@ -25,7 +23,7 @@ func newDebugGrantsDataSource() datasource.DataSource {
 			"Only producer-local database names are accepted: for a remote `database@catalog` alias, `SHOW GRANTS ON` can silently omit existing grants, so use the `redshift_debug_grant` lookup there. " +
 			"Superusers see every grant; other users see only the grants `SHOW GRANTS` shows them. " + discoverySharedScope,
 		filters: map[string]schema.Attribute{
-			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database whose `DEBUG` grants are listed; defaults to the provider database.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
+			"database": discoveryDatabaseFilter("`DEBUG` grants"),
 		},
 		element: describedOutputs(collectionElement(newDebugGrantResource, "database", "grantee", "grantee_type"), map[string]string{
 			"database":     "Database the `DEBUG` grant applies to.",

@@ -21,9 +21,9 @@ func newCommentsDataSource() datasource.DataSource {
 		description: "Lists the comments on the database itself and on its schemas, tables, views, columns, and constraints, from `PG_DESCRIPTION` joined to the catalog of each object type. " +
 			"Objects without a comment are not listed. With metadata security enabled, objects the connection may not access are hidden from the catalog and their comments are not listed. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
-			"database_name": discoveryFilter("Local database whose comments are listed; defaults to the provider's `database`."),
+			"database_name": discoveryDatabaseFilter("comments"),
 			"object_type": schema.StringAttribute{
-				Optional: true, Validators: []validator.String{stringvalidator.OneOf(commentListKinds...)},
+				Optional: true, Validators: []validator.String{stringvalidator.LengthAtLeast(1), stringvalidator.OneOf(commentListKinds...)},
 				MarkdownDescription: "Only comments on objects of this type: `DATABASE`, `SCHEMA`, `TABLE`, `VIEW`, `COLUMN`, or `CONSTRAINT`; every type when omitted.",
 			},
 			"schema_name": discoveryFilter("Only comments on tables, views, columns, and constraints in this schema; database and schema comments, which have no `schema_name`, are then left out."),

@@ -50,7 +50,7 @@ func newRlsPoliciesDataSource() datasource.DataSource {
 		databaseField: "database",
 		description:   "Lists the row-level security policies of one database from `SVV_RLS_POLICY`, including policies Terraform does not manage. Superusers see every policy; other users see only their own. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
-			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database whose policies are listed; defaults to the provider database."},
+			"database": discoveryDatabaseFilter("policies"),
 		},
 		element: describedOutputs(collectionElement(newRlsPolicyResource, "database", "name", "column", "alias", "predicate", "definition_fingerprint"), rlsPolicyLookupDescriptions),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {

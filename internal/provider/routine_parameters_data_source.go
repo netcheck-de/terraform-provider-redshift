@@ -23,7 +23,7 @@ func newRoutineParametersDataSource() datasource.DataSource {
 	filters := routineCollectionFilters("routine_name", "routines")
 	filters["routine_type"] = schema.StringAttribute{
 		Optional: true, MarkdownDescription: "Only routines of this type: `FUNCTION` or `PROCEDURE`.",
-		Validators: []validator.String{stringvalidator.OneOf("FUNCTION", "PROCEDURE")},
+		Validators: []validator.String{stringvalidator.LengthAtLeast(1), stringvalidator.OneOf("FUNCTION", "PROCEDURE")},
 	}
 	element := map[string]schema.Attribute{
 		"database":         schema.StringAttribute{Computed: true, MarkdownDescription: "Database containing the routine."},

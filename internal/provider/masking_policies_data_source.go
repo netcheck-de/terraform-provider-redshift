@@ -17,7 +17,7 @@ func newMaskingPoliciesDataSource() datasource.DataSource {
 		name:        "masking_policies",
 		description: "Lists dynamic data masking policies from `SVV_MASKING_POLICY`, which covers every database of the warehouse. Only superusers and `sys:secadmin` members see policies.",
 		filters: map[string]schema.Attribute{
-			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Only policies of this database; all databases when omitted."},
+			"database": discoveryFilter("Only policies of this database; all databases when omitted."),
 		},
 		element: describedOutputs(collectionElement(newMaskingPolicyResource, "database", "name", "input_column", "expression", "definition_fingerprint"), maskingPolicyOutputDescriptions),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
