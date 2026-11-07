@@ -1,25 +1,26 @@
 ---
 subcategory: Data Sharing
 page_title: redshift_datashares Data Source - terraform-provider-redshift
-description: Lists the inbound and outbound datashares of the provider's namespace.
+description: Lists the outbound datashares of the provider's namespace.
 ---
 
 # redshift_datashares (Data Source)
 
-Lists the inbound and outbound datashares visible in the provider's namespace, optionally narrowed by type or name. See
-AWS [SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html).
+Lists the outbound datashares of the provider's namespace with the attributes `redshift_datashare` reports, optionally
+narrowed by name. See AWS [SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html).
+Use `redshift_inbound_datashares` for the shares other namespaces share with this one.
 
 ## Example Usage
 
 ```terraform
 data "redshift_datashares" "all" {}
 
-data "redshift_datashares" "outbound" {
-  share_type = "OUTBOUND"
+data "redshift_datashares" "reporting" {
+  name = "reporting"
 }
 
-output "outbound_datashare_names" {
-  value = data.redshift_datashares.outbound.datashares[*].name
+output "outbound_datashare_databases" {
+  value = { for share in data.redshift_datashares.all.datashares : share.name => share.database }
 }
 ```
 
@@ -29,8 +30,7 @@ output "outbound_datashare_names" {
 
 ### Optional
 
-- `name` (String) Only shares with exactly this name; an inbound and an outbound share may share a name.
-- `share_type` (String) Only shares of this type: `INBOUND` or `OUTBOUND`.
+- `name` (String) Only the share with exactly this name; all visible shares when omitted.
 
 ### Read-Only
 
@@ -42,17 +42,14 @@ output "outbound_datashare_names" {
 
 Read-Only:
 
-- `consumer_database` (String) Database created from an inbound share; null when none exists.
 - `created_at` (String) Creation timestamp reported by `SVV_DATASHARES`, as text without a time zone.
-- `database` (String) Producer database of an outbound share; null for an inbound share.
-- `managed_by` (String) AWS service managing the share, such as `ADX`; null for a share managed with SQL.
+- `database` (String) Producer database owning the datashare.
 - `name` (String) Datashare name, unique within the producer namespace.
-- `owner` (String) Database user owning the datashare: the user that ran `CREATE DATASHARE`. Read-only, because `ALTER DATASHARE` has no `OWNER TO` clause.
+- `owner` (String) Database user owning the datashare.
 - `producer_account` (String) AWS account ID of the producer namespace.
 - `producer_namespace` (String) Producer namespace UUID; with `producer_account` and `name` it identifies the datashare ARN.
 - `publicly_accessible` (Boolean) Whether public workgroups may consume the share.
 - `share_id` (Number) Numeric datashare ID reported by `SVV_DATASHARES`.
-- `share_type` (String) `OUTBOUND` for a share this namespace produces, `INBOUND` for one it consumes.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -60,17 +57,17 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
--- List visible datashares matching the configured filters.
-SELECT ... FROM svv_datashares ...;
+-- List visible outbound datashares and their owners.
+SELECT ... FROM svv_datashares LEFT JOIN pg_user ... WHERE share_type = 'OUTBOUND' ...;
 ```
 
 ## Read Behavior
 
-`datashares` is empty when nothing matches; it is ordered by share type and name. Outbound shares report their producer
-`database` and `owner`. Inbound shares report the `consumer_database` created from them, while `producer_account` and
-`producer_namespace` identify the producer; their `database` and `owner` are null.
+`datashares` is empty when nothing matches; it is ordered by name. One query in the provider database covers the shares
+of every producer database of the namespace, each reported with its `database`. Shares managed by another AWS service
+are listed too, although `redshift_datashare` cannot manage them.
 
 `id` (String, computed) is the listing's provider-relative JSON identity containing the configured filters.
 
-`SVV_DATASHARES` shows rows only to superusers, share owners, and users with `ALTER` or `USAGE` on a share, so the
-listing is limited to what the provider user can see. Only read-only SQL is executed.
+Superusers, share owners, and users with `ALTER` or `USAGE` on a share see it; other users see no shares. Only read-only
+SQL is executed.

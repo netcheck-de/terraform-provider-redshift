@@ -32,7 +32,7 @@ output "upper_inputs" {
 
 ### Optional
 
-- `database` (String) Database to list routines from; defaults to the provider database.
+- `database` (String) Database whose routines are listed; defaults to the provider's `database`.
 - `routine_name` (String) Only routines with this exact name, including every overload.
 - `routine_type` (String) Only routines of this type: `FUNCTION` or `PROCEDURE`.
 - `schema` (String) Only routines in this schema.
@@ -63,6 +63,9 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
+
 -- Find routine overloads matching the configured filters.
 SELECT ... FROM pg_proc_info WHERE prokind IN ('f', 'p') AND nspname = '...' AND proname = '...';
 
@@ -75,3 +78,6 @@ SHOW PARAMETERS OF { FUNCTION | PROCEDURE } database.schema.routine_name(argumen
 The listing first finds the matching overloads in `pg_proc_info` and then runs `SHOW PARAMETERS` once per overload, so
 narrow it with `schema` and `routine_name`. Functions add a `RETURN` row at position `0` for their result. Viewing a
 routine requires superuser, ownership, or `USAGE` on its schema and `EXECUTE` on the routine.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing. `id` contains the
+listed database and configured filters.

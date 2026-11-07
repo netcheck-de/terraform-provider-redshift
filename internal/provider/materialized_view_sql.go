@@ -278,14 +278,26 @@ func readMaterializedViewQuery(data materializedViewModel) sqlclient.Query {
 	return viewCatalogQuery(data.Schema.ValueString(), data.Name.ValueString())
 }
 
-// readMaterializedViewRefreshQuery reads the automatic refresh setting from SVV_MV_INFO, which also exists on
-// Serverless, unlike STV_MV_INFO. Its name columns are CHAR(128), so they are trimmed before comparison.
+// materializedViewRefreshSource selects automatic refresh settings from SVV_MV_INFO of one database. The view also
+// exists on Serverless, unlike STV_MV_INFO, and shows regular users only the materialized views they own. Its name
+// columns are CHAR(128), so they are trimmed before comparison.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MV_INFO.html
+func materializedViewRefreshSource(database string) sqlclient.Query {
+	return sqlclient.Select("RTRIM(schema_name) AS schema_name", "RTRIM(name) AS name", "autorefresh").From("svv_mv_info").
+		Where("RTRIM(database_name) = :database", sqlclient.Bind("database", database))
+}
+
+// readMaterializedViewRefreshQuery reads the automatic refresh setting of one materialized view.
 func readMaterializedViewRefreshQuery(data materializedViewModel) sqlclient.Query {
-	return sqlclient.Select("autorefresh").From("svv_mv_info").
-		Where("RTRIM(database_name) = :database", sqlclient.Bind("database", data.Database.ValueString())).
+	return materializedViewRefreshSource(data.Database.ValueString()).
 		Where("RTRIM(schema_name) = :schema", sqlclient.Bind("schema", data.Schema.ValueString())).
 		Where("RTRIM(name) = :name", sqlclient.Bind("name", data.Name.ValueString()))
+}
+
+// listMaterializedViewRefreshQuery lists the automatic refresh settings of one database, optionally of one schema.
+func listMaterializedViewRefreshQuery(database, schema string) sqlclient.Query {
+	return materializedViewRefreshSource(database).
+		WhereIf(schema != "", "RTRIM(schema_name) = :schema", sqlclient.Bind("schema", schema))
 }
 
 // materializedViewFlag parses an SVV_MV_INFO CHAR(1) flag; the reference documents t and f while its sample

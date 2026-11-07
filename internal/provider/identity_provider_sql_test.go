@@ -125,5 +125,6 @@ func TestIdentityProviderSQL(t *testing.T) {
 
 			return sql, err
 		}},
+		{"list", maskingQuerySQL(listIdentityProvidersQuery())},
 	})
 }

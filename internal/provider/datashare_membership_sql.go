@@ -59,7 +59,7 @@ func readDatashareMembershipObjectsQuery(data datashareMembershipModel) sqlclien
 		return query.Where("object_type = 'function'")
 	}
 
-	return query.Where("object_type IN ('table', 'view', 'late binding view', 'materialized view')")
+	return query.Where(datashareRelationTypes)
 }
 
 // readDatashareMembershipCandidatesQuery lists the schema's objects that ADD ALL of the kind would share.
@@ -76,5 +76,25 @@ func readDatashareMembershipCandidatesQuery(data datashareMembershipModel) sqlcl
 	return sqlclient.Select("table_name AS member_name").From("svv_all_tables").
 		Where("database_name = :database", sqlclient.Bind("database", data.Database.ValueString())).
 		Where("schema_name = :schema", sqlclient.Bind("schema", data.Schema.ValueString())).
+		Where("table_type <> 'EXTERNAL TABLE'")
+}
+
+// datashareMembershipObjectTypes are the svv_datashare_objects types the membership listing reads in one query: the
+// shared schemas and the members of both kinds.
+const datashareMembershipObjectTypes sqlclient.Keyword = "object_type IN ('schema', 'schemas', 'table', 'view', 'late binding view', 'materialized view', 'function')"
+
+// listDatashareMembershipCandidatesQuery lists, per schema, the objects of one database that ADD ALL of the kind
+// would share, optionally of one schema, with the predicates of readDatashareMembershipCandidatesQuery.
+func listDatashareMembershipCandidatesQuery(kind, database, schema string) sqlclient.Query {
+	if kind == "FUNCTIONS" {
+		return sqlclient.Select("n.nspname AS schema_name", "p.proname AS member_name").
+			From("pg_proc_info p JOIN pg_namespace n ON n.oid = p.pronamespace JOIN pg_language l ON l.oid = p.prolang").
+			OptEq("n.nspname", "schema", schema).
+			Where("p.prokind = 'f'").Where("l.lanname = 'sql'")
+	}
+
+	return sqlclient.Select("schema_name", "table_name AS member_name").From("svv_all_tables").
+		Where("database_name = :database", sqlclient.Bind("database", database)).
+		OptEq("schema_name", "schema", schema).
 		Where("table_type <> 'EXTERNAL TABLE'")
 }

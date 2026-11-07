@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // roleGrantResource manages one role grant to a user or another role.
@@ -88,20 +89,31 @@ func (r *roleGrantResource) read(ctx context.Context, data *roleGrantModel) (boo
 	admin := false
 
 	if !data.ToUser.IsNull() {
-		// One row per grantor can exist; any of them with the option lets the user administer the role.
-		for _, row := range rows {
-			option, err := strconv.ParseBool(row["admin_option"])
-			if err != nil {
-				return false, fmt.Errorf("decode role grant admin option: %w", err)
-			}
-
-			admin = admin || option
+		if admin, err = roleGrantAdminOption(rows); err != nil {
+			return false, err
 		}
 	}
 
 	data.AdminOption = types.BoolValue(admin)
 
 	return true, nil
+}
+
+// roleGrantAdminOption folds the svv_user_grants rows of one user and role. One row per grantor can exist; any of
+// them with the option lets the user administer the role.
+func roleGrantAdminOption(rows []sqlclient.Row) (bool, error) {
+	admin := false
+
+	for _, row := range rows {
+		option, err := strconv.ParseBool(row["admin_option"])
+		if err != nil {
+			return false, fmt.Errorf("decode role grant admin option: %w", err)
+		}
+
+		admin = admin || option
+	}
+
+	return admin, nil
 }
 
 // fields returns only the selected recipient's import identity fields.

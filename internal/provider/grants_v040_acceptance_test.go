@@ -55,7 +55,7 @@ resource "redshift_language_grant" "public_plpgsql" {
   privileges = []
   restore_default_on_destroy = true
 }
-resource "redshift_default_privileges" "public" {
+resource "redshift_default_privilege" "public" {
   database_name = redshift_database.local.name
   object_type = "FUNCTIONS"
   grantee = "public"
@@ -77,7 +77,7 @@ data "redshift_language_grant" "public_plpgsql" {
   grantee = "public"
   grantee_type = "PUBLIC"
 }
-data "redshift_default_privileges" "public" {
+data "redshift_default_privilege" "public" {
   database_name = redshift_database.local.name
   object_type = "FUNCTIONS"
   grantee = "public"
@@ -89,15 +89,15 @@ data "redshift_default_privileges" "public" {
 		Steps: []resource.TestStep{
 			{Config: restricted, Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_language_grant.public_sql", "privileges.#", "0"),
-				resource.TestCheckResourceAttr("redshift_default_privileges.public", "privileges.#", "0"),
+				resource.TestCheckResourceAttr("redshift_default_privilege.public", "privileges.#", "0"),
 			)},
 			{Config: restricted, PlanOnly: true},
-			{ResourceName: "redshift_default_privileges.public", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"restore_default_on_destroy"}},
+			{ResourceName: "redshift_default_privilege.public", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"restore_default_on_destroy"}},
 			{Config: base},
 			{Config: restored, Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("data.redshift_language_grant.public_sql", "privileges.#", "1"),
 				resource.TestCheckResourceAttr("data.redshift_language_grant.public_plpgsql", "privileges.#", "1"),
-				resource.TestCheckResourceAttr("data.redshift_default_privileges.public", "privileges.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_default_privilege.public", "privileges.#", "1"),
 			)},
 		},
 	})

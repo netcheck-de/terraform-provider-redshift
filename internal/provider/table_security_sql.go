@@ -145,3 +145,12 @@ func readTableSecurityQuery(data tableSecurityModel) sqlclient.Query {
 		Where("relschema = :schema", sqlclient.Bind("schema", data.Schema.ValueString())).
 		Where("relname = :relation", sqlclient.Bind("relation", data.Relation.ValueString()))
 }
+
+// listTableSecuritiesQuery lists the row-level security settings that svv_rls_relation reports for one database,
+// optionally of one schema.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_RELATION.html
+func listTableSecuritiesQuery(database, schema string) sqlclient.Query {
+	return sqlclient.Select("relschema", "relname", "is_rls_on", "is_rls_datashare_on", "rls_conjunction_type").From("svv_rls_relation").
+		Where("datname = :database", sqlclient.Bind("database", database)).OptEq("relschema", "schema", schema).
+		OrderBy("relschema", "relname")
+}

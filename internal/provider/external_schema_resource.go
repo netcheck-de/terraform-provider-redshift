@@ -21,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // externalSchemaResource manages a Redshift schema mapping to a Glue, Hive, federated, Redshift, or streaming source.
@@ -256,26 +257,46 @@ func (r *externalSchemaResource) read(ctx context.Context, data *externalSchemaM
 			"it is a local schema, or an external schema owned by another user, whose options only a superuser can read", data.Name.ValueString(), row["owner"])
 	}
 
-	kind, supported := externalSchemaKinds()[row["eskind"]]
-	if len(rows) != 1 || !supported {
+	if len(rows) != 1 {
 		return false, fmt.Errorf("external schema %q is not a unique schema of a supported source type (eskind %q)", data.Name.ValueString(), row["eskind"])
 	}
 
-	if strings.TrimSpace(row["owner"]) == "" {
-		return false, fmt.Errorf("external schema %q has no owner in the catalog", data.Name.ValueString())
-	}
-
-	options, err := externalSchemaCatalogOptions(row["esoptions"])
+	observed, err := externalSchemaFromRow(*data, row)
 	if err != nil {
 		return false, err
 	}
 
-	if kind == externalSchemaDefaultSource && options["IAM_ROLE"] == "" {
-		return false, errors.New("external schema has no IAM_ROLE catalog option")
+	*data = observed
+
+	return true, nil
+}
+
+// externalSchemaFromRow decodes one catalog row of readExternalSchemaQuery or listExternalSchemasQuery into the
+// observed schema. prior supplies the values the catalog does not record: a configured option it does not echo is
+// kept, and an unknown one becomes null.
+func externalSchemaFromRow(prior externalSchemaModel, row sqlclient.Row) (externalSchemaModel, error) {
+	name := strings.TrimSpace(row["schemaname"])
+
+	kind, supported := externalSchemaKinds()[row["eskind"]]
+	if !supported {
+		return prior, fmt.Errorf("external schema %q is not a unique schema of a supported source type (eskind %q)", name, row["eskind"])
 	}
 
-	observed := *data
-	observed.Name = types.StringValue(strings.TrimSpace(row["schemaname"]))
+	if strings.TrimSpace(row["owner"]) == "" {
+		return prior, fmt.Errorf("external schema %q has no owner in the catalog", name)
+	}
+
+	options, err := externalSchemaCatalogOptions(row["esoptions"])
+	if err != nil {
+		return prior, err
+	}
+
+	if kind == externalSchemaDefaultSource && options["IAM_ROLE"] == "" {
+		return prior, errors.New("external schema has no IAM_ROLE catalog option")
+	}
+
+	observed := prior
+	observed.Name = types.StringValue(name)
 	observed.SourceType = types.StringValue(kind)
 	observed.Owner = types.StringValue(strings.TrimSpace(row["owner"]))
 	observed.GlueDatabase, observed.SourceDatabase = types.StringNull(), types.StringNull()
@@ -289,25 +310,24 @@ func (r *externalSchemaResource) read(ctx context.Context, data *externalSchemaM
 		}
 	}
 
-	observed.IAMRoleARN = externalSchemaObserved(options, "IAM_ROLE", data.IAMRoleARN)
+	observed.IAMRoleARN = externalSchemaObserved(options, "IAM_ROLE", prior.IAMRoleARN)
 	// An omitted REGION means the warehouse region, which the catalog leaves unrecorded, so an unknown region
 	// becomes null while a configured one the catalog does not echo is kept.
-	observed.Region = externalSchemaObserved(options, "REGION", data.Region)
-	observed.SourceSchema = externalSchemaObserved(options, "SCHEMA", data.SourceSchema)
-	observed.URI = externalSchemaObserved(options, "URI", data.URI)
-	observed.SecretARN = externalSchemaObserved(options, "SECRET_ARN", data.SecretARN)
-	observed.AuthenticationARN = externalSchemaObserved(options, "AUTHENTICATION_ARN", data.AuthenticationARN)
+	observed.Region = externalSchemaObserved(options, "REGION", prior.Region)
+	observed.SourceSchema = externalSchemaObserved(options, "SCHEMA", prior.SourceSchema)
+	observed.URI = externalSchemaObserved(options, "URI", prior.URI)
+	observed.SecretARN = externalSchemaObserved(options, "SECRET_ARN", prior.SecretARN)
+	observed.AuthenticationARN = externalSchemaObserved(options, "AUTHENTICATION_ARN", prior.AuthenticationARN)
 
-	observed.Authentication = externalSchemaObserved(options, "AUTHENTICATION", data.Authentication)
+	observed.Authentication = externalSchemaObserved(options, "AUTHENTICATION", prior.Authentication)
 	if authentication, ok := options["AUTHENTICATION"]; ok && authentication != "" {
-		observed.Authentication = keywordValue(data.Authentication, strings.ToUpper(authentication))
+		observed.Authentication = keywordValue(prior.Authentication, strings.ToUpper(authentication))
 	}
 
-	observed.Port = data.Port
 	if port, ok := options["PORT"]; ok && port != "" {
 		value, err := strconv.ParseInt(port, 10, 64)
 		if err != nil {
-			return false, fmt.Errorf("external schema %q has an unrecognized PORT %q", data.Name.ValueString(), port)
+			return prior, fmt.Errorf("external schema %q has an unrecognized PORT %q", name, port)
 		}
 
 		observed.Port = types.Int64Value(value)
@@ -315,9 +335,7 @@ func (r *externalSchemaResource) read(ctx context.Context, data *externalSchemaM
 		observed.Port = types.Int64Null()
 	}
 
-	*data = observed
-
-	return true, nil
+	return observed, nil
 }
 
 // externalSchemaConverged reports the first configured attribute the catalog does not hold after Create or Update.

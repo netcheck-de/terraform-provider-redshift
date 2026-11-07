@@ -1,0 +1,47 @@
+---
+subcategory: Tables and Views
+page_title: redshift_external_tables Data Source - terraform-provider-redshift
+description: Lists the Redshift Spectrum external tables of one database.
+---
+
+# redshift_external_tables (Data Source)
+
+Lists the external tables of one database with their definitions, the tables `redshift_external_table` manages. See AWS
+[SVV_EXTERNAL_TABLES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_TABLES.html) and
+[SVV_EXTERNAL_COLUMNS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_COLUMNS.html).
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_external_tables/data-source.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
+
+-- List external table storage settings and properties.
+SELECT ... FROM svv_external_tables WHERE redshift_database_name = '...' AND schemaname = '...';
+
+-- List the columns and partition keys of those tables.
+SELECT ... FROM svv_external_columns WHERE redshift_database_name = '...' AND schemaname = '...';
+```
+
+## Read Behavior
+
+`database` defaults to the provider's `database`. The `schema` filter compares without case, as Redshift folds
+identifiers. Items are ordered by schema and name; no match returns an empty `external_tables` list, and the column read
+is skipped. `id` combines the listed database and configured filters within the warehouse.
+
+Each item reports what the `redshift_external_table` lookup reports: `column` in catalog order with Redshift type names
+(types Redshift cannot declare, such as Glue's `string`, in UPPERCASE), every catalog table property, `stored_as` null
+when the input format class belongs to no named format, and `serde` null when it is the format's default SerDe. A table
+whose columns the catalog does not report is an error. A database that does not exist or is not local, such as a
+datashare consumer database, lists nothing. Superusers see every table; other users see only the tables they have access
+to.

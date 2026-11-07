@@ -82,8 +82,8 @@ data "redshift_language_grant" "loader_sql" {
   grantee_type  = redshift_language_grant.loader_sql.grantee_type
 }
 
-# Every grant on the local table, after the table-level and column-level grants exist.
-data "redshift_grants" "local_events" {
+# Every object grant on the local table, after the table-level and column-level grants exist.
+data "redshift_object_grants" "local_events" {
   provider      = redshift.consumer
   database_name = redshift_database.local.name
   object_type   = "TABLE"
@@ -93,14 +93,14 @@ data "redshift_grants" "local_events" {
   depends_on = [redshift_object_grant.loader_events, redshift_column_grant.reader_events]
 }
 
-# Every grant the loader holds in the local database.
-data "redshift_grants" "loader" {
+# Every object grant the loader holds in the local database.
+data "redshift_object_grants" "loader" {
   provider      = redshift.consumer
   database_name = redshift_database.local.name
   grantee       = redshift_user.loader.name
   grantee_type  = "USER"
 
-  depends_on = [redshift_object_grant.loader_events, redshift_language_grant.loader_sql]
+  depends_on = [redshift_object_grant.loader_events, redshift_object_grant.loader_schema]
 }
 
 data "redshift_column_grants" "local" {
@@ -109,4 +109,11 @@ data "redshift_column_grants" "local" {
   schema_name   = "public"
 
   depends_on = [redshift_column_grant.reader_events, redshift_column_grant.group_event_labels]
+}
+
+data "redshift_language_grants" "local" {
+  provider      = redshift.consumer
+  database_name = redshift_database.local.name
+
+  depends_on = [redshift_language_grant.operator_procedures, redshift_language_grant.loader_sql]
 }

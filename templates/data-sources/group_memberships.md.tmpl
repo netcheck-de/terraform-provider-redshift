@@ -1,0 +1,32 @@
+---
+subcategory: Identity and Access
+page_title: redshift_group_memberships Data Source - terraform-provider-redshift
+description: Lists explicit SQL user-to-group memberships.
+---
+
+# redshift_group_memberships (Data Source)
+
+Lists explicit user-to-group memberships, optionally of one group or one user. See AWS
+[ALTER GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_GROUP.html).
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_group_memberships/data-source.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List the memberships, narrowed by the configured group and user.
+SELECT ... FROM pg_group JOIN pg_user ... WHERE ...;
+```
+
+## Read Behavior
+
+Items are ordered by group and user. Every user can read `pg_group` and `pg_user`, so every membership is
+listed. Filters match names exactly. `id` contains the configured filters within the warehouse.

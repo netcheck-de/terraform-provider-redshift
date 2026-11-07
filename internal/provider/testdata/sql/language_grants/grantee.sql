@@ -1,0 +1,1 @@
+SELECT language_name, privilege_type, identity_name, identity_type, admin_option FROM svv_language_privileges WHERE language_name IN ('sql', 'plpgsql') AND identity_name = :grantee ORDER BY language_name, identity_type, identity_name, privilege_type;

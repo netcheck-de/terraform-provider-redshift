@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // roleResource manages SQL role identity independently of memberships and privileges.
@@ -91,7 +92,11 @@ func (r *roleResource) read(ctx context.Context, data *roleModel) (bool, error) 
 		return false, fmt.Errorf("role %q is ambiguous in the catalog", data.Name.ValueString())
 	}
 
-	row := rows[0]
+	return true, roleCatalog(data, rows[0])
+}
+
+// roleCatalog applies an svv_roles row: the name, owner, external ID, and role ID.
+func roleCatalog(data *roleModel, row sqlclient.Row) error {
 	data.Name = types.StringValue(row["role_name"])
 	data.Owner = optionalString(row["role_owner"])
 	data.ExternalID = optionalString(row["external_id"])
@@ -100,13 +105,13 @@ func (r *roleResource) read(ctx context.Context, data *roleModel) (bool, error) 
 	if row["role_id"] != "" {
 		id, err := strconv.ParseInt(row["role_id"], 10, 64)
 		if err != nil {
-			return false, fmt.Errorf("decode role ID: %w", err)
+			return fmt.Errorf("decode role ID: %w", err)
 		}
 
 		data.RoleID = types.Int64Value(id)
 	}
 
-	return true, nil
+	return nil
 }
 
 // roleKnown replaces an unknown planned value with null, which a saved state can hold.

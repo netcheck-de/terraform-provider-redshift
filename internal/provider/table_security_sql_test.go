@@ -69,5 +69,7 @@ func TestTableSecuritySQL(t *testing.T) {
 		}},
 		{"read_relation", built(readTableSecurityRelationQuery(quoted))},
 		{"read", built(readTableSecurityQuery(quoted))},
+		{"list", built(listTableSecuritiesQuery("analytics", ""))},
+		{"list_schema", built(listTableSecuritiesQuery("analytics", "public"))},
 	})
 }

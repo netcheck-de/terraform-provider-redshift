@@ -1,10 +1,93 @@
 package provider
 
-import "github.com/hashicorp/terraform-plugin-framework/datasource"
+import (
+	"context"
+	"slices"
+	"strings"
+
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+)
 
 var _ = registerDataSource(newDefaultPrivilegesDataSource)
 
-// newDefaultPrivilegesDataSource reads explicit creator-specific future-object permissions.
+// newDefaultPrivilegesDataSource lists the default privileges of one database, one element per rule.
 func newDefaultPrivilegesDataSource() datasource.DataSource {
-	return newPrivilegeDataSource(newDefaultPrivilegesResource)
+	return newCollectionDataSource(collectionSpec{
+		name:          "default_privileges",
+		databaseField: "database_name",
+		description: "Lists the default privileges of one local database from `SVV_DEFAULT_PRIVILEGES`, one element per owner, schema, object type, and grantee, without taking ownership. " +
+			"Redshift grants `EXECUTE` on new functions to `PUBLIC` without being asked, until the owner's first `ALTER DEFAULT PRIVILEGES` on functions; " +
+			"that implicit rule is read from `PG_DEFAULT_ACL` and listed as a database-wide `PUBLIC` `FUNCTIONS` element for every such user. " +
+			"Superusers and users with the `ACCESS SYSTEM TABLE` permission see every rule; other users see only the defaults granted to them. " + discoveryLocalScope,
+		filters: map[string]schema.Attribute{
+			"database_name": discoveryDatabaseFilter("default privileges"),
+			"owner":         discoveryFilter("Only the defaults of objects this user creates."),
+			"schema_name":   discoveryFilter("Only the defaults of this schema; database-wide defaults are left out."),
+			"object_type": schema.StringAttribute{
+				Optional: true, MarkdownDescription: "Only the defaults of `TABLES` (tables and views), `FUNCTIONS`, or `PROCEDURES`.",
+				Validators: []validator.String{stringvalidator.LengthAtLeast(1), stringvalidator.OneOf(defaultPrivilegeListedTypes...)},
+			},
+			"grantee":      discoveryFilter("Only defaults granted to this identity name; `public` for `PUBLIC`."),
+			"grantee_type": discoveryGranteeTypeFilter(),
+		},
+		element: describedOutputs(collectionElement(newDefaultPrivilegeResource, "database_name", "owner", "schema_name", "object_type", "grantee", "grantee_type", "privileges", "grant_option_privileges"), map[string]string{
+			"database_name":           "Database whose default privileges are listed.",
+			"owner":                   "User whose future objects receive the privileges.",
+			"schema_name":             "Schema whose future objects receive the privileges; null for database-wide defaults.",
+			"object_type":             "`TABLES` (tables and views), `FUNCTIONS`, or `PROCEDURES`.",
+			"grantee":                 "Receiving identity name; `public` for `PUBLIC`.",
+			"grantee_type":            "`USER`, `ROLE`, `GROUP`, or `PUBLIC`.",
+			"privileges":              "Privileges new objects of the owner grant to the grantee.",
+			"grant_option_privileges": "Subset of `privileges` the grantee receives `WITH GRANT OPTION`; only users hold grant options.",
+		}),
+		list: func(ctx context.Context, client *resourceClient, data types.Object) ([]map[string]attr.Value, error) {
+			database, local, err := discoveryLocalDatabase(ctx, client, data, "database_name")
+			if err != nil || !local {
+				return []map[string]attr.Value{}, err
+			}
+
+			rows, err := client.selectRows(ctx, database, listDefaultPrivilegesQuery(objectString(data, "owner"), objectString(data, "schema_name"), objectString(data, "grantee")))
+			if err != nil {
+				return nil, err
+			}
+
+			return defaultPrivilegesItems(database, objectString(data, "object_type"), objectString(data, "grantee_type"), rows), nil
+		},
+	})
+}
+
+// defaultPrivilegeListedTypes are the object types the resource manages, in the spelling it configures them.
+var defaultPrivilegeListedTypes = []string{"TABLES", "FUNCTIONS", "PROCEDURES"}
+
+// defaultPrivilegesItems folds SVV_DEFAULT_PRIVILEGES rows into one element per default privilege rule, skipping
+// object and grantee types the resource does not manage and, when set, other object and grantee types than the
+// selected ones.
+func defaultPrivilegesItems(database, selectedObjectType, selectedGranteeType string, rows []sqlclient.Row) []map[string]attr.Value {
+	groups := groupPrivilegeRows(rows, func(row sqlclient.Row) []string {
+		objectType, granteeType := defaultPrivilegeObjectTypes[strings.ToUpper(row["object_type"])], strings.ToUpper(row["grantee_type"])
+		if objectType == "" || !slices.Contains(grantGranteeTypes, granteeType) ||
+			(selectedObjectType != "" && objectType != selectedObjectType) || (selectedGranteeType != "" && granteeType != selectedGranteeType) {
+			return nil
+		}
+
+		return []string{row["owner_name"], row["schema_name"], objectType, granteeType, row["grantee_name"]}
+	})
+
+	items := make([]map[string]attr.Value, 0, len(groups))
+	for _, group := range groups {
+		items = append(items, map[string]attr.Value{
+			"database_name": types.StringValue(database), "owner": types.StringValue(group.key[0]),
+			"schema_name": grantsNullable(group.key[1]), "object_type": types.StringValue(group.key[2]),
+			"grantee_type": types.StringValue(group.key[3]), "grantee": types.StringValue(group.key[4]),
+			"privileges": group.fold.privilegeSet(), "grant_option_privileges": group.fold.optionSet(),
+		})
+	}
+
+	return items
 }

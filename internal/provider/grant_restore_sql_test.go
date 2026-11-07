@@ -18,8 +18,8 @@ func TestGrantRestoreSQL(t *testing.T) {
 	}{
 		{"sql", newLanguageGrantResource, map[string]string{"database_name": "warehouse", "language_name": "SQL", "grantee": "public", "grantee_type": "PUBLIC"}},
 		{"plpgsql", newLanguageGrantResource, map[string]string{"database_name": "warehouse", "language_name": "PLPGSQL", "grantee": "public", "grantee_type": "PUBLIC"}},
-		{"functions_owner", newDefaultPrivilegesResource, map[string]string{"database_name": "warehouse", "owner": "loader", "object_type": "FUNCTIONS", "grantee": "public", "grantee_type": "PUBLIC"}},
-		{"functions_current_user", newDefaultPrivilegesResource, map[string]string{"database_name": "warehouse", "object_type": "FUNCTIONS", "grantee": "public", "grantee_type": "PUBLIC"}},
+		{"functions_owner", newDefaultPrivilegeResource, map[string]string{"database_name": "warehouse", "owner": "loader", "object_type": "FUNCTIONS", "grantee": "public", "grantee_type": "PUBLIC"}},
+		{"functions_current_user", newDefaultPrivilegeResource, map[string]string{"database_name": "warehouse", "object_type": "FUNCTIONS", "grantee": "public", "grantee_type": "PUBLIC"}},
 	} {
 		cases = append(cases, sqlCase{name: test.name, render: func() ([]string, error) {
 			r := test.factory().(*privilegeResource)

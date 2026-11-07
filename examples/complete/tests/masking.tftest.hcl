@@ -35,6 +35,10 @@ override_data {
   target = data.redshift_masking_policy_attachment.email_readers
   values = { exists = true, priority = 10, input_columns = ["email"] }
 }
+override_data {
+  target = data.redshift_masking_policy_attachments.customers
+  values = { id = "masking-attachments-listing-identity" }
+}
 
 run "masking_apply" {
   command = apply
@@ -90,5 +94,20 @@ run "masking_apply" {
       data.redshift_masking_policies.local.database == redshift_database.local.name
     )
     error_message = "The masking lookups must be exposed through masking_checks."
+  }
+
+  assert {
+    condition = (
+      data.redshift_masking_policy_attachments.customers.id == "masking-attachments-listing-identity" &&
+      data.redshift_masking_policy_attachments.customers.database == redshift_database.local.name &&
+      data.redshift_masking_policy_attachments.customers.schema == redshift_table.customers.schema &&
+      data.redshift_masking_policy_attachments.customers.relation == redshift_table.customers.name &&
+      data.redshift_masking_policy_attachments.customers.policy == null &&
+      output.masking_checks.table_attachments == {
+        for attachment in data.redshift_masking_policy_attachments.customers.masking_policy_attachments :
+        "${attachment.policy} ${attachment.grantee_type} ${attachment.grantee}" => attachment.columns
+      }
+    )
+    error_message = "The attachment listing must be scoped to the masked table and exposed through masking_checks."
   }
 }

@@ -1,5 +1,5 @@
 output "views" {
-  description = "Observed view and materialized view metadata from the read-only lookups."
+  description = "Observed view and materialized view metadata from the read-only lookups and listings of the example schema."
   value = {
     event_labels = {
       id           = data.redshift_view.event_labels.id
@@ -13,5 +13,7 @@ output "views" {
       auto_refresh = data.redshift_materialized_view.label_counts.auto_refresh
       fingerprint  = data.redshift_materialized_view.label_counts.definition_fingerprint
     }
+    views              = { for view in data.redshift_views.example.views : view.name => view.late_binding }
+    materialized_views = { for view in data.redshift_materialized_views.example.materialized_views : view.name => view.auto_refresh }
   }
 }

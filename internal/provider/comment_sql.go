@@ -22,10 +22,16 @@ const (
 	// commentRelationSource joins table and view comments, which pg_description stores with objsubid 0.
 	commentRelationSource sqlclient.Keyword = "pg_class o JOIN pg_namespace n ON n.oid = o.relnamespace LEFT JOIN pg_description d ON d.objoid = o.oid AND d.classoid = 'pg_class'::regclass AND d.objsubid = 0"
 	// commentColumnSource joins column comments, which pg_description stores under the column's attnum.
-	commentColumnSource sqlclient.Keyword = "pg_class o JOIN pg_namespace n ON n.oid = o.relnamespace JOIN pg_attribute a ON a.attrelid = o.oid AND a.attname = :column AND a.attnum > 0 AND NOT a.attisdropped LEFT JOIN pg_description d ON d.objoid = o.oid AND d.classoid = 'pg_class'::regclass AND d.objsubid = a.attnum"
+	commentColumnSource sqlclient.Keyword = "pg_class o JOIN pg_namespace n ON n.oid = o.relnamespace JOIN pg_attribute a ON a.attrelid = o.oid AND a.attnum > 0 AND NOT a.attisdropped LEFT JOIN pg_description d ON d.objoid = o.oid AND d.classoid = 'pg_class'::regclass AND d.objsubid = a.attnum"
 	// commentConstraintSource joins constraint comments, which pg_description stores against the pg_constraint row
 	// rather than its table, so the constraint name alone does not identify them.
 	commentConstraintSource sqlclient.Keyword = "pg_constraint k JOIN pg_class o ON o.oid = k.conrelid JOIN pg_namespace n ON n.oid = o.relnamespace LEFT JOIN pg_description d ON d.objoid = k.oid AND d.classoid = 'pg_constraint'::regclass AND d.objsubid = 0"
+	// commentTableKinds selects the relations a TABLE comment targets.
+	commentTableKinds sqlclient.Keyword = "o.relkind IN ('r', 'm')"
+	// commentViewKind selects the relations a VIEW comment targets.
+	commentViewKind sqlclient.Keyword = "o.relkind = 'v'"
+	// commentAnnotated keeps only objects that carry an annotation.
+	commentAnnotated sqlclient.Keyword = "d.description IS NOT NULL"
 )
 
 // commentKnownTarget checks target constraints as soon as their dependent inputs are known.
@@ -138,15 +144,15 @@ func commentTarget(data commentModel) (sqlclient.Statement, sqlclient.Query, err
 
 	if kind == "COLUMN" {
 		statement = statement.Qualified(schemaName, name, column)
-		query = query.From(commentColumnSource, sqlclient.Bind("column", column))
+		query = query.From(commentColumnSource).Where("a.attname = :column", sqlclient.Bind("column", column))
 	} else {
 		statement = statement.Qualified(schemaName, name)
 		query = query.From(commentRelationSource)
 	}
 
 	query = query.Where("o.relname = :name", nameBinding).Where("n.nspname = :schema", schemaBinding).
-		WhereIf(kind == "VIEW", "o.relkind = 'v'").
-		WhereIf(kind == "TABLE", "o.relkind IN ('r', 'm')")
+		WhereIf(kind == "VIEW", commentViewKind).
+		WhereIf(kind == "TABLE", commentTableKinds)
 
 	return statement, query, nil
 }
@@ -179,4 +185,38 @@ func commentDatabaseQuery(data commentModel) sqlclient.Query {
 		From("svv_redshift_databases").
 		Where("database_name = :database", sqlclient.Bind("database", data.DatabaseName.ValueString())).
 		Where("database_type = 'local'")
+}
+
+// commentListKinds are the object types a comment listing reads, in listing order, one catalog query each.
+var commentListKinds = []string{"DATABASE", "SCHEMA", "TABLE", "VIEW", "COLUMN", "CONSTRAINT"}
+
+// listCommentsQuery lists the annotated objects of one kind in the connected database, from the same sources the
+// resource reads. database names the connected database, whose own comment is the only DATABASE annotation a
+// redshift_comment there manages; schemaName, when set, narrows the relation kinds to one schema.
+func listCommentsQuery(kind, database, schemaName string) (sqlclient.Query, error) {
+	relation := func(source sqlclient.Keyword, extra ...sqlclient.Keyword) sqlclient.Query {
+		columns := append([]sqlclient.Keyword{"n.nspname AS schema_name", "o.relname AS object_name"}, extra...)
+
+		return sqlclient.Select(append(columns, commentText)...).
+			From(source).Where(commentAnnotated).OptEq("n.nspname", "schema", schemaName)
+	}
+
+	switch kind {
+	case "DATABASE":
+		return sqlclient.Select("o.datname AS object_name", commentText).From(commentDatabaseSource).
+			Where("o.datname = :database", sqlclient.Bind("database", database)).Where(commentAnnotated), nil
+	case "SCHEMA":
+		return sqlclient.Select("o.nspname AS object_name", commentText).From(commentSchemaSource).
+			Where(commentAnnotated).OrderBy("o.nspname"), nil
+	case "TABLE":
+		return relation(commentRelationSource).Where(commentTableKinds).OrderBy("n.nspname", "o.relname"), nil
+	case "VIEW":
+		return relation(commentRelationSource).Where(commentViewKind).OrderBy("n.nspname", "o.relname"), nil
+	case "COLUMN":
+		return relation(commentColumnSource, "a.attname AS column_name").OrderBy("n.nspname", "o.relname", "a.attnum"), nil
+	case "CONSTRAINT":
+		return relation(commentConstraintSource, "k.conname AS constraint_name").OrderBy("n.nspname", "o.relname", "k.conname"), nil
+	default:
+		return sqlclient.Query{}, fmt.Errorf("unsupported comment object_type %q", kind)
+	}
 }

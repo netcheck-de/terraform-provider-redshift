@@ -165,6 +165,15 @@ func (f *userFamily) alter(c *catalog, clause string) error {
 	return nil
 }
 
+// userFakeName is the bound user name of a lookup, or the legacy fake user "grafana" for a listing.
+func userFakeName(parameters map[string]string) string {
+	if name := parameters["name"]; name != "" {
+		return name
+	}
+
+	return "grafana"
+}
+
 // query answers the user reads and applies CREATE, ALTER, and DROP USER.
 func (f *userFamily) query(c *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	switch {
@@ -173,16 +182,21 @@ func (f *userFamily) query(c *catalog, _ sqlclient.Connection, sql string, param
 			return nil, true, nil
 		}
 
+		// The listing binds no name and reports the legacy fake user.
 		return []sqlclient.Row{{
-			"usename": parameters["name"], "usesuper": strconv.FormatBool(c.superuser), "usecreatedb": strconv.FormatBool(c.createDB),
+			"usename": userFakeName(parameters), "usesuper": strconv.FormatBool(c.superuser), "usecreatedb": strconv.FormatBool(c.createDB),
 			"valuntil": f.validUntil, "useconfig": strings.Join(f.config, userConfigSeparator),
 		}}, true, nil
-	case strings.HasPrefix(sql, "SELECT connection_limit, syslog_access, session_timeout, external_user_id FROM svv_user_info"):
+	case strings.HasPrefix(sql, "SELECT connection_limit, syslog_access, session_timeout, external_user_id FROM svv_user_info"),
+		strings.HasPrefix(sql, "SELECT user_name, connection_limit, syslog_access, session_timeout, external_user_id FROM svv_user_info"):
 		if !c.user || f.infoHidden {
 			return nil, true, nil
 		}
 
-		return []sqlclient.Row{{"connection_limit": f.connectionLimit, "syslog_access": f.syslog, "session_timeout": f.sessionTimeout, "external_user_id": f.externalID}}, true, nil
+		return []sqlclient.Row{{
+			"user_name": userFakeName(parameters), "connection_limit": f.connectionLimit, "syslog_access": f.syslog,
+			"session_timeout": f.sessionTimeout, "external_user_id": f.externalID,
+		}}, true, nil
 	case strings.HasPrefix(sql, "CREATE USER"):
 		if c.user {
 			return nil, true, errors.New("user already exists")

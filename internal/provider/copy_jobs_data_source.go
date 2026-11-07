@@ -17,9 +17,9 @@ func newCopyJobsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:          "copy_jobs",
 		databaseField: "database",
-		description:   "Lists copy jobs from `SYS_COPY_JOB`. Superusers see every job; other users see only their own.",
+		description:   "Lists the copy jobs of one database from `SYS_COPY_JOB`. Superusers see every job; other users see only their own. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
-			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database whose jobs are listed; the provider database when omitted."},
+			"database": discoveryDatabaseFilter("copy jobs"),
 		},
 		element: describedOutputs(collectionElement(newCopyJobResource, "database", "name", "iam_role", "auto"), map[string]string{
 			"name":     copyJobOutputDescriptions["name"],
@@ -27,9 +27,9 @@ func newCopyJobsDataSource() datasource.DataSource {
 			"auto":     copyJobOutputDescriptions["auto"],
 		}),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
-			database := objectString(filters, "database")
-			if database == "" {
-				database = client.database.ValueString()
+			database, local, err := discoveryLocalDatabase(ctx, client, filters, "database")
+			if err != nil || !local {
+				return []map[string]attr.Value{}, err
 			}
 
 			rows, err := client.selectRows(ctx, database, listCopyJobsQuery())

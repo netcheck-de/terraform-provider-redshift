@@ -1,5 +1,5 @@
 ---
-subcategory: Catalog Discovery
+subcategory: Tables and Views
 page_title: redshift_constraints Data Source - terraform-provider-redshift
 description: Lists primary key, unique, and foreign key constraints with their key columns.
 ---
@@ -70,17 +70,20 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List primary key, unique, and foreign key constraints.
 SELECT ... FROM pg_constraint WHERE contype IN ('p', 'u', 'f') ...;
 ```
 
 ## Read Behavior
 
-`database` defaults to the provider's `database`. `PG_CONSTRAINT` only covers the database a statement runs in, so
-the read connects to the listed database, which must be a local database. `id` combines the listed database and
-configured filters within the warehouse. Items are ordered by schema, table, and constraint name; no match returns
-an empty `constraints` list.
+`database` defaults to the provider's `database`. `PG_CONSTRAINT` only covers the database a statement runs in, so the
+read connects to the listed database. `id` combines the listed database and configured filters within the warehouse.
+Items are ordered by schema, table, and constraint name; no match returns an empty `constraints` list.
 
 Key columns are parsed from `pg_get_constraintdef`, because the catalog's column-number arrays are not readable through
 the provider's SQL transports; `columns` and `referenced_columns` keep key order, so the n-th columns of a composite
 foreign key correspond. Use `name` with `redshift_comment` and `object_type = "CONSTRAINT"` to annotate a constraint.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

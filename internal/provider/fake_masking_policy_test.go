@@ -73,6 +73,13 @@ func (f *maskingFake) query(_ *catalog, connection sqlclient.Connection, sql str
 		expression, _ := json.Marshal([]map[string]string{{"expr": f.expression, "type": "character varying(256)"}})
 
 		return []sqlclient.Row{{"policy_database": database, "policy_name": f.name, "input_columns": `[{"colname":"email","type":"character varying(256)"}]`, "policy_expression": string(expression)}}, true, nil
+	case strings.HasPrefix(sql, "SELECT ") && strings.Contains(sql, " FROM svv_attached_masking_policy") && strings.Contains(sql, " ORDER BY "):
+		// The listing reports the representative attachment of maskingTestAttachment.
+		if !f.policy || !f.attached || !rlsFakeMatches(parameters, map[string]string{"policy": f.name, "schema": "public", "relation": "customers"}) {
+			return nil, true, nil
+		}
+
+		return []sqlclient.Row{{"policy_name": f.name, "schema_name": "public", "table_name": "customers", "grantee": "example_readers", "grantee_type": "role", "priority": strconv.FormatInt(f.priority, 10), "input_columns": `["email"]`, "output_columns": `["email"]`}}, true, nil
 	case strings.HasPrefix(sql, "SELECT ") && strings.Contains(sql, " FROM svv_attached_masking_policy"):
 		if !f.policy || !f.attached || parameters["policy"] != f.name {
 			return nil, true, nil

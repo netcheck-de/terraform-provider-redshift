@@ -75,46 +75,43 @@ func (f *externalTableFamily) query(c *catalog, _ sqlclient.Connection, sql stri
 	relation := sqlclient.Identifier(externalTableFakeSchema) + "."
 	switch {
 	case strings.HasPrefix(sql, "SELECT schemaname, tablename, location, input_format"):
-		table := f.lookup(c, parameters["schema"], parameters["name"])
-		if table == nil {
-			return nil, true, nil
-		}
-
-		serdeParameters, _ := json.Marshal(table.serdeParameters)
-		tableParameters, _ := json.Marshal(table.parameters)
-
-		return []sqlclient.Row{{
-			"schemaname": externalTableFakeSchema, "tablename": strings.ToLower(parameters["name"]), "location": table.location,
-			"input_format": table.inputFormat, "output_format": table.outputFormat, "serialization_lib": table.serde,
-			"serde_parameters": string(serdeParameters), "parameters": string(tableParameters),
-		}}, true, nil
-	case strings.HasPrefix(sql, "SELECT columnname, external_type"):
-		table := f.lookup(c, parameters["schema"], parameters["table"])
-		if table == nil {
-			return nil, true, nil
-		}
-
 		var rows []sqlclient.Row
-		for i, column := range table.columns {
-			rows = append(rows, sqlclient.Row{"columnname": column.name, "external_type": column.hiveType, "columnnum": fmt.Sprint(i + 1), "part_key": "0"})
-		}
 
-		for i, column := range table.partitionKeys {
-			rows = append(rows, sqlclient.Row{"columnname": column.name, "external_type": column.hiveType, "columnnum": fmt.Sprint(len(table.columns) + i + 1), "part_key": fmt.Sprint(i + 1)})
+		for _, name := range f.matching(c, parameters, "name") {
+			table := f.tables[name]
+			serdeParameters, _ := json.Marshal(table.serdeParameters)
+			tableParameters, _ := json.Marshal(table.parameters)
+			rows = append(rows, sqlclient.Row{
+				"schemaname": externalTableFakeSchema, "tablename": name, "location": table.location,
+				"input_format": table.inputFormat, "output_format": table.outputFormat, "serialization_lib": table.serde,
+				"serde_parameters": string(serdeParameters), "parameters": string(tableParameters),
+			})
 		}
 
 		return rows, true, nil
-	case strings.HasPrefix(sql, "SELECT values, location FROM svv_external_partitions"):
-		table := f.lookup(c, parameters["schema"], parameters["table"])
-		if table == nil {
-			return nil, true, nil
-		}
-
+	case strings.HasPrefix(sql, "SELECT columnname, external_type, columnnum, part_key, schemaname, tablename FROM svv_external_columns"):
 		var rows []sqlclient.Row
 
-		for _, partition := range table.partitions {
-			values, _ := json.Marshal(partition.values)
-			rows = append(rows, sqlclient.Row{"values": string(values), "location": partition.location})
+		for _, name := range f.matching(c, parameters, "table") {
+			table := f.tables[name]
+			for i, column := range table.columns {
+				rows = append(rows, sqlclient.Row{"columnname": column.name, "external_type": column.hiveType, "columnnum": fmt.Sprint(i + 1), "part_key": "0", "schemaname": externalTableFakeSchema, "tablename": name})
+			}
+
+			for i, column := range table.partitionKeys {
+				rows = append(rows, sqlclient.Row{"columnname": column.name, "external_type": column.hiveType, "columnnum": fmt.Sprint(len(table.columns) + i + 1), "part_key": fmt.Sprint(i + 1), "schemaname": externalTableFakeSchema, "tablename": name})
+			}
+		}
+
+		return rows, true, nil
+	case strings.HasPrefix(sql, "SELECT values, location, schemaname, tablename FROM svv_external_partitions"):
+		var rows []sqlclient.Row
+
+		for _, name := range f.matching(c, parameters, "table") {
+			for _, partition := range f.tables[name].partitions {
+				values, _ := json.Marshal(partition.values)
+				rows = append(rows, sqlclient.Row{"values": string(values), "location": partition.location, "schemaname": externalTableFakeSchema, "tablename": name})
+			}
 		}
 
 		return rows, true, nil
@@ -145,13 +142,23 @@ func (f *externalTableFamily) query(c *catalog, _ sqlclient.Connection, sql stri
 	return nil, false, nil
 }
 
-// lookup returns the table when the external schema mapping exists.
-func (f *externalTableFamily) lookup(c *catalog, schema, name string) *externalTableFake {
-	if !c.external || !strings.EqualFold(schema, externalTableFakeSchema) {
+// matching returns the names of the tables a catalog read selects, in name order, when the external schema mapping
+// exists. Names compare without case, and an absent schema or table parameter matches every table, as the optional
+// predicates do.
+func (f *externalTableFamily) matching(c *catalog, parameters map[string]string, nameParameter string) []string {
+	if schema, ok := parameters["schema"]; !c.external || ok && !strings.EqualFold(schema, externalTableFakeSchema) {
 		return nil
 	}
 
-	return f.tables[strings.ToLower(name)]
+	var names []string
+
+	for _, name := range slices.Sorted(maps.Keys(f.tables)) {
+		if selected, ok := parameters[nameParameter]; !ok || strings.EqualFold(selected, name) {
+			names = append(names, name)
+		}
+	}
+
+	return names
 }
 
 // externalTableFakeToken is one lexical token of the fake's SQL reader.

@@ -106,3 +106,22 @@ func readRlsPolicyAttachmentQuery(data rlsPolicyAttachmentModel) sqlclient.Query
 		Where("grantee = :grantee", sqlclient.Bind("grantee", data.Grantee.ValueString())).
 		WhereIf(kind != "PUBLIC", "granteekind = :kind", sqlclient.Bind("kind", strings.ToLower(kind)))
 }
+
+// listRlsPolicyAttachmentsQuery lists the attachments of the connected database, optionally of one policy, schema,
+// or relation. The view covers only the connected database, so the caller runs it there.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_ATTACHED_POLICY.html
+func listRlsPolicyAttachmentsQuery(policy, schema, relation string) sqlclient.Query {
+	return sqlclient.Select("polname", "relschema", "relname", "grantee", "granteekind").From("svv_rls_attached_policy").
+		OptEq("polname", "policy", policy).OptEq("relschema", "schema", schema).OptEq("relname", "relation", relation).
+		OrderBy("relschema", "relname", "polname", "granteekind", "grantee")
+}
+
+// rlsPolicyAttachmentRecipient maps a catalog recipient to the resource's grantee and grantee_type. The view
+// documents only the kinds user and role, so PUBLIC is recognized by its grantee name, as the resource's read does.
+func rlsPolicyAttachmentRecipient(grantee, kind string) (string, string) {
+	if strings.EqualFold(grantee, "public") {
+		return "public", "PUBLIC"
+	}
+
+	return grantee, strings.ToUpper(strings.TrimSpace(kind))
+}

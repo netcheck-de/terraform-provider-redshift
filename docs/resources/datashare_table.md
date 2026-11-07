@@ -59,7 +59,7 @@ Give each relation membership one owner. Do not also manage it through scoped gr
 membership owner. `include_new` on `redshift_datashare_schema` adds future objects only; create explicitly managed
 relations before enabling it, as the complete example does. The catalog does not record whether a member was added
 explicitly, in bulk, or automatically. This resource removes its relation on destroy regardless of how it was added.
-Use `redshift_datashare_objects` to observe all current members without adopting them.
+Use `redshift_datashare_tables` and `redshift_datashare_schemas` to observe all current members without adopting them.
 
 ## Reconciliation
 

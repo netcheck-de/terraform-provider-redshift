@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -52,6 +53,9 @@ type privilegeResource struct {
 	partialAllowed func(types.Object) ([]sqlclient.Keyword, error)
 	// folded lists the identity attributes that name objects Redshift folds to lowercase.
 	folded []string
+	// previousNames lists earlier resource suffixes of this contract with an identical schema, whose state a moved
+	// block transfers unchanged.
+	previousNames []string
 }
 
 // catalogCheck is a parameterized statement used for parent existence or permission reads.
@@ -170,6 +174,33 @@ func grantOptionPrivileges(data types.Object) []string {
 	return knownStrings(value)
 }
 
+// providerSourceAddress ends every registry address of this provider, whatever host serves it.
+const providerSourceAddress = "netcheck-de/redshift"
+
+// MoveState transfers state recorded under one of the contract's previous type names of this provider, so a moved
+// block renames the resource without reimporting it. The schema is unchanged, so the state transfers as is.
+func (r *privilegeResource) MoveState(ctx context.Context) []resource.StateMover {
+	if len(r.previousNames) == 0 {
+		return nil
+	}
+
+	var current resource.SchemaResponse
+	r.Schema(ctx, resource.SchemaRequest{}, &current)
+
+	return []resource.StateMover{{
+		SourceSchema: &current.Schema,
+		StateMover: func(_ context.Context, req resource.MoveStateRequest, resp *resource.MoveStateResponse) {
+			if !strings.HasSuffix(req.SourceProviderAddress, providerSourceAddress) || req.SourceState == nil ||
+				!slices.Contains(r.previousNames, strings.TrimPrefix(req.SourceTypeName, "redshift_")) {
+				// Leaving the target state unset lets Terraform report that no mover accepts the source.
+				return
+			}
+
+			resp.TargetState.Raw = req.SourceState.Raw.Copy()
+		},
+	}}
+}
+
 // Metadata identifies the concrete permission resource selected by its SQL contract.
 func (r *privilegeResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_" + r.name
@@ -282,43 +313,119 @@ func (r *privilegeResource) readPrivileges(ctx context.Context, data *types.Obje
 		return target, false, nil
 	}
 
-	privileges, options := map[string]bool{}, map[string]bool{}
+	var fold privilegeFold
 
 	for _, row := range rows {
 		if target.filter != nil && !target.filter(row) {
 			continue
 		}
 
-		option := row["admin_option"] == "true" || row["admin_option"] == "t"
+		name, option := fold.add(row)
 		if managed && option && !r.grantOptions {
 			return target, false, fmt.Errorf("grant options are not managed; remove them explicitly before importing")
 		}
 
-		name := normalizePrivilege(row["privilege_type"])
 		if managed && !privilegeAllowed(target.allowed, name) {
 			return target, false, fmt.Errorf("unsupported catalog privilege %q", name)
 		}
-
-		privileges[name] = true
-		// Another grantor's plain grant can report the same privilege, so one row with the option is enough.
-		options[name] = options[name] || option
 	}
 
-	values := make([]string, 0, len(privileges))
-
-	var optionValues []string
-
-	for privilege := range privileges {
-		values = append(values, privilege)
-		if options[privilege] {
-			optionValues = append(optionValues, privilege)
-		}
-	}
-
-	*data = withGrantOptions(withPrivileges(*data, values), optionValues)
+	*data = withGrantOptions(withPrivileges(*data, fold.names(false)), fold.names(true))
 	lookupValue(data, "id", normalizeLegacyIdentity(data.Attributes()["id"].(types.String), false))
 
 	return target, true, nil
+}
+
+// privilegeFold collects the privileges and grant options of one tuple from its catalog rows.
+type privilegeFold struct {
+	// privileges records each normalized privilege the rows report.
+	privileges map[string]bool
+	// options records the privileges at least one row reports with the grant option.
+	options map[string]bool
+}
+
+// add records one catalog row and returns its normalized privilege and whether the row carries the grant option.
+// Another grantor's plain grant can report the same privilege, so one row with the option is enough.
+func (f *privilegeFold) add(row sqlclient.Row) (string, bool) {
+	if f.privileges == nil {
+		f.privileges, f.options = map[string]bool{}, map[string]bool{}
+	}
+
+	name, option := normalizePrivilege(row["privilege_type"]), catalogTrue(row["admin_option"])
+	f.privileges[name] = true
+	f.options[name] = f.options[name] || option
+
+	return name, option
+}
+
+// names returns the sorted privileges, or only those held with the grant option.
+func (f *privilegeFold) names(options bool) []string {
+	names := []string{}
+
+	for name := range f.privileges {
+		if !options || f.options[name] {
+			names = append(names, name)
+		}
+	}
+
+	sort.Strings(names)
+
+	return names
+}
+
+// privilegeSet returns the folded privileges as a Terraform set.
+func (f *privilegeFold) privilegeSet() types.Set {
+	return types.SetValueMust(types.StringType, grantStringValues(f.names(false)))
+}
+
+// optionSet returns the privileges held with the grant option as a Terraform set.
+func (f *privilegeFold) optionSet() types.Set {
+	return types.SetValueMust(types.StringType, grantStringValues(f.names(true)))
+}
+
+// catalogTrue reports a catalog boolean, which the Data API renders as true and the direct transport as t.
+func catalogTrue(value string) bool {
+	return value == "true" || value == "t"
+}
+
+// privilegeGroup is one listed permission tuple: its key, the first catalog row reporting it, and its privileges.
+type privilegeGroup struct {
+	// key identifies the tuple and orders the listing.
+	key []string
+	// row is the first row of the tuple, which carries its identity columns.
+	row sqlclient.Row
+	// fold collects the tuple's privileges and grant options.
+	fold privilegeFold
+}
+
+// groupPrivilegeRows folds catalog rows into one group per tuple key, ordered by key, so a listing reports each
+// tuple once with the privilege sets its lookup reads. Rows whose key is nil are skipped.
+func groupPrivilegeRows(rows []sqlclient.Row, key func(sqlclient.Row) []string) []*privilegeGroup {
+	groups := map[string]*privilegeGroup{}
+
+	var ordered []*privilegeGroup
+
+	for _, row := range rows {
+		fields := key(row)
+		if fields == nil {
+			continue
+		}
+
+		id := strings.Join(fields, "\x00")
+
+		group, ok := groups[id]
+		if !ok {
+			group = &privilegeGroup{key: fields, row: row}
+			groups[id] = group
+			ordered = append(ordered, group)
+		}
+
+		group.fold.add(row)
+	}
+
+	slices.SortFunc(ordered, func(a, b *privilegeGroup) int { return slices.Compare(a.key, b.key) })
+
+	return ordered
 }
 
 // targetDatabase selects the tuple's database for privilege reads and mutations, defaulting to the admin database.

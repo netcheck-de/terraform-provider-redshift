@@ -296,3 +296,38 @@ func blockInputs(path string, block schema.Block) []string {
 
 	return inputs
 }
+
+// templateSubcategory returns the documentation category a type's template declares.
+func templateSubcategory(t *testing.T, kind, name string) string {
+	t.Helper()
+
+	content, err := os.ReadFile(filepath.Join("..", "..", "templates", kind, name+".md.tmpl"))
+	require.NoError(t, err)
+
+	match := regexp.MustCompile(`(?m)^subcategory: (.+)$`).FindStringSubmatch(string(content))
+	require.NotNil(t, match, "templates/%s/%s.md.tmpl needs a subcategory", kind, name)
+
+	return strings.TrimSpace(match[1])
+}
+
+// TestDataSourcesShareTheirResourceSubcategory documents every lookup and listing next to the resource it observes;
+// data sources without a resource use one of the resource categories, so no category holds only data sources.
+func TestDataSourcesShareTheirResourceSubcategory(t *testing.T) {
+	resources, _ := registeredTypeNames()
+	categories := map[string]bool{}
+
+	for _, name := range resources {
+		categories[templateSubcategory(t, "resources", strings.TrimPrefix(name, "redshift_"))] = true
+	}
+
+	for _, test := range parityCases {
+		name := registeredDataSourceName(test.source)
+		actual := templateSubcategory(t, "data-sources", name)
+
+		if test.resource != nil {
+			assert.Equal(t, templateSubcategory(t, "resources", registeredResourceName(test.resource)), actual, "redshift_%s", name)
+		} else {
+			assert.True(t, categories[actual], "redshift_%s uses subcategory %q, which no resource uses", name, actual)
+		}
+	}
+}

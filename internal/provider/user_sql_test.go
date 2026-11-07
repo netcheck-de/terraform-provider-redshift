@@ -154,6 +154,8 @@ func TestUserSQL(t *testing.T) {
 			return sql, err
 		}},
 		{"read_info", built(readUserInfoQuery(quoted))},
+		{"list", built(listUsersQuery())},
+		{"list_info", built(listUserInfoQuery())},
 	})
 }
 

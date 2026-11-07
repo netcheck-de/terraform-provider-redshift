@@ -127,6 +127,13 @@ func (f *rlsFake) query(_ *catalog, _ sqlclient.Connection, sql string, paramete
 		}
 
 		f.policy = false
+	case strings.HasPrefix(sql, "SELECT polname, relschema") && !strings.Contains(sql, "grantee = :grantee"):
+		// The listing reports the representative attachment of rlsPolicyAttachmentSample.
+		if !f.policy || !f.attached || !rlsFakeMatches(parameters, map[string]string{"policy": "region_filter", "schema": "public", "relation": "events"}) {
+			return nil, true, nil
+		}
+
+		return []sqlclient.Row{{"polname": "region_filter", "relschema": "public", "relname": "events", "grantee": "analysts", "granteekind": "role"}}, true, nil
 	case strings.HasPrefix(sql, "SELECT polname, relschema"):
 		if f.policy && f.attached {
 			return []sqlclient.Row{{"polname": parameters["policy"], "relschema": parameters["schema"], "relname": parameters["relation"], "grantee": parameters["grantee"], "granteekind": parameters["kind"]}}, true, nil
@@ -147,6 +154,12 @@ func (f *rlsFake) query(_ *catalog, _ sqlclient.Connection, sql string, paramete
 		}
 
 		return nil, true, nil
+	case strings.HasPrefix(sql, "SELECT relschema, relname, is_rls_on"):
+		if !f.relation || !rlsFakeMatches(parameters, map[string]string{"schema": "public"}) {
+			return nil, true, nil
+		}
+
+		return []sqlclient.Row{{"relschema": "public", "relname": "events", "is_rls_on": fmt.Sprint(f.rlsOn), "is_rls_datashare_on": fmt.Sprint(f.datashare), "rls_conjunction_type": fmt.Sprintf("%-3s", f.conjunction)}}, true, nil
 	case strings.HasPrefix(sql, "SELECT is_rls_on"):
 		if !f.relation {
 			return nil, true, nil
@@ -175,4 +188,16 @@ func (f *rlsFake) query(_ *catalog, _ sqlclient.Connection, sql string, paramete
 	}
 
 	return nil, true, err
+}
+
+// rlsFakeMatches reports whether every bound optional listing filter equals the fake object's value; the RLS and
+// masking fakes share it.
+func rlsFakeMatches(parameters, values map[string]string) bool {
+	for name, value := range values {
+		if bound, ok := parameters[name]; ok && bound != value {
+			return false
+		}
+	}
+
+	return true
 }

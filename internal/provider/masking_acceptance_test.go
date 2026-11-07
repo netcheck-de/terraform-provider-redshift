@@ -78,6 +78,11 @@ data "redshift_masking_policy_attachment" "email" {
 data "redshift_masking_policies" "local" {
   database = redshift_masking_policy.email.database
 }
+data "redshift_masking_policy_attachments" "customers" {
+  database = redshift_masking_policy_attachment.email.database
+  schema = redshift_masking_policy_attachment.email.schema
+  relation = redshift_masking_policy_attachment.email.relation
+}
 `, region, profile, workgroup, database, name, expression, priority)
 	}
 	ctx := context.Background()
@@ -122,6 +127,13 @@ resource "redshift_database" "local" { name = %q }
 				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachment.email", "input_columns.0", "email"),
 				resource.TestCheckResourceAttr("data.redshift_masking_policy.email", "input_column.0.type", "CHARACTER VARYING(256)"),
 				resource.TestCheckResourceAttr("data.redshift_masking_policies.local", "masking_policies.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachments.customers", "masking_policy_attachments.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachments.customers", "masking_policy_attachments.0.policy", name+"_email"),
+				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachments.customers", "masking_policy_attachments.0.grantee", name+"_readers"),
+				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachments.customers", "masking_policy_attachments.0.grantee_type", "ROLE"),
+				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachments.customers", "masking_policy_attachments.0.columns.0", "email"),
+				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachments.customers", "masking_policy_attachments.0.input_columns.0", "email"),
+				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachments.customers", "masking_policy_attachments.0.priority", "10"),
 			)},
 			{Config: initial, PlanOnly: true},
 			{ResourceName: "redshift_masking_policy_attachment.email", ImportState: true, ImportStateVerify: true},
@@ -131,6 +143,7 @@ resource "redshift_database" "local" { name = %q }
 			{Config: updated, Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_masking_policy_attachment.email", "priority", "20"),
 				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachment.email", "priority", "20"),
+				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachments.customers", "masking_policy_attachments.0.priority", "20"),
 			)},
 			{Config: updated, PlanOnly: true, ExpectNonEmptyPlan: true, PreConfig: func() {
 				_, err := client.Query(ctx, target, sqlclient.Stmt("ALTER MASKING POLICY").Ident(name+"_email").Kw("USING ('drift'::VARCHAR(256))").String(), nil)

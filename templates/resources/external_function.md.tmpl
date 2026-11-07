@@ -49,9 +49,9 @@ requires superuser or the `CREATE [ OR REPLACE ] EXTERNAL FUNCTION` privilege an
 **not** cascade; remove dependent views first.
 
 No documented catalog view reports `lambda_function`, `iam_role`, or the retry and batch options, so there is no
-`redshift_external_function` data source: a lookup could not report the Lambda options. `redshift_functions` lists
-Lambda UDFs with their signature, return type, volatility, language, and owner, and `redshift_routine_parameters` lists
-their parameters.
+`redshift_external_function` data source: a lookup could not report the Lambda options. `redshift_external_functions`
+lists Lambda UDFs with their signature, return type, volatility, and owner, and `redshift_routine_parameters` lists their
+parameters.
 
 ## Reconciliation
 

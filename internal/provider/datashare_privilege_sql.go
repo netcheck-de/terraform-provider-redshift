@@ -56,3 +56,15 @@ func datasharePrivilegeTarget(data types.Object) (privilegeTarget, error) {
 		grant: grantSpec{object: sqlclient.Fragment().KwIdent("ON DATASHARE", share), grantee: grantee},
 	}, nil
 }
+
+// listDatasharePrivilegesQuery lists the explicit ALTER and SHARE grants on the namespace's outbound shares,
+// optionally of one share or grantee. The privilege view has no database column, so the producer database comes
+// from svv_datashares. PUBLIC is matched by type alone, as in readDatasharePrivilegeQuery.
+func listDatasharePrivilegesQuery(share, grantee string) sqlclient.Query {
+	return sqlclient.Select("BTRIM(d.source_database) AS database_name", "p.datashare_name", "p.identity_type", "p.identity_name", "p.privilege_type").
+		From("svv_datashare_privileges p JOIN svv_datashares d ON d.share_name = p.datashare_name AND d.share_type = 'OUTBOUND'").
+		OptEq("p.datashare_name", "share", share).
+		WhereIf(strings.EqualFold(grantee, "public"), "p.identity_type = 'public'").
+		WhereIf(grantee != "" && !strings.EqualFold(grantee, "public"), "p.identity_name = :grantee", sqlclient.Bind("grantee", grantee)).
+		OrderBy("p.datashare_name", "p.identity_type", "p.identity_name", "p.privilege_type")
+}

@@ -6,8 +6,8 @@ description: Lists stored procedures.
 
 # redshift_procedures (Data Source)
 
-Lists the stored procedures of one database without managing them. See AWS
-[PG_PROC_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_PROC_INFO.html).
+Lists the stored procedures of one database, one element per overload, with the values `redshift_procedure` reads.
+See AWS [PG_PROC_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_PROC_INFO.html).
 
 ## Example Usage
 
@@ -28,7 +28,7 @@ output "definer_procedures" {
 
 ### Optional
 
-- `database` (String) Database to list procedures from; defaults to the provider database.
+- `database` (String) Database whose procedures are listed; defaults to the provider's `database`.
 - `name` (String) Only procedures with this exact name, including every overload.
 - `schema` (String) Only procedures in this schema.
 
@@ -42,13 +42,12 @@ output "definer_procedures" {
 
 Read-Only:
 
-- `arguments` (List of String) Input argument types in order, as the catalog reports them without length or precision but in uppercase, such as `INTEGER` or `CHARACTER VARYING`; with the name they identify the overload.
 - `database` (String) Database containing the procedure.
-- `language` (String) Implementation language in uppercase, such as `SQL`, `PLPYTHONU`, `PLPGSQL`, or `EXFUNC` for Lambda UDFs.
-- `name` (String) Name of the procedure.
+- `name` (String) Name of the procedure; overloads share a name.
 - `owner` (String) SQL user owning the procedure; empty when the catalog no longer resolves the owner.
 - `schema` (String) Schema containing the procedure.
 - `security` (String) `DEFINER` when the procedure runs with its owner's privileges, otherwise `INVOKER`.
+- `signature` (String) `IN` and `INOUT` argument types as one comma-separated string, such as `INTEGER, CHARACTER VARYING`, as `ALTER`, `DROP`, and `GRANT` identify the overload; empty without input arguments.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -56,12 +55,17 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
--- List procedure overloads matching the configured filters.
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
+-- List procedure overloads matching the configured filters from pg_proc_info.
 SELECT ... FROM pg_proc_info WHERE prokind = 'p' AND nspname = '...' AND proname = '...';
 ```
 
 ## Read Behavior
 
-The listing reads the catalog of the selected database, so it shows only procedures the provider's SQL identity can
-see. `arguments` holds the input (`IN` and `INOUT`) types that identify each overload; use
-`redshift_routine_parameters` for every parameter and its mode. An empty `procedures` list means that nothing matches.
+The listing reads the catalog of the selected database, ordered by schema, name, and signature. `signature` holds the
+input (`IN` and `INOUT`) types that identify each overload; `redshift_routine_parameters` reports every argument with
+its name and mode, and `redshift_procedure` the body. An empty `procedures` list means that nothing matches; a catalog
+failure is an error. `id` contains the database and configured filters.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

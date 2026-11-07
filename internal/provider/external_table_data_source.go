@@ -46,11 +46,14 @@ func newExternalTableDataSource() datasource.DataSource {
 
 			return true, nil
 		},
-	}), map[string]string{
-		"table_properties": "Table properties reported by `SHOW EXTERNAL TABLE`, including properties set outside Terraform.",
-		"column":           "Data columns in catalog order.",
-		"partition_key":    "`PARTITIONED BY` columns in key order; null for an unpartitioned table.",
-	})
+	}), externalTableOutputDescriptions)
+}
+
+// externalTableOutputDescriptions describe the catalog values that both the lookup and the listing report.
+var externalTableOutputDescriptions = map[string]string{
+	"table_properties": "Table properties reported by `SHOW EXTERNAL TABLE`, including properties set outside Terraform.",
+	"column":           "Data columns in catalog order.",
+	"partition_key":    "`PARTITIONED BY` columns in key order; null for an unpartitioned table.",
 }
 
 // externalTableDiagnosticsError turns conversion diagnostics into the error a catalog lookup returns.

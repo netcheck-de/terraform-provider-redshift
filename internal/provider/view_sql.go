@@ -158,15 +158,30 @@ func dropViewStatement(data viewModel) (string, error) {
 	return sqlclient.Stmt("DROP VIEW").Append(relation).String(), nil
 }
 
-// viewCatalogQuery reads one relation from pg_views, the PostgreSQL catalog view that Redshift documents as
-// accessible. Its definition column is pg_get_viewdef, which SHOW VIEW also prints: the SELECT for an ordinary
-// view, and the full CREATE statement for late-binding and materialized views.
+// viewCatalogSource selects pg_views, the PostgreSQL catalog view that Redshift documents as accessible. Its
+// definition column is pg_get_viewdef, which SHOW VIEW also prints: the SELECT for an ordinary view, and the full
+// CREATE statement for late-binding and materialized views.
 // https://docs.aws.amazon.com/redshift/latest/dg/c_join_PG.html
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_VIEW.html
+func viewCatalogSource() sqlclient.Query {
+	return sqlclient.Select("schemaname", "viewname", "viewowner", "definition").From("pg_views")
+}
+
+// viewCatalogQuery reads one relation from pg_views.
 func viewCatalogQuery(schema, name string) sqlclient.Query {
-	return sqlclient.Select("schemaname", "viewname", "viewowner", "definition").From("pg_views").
+	return viewCatalogSource().
 		Where("schemaname = :schema", sqlclient.Bind("schema", schema)).
 		Where("viewname = :name", sqlclient.Bind("name", name))
+}
+
+// listViewsQuery lists the views and materialized views of the connected database, optionally of one schema.
+// Schemas starting with pg_ and information_schema hold only system views.
+func listViewsQuery(schema string) sqlclient.Query {
+	return viewCatalogSource().
+		Where("schemaname !~ '^pg_'").
+		Where("schemaname <> 'information_schema'").
+		OptEq("schemaname", "schema", schema).
+		OrderBy("schemaname", "viewname")
 }
 
 // readViewQuery reads the view's owner and definition.

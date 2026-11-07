@@ -64,3 +64,15 @@ data "redshift_role_grant" "operators" {
   role     = redshift_role_grant.operators.role
   to_role  = redshift_role_grant.operators.to_role
 }
+
+data "redshift_roles" "all" {
+  provider = redshift.consumer
+
+  depends_on = [redshift_role.readers, redshift_role.operators, redshift_role.auditors]
+}
+
+# Every explicit grant of the operators role, to users and roles alike.
+data "redshift_role_grants" "operators" {
+  provider = redshift.consumer
+  role     = redshift_role_grant.loader_operators.role
+}

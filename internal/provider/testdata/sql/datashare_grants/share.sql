@@ -1,0 +1,1 @@
+SELECT BTRIM(d.source_database) AS source_database, c.share_name, c.consumer_account, c.consumer_namespace FROM svv_datashare_consumers c JOIN svv_datashares d ON d.share_name = c.share_name AND d.share_type = 'OUTBOUND' WHERE c.share_name = :share ORDER BY c.share_name, c.consumer_account, c.consumer_namespace;

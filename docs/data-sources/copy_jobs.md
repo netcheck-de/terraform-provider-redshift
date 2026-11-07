@@ -27,7 +27,7 @@ output "automatic_copy_jobs" {
 
 ### Optional
 
-- `database` (String) Database whose jobs are listed; the provider database when omitted.
+- `database` (String) Database whose copy jobs are listed; defaults to the provider's `database`.
 
 ### Read-Only
 
@@ -50,6 +50,8 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List visible COPY jobs.
 SELECT ... FROM sys_copy_job;
 ```
@@ -59,3 +61,5 @@ SELECT ... FROM sys_copy_job;
 Items are ordered by name. Superusers see every job; other users see only their own. `SYS_COPY_JOB` has no database
 column, so `database` selects where the view is queried and is reported for every item. `id` contains that database
 within the configured warehouse, using the provider database when the filter is omitted.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

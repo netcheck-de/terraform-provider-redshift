@@ -2,10 +2,9 @@ package provider
 
 import (
 	"context"
-	"errors"
-	"maps"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
@@ -13,71 +12,52 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ = registerParity(parityCase{source: newDatasharesDataSource, collection: true, filters: []string{"share_type", "name"}})
+var _ = registerParity(parityCase{source: newDatasharesDataSource, resource: newDatashareResource, collection: true, filters: []string{"name"}})
 
-// TestDatasharesSharedElementTypes keeps the attributes the listing shares with redshift_datashare in step with it.
-func TestDatasharesSharedElementTypes(t *testing.T) {
-	assertCollectionParity(t, parityCase{
-		source: func() datasource.DataSource {
-			element := collectionElement(newDatashareResource, "name", "publicly_accessible", "owner", "share_id", "producer_account", "producer_namespace", "created_at")
-			return newCollectionDataSource(collectionSpec{name: "datashares", element: element})
-		},
-		resource: newDatashareResource, collection: true,
-	})
+// readListing reads a listing without writes and returns its identity and elements.
+func readListing(t *testing.T, source datasource.DataSource, filters map[string]string, client sqlclient.Client) (types.String, []map[string]attr.Value) {
+	t.Helper()
+
+	state, diagnostics := readSource(t, source, collectionConfig(t, source, filters), client)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
+	if c, ok := client.(*catalog); ok {
+		assert.Empty(t, c.writes)
+	}
+
+	var observed types.Object
+	require.False(t, state.Get(context.Background(), &observed).HasError())
+
+	var items []map[string]attr.Value
+	for _, item := range collectionResult(source, observed).Elements() {
+		items = append(items, item.(types.Object).Attributes())
+	}
+
+	return observed.Attributes()["id"].(types.String), items
 }
 
-// TestDatasharesList checks unfiltered and filtered listings, inbound nulls, identities, and read-only execution.
+// TestDatasharesList lists only outbound shares, filtered by name, with the resource's observed attributes.
 func TestDatasharesList(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		filters map[string]string
-		shares  []string
+		count   int
 	}{
-		{"all", nil, []string{"producer", "source"}},
-		{"outbound", map[string]string{"share_type": "OUTBOUND"}, []string{"producer"}},
-		{"inbound_named", map[string]string{"share_type": "INBOUND", "name": "source"}, []string{"source"}},
-		{"none", map[string]string{"name": "missing"}, nil},
+		{"all", nil, 1},
+		{"named", map[string]string{"name": "producer"}, 1},
+		{"inbound_name", map[string]string{"name": "source"}, 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			c := fullCatalog()
-			source := newDatasharesDataSource()
-			state, diagnostics := readSource(t, source, collectionConfig(t, source, test.filters), c)
-			require.False(t, diagnostics.HasError(), "%v", diagnostics)
-			assert.Empty(t, c.writes)
+			id, items := readListing(t, newDatasharesDataSource(), test.filters, fullCatalog())
+			assertLookupIdentity(t, id, test.filters)
+			require.Len(t, items, test.count)
 
-			var observed types.Object
-			require.False(t, state.Get(context.Background(), &observed).HasError())
-
-			identity := map[string]string{}
-			maps.Copy(identity, test.filters)
-			assertLookupIdentity(t, observed.Attributes()["id"].(types.String), identity)
-			items := collectionResult(source, observed).Elements()
-			require.Len(t, items, len(test.shares))
-
-			for index, name := range test.shares {
-				item := items[index].(types.Object).Attributes()
-				assert.Equal(t, types.StringValue(name), item["name"])
-
-				if name == "producer" {
-					assert.Equal(t, types.StringValue("OUTBOUND"), item["share_type"])
-					assert.Equal(t, types.StringValue("admin"), item["database"])
-					assert.Equal(t, types.StringValue("admin"), item["owner"])
-					assert.Equal(t, types.Int64Value(100), item["share_id"])
-					assert.Equal(t, types.StringValue("2026-01-02 03:04:05"), item["created_at"])
-					assert.True(t, item["consumer_database"].IsNull())
-				} else {
-					assert.Equal(t, types.StringValue("INBOUND"), item["share_type"])
-					assert.Equal(t, types.StringValue("analytics"), item["consumer_database"])
-					// SVV_DATASHARES documents share_id for every row, so inbound IDs pass through as well.
-					assert.Equal(t, types.Int64Value(200), item["share_id"])
-
-					for _, empty := range []string{"database", "owner", "created_at", "managed_by"} {
-						assert.True(t, item[empty].IsNull(), empty)
-					}
-				}
-
-				assert.Equal(t, types.StringValue("123456789012"), item["producer_account"])
-				assert.Equal(t, types.BoolValue(false), item["publicly_accessible"])
+			if test.count == 1 {
+				assert.Equal(t, map[string]attr.Value{
+					"database": types.StringValue("admin"), "name": types.StringValue("producer"), "publicly_accessible": types.BoolValue(false),
+					"owner": types.StringValue("admin"), "share_id": types.Int64Value(100), "producer_account": types.StringValue("123456789012"),
+					"producer_namespace": types.StringValue("11111111-2222-3333-4444-555555555555"), "created_at": types.StringValue("2026-01-02 03:04:05"),
+				}, items[0])
 			}
 		})
 	}
@@ -85,22 +65,19 @@ func TestDatasharesList(t *testing.T) {
 
 // TestDatasharesListFailures reports catalog errors and undecodable rows instead of a partial listing.
 func TestDatasharesListFailures(t *testing.T) {
-	for name, rows := range map[string][]sqlclient.Row{
-		"share id":   {{"share_name": "producer", "share_id": "not-a-number"}},
-		"accessible": {{"share_name": "producer", "is_publicaccessible": "maybe"}},
+	for name, client := range map[string]sqlclient.Client{
+		"catalog": failingCatalog,
+		"share id": queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+			return []sqlclient.Row{{"share_name": "producer", "share_id": "not-a-number"}}, nil
+		}),
+		"accessible": queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+			return []sqlclient.Row{{"share_name": "producer", "is_publicaccessible": "maybe"}}, nil
+		}),
 	} {
 		t.Run(name, func(t *testing.T) {
 			source := newDatasharesDataSource()
-			_, diagnostics := readSource(t, source, collectionConfig(t, source, nil), queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
-				return rows, nil
-			}))
+			_, diagnostics := readSource(t, source, collectionConfig(t, source, nil), client)
 			assert.True(t, diagnostics.HasError())
 		})
 	}
-
-	source := newDatasharesDataSource()
-	_, diagnostics := readSource(t, source, collectionConfig(t, source, nil), queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
-		return nil, errors.New("catalog unavailable")
-	}))
-	assert.True(t, diagnostics.HasError())
 }

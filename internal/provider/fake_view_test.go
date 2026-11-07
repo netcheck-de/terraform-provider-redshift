@@ -3,7 +3,9 @@ package provider
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
@@ -80,6 +82,27 @@ func (f *viewFamily) get(name string) *fakeViewRelation {
 	return f.relations[fakeViewKey(fakeViewSchema, name)]
 }
 
+// matching returns the relations a catalog read selects, in schema and name order; an absent schema or name
+// parameter matches every relation, as the optional predicates do.
+func (f *viewFamily) matching(parameters map[string]string) []*fakeViewRelation {
+	var relations []*fakeViewRelation
+
+	for _, key := range slices.Sorted(maps.Keys(f.relations)) {
+		relation := f.relations[key]
+		if schema, ok := parameters["schema"]; ok && relation.schema != schema {
+			continue
+		}
+
+		if name, ok := parameters["name"]; ok && relation.name != name {
+			continue
+		}
+
+		relations = append(relations, relation)
+	}
+
+	return relations
+}
+
 // fakeViewRelationPattern matches a leading "schema"."name" pair with doubled-quote escapes.
 var fakeViewRelationPattern = regexp.MustCompile(`^"((?:[^"]|"")*)"\."((?:[^"]|"")*)"\s*`)
 
@@ -103,19 +126,22 @@ func fakeViewTarget(rest string) (schema, name, tail string, err error) {
 func (f *viewFamily) query(_ *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	switch {
 	case strings.HasPrefix(sql, "SELECT schemaname, viewname, viewowner, definition FROM pg_views"):
-		relation := f.relations[fakeViewKey(parameters["schema"], parameters["name"])]
-		if relation == nil {
-			return nil, true, nil
+		var rows []sqlclient.Row
+		for _, relation := range f.matching(parameters) {
+			rows = append(rows, sqlclient.Row{"schemaname": relation.schema, "viewname": relation.name, "viewowner": relation.owner, "definition": relation.definition()})
 		}
 
-		return []sqlclient.Row{{"schemaname": relation.schema, "viewname": relation.name, "viewowner": relation.owner, "definition": relation.definition()}}, true, nil
-	case strings.HasPrefix(sql, "SELECT autorefresh FROM svv_mv_info"):
-		relation := f.relations[fakeViewKey(parameters["schema"], parameters["name"])]
-		if relation == nil || !relation.materialized {
-			return nil, true, nil
+		return rows, true, nil
+	case strings.HasPrefix(sql, "SELECT RTRIM(schema_name) AS schema_name, RTRIM(name) AS name, autorefresh FROM svv_mv_info"):
+		var rows []sqlclient.Row
+
+		for _, relation := range f.matching(parameters) {
+			if relation.materialized {
+				rows = append(rows, sqlclient.Row{"schema_name": relation.schema, "name": relation.name, "autorefresh": map[bool]string{true: "t", false: "f"}[relation.autoRefresh]})
+			}
 		}
 
-		return []sqlclient.Row{{"autorefresh": map[bool]string{true: "t", false: "f"}[relation.autoRefresh]}}, true, nil
+		return rows, true, nil
 	case strings.HasPrefix(sql, "CREATE VIEW "), strings.HasPrefix(sql, "CREATE OR REPLACE VIEW "):
 		replace := strings.HasPrefix(sql, "CREATE OR REPLACE VIEW ")
 

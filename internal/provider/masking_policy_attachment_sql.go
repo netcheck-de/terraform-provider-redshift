@@ -383,3 +383,24 @@ func maskingAttachmentIdentity(data maskingPolicyAttachmentModel) map[string]str
 		"columns": string(columns), "grantee": data.Grantee.ValueString(), "grantee_type": data.GranteeType.ValueString(),
 	}
 }
+
+// listMaskingAttachmentsQuery lists the attachments of the connected database, optionally of one policy, schema, or
+// relation. The view covers only the connected database, so the caller runs it there.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ATTACHED_MASKING_POLICY.html
+func listMaskingAttachmentsQuery(policy, schema, relation string) sqlclient.Query {
+	return sqlclient.Select("policy_name", "schema_name", "table_name", "grantee", "grantee_type", "priority", "input_columns", "output_columns").
+		From("svv_attached_masking_policy").
+		OptEq("policy_name", "policy", policy).OptEq("schema_name", "schema", schema).OptEq("table_name", "relation", relation).
+		OrderBy("schema_name", "table_name", "policy_name", "grantee_type", "grantee", "output_columns")
+}
+
+// maskingAttachmentRecipient maps a catalog recipient to the resource's grantee and grantee_type: the view reports
+// role, user, or public, and the resource names the PUBLIC recipient public.
+func maskingAttachmentRecipient(grantee, kind string) (string, string) {
+	kind = strings.ToUpper(strings.TrimSpace(kind))
+	if kind == "PUBLIC" {
+		return "public", kind
+	}
+
+	return grantee, kind
+}

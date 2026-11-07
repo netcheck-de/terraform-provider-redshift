@@ -41,7 +41,7 @@ var _ = registerReplacementPolicy("redshift_external_function", map[string]repla
 	"owner":               replaceNever,
 })
 
-var _ = registerLookupExemption("redshift_external_function", "no documented catalog view reports the Lambda function, IAM role, or batch options, so a single-object lookup could not mirror the resource; redshift_functions lists its signature, return type, volatility, language, and owner")
+var _ = registerLookupExemption("redshift_external_function", "no documented catalog view reports the Lambda function, IAM role, or batch options, so a single-object lookup could not mirror the resource; redshift_external_functions lists its signature, return type, volatility, and owner")
 
 var _ = registerValidateConfigCase("external_function", validateConfigCase{
 	new:     newExternalFunctionResource,

@@ -16,6 +16,14 @@ connections require endpoint connectivity. See the
 [Amazon Redshift Database Developer Guide](https://docs.aws.amazon.com/redshift/latest/dg/welcome.html) and its
 [SQL commands reference](https://docs.aws.amazon.com/redshift/latest/dg/c_SQL_commands.html).
 
+## Upgrade guides
+
+Each release with breaking changes has a guide that lists them and the configuration updates they need.
+
+| Version | Guide                                                     |
+|---------|-----------------------------------------------------------|
+| 0.5     | [Upgrading to version 0.5](guides/version_0_5_upgrade.md) |
+
 ## Example Usage
 
 ```terraform
@@ -231,7 +239,7 @@ state.
 
 ## Resources
 
-The provider implements 41 SQL resources and 58 read-only data sources, grouped below as in the Registry
+The provider implements 41 SQL resources and 85 read-only data sources, grouped below as in the Registry
 navigation. AWS infrastructure remains with the `hashicorp/aws` provider.
 
 ### Databases and Schemas
@@ -274,16 +282,16 @@ navigation. AWS infrastructure remains with the `hashicorp/aws` provider.
 
 ### Permissions
 
-| Resource                                                         | Manages                                                                                         |
-|------------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
-| [`redshift_grant`](resources/grant.md)                           | Scoped privileges of a role, user, or datashare in a database or schema                         |
-| [`redshift_object_grant`](resources/object_grant.md)             | Explicit privileges on one object or a schema snapshot                                          |
-| [`redshift_column_grant`](resources/column_grant.md)             | Column-level `SELECT` and `UPDATE`                                                              |
-| [`redshift_language_grant`](resources/language_grant.md)         | `USAGE` on the `sql` or `plpgsql` language                                                      |
-| [`redshift_system_grant`](resources/system_grant.md)             | Role system privileges                                                                          |
-| [`redshift_assumerole_grant`](resources/assumerole_grant.md)     | IAM role command permissions                                                                    |
-| [`redshift_default_privileges`](resources/default_privileges.md) | Privileges on future objects of one creator                                                     |
-| [`redshift_debug_grant`](resources/debug_grant.md)               | `DEBUG` on a federated-permissions database for a global identity, IdC group, or account admins |
+| Resource                                                       | Manages                                                                                         |
+|----------------------------------------------------------------|-------------------------------------------------------------------------------------------------|
+| [`redshift_grant`](resources/grant.md)                         | Scoped privileges of a role, user, or datashare in a database or schema                         |
+| [`redshift_object_grant`](resources/object_grant.md)           | Explicit privileges on one object or a schema snapshot                                          |
+| [`redshift_column_grant`](resources/column_grant.md)           | Column-level `SELECT` and `UPDATE`                                                              |
+| [`redshift_language_grant`](resources/language_grant.md)       | `USAGE` on the `sql` or `plpgsql` language                                                      |
+| [`redshift_system_grant`](resources/system_grant.md)           | Role system privileges                                                                          |
+| [`redshift_assumerole_grant`](resources/assumerole_grant.md)   | IAM role command permissions                                                                    |
+| [`redshift_default_privilege`](resources/default_privilege.md) | Privileges on future objects of one creator                                                     |
+| [`redshift_debug_grant`](resources/debug_grant.md)             | `DEBUG` on a federated-permissions database for a global identity, IdC group, or account admins |
 
 ### Row-Level Security and Masking
 
@@ -392,9 +400,9 @@ itself and the namespace resource policy belong to the AWS provider.
 
 ### Future Objects
 
-| Concern                                      | Owning resource               |
-|----------------------------------------------|-------------------------------|
-| Privileges on objects one user creates later | `redshift_default_privileges` |
+| Concern                                      | Owning resource              |
+|----------------------------------------------|------------------------------|
+| Privileges on objects one user creates later | `redshift_default_privilege` |
 
 ### Models
 
@@ -439,8 +447,11 @@ are computed, and nested resource blocks appear as computed nested attributes of
 password-rotation counters, and replacement triggers are resource-only controls. Relationship lookups return `exists`;
 missing relationships return `exists = false` with `id = null`. Permission lookups return explicit `privileges` without
 adopting or reconciling them; no matching grants produce an empty set, while missing permission parents raise errors.
-Comment lookups return `text`, using an empty string for an unannotated existing object. Listings return one plural
-attribute named after the data source, such as `tables` or `grants`, and include objects Terraform does not manage.
+Comment lookups return `text`, using an empty string for an unannotated existing object. Every resource has a listing named
+with its plural, such as `redshift_tables`, documented next to it. A listing returns one attribute named after the
+data source, such as `tables`, whose elements use the resource's attribute names, and includes objects Terraform does
+not manage. `redshift_models` lists external and trained models alike because no catalog reports the model type, and
+`redshift_policy_grant` has no listing because no catalog reports policy grants.
 `data.redshift_configuration` is a standalone lookup without a paired resource: its `name` input yields the computed
 `value` of that parameter in the provider's session.
 
@@ -450,111 +461,133 @@ SQL connection. Local database lookups and shared database resource refreshes do
 
 ### Databases and Schemas
 
-| Data source                                                        | Reads                               |
-|--------------------------------------------------------------------|-------------------------------------|
-| [`data.redshift_database`](data-sources/database.md)               | Local, zero-ETL, or shared database |
-| [`data.redshift_schema`](data-sources/schema.md)                   | Local schema, owner, and quota      |
-| [`data.redshift_external_schema`](data-sources/external_schema.md) | External schema and its source      |
+| Data source                                                          | Reads                                                        |
+|----------------------------------------------------------------------|--------------------------------------------------------------|
+| [`data.redshift_database`](data-sources/database.md)                 | Local, zero-ETL, or shared database                          |
+| [`data.redshift_databases`](data-sources/databases.md)               | List of local and shared databases                           |
+| [`data.redshift_schema`](data-sources/schema.md)                     | Local schema, owner, and quota                               |
+| [`data.redshift_schemas`](data-sources/schemas.md)                   | List of local schemas                                        |
+| [`data.redshift_external_schema`](data-sources/external_schema.md)   | External schema and its source                               |
+| [`data.redshift_external_schemas`](data-sources/external_schemas.md) | List of external schemas                                     |
+| [`data.redshift_configuration`](data-sources/configuration.md)       | Value of one configuration parameter in the provider session |
 
 ### Tables and Views
 
-| Data source                                                              | Reads                                            |
-|--------------------------------------------------------------------------|--------------------------------------------------|
-| [`data.redshift_table`](data-sources/table.md)                           | Local table definition and effective layout      |
-| [`data.redshift_view`](data-sources/view.md)                             | View definition and owner                        |
-| [`data.redshift_materialized_view`](data-sources/materialized_view.md)   | Materialized view definition and refresh setting |
-| [`data.redshift_external_table`](data-sources/external_table.md)         | Spectrum external table                          |
-| [`data.redshift_external_partition`](data-sources/external_partition.md) | One external table partition                     |
+| Data source                                                                | Reads                                            |
+|----------------------------------------------------------------------------|--------------------------------------------------|
+| [`data.redshift_table`](data-sources/table.md)                             | Local table definition and effective layout      |
+| [`data.redshift_tables`](data-sources/tables.md)                           | List of local tables                             |
+| [`data.redshift_view`](data-sources/view.md)                               | View definition and owner                        |
+| [`data.redshift_views`](data-sources/views.md)                             | List of views                                    |
+| [`data.redshift_materialized_view`](data-sources/materialized_view.md)     | Materialized view definition and refresh setting |
+| [`data.redshift_materialized_views`](data-sources/materialized_views.md)   | List of materialized views                       |
+| [`data.redshift_external_table`](data-sources/external_table.md)           | Spectrum external table                          |
+| [`data.redshift_external_tables`](data-sources/external_tables.md)         | List of Spectrum external tables                 |
+| [`data.redshift_external_partition`](data-sources/external_partition.md)   | One external table partition                     |
+| [`data.redshift_external_partitions`](data-sources/external_partitions.md) | List of external table partitions                |
+| [`data.redshift_columns`](data-sources/columns.md)                         | List of relation columns                         |
+| [`data.redshift_constraints`](data-sources/constraints.md)                 | List of table constraints                        |
 
 ### Functions and Procedures
 
-| Data source                                                              | Reads                                           |
-|--------------------------------------------------------------------------|-------------------------------------------------|
-| [`data.redshift_function`](data-sources/function.md)                     | SQL function overload                           |
-| [`data.redshift_procedure`](data-sources/procedure.md)                   | Stored procedure overload                       |
-| [`data.redshift_external_model`](data-sources/external_model.md)         | Model settings SHOW MODEL reports               |
-| [`data.redshift_functions`](data-sources/functions.md)                   | List of scalar functions, including Lambda UDFs |
-| [`data.redshift_procedures`](data-sources/procedures.md)                 | List of stored procedures                       |
-| [`data.redshift_routine_parameters`](data-sources/routine_parameters.md) | List of function and procedure parameters       |
+| Data source                                                              | Reads                                     |
+|--------------------------------------------------------------------------|-------------------------------------------|
+| [`data.redshift_function`](data-sources/function.md)                     | SQL function overload                     |
+| [`data.redshift_functions`](data-sources/functions.md)                   | List of SQL scalar functions              |
+| [`data.redshift_external_functions`](data-sources/external_functions.md) | List of Lambda scalar functions           |
+| [`data.redshift_procedure`](data-sources/procedure.md)                   | Stored procedure overload                 |
+| [`data.redshift_procedures`](data-sources/procedures.md)                 | List of stored procedures                 |
+| [`data.redshift_external_model`](data-sources/external_model.md)         | Model settings SHOW MODEL reports         |
+| [`data.redshift_models`](data-sources/models.md)                         | List of trained and external models       |
+| [`data.redshift_routine_parameters`](data-sources/routine_parameters.md) | List of function and procedure parameters |
 
 ### Identity and Access
 
-| Data source                                                            | Reads                                            |
-|------------------------------------------------------------------------|--------------------------------------------------|
-| [`data.redshift_user`](data-sources/user.md)                           | User (no password)                               |
-| [`data.redshift_group`](data-sources/group.md)                         | SQL user group and its members                   |
-| [`data.redshift_group_membership`](data-sources/group_membership.md)   | Explicit group membership                        |
-| [`data.redshift_role`](data-sources/role.md)                           | Role, owner, and external ID                     |
-| [`data.redshift_role_grant`](data-sources/role_grant.md)               | Explicit role membership and admin option        |
-| [`data.redshift_identity_provider`](data-sources/identity_provider.md) | Identity Center or Entra ID identity provider    |
-| [`data.redshift_user_lockouts`](data-sources/user_lockouts.md)         | List of password-user lockouts and failed logins |
+| Data source                                                              | Reads                                            |
+|--------------------------------------------------------------------------|--------------------------------------------------|
+| [`data.redshift_user`](data-sources/user.md)                             | User (no password)                               |
+| [`data.redshift_users`](data-sources/users.md)                           | List of users (no passwords)                     |
+| [`data.redshift_group`](data-sources/group.md)                           | SQL user group and its members                   |
+| [`data.redshift_groups`](data-sources/groups.md)                         | List of user groups and their members            |
+| [`data.redshift_group_membership`](data-sources/group_membership.md)     | Explicit group membership                        |
+| [`data.redshift_group_memberships`](data-sources/group_memberships.md)   | List of group memberships                        |
+| [`data.redshift_role`](data-sources/role.md)                             | Role, owner, and external ID                     |
+| [`data.redshift_roles`](data-sources/roles.md)                           | List of roles                                    |
+| [`data.redshift_role_grant`](data-sources/role_grant.md)                 | Explicit role membership and admin option        |
+| [`data.redshift_role_grants`](data-sources/role_grants.md)               | List of role memberships                         |
+| [`data.redshift_identity_provider`](data-sources/identity_provider.md)   | Identity Center or Entra ID identity provider    |
+| [`data.redshift_identity_providers`](data-sources/identity_providers.md) | List of identity providers                       |
+| [`data.redshift_user_lockouts`](data-sources/user_lockouts.md)           | List of password-user lockouts and failed logins |
 
 ### Permissions
 
 | Data source                                                              | Reads                                       |
 |--------------------------------------------------------------------------|---------------------------------------------|
 | [`data.redshift_grant`](data-sources/grant.md)                           | Explicit scoped privileges                  |
+| [`data.redshift_grants`](data-sources/grants.md)                         | List of scoped privileges                   |
 | [`data.redshift_object_grant`](data-sources/object_grant.md)             | Explicit object or snapshot privileges      |
+| [`data.redshift_object_grants`](data-sources/object_grants.md)           | List of grants on an object or of a grantee |
 | [`data.redshift_column_grant`](data-sources/column_grant.md)             | Column privileges of one grantee            |
-| [`data.redshift_language_grant`](data-sources/language_grant.md)         | Language `USAGE`                            |
-| [`data.redshift_system_grant`](data-sources/system_grant.md)             | Role system capabilities                    |
-| [`data.redshift_assumerole_grant`](data-sources/assumerole_grant.md)     | IAM role command permissions                |
-| [`data.redshift_default_privileges`](data-sources/default_privileges.md) | Creator-specific defaults                   |
-| [`data.redshift_debug_grant`](data-sources/debug_grant.md)               | `DEBUG` grant of one grantee on a database  |
-| [`data.redshift_grants`](data-sources/grants.md)                         | List of grants on an object or of a grantee |
 | [`data.redshift_column_grants`](data-sources/column_grants.md)           | List of column-level grants                 |
+| [`data.redshift_language_grant`](data-sources/language_grant.md)         | Language `USAGE`                            |
+| [`data.redshift_language_grants`](data-sources/language_grants.md)       | List of language `USAGE` grants             |
+| [`data.redshift_system_grant`](data-sources/system_grant.md)             | Role system capabilities                    |
+| [`data.redshift_system_grants`](data-sources/system_grants.md)           | List of role system privileges              |
+| [`data.redshift_assumerole_grant`](data-sources/assumerole_grant.md)     | IAM role command permissions                |
+| [`data.redshift_assumerole_grants`](data-sources/assumerole_grants.md)   | List of IAM role command permissions        |
+| [`data.redshift_default_privilege`](data-sources/default_privilege.md)   | Creator-specific defaults                   |
+| [`data.redshift_default_privileges`](data-sources/default_privileges.md) | List of creator-specific defaults           |
+| [`data.redshift_debug_grant`](data-sources/debug_grant.md)               | `DEBUG` grant of one grantee on a database  |
+| [`data.redshift_debug_grants`](data-sources/debug_grants.md)             | List of `DEBUG` grants on a database        |
 
 ### Row-Level Security and Masking
 
-| Data source                                                                            | Reads                                     |
-|----------------------------------------------------------------------------------------|-------------------------------------------|
-| [`data.redshift_rls_policy`](data-sources/rls_policy.md)                               | RLS policy definition                     |
-| [`data.redshift_rls_policy_attachment`](data-sources/rls_policy_attachment.md)         | RLS policy attachment                     |
-| [`data.redshift_table_security`](data-sources/table_security.md)                       | Row-level security settings of a relation |
-| [`data.redshift_rls_policies`](data-sources/rls_policies.md)                           | List of RLS policies                      |
-| [`data.redshift_masking_policy`](data-sources/masking_policy.md)                       | Masking policy inputs and expression      |
-| [`data.redshift_masking_policy_attachment`](data-sources/masking_policy_attachment.md) | Masking policy attachment                 |
-| [`data.redshift_masking_policies`](data-sources/masking_policies.md)                   | List of masking policies                  |
+| Data source                                                                              | Reads                                     |
+|------------------------------------------------------------------------------------------|-------------------------------------------|
+| [`data.redshift_rls_policy`](data-sources/rls_policy.md)                                 | RLS policy definition                     |
+| [`data.redshift_rls_policies`](data-sources/rls_policies.md)                             | List of RLS policies                      |
+| [`data.redshift_rls_policy_attachment`](data-sources/rls_policy_attachment.md)           | RLS policy attachment                     |
+| [`data.redshift_rls_policy_attachments`](data-sources/rls_policy_attachments.md)         | List of RLS policy attachments            |
+| [`data.redshift_table_security`](data-sources/table_security.md)                         | Row-level security settings of a relation |
+| [`data.redshift_table_securities`](data-sources/table_securities.md)                     | List of RLS-protected relations           |
+| [`data.redshift_masking_policy`](data-sources/masking_policy.md)                         | Masking policy inputs and expression      |
+| [`data.redshift_masking_policies`](data-sources/masking_policies.md)                     | List of masking policies                  |
+| [`data.redshift_masking_policy_attachment`](data-sources/masking_policy_attachment.md)   | Masking policy attachment                 |
+| [`data.redshift_masking_policy_attachments`](data-sources/masking_policy_attachments.md) | List of masking policy attachments        |
 
 ### Data Sharing
 
-| Data source                                                                  | Reads                                                            |
-|------------------------------------------------------------------------------|------------------------------------------------------------------|
-| [`data.redshift_datashare`](data-sources/datashare.md)                       | Outbound datashare                                               |
-| [`data.redshift_datashare_schema`](data-sources/datashare_schema.md)         | Schema membership and future-object policy                       |
-| [`data.redshift_datashare_table`](data-sources/datashare_table.md)           | Table or view membership                                         |
-| [`data.redshift_datashare_membership`](data-sources/datashare_membership.md) | Coverage of current schema TABLES or FUNCTIONS                   |
-| [`data.redshift_datashare_grant`](data-sources/datashare_grant.md)           | Consumer account or namespace `USAGE`                            |
-| [`data.redshift_datashare_privilege`](data-sources/datashare_privilege.md)   | `ALTER` and `SHARE` of one SQL identity                          |
-| [`data.redshift_datashares`](data-sources/datashares.md)                     | List of inbound and outbound datashares                          |
-| [`data.redshift_datashare_objects`](data-sources/datashare_objects.md)       | Current outbound members, including bulk and automatic additions |
+| Data source                                                                    | Reads                                          |
+|--------------------------------------------------------------------------------|------------------------------------------------|
+| [`data.redshift_datashare`](data-sources/datashare.md)                         | Outbound datashare                             |
+| [`data.redshift_datashares`](data-sources/datashares.md)                       | List of outbound datashares                    |
+| [`data.redshift_inbound_datashares`](data-sources/inbound_datashares.md)       | List of inbound datashares                     |
+| [`data.redshift_datashare_schema`](data-sources/datashare_schema.md)           | Schema membership and future-object policy     |
+| [`data.redshift_datashare_schemas`](data-sources/datashare_schemas.md)         | List of shared schemas                         |
+| [`data.redshift_datashare_table`](data-sources/datashare_table.md)             | Table or view membership                       |
+| [`data.redshift_datashare_tables`](data-sources/datashare_tables.md)           | List of shared tables and views                |
+| [`data.redshift_datashare_membership`](data-sources/datashare_membership.md)   | Coverage of current schema TABLES or FUNCTIONS |
+| [`data.redshift_datashare_memberships`](data-sources/datashare_memberships.md) | List of schema TABLES or FUNCTIONS coverage    |
+| [`data.redshift_datashare_grant`](data-sources/datashare_grant.md)             | Consumer account or namespace `USAGE`          |
+| [`data.redshift_datashare_grants`](data-sources/datashare_grants.md)           | List of consumer `USAGE` grants                |
+| [`data.redshift_datashare_privilege`](data-sources/datashare_privilege.md)     | `ALTER` and `SHARE` of one SQL identity        |
+| [`data.redshift_datashare_privileges`](data-sources/datashare_privileges.md)   | List of `ALTER` and `SHARE` grants             |
 
 ### Data Loading
 
 | Data source                                            | Reads                                         |
 |--------------------------------------------------------|-----------------------------------------------|
 | [`data.redshift_template`](data-sources/template.md)   | COPY template format, parameters, and owner   |
-| [`data.redshift_copy_job`](data-sources/copy_job.md)   | COPY definition, `AUTO` setting, and IAM role |
 | [`data.redshift_templates`](data-sources/templates.md) | List of COPY templates                        |
+| [`data.redshift_copy_job`](data-sources/copy_job.md)   | COPY definition, `AUTO` setting, and IAM role |
 | [`data.redshift_copy_jobs`](data-sources/copy_jobs.md) | List of copy jobs                             |
 
 ### Annotations
 
-| Data source                                        | Reads           |
-|----------------------------------------------------|-----------------|
-| [`data.redshift_comment`](data-sources/comment.md) | Annotation text |
-
-### Catalog Discovery
-
-| Data source                                                    | Reads                                                        |
-|----------------------------------------------------------------|--------------------------------------------------------------|
-| [`data.redshift_databases`](data-sources/databases.md)         | List of databases                                            |
-| [`data.redshift_schemas`](data-sources/schemas.md)             | List of schemas of a database                                |
-| [`data.redshift_tables`](data-sources/tables.md)               | List of tables, views, and external tables                   |
-| [`data.redshift_columns`](data-sources/columns.md)             | List of relation columns                                     |
-| [`data.redshift_constraints`](data-sources/constraints.md)     | List of table constraints                                    |
-| [`data.redshift_models`](data-sources/models.md)               | List of trained and external models                          |
-| [`data.redshift_configuration`](data-sources/configuration.md) | Value of one configuration parameter in the provider session |
+| Data source                                          | Reads            |
+|------------------------------------------------------|------------------|
+| [`data.redshift_comment`](data-sources/comment.md)   | Annotation text  |
+| [`data.redshift_comments`](data-sources/comments.md) | List of comments |
 
 ## Provider connection and imports
 

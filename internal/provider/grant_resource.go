@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
@@ -210,43 +209,18 @@ func (r *grantResource) read(ctx context.Context, data *grantModel) (string, boo
 		return target, false, err
 	}
 
-	privileges, options := map[string]bool{}, map[string]bool{}
+	var fold privilegeFold
 
 	for _, row := range rows {
-		if !data.grantRowMatches(row, identity) {
-			continue
+		if data.grantRowMatches(row, identity) {
+			fold.add(row)
 		}
-
-		name := normalizePrivilege(row["privilege_type"])
-		privileges[name] = true
-		// Another grantor's plain grant can report the same privilege, so one row with the option is enough.
-		options[name] = options[name] || row["admin_option"] == "true" || row["admin_option"] == "t"
 	}
 
-	data.Privileges, data.GrantOptionPrivileges = grantSet(privileges, nil), grantSet(privileges, options)
+	data.Privileges, data.GrantOptionPrivileges = fold.privilegeSet(), fold.optionSet()
 	data.ID = normalizeLegacyIdentity(data.ID, false)
 
 	return target, true, nil
-}
-
-// grantSet returns the sorted names of values, limited to those selected when selected is not nil.
-func grantSet(values, selected map[string]bool) types.Set {
-	var names []string
-
-	for name := range values {
-		if selected == nil || selected[name] {
-			names = append(names, name)
-		}
-	}
-
-	sort.Strings(names)
-
-	elements := make([]attr.Value, 0, len(names))
-	for _, name := range names {
-		elements = append(elements, types.StringValue(name))
-	}
-
-	return types.SetValueMust(types.StringType, elements)
 }
 
 // validateTuple checks the identity attributes only, so refreshes of a valid tuple ignore the desired sets.

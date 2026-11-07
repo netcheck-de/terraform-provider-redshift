@@ -25,5 +25,7 @@ func TestGroupMembershipSQL(t *testing.T) {
 		{"drop_quoted", func() string { return dropGroupMembershipStatement(membership(`Odd"Readers`, `Odd"User`)) }},
 		{"read", built(readGroupMembershipQuery(membership(`Odd"Readers`, `Odd"User`)))},
 		{"read_empty_user", built(readGroupMembershipQuery(membership("readers", "")))},
+		{"list", built(listGroupMembershipsQuery("", ""))},
+		{"list_filtered", built(listGroupMembershipsQuery(`Odd"Readers`, `Odd"User`))},
 	})
 }

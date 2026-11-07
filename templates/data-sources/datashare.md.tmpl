@@ -34,4 +34,4 @@ A missing share, a share owned by another database, or a share managed by anothe
 share ID, producer account and namespace, and creation time come from
 [SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html). Use
 [redshift_datashares](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/data-sources/datashares)
-to list every share, including inbound ones.
+to list every outbound share, and `redshift_inbound_datashares` to list the inbound ones.

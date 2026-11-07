@@ -2,7 +2,9 @@ package provider
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
@@ -36,6 +38,10 @@ var _ = registerFakeFamily("language_grant", func() fakeFamily {
 
 // query answers language privilege reads and applies language grants.
 func (f *languageGrantFake) query(_ *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
+	if strings.HasPrefix(sql, "SELECT language_name, ") && strings.Contains(sql, " FROM svv_language_privileges") {
+		return f.list(parameters["grantee"]), true, nil
+	}
+
 	if strings.Contains(sql, " FROM svv_language_privileges") {
 		option, ok := f.usage[languageGrantFakeKey{parameters["language"], parameters["grantee"], parameters["identity_type"]}]
 		if !ok {
@@ -69,6 +75,23 @@ func (f *languageGrantFake) query(_ *catalog, _ sqlclient.Connection, sql string
 	}
 
 	return nil, true, nil
+}
+
+// list answers the language grant listing, ordered as its ORDER BY requests and narrowed to one grantee when set.
+func (f *languageGrantFake) list(grantee string) []sqlclient.Row {
+	keys := slices.SortedFunc(maps.Keys(f.usage), func(a, b languageGrantFakeKey) int {
+		return slices.Compare([]string{a.language, a.kind, a.name}, []string{b.language, b.kind, b.name})
+	})
+
+	var rows []sqlclient.Row
+
+	for _, key := range keys {
+		if grantee == "" || key.name == grantee {
+			rows = append(rows, sqlclient.Row{"language_name": key.language, "privilege_type": "USAGE", "identity_name": key.name, "identity_type": key.kind, "admin_option": fmt.Sprint(f.usage[key])})
+		}
+	}
+
+	return rows
 }
 
 // populate grants the lifecycle model's USAGE.

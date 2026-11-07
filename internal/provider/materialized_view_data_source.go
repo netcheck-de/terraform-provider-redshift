@@ -34,16 +34,20 @@ func newMaterializedViewDataSource() datasource.DataSource {
 		}
 
 		return found, err
-	}}), map[string]string{
-		"query":                  "Catalog definition from `pg_views`: the complete `CREATE MATERIALIZED VIEW` statement as Redshift prints it.",
-		"backup":                 materializedViewLookupStorageDescription,
-		"distribution":           materializedViewLookupStorageDescription,
-		"distribution.style":     "Distribution style: `EVEN`, `ALL`, or `KEY`.",
-		"distribution.key":       "Distribution key column.",
-		"sort_key":               materializedViewLookupStorageDescription,
-		"sort_key.columns":       "Compound sort key columns in order.",
-		"auto_refresh":           "Whether the materialized view refreshes automatically, from `SVV_MV_INFO`. Null when `SVV_MV_INFO` hides the view from a provider identity that neither owns it nor is a superuser.",
-		"owner":                  "SQL user owning the materialized view.",
-		"definition_fingerprint": viewLookupFingerprintDescription,
-	})
+	}}), materializedViewOutputDescriptions)
+}
+
+// materializedViewOutputDescriptions describe the catalog values the lookup reports; the listing uses the entries of
+// the attributes it lists.
+var materializedViewOutputDescriptions = map[string]string{
+	"query":                  "Catalog definition from `pg_views`: the complete `CREATE MATERIALIZED VIEW` statement as Redshift prints it.",
+	"backup":                 materializedViewLookupStorageDescription,
+	"distribution":           materializedViewLookupStorageDescription,
+	"distribution.style":     "Distribution style: `EVEN`, `ALL`, or `KEY`.",
+	"distribution.key":       "Distribution key column.",
+	"sort_key":               materializedViewLookupStorageDescription,
+	"sort_key.columns":       "Compound sort key columns in order.",
+	"auto_refresh":           "Whether the materialized view refreshes automatically, from `SVV_MV_INFO`. Null when `SVV_MV_INFO` hides the view from a provider identity that neither owns it nor is a superuser.",
+	"owner":                  "SQL user owning the materialized view.",
+	"definition_fingerprint": viewLookupFingerprintDescription,
 }

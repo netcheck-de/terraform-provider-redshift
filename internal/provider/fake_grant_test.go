@@ -24,7 +24,7 @@ type grantUserFamily struct {
 }
 
 // query answers the user check and SHOW GRANTS ON DATABASE … FOR the user, and applies GRANT and REVOKE to the user.
-func (f *grantUserFamily) query(_ *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
+func (f *grantUserFamily) query(c *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	quoted := sqlclient.Identifier(grantFakeUser)
 	switch {
 	case strings.HasPrefix(sql, "SELECT usename FROM pg_user WHERE usename = :name") && parameters["name"] == grantFakeUser:
@@ -40,12 +40,45 @@ func (f *grantUserFamily) query(_ *catalog, _ sqlclient.Connection, sql string, 
 		}
 
 		return rows, true, nil
+	case sql == `SHOW GRANTS ON DATABASE "analytics"` || sql == `SHOW GRANTS ON SCHEMA "analytics"."serving"`:
+		return f.listing(c, sql), true, nil
 	case (strings.HasPrefix(sql, "GRANT ") && strings.Contains(sql, " TO "+quoted)) || (strings.HasPrefix(sql, "REVOKE ") && strings.HasSuffix(sql, " FROM "+quoted)):
 		f.apply(sql)
 		return nil, true, nil
 	}
 
 	return nil, false, nil
+}
+
+// listing answers SHOW GRANTS ON DATABASE "analytics", which has no object_type or schema_name column, with the
+// user's TABLES rows and the legacy catalog's role rows; and SHOW GRANTS ON SCHEMA "analytics"."serving" with a role's
+// schema and scoped TABLES rows, a datashare's schema USAGE, and a group's USAGE, which redshift_grant does not manage.
+func (f *grantUserFamily) listing(c *catalog, sql string) []sqlclient.Row {
+	if strings.HasPrefix(sql, "SHOW GRANTS ON SCHEMA ") {
+		row := func(name, kind, scope, privilege string) sqlclient.Row {
+			return sqlclient.Row{"database_name": "analytics", "schema_name": "serving", "object_name": "serving", "object_type": "SCHEMA", "privilege_type": privilege, "identity_name": name, "identity_type": kind, "admin_option": "f", "privilege_scope": scope}
+		}
+
+		return []sqlclient.Row{
+			row("example:readers", "role", "SCHEMA", "USAGE"), row("example:readers", "role", "TABLES", "SELECT"),
+			row("ds:producer", "datashare", "SCHEMA", "USAGE"), row("readers", "group", "SCHEMA", "USAGE"),
+		}
+	}
+
+	var rows []sqlclient.Row
+
+	if f.exists {
+		for _, privilege := range slices.Sorted(maps.Keys(f.privileges)) {
+			rows = append(rows, sqlclient.Row{"database_name": "analytics", "privilege_type": privilege, "identity_name": grantFakeUser, "identity_type": "user", "admin_option": grantFakeBool(f.options[privilege]), "privilege_scope": "TABLES"})
+		}
+	}
+
+	for _, privilege := range slices.Sorted(maps.Keys(c.privileges)) {
+		rows = append(rows, sqlclient.Row{"database_name": "analytics", "privilege_type": privilege, "identity_name": "example:readers", "identity_type": "role", "admin_option": "f", "privilege_scope": "TABLES"})
+	}
+
+	// PUBLIC's built-in database privilege is not a redshift_grant tuple.
+	return append(rows, sqlclient.Row{"database_name": "analytics", "privilege_type": "TEMP", "identity_name": "public", "identity_type": "public", "admin_option": "f", "privilege_scope": "DATABASE"})
 }
 
 // apply records one GRANT, GRANT … WITH GRANT OPTION, REVOKE, or REVOKE GRANT OPTION.

@@ -1,4 +1,4 @@
-# Mocked runs for databases, schemas, and external schemas. The mocks are shared with composition.tftest.hcl through tests/mocks, so
+# Mocked runs for databases, schemas, external schemas, and their listings. The mocks are shared with composition.tftest.hcl through tests/mocks, so
 # this block adds runs and assertions here without editing the composition suite.
 mock_provider "aws" {
   alias  = "producer"
@@ -62,6 +62,18 @@ run "databases_apply" {
     }
   }
 
+  # Terraform mocks generate empty lists for nested-attribute lists and cannot override their elements, so the
+  # listing contents are covered by the Go tests; here the outputs must keep their shape.
+  override_data {
+    target = data.redshift_external_schemas.local
+    values = { id = "external-schemas-listing-identity" }
+  }
+
+  override_data {
+    target = data.redshift_comments.local
+    values = { id = "comments-listing-identity" }
+  }
+
   assert {
     condition = (
       redshift_database.local.connection_limit == 100 && redshift_database.local.collation == "CASE_SENSITIVE" &&
@@ -96,6 +108,18 @@ run "databases_apply" {
       output.shared_external_schema.owner == "example_loader"
     )
     error_message = "Database outputs must expose the lookup values."
+  }
+
+  assert {
+    condition = (
+      data.redshift_external_schemas.local.database == redshift_database.local.name &&
+      data.redshift_comments.local.database_name == redshift_database.local.name &&
+      data.redshift_comments.local.object_type == null &&
+      data.redshift_external_schemas.local.id == "external-schemas-listing-identity" &&
+      data.redshift_comments.local.id == "comments-listing-identity" &&
+      length(output.database_listings.external_schemas) == 0 && output.database_listings.comments == []
+    )
+    error_message = "Database listings must cover the local database and expose the listed external schemas and comments."
   }
 }
 
