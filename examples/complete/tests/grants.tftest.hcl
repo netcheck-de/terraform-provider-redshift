@@ -142,4 +142,21 @@ run "grants_apply" {
     )
     error_message = "The grant lookups must expose user grant options, snapshot privileges, and the PUBLIC function default."
   }
+
+  # Terraform cannot override list-nested attributes of mocked data sources, so the listings stay empty here and the
+  # assertions check their selection and output wiring; Go tests cover the listed rows.
+  assert {
+    condition = (
+      data.redshift_grants.local_schema.database_name == redshift_schema.local.database &&
+      data.redshift_grants.local_schema.schema_name == redshift_schema.local.name && data.redshift_grants.local_schema.role == null &&
+      data.redshift_system_grants.operators.role == redshift_role.operators.name &&
+      data.redshift_assumerole_grants.operators.grantee == redshift_role.operators.name && data.redshift_assumerole_grants.operators.iam_role_arn == null &&
+      data.redshift_default_privileges.loader.owner == redshift_user.loader.name && data.redshift_default_privileges.loader.schema_name == null &&
+      length(output.grant_checks.local_schema_grants) == length(data.redshift_grants.local_schema.grants) &&
+      length(output.grant_checks.operator_system_grants) == length(data.redshift_system_grants.operators.system_grants) &&
+      length(output.grant_checks.operator_role_commands) == length(data.redshift_assumerole_grants.operators.assumerole_grants) &&
+      length(output.grant_checks.loader_default_privileges) == length(data.redshift_default_privileges.loader.default_privileges)
+    )
+    error_message = "The scoped, system, ASSUMEROLE, and default privilege listings must select the managed tuples and be exposed."
+  }
 }

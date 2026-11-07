@@ -5,5 +5,5 @@ data "redshift_column_grants" "events" {
 }
 
 output "events_column_grants" {
-  value = [for grant in data.redshift_column_grants.events.column_grants : "${grant.grantee}: ${grant.privilege} (${grant.column_name})"]
+  value = { for grant in data.redshift_column_grants.events.column_grants : "${grant.grantee_type} ${grant.grantee}" => grant.privileges }
 }

@@ -1,1 +1,1 @@
-SHOW GRANTS ON TABLE "Odd""Database"."Odd""Schema"."Odd""Table";
+SHOW GRANTS ON SCHEMA "Odd""Database"."Odd""Schema";

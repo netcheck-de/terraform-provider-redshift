@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -11,61 +10,58 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ = registerParity(parityCase{source: newGrantsDataSource, collection: true, filters: []string{"database_name", "object_type", "schema_name", "object_name", "grantee", "grantee_type"}})
+var _ = registerParity(parityCase{source: newGrantsDataSource, resource: newGrantResource, collection: true, filters: []string{"database_name", "schema_name", "role", "user"}})
 
-// TestGrantsListing reads SHOW GRANTS in the selected database and reports invalid selections as errors.
+// TestGrantsListing lists the scoped grants of a database or schema from the fake, in the connection
+// redshift_grant reads them from, and reports missing databases and catalog failures as errors.
 func TestGrantsListing(t *testing.T) {
-	var database, statement string
+	c := fullCatalog()
 
-	client := queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
-		database, statement = connection.Database, sql
+	var connections []string
 
-		assert.Empty(t, parameters, "SHOW GRANTS takes no bindings")
-
-		return []sqlclient.Row{
-			{"schema_name": "serving", "object_name": "events", "object_type": "TABLE", "privilege_type": "SELECT", "identity_name": "readers", "identity_type": "group", "admin_option": "f", "privilege_scope": "TABLE", "database_name": "warehouse", "grantor_name": "admin"},
-			{"schema_name": "serving", "object_name": "events", "object_type": "TABLE", "privilege_type": "SELECT", "identity_name": "analyst", "identity_type": "user", "admin_option": "t", "privilege_scope": "TABLE", "database_name": "warehouse", "grantor_name": "admin"},
-		}, nil
+	client := queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		connections = append(connections, connection.Database)
+		return c.Query(ctx, connection, sql, parameters)
 	})
 
-	for _, test := range []struct {
-		name, database, statement string
-		filters                   map[string]string
-		items                     int
-	}{
-		{"table", "warehouse", `SHOW GRANTS ON TABLE "warehouse"."serving"."events"`, map[string]string{"database_name": "warehouse", "object_type": "TABLE", "schema_name": "serving", "object_name": "events"}, 2},
-		{"table group", "warehouse", `SHOW GRANTS ON TABLE "warehouse"."serving"."events"`, map[string]string{"database_name": "warehouse", "object_type": "TABLE", "schema_name": "serving", "object_name": "events", "grantee_type": "GROUP"}, 1},
-		{"user", "admin", `SHOW GRANTS FOR "analyst" FROM DATABASE "admin"`, map[string]string{"grantee": "analyst", "grantee_type": "USER"}, 1},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			source := newGrantsDataSource()
-			state, diagnostics := readSource(t, source, collectionConfig(t, source, test.filters), client)
-			require.False(t, diagnostics.HasError(), "%v", diagnostics)
-			assert.Equal(t, test.database, database)
-			assert.Equal(t, test.statement, statement)
+	items := listingItems(t, newGrantsDataSource(), map[string]string{"database_name": "analytics"}, client)
+	assert.Equal(t, []string{"admin", "admin"}, connections, "a shared database is read from admin")
+	require.Len(t, items, 2)
+	assert.Equal(t, types.StringValue("example:readers"), items[0]["role"])
+	assert.Equal(t, stringSet("SELECT"), items[0]["privileges"])
+	assert.Equal(t, types.StringValue(grantFakeUser), items[1]["user"])
+	assert.Equal(t, types.StringValue("TABLES"), items[1]["scope"])
+	assert.Equal(t, stringSet("SELECT"), items[1]["grant_option_privileges"])
 
-			var observed types.Object
-			require.False(t, state.Get(context.Background(), &observed).HasError())
-			assert.Len(t, collectionResult(source, observed).Elements(), test.items)
-		})
-	}
+	items = listingItems(t, newGrantsDataSource(), map[string]string{"database_name": "analytics", "user": grantFakeUser}, client)
+	require.Len(t, items, 1)
+	assert.Equal(t, types.StringNull(), items[0]["role"])
 
-	for name, filters := range map[string]map[string]string{
-		"nothing selected": nil,
-		"group identity":   {"grantee": "readers", "grantee_type": "GROUP"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			statement = ""
-			source := newGrantsDataSource()
-			_, diagnostics := readSource(t, source, collectionConfig(t, source, filters), client)
-			assert.True(t, diagnostics.HasError())
-			assert.Empty(t, statement, "invalid selections never reach SQL")
-		})
-	}
+	items = listingItems(t, newGrantsDataSource(), map[string]string{"database_name": "analytics", "schema_name": "serving", "role": "example:readers"}, client)
+	require.Len(t, items, 2)
+	assert.Equal(t, []types.String{types.StringValue("SCHEMA"), types.StringValue("TABLES")}, []types.String{items[0]["scope"].(types.String), items[1]["scope"].(types.String)})
 
-	source := newGrantsDataSource()
-	_, diagnostics := readSource(t, source, collectionConfig(t, source, map[string]string{"object_type": "DATABASE"}), queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
-		return nil, errors.New("catalog unavailable")
+	items = listingItems(t, newGrantsDataSource(), map[string]string{"database_name": "analytics", "schema_name": "serving"}, client)
+	assert.Len(t, items, 3, "the datashare's schema USAGE is listed and the group's is not")
+
+	local := queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+		connections = append(connections, connection.Database)
+
+		if sql == `SELECT database_type FROM svv_redshift_databases WHERE database_name = :database` {
+			return []sqlclient.Row{{"database_type": "local"}}, nil
+		}
+
+		assert.Equal(t, `SHOW GRANTS ON DATABASE "warehouse"`, sql)
+
+		return nil, nil
+	})
+	connections = nil
+
+	assert.Empty(t, listingItems(t, newGrantsDataSource(), map[string]string{"database_name": "warehouse"}, local))
+	assert.Equal(t, []string{"admin", "warehouse"}, connections, "a local database is read in that database")
+
+	assertListingFails(t, newGrantsDataSource(), map[string]string{"database_name": "missing"}, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+		return nil, nil
 	}))
-	assert.True(t, diagnostics.HasError(), "catalog failures are errors")
+	assertListingFails(t, newGrantsDataSource(), nil, nil)
 }

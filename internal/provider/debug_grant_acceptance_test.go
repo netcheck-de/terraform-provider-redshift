@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,10 +82,23 @@ data "redshift_debug_grant" "test" {
   grantee = redshift_debug_grant.test.grantee
   grantee_type = redshift_debug_grant.test.grantee_type
 }`, region, profile, workgroup, database, target, grantee, test.kind)
+			checks := []resource.TestCheckFunc{resource.TestCheckResourceAttr("data.redshift_debug_grant.test", "exists", "true")}
+			// The listing reads only producer-local databases; global identity names compare without case.
+			if !strings.Contains(target, "@") {
+				configuration += `
+data "redshift_debug_grants" "test" {
+  database = redshift_debug_grant.test.database
+}`
+
+				checks = append(checks, resource.TestMatchTypeSetElemNestedAttrs("data.redshift_debug_grants.test", "debug_grants.*", map[string]*regexp.Regexp{
+					"grantee": regexp.MustCompile("(?i)^" + regexp.QuoteMeta(grantee) + "$"), "grantee_type": regexp.MustCompile("^" + test.kind + "$"),
+				}))
+			}
+
 			resource.Test(t, resource.TestCase{
 				ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 				Steps: []resource.TestStep{
-					{Config: configuration, Check: resource.TestCheckResourceAttr("data.redshift_debug_grant.test", "exists", "true")},
+					{Config: configuration, Check: resource.ComposeAggregateTestCheckFunc(checks...)},
 					{ResourceName: "redshift_debug_grant.test", ImportState: true, ImportStateVerify: true},
 					{Config: configuration, PlanOnly: true},
 				},

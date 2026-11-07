@@ -1,5 +1,5 @@
 output "grant_checks" {
-  description = "Observed user grant options, schema snapshot privileges, and the implicit PUBLIC EXECUTE default on new functions."
+  description = "Observed user grant options, schema snapshot privileges, the implicit PUBLIC EXECUTE default on new functions, and the scoped, system, ASSUMEROLE, and default privilege listings."
   value = {
     loader_tables             = data.redshift_grant.loader_schema_tables.privileges
     loader_table_options      = data.redshift_grant.loader_schema_tables.grant_option_privileges
@@ -13,5 +13,9 @@ output "grant_checks" {
     shared_snapshots          = { for kind, grant in data.redshift_object_grant.shared_snapshots : kind => { privileges = grant.privileges, options = grant.grant_option_privileges } }
     shared_procedure          = data.redshift_object_grant.shared_procedure.privileges
     shared_procedure_snapshot = data.redshift_object_grant.shared_procedure_snapshot.privileges
+    local_schema_grants       = { for grant in data.redshift_grants.local_schema.grants : "${grant.scope}:${coalesce(grant.role, grant.user, grant.datashare)}" => grant.privileges }
+    operator_system_grants    = { for grant in data.redshift_system_grants.operators.system_grants : grant.role => grant.privileges }
+    operator_role_commands    = { for grant in data.redshift_assumerole_grants.operators.assumerole_grants : grant.iam_role_arn => grant.privileges }
+    loader_default_privileges = [for rule in data.redshift_default_privileges.loader.default_privileges : "${coalesce(rule.schema_name, "*")}:${rule.object_type}:${rule.grantee_type}:${rule.grantee}"]
   }
 }

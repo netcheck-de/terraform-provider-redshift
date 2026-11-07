@@ -1,1 +1,1 @@
-SELECT namespace_name, relation_name, column_name, privilege_type, identity_name, identity_type FROM svv_column_privileges ORDER BY namespace_name, relation_name, column_name, privilege_type, identity_type, identity_name;
+SELECT namespace_name, relation_name, column_name, privilege_type, identity_name, identity_type FROM svv_column_privileges ORDER BY namespace_name, relation_name, identity_type, identity_name, privilege_type, column_name;

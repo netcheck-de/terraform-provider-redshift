@@ -22,8 +22,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAccPermissionsLifecycle verifies column and language grants, their lookups and listings, imports, drift repair,
-// and revocation on destroy against a disposable database.
+// TestAccPermissionsLifecycle verifies column, language, and system grants, their lookups and listings, imports, drift
+// repair, and revocation on destroy against a disposable database.
 func TestAccPermissionsLifecycle(t *testing.T) {
 	region, profile, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -90,18 +90,30 @@ data "redshift_column_grants" "serving" {
   schema_name = redshift_schema.local.name
   depends_on = [redshift_column_grant.role, redshift_column_grant.group_view]
 }
-data "redshift_grants" "role" {
+data "redshift_object_grants" "role" {
   database_name = redshift_database.local.name
   grantee = redshift_role.readers.name
   grantee_type = "ROLE"
   depends_on = [redshift_language_grant.role]
 }
-data "redshift_grants" "table" {
+data "redshift_object_grants" "table" {
   database_name = redshift_database.local.name
   object_type = "TABLE"
   schema_name = redshift_schema.local.name
   object_name = "fixture_table"
   depends_on = [redshift_column_grant.role]
+}
+data "redshift_language_grants" "role" {
+  database_name = redshift_database.local.name
+  grantee = redshift_role.readers.name
+  depends_on = [redshift_language_grant.role]
+}
+resource "redshift_system_grant" "role" {
+  role = redshift_role.readers.name
+  privileges = ["EXPLAIN RLS"]
+}
+data "redshift_system_grants" "role" {
+  role = redshift_system_grant.role.role
 }`
 	}
 	ctx := context.Background()
@@ -137,12 +149,20 @@ data "redshift_grants" "table" {
 				resource.TestCheckTypeSetElemAttr("data.redshift_column_grant.role", "privileges.SELECT.*", "label"),
 				resource.TestCheckTypeSetElemAttr("data.redshift_column_grant.role", "privileges.UPDATE.*", "label"),
 				resource.TestCheckTypeSetElemAttr("data.redshift_language_grant.role", "privileges.*", "USAGE"),
-				resource.TestCheckResourceAttr("data.redshift_column_grants.serving", "column_grants.#", "4"),
+				resource.TestCheckResourceAttr("data.redshift_column_grants.serving", "column_grants.#", "2"),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_column_grants.serving", "column_grants.*", map[string]string{"object_name": "fixture_table", "grantee_type": "ROLE", "privileges.SELECT.#": "2", "privileges.UPDATE.#": "1"}),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_column_grants.serving", "column_grants.*", map[string]string{"object_name": "fixture_view", "grantee_type": "GROUP", "privileges.SELECT.#": "1"}),
+				resource.TestCheckResourceAttr("data.redshift_language_grants.role", "language_grants.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_language_grants.role", "language_grants.0.language_name", "PLPGSQL"),
+				resource.TestCheckResourceAttr("data.redshift_language_grants.role", "language_grants.0.grantee_type", "ROLE"),
+				resource.TestCheckResourceAttr("data.redshift_system_grants.role", "system_grants.#", "1"),
+				resource.TestCheckTypeSetElemAttr("data.redshift_system_grants.role", "system_grants.0.privileges.*", "EXPLAIN RLS"),
 			)},
 			{Config: configuration(true), PlanOnly: true},
 			{ResourceName: "redshift_column_grant.role", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_column_grant.group_view", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_language_grant.role", ImportState: true, ImportStateVerify: true},
+			{ResourceName: "redshift_system_grant.role", ImportState: true, ImportStateVerify: true},
 			{Config: configuration(true), PlanOnly: true, ExpectNonEmptyPlan: true, PreConfig: func() {
 				exec(fmt.Sprintf(`REVOKE SELECT (label) ON TABLE serving.fixture_table FROM ROLE %s`, sqlclient.Identifier("acc_readers_"+suffix)))
 				exec(fmt.Sprintf(`GRANT SELECT (secret) ON TABLE serving.fixture_table TO ROLE %s`, sqlclient.Identifier("acc_readers_"+suffix)))

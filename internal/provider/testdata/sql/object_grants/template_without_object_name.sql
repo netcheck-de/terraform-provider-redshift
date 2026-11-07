@@ -1,0 +1,1 @@
+-- error: TEMPLATE requires schema_name and object_name

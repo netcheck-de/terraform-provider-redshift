@@ -1,5 +1,5 @@
 output "diagnostics" {
-  description = "Session configuration of the consumer provider, and the optional reader lockout state and DEBUG grant."
+  description = "Session configuration of the consumer provider, and the optional reader lockout state, DEBUG grant, and DEBUG grantees."
   value = {
     case_sensitive_identifiers = data.redshift_configuration.case_sensitive_identifiers.value
     search_path                = data.redshift_configuration.search_path.value
@@ -12,5 +12,6 @@ output "diagnostics" {
       }
     ] : null
     account_admins_debug = try(data.redshift_debug_grant.account_admins[0].exists, null)
+    debug_grantees       = try([for grant in data.redshift_debug_grants.federated[0].debug_grants : "${grant.grantee_type}:${grant.grantee}"], null)
   }
 }
