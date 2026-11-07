@@ -1,19 +1,15 @@
-# Every grant on one table, including group and PUBLIC grantees.
-data "redshift_grants" "events" {
+# Database-wide and scoped grants of one database.
+data "redshift_grants" "analytics" {
   database_name = "analytics"
-  object_type   = "TABLE"
-  schema_name   = "reporting"
-  object_name   = "events"
 }
 
-# Every grant one role holds in one database, narrowed to one schema.
-data "redshift_grants" "analysts" {
+# Grants on one schema and the scoped grants limited to it, for one role.
+data "redshift_grants" "reporting" {
   database_name = "analytics"
-  grantee       = "analysts"
-  grantee_type  = "ROLE"
   schema_name   = "reporting"
+  role          = "analysts"
 }
 
-output "events_grants" {
-  value = [for grant in data.redshift_grants.events.grants : "${grant.grantee_type} ${grant.grantee}: ${grant.privilege}"]
+output "analytics_grants" {
+  value = [for grant in data.redshift_grants.analytics.grants : "${coalesce(grant.role, grant.user, grant.datashare)} ${grant.scope}: ${join(", ", grant.privileges)}"]
 }

@@ -135,3 +135,25 @@ func assumeroleGrantTarget(data types.Object) (privilegeTarget, error) {
 
 	return target, nil
 }
+
+// listAssumeroleGrantsQuery lists the commands identities may run with IAM roles, narrowed to one catalog role name
+// and one grantee when set.
+func listAssumeroleGrantsQuery(catalogRole, grantee string) sqlclient.Query {
+	return sqlclient.Select("iam_arn", "command_type AS privilege_type", "identity_name", "identity_type").From("svv_iam_privileges").
+		OptEq("iam_arn", "arn", catalogRole).
+		OptEq("identity_name", "grantee", grantee).
+		OrderBy("iam_arn", "identity_type", "identity_name", "command_type")
+}
+
+// assumeroleGrantSelector returns the iam_role_arn a resource records for a catalog role name: DEFAULT for the
+// namespace default role, ALL for the ON ALL marker, and the ARN otherwise.
+func assumeroleGrantSelector(catalogRole string) string {
+	switch catalogRole {
+	case assumeroleGrantDefaultRole:
+		return "DEFAULT"
+	case assumeroleGrantAllRoles:
+		return "ALL"
+	default:
+		return catalogRole
+	}
+}

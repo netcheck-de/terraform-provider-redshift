@@ -6,9 +6,9 @@ description: Lists explicit column-level privileges in one database.
 
 # redshift_column_grants (Data Source)
 
-Lists explicit column-level `SELECT` and `UPDATE` grants in one local database, one element per column, privilege, and
-grantee, without taking ownership. See AWS
-[SVV_COLUMN_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_COLUMN_PRIVILEGES.html).
+Lists explicit column-level `SELECT` and `UPDATE` grants in one local database, one element per table or view and
+grantee, without taking ownership. Each element matches the identity and privileges of one `redshift_column_grant`.
+See AWS [SVV_COLUMN_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_COLUMN_PRIVILEGES.html).
 
 ## Example Usage
 
@@ -20,7 +20,7 @@ data "redshift_column_grants" "events" {
 }
 
 output "events_column_grants" {
-  value = [for grant in data.redshift_column_grants.events.column_grants : "${grant.grantee}: ${grant.privilege} (${grant.column_name})"]
+  value = { for grant in data.redshift_column_grants.events.column_grants : "${grant.grantee_type} ${grant.grantee}" => grant.privileges }
 }
 ```
 
@@ -46,12 +46,11 @@ output "events_column_grants" {
 
 Read-Only:
 
-- `column_name` (String) Granted column.
 - `database_name` (String) Database containing the relation.
 - `grantee` (String) Receiving identity name; `public` for `PUBLIC`.
 - `grantee_type` (String) `USER`, `ROLE`, `GROUP`, or `PUBLIC`.
-- `object_name` (String) Table or view name.
-- `privilege` (String) `SELECT` or `UPDATE`.
+- `object_name` (String) Table, view, or materialized view.
+- `privileges` (Map of Set of String) Map from `SELECT` or `UPDATE` to the set of columns that hold it.
 - `schema_name` (String) Schema containing the relation.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -66,6 +65,7 @@ SELECT ... FROM svv_column_privileges WHERE ...;
 
 ## Read Behavior
 
-All filters are optional and combine with AND; an empty result is an empty list. The view shows only grants visible
-to the provider's identity (superusers and users with `ACCESS SYSTEM TABLE` see all). Column grants have no grant
-option. `id` is the listing's provider-relative JSON identity: the target `database_name` and the configured filters.
+All filters are optional and combine with AND; an empty result is an empty list. `privileges` maps `SELECT` and
+`UPDATE` to the columns that hold them. The view shows only grants visible to the provider's identity (superusers and
+users with `ACCESS SYSTEM TABLE` see all). Column grants have no grant option. `id` is the listing's provider-relative
+JSON identity: the target `database_name` and the configured filters.

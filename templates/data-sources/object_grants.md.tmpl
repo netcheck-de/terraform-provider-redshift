@@ -1,0 +1,48 @@
+---
+subcategory: Permissions
+page_title: redshift_object_grants Data Source - terraform-provider-redshift
+description: Lists the object grants on one database, schema, table, or template, or of one user or role.
+---
+
+# redshift_object_grants (Data Source)
+
+Lists the explicit object grants `SHOW GRANTS` reports, one element per object and grantee, without taking ownership:
+either every grant on one database, schema, table (including views), or template, or every object grant of one user
+or role in one database. Each element matches the identity and privileges of one `redshift_object_grant`. See AWS
+[SHOW GRANTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_GRANTS.html).
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_object_grants/data-source.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List grants on the selected object.
+SHOW GRANTS ON { DATABASE | SCHEMA | TABLE | TEMPLATE } ...;
+
+-- List a user's or role's grants in the database.
+SHOW GRANTS FOR [ROLE] ... FROM DATABASE ...;
+```
+
+## Read Behavior
+
+Set `object_type` to list the grants on that object; `grantee` and `grantee_type` then narrow the elements, which
+also covers groups and `PUBLIC`. Without `object_type`, `grantee` and `grantee_type` (`USER` or `ROLE`) select
+`SHOW GRANTS FOR`; `schema_name` and `object_name` then narrow the elements. Other combinations are errors.
+
+Elements cover the `DATABASE`, `SCHEMA`, `TABLE`, and `TEMPLATE` grants of users, roles, groups, and `PUBLIC`.
+Scoped grants, whose privilege scope is an object class such as `TABLES`, are listed by
+[`redshift_grants`](grants.md). Routine and model grants need a signature or another catalog and are not listed;
+read them with the [`redshift_object_grant`](object_grant.md) lookup. `grant_option_privileges` is null for
+`SHOW GRANTS FOR`, which does not report grant options.
+
+`SHOW GRANTS` documents no column that separates grants inherited through roles from explicit ones, so the listing
+exposes none. It reports only grants visible to the provider's identity and fails when more than 10,000 rows match.
+`id` is the listing's provider-relative JSON identity: the target `database_name` and the configured filters.

@@ -15,7 +15,8 @@ import (
 // TestAccGrantsUserOptionsAndScopes checks against a live warehouse what the offline fakes assume: SHOW GRANTS ON …
 // FOR a user reports admin_option, the LANGUAGES, COPY JOBS, and TEMPLATES scopes read back under their scope names,
 // a schema snapshot reads the privileges common to its tables, and the implicit PUBLIC EXECUTE on new functions is
-// reported until revoked. Every object is uniquely named and dropped afterwards.
+// reported until revoked. The scoped grant and default privilege listings report the same tuples. Every object is
+// uniquely named and dropped afterwards.
 func TestAccGrantsUserOptionsAndScopes(t *testing.T) {
 	region, profile, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -77,6 +78,21 @@ resource "redshift_default_privilege" "public_functions" {
   grantee_type  = "PUBLIC"
   privileges    = [%[7]s]
 }
+data "redshift_grants" "database" {
+  database_name = redshift_database.local.name
+  depends_on    = [redshift_grant.languages, redshift_grant.copy_jobs]
+}
+data "redshift_grants" "analyst_schema" {
+  database_name = redshift_schema.local.database
+  schema_name   = redshift_schema.local.name
+  user          = redshift_user.analyst.name
+  depends_on    = [redshift_grant.analyst_tables]
+}
+data "redshift_default_privileges" "analyst" {
+  database_name = redshift_database.local.name
+  owner         = redshift_user.analyst.name
+  depends_on    = [redshift_default_privilege.public_functions]
+}
 `, region, profile, workgroup, database, suffix, options, publicExecute)
 	}
 	resource.Test(t, resource.TestCase{
@@ -85,6 +101,13 @@ resource "redshift_default_privilege" "public_functions" {
 			{Config: configuration(`"SELECT"`, `"EXECUTE"`), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_grant.analyst_tables", "grant_option_privileges.#", "1"),
 				resource.TestCheckResourceAttr("redshift_default_privilege.public_functions", "privileges.#", "1"),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_grants.database", "grants.*", map[string]string{"scope": "LANGUAGES", "role": "acc_grants_role_" + suffix, "privileges.#": "1"}),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_grants.database", "grants.*", map[string]string{"scope": "COPY JOBS", "user": "acc_grants_user_" + suffix, "privileges.#": "1"}),
+				resource.TestCheckResourceAttr("data.redshift_grants.analyst_schema", "grants.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_grants.analyst_schema", "grants.0.scope", "TABLES"),
+				resource.TestCheckResourceAttr("data.redshift_grants.analyst_schema", "grants.0.privileges.#", "2"),
+				resource.TestCheckTypeSetElemAttr("data.redshift_grants.analyst_schema", "grants.0.grant_option_privileges.*", "SELECT"),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_default_privileges.analyst", "default_privileges.*", map[string]string{"object_type": "FUNCTIONS", "grantee_type": "PUBLIC", "privileges.#": "1"}),
 			)},
 			{Config: configuration(`"SELECT"`, `"EXECUTE"`), PlanOnly: true},
 			{ResourceName: "redshift_grant.analyst_tables", ImportState: true, ImportStateVerify: true},
@@ -92,6 +115,8 @@ resource "redshift_default_privilege" "public_functions" {
 			{Config: configuration(``, ``), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_grant.analyst_tables", "grant_option_privileges.#", "0"),
 				resource.TestCheckResourceAttr("redshift_default_privilege.public_functions", "privileges.#", "0"),
+				resource.TestCheckResourceAttr("data.redshift_grants.analyst_schema", "grants.0.grant_option_privileges.#", "0"),
+				resource.TestCheckResourceAttr("data.redshift_default_privileges.analyst", "default_privileges.#", "0"),
 			)},
 			{Config: configuration(``, ``), PlanOnly: true},
 		},
@@ -146,8 +171,8 @@ resource "redshift_object_grant" "tables" {
 	})
 }
 
-// TestAccAssumeroleGrantAllRoles checks that ON ALL grants read back through the default role's catalog entry. It
-// requires a warehouse whose PUBLIC ASSUMEROLE default is already revoked.
+// TestAccAssumeroleGrantAllRoles checks that ON ALL grants read back through the default role's catalog entry, which
+// the listing reports as ALL. It requires a warehouse whose PUBLIC ASSUMEROLE default is already revoked.
 func TestAccAssumeroleGrantAllRoles(t *testing.T) {
 	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_ASSUMEROLE")
 	name := "acc_iam_all_" + strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -165,11 +190,21 @@ resource "redshift_assumerole_grant" "all" {
   grantee_type = "ROLE"
   privileges   = ["COPY", "UNLOAD"]
 }
+data "redshift_assumerole_grants" "all" {
+  iam_role_arn = "all"
+  grantee      = redshift_assumerole_grant.all.grantee
+}
 `, region, profile, workgroup, database, name)
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
-			{Config: configuration, Check: resource.TestCheckResourceAttr("redshift_assumerole_grant.all", "privileges.#", "2")},
+			{Config: configuration, Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr("redshift_assumerole_grant.all", "privileges.#", "2"),
+				resource.TestCheckResourceAttr("data.redshift_assumerole_grants.all", "assumerole_grants.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_assumerole_grants.all", "assumerole_grants.0.iam_role_arn", "ALL"),
+				resource.TestCheckResourceAttr("data.redshift_assumerole_grants.all", "assumerole_grants.0.grantee_type", "ROLE"),
+				resource.TestCheckResourceAttr("data.redshift_assumerole_grants.all", "assumerole_grants.0.privileges.#", "2"),
+			)},
 			{Config: configuration, PlanOnly: true},
 		},
 	})

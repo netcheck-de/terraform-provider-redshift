@@ -137,3 +137,24 @@ func defaultPrivilegeTarget(data types.Object) (privilegeTarget, error) {
 		},
 	}, nil
 }
+
+// defaultPrivilegesListing unions the explicit default privileges with PUBLIC's implicit EXECUTE on new functions,
+// which every user grants until the first ALTER DEFAULT PRIVILEGES on functions creates their PG_DEFAULT_ACL row, as
+// readDefaultPrivilegePublicQuery reads it for one owner. Database-wide defaults have an empty schema.
+const defaultPrivilegesListing sqlclient.Keyword = "(SELECT owner_name, NVL(schema_name, '') AS schema_name, object_type, grantee_name, grantee_type, privilege_type, admin_option FROM svv_default_privileges" +
+	" UNION ALL SELECT u.usename AS owner_name, '' AS schema_name, 'FUNCTION' AS object_type, 'public' AS grantee_name, 'public' AS grantee_type, 'EXECUTE' AS privilege_type, false AS admin_option FROM pg_user u" +
+	" WHERE NOT EXISTS (SELECT 1 FROM pg_default_acl d WHERE d.defacluser = u.usesysid AND d.defaclnamespace = 0 AND d.defaclobjtype = 'f')) AS defaults"
+
+// listDefaultPrivilegesQuery lists the default privileges of the current database, narrowed by the optional owner,
+// schema, and grantee.
+func listDefaultPrivilegesQuery(owner, schema, grantee string) sqlclient.Query {
+	return sqlclient.Select("owner_name", "schema_name", "object_type", "grantee_name", "grantee_type", "privilege_type", "admin_option").
+		From(defaultPrivilegesListing).
+		OptEq("owner_name", "owner", owner).
+		OptEq("schema_name", "schema", schema).
+		OptEq("grantee_name", "grantee", grantee).
+		OrderBy("owner_name", "schema_name", "object_type", "grantee_type", "grantee_name", "privilege_type")
+}
+
+// defaultPrivilegeObjectTypes maps the object_type SVV_DEFAULT_PRIVILEGES reports to the resource's object_type.
+var defaultPrivilegeObjectTypes = map[string]string{"RELATION": "TABLES", "FUNCTION": "FUNCTIONS", "PROCEDURE": "PROCEDURES"}

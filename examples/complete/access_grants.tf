@@ -566,3 +566,40 @@ data "redshift_language_grant" "public_sql" {
   grantee       = redshift_language_grant.public_sql.grantee
   grantee_type  = redshift_language_grant.public_sql.grantee_type
 }
+
+# The schema's own grants and the scoped grants limited to it, after the managed tuples exist.
+data "redshift_grants" "local_schema" {
+  provider      = redshift.consumer
+  database_name = redshift_schema.local.database
+  schema_name   = redshift_schema.local.name
+
+  depends_on = [
+    redshift_grant.local_schema, redshift_grant.local_schema_tables, redshift_grant.local_schema_functions,
+    redshift_grant.local_schema_procedures, redshift_grant.loader_schema_tables, redshift_grant.reader_templates,
+  ]
+}
+
+data "redshift_system_grants" "operators" {
+  provider = redshift.consumer
+  role     = redshift_system_grant.operators.role
+}
+
+# Every IAM role command the operators role holds; ON ALL is listed as ALL.
+data "redshift_assumerole_grants" "operators" {
+  provider = redshift.consumer
+  grantee  = redshift_role.operators.name
+
+  depends_on = [redshift_assumerole_grant.operators_any_role]
+}
+
+# Every default privilege of objects the loader creates in the local database, including the implicit PUBLIC rule.
+data "redshift_default_privileges" "loader" {
+  provider      = redshift.consumer
+  database_name = redshift_database.local.name
+  owner         = redshift_user.loader.name
+
+  depends_on = [
+    redshift_default_privilege.reader_schema_tables, redshift_default_privilege.operator_routines,
+    redshift_default_privilege.loader_functions_public, redshift_default_privilege.loader_tables_reader_option,
+  ]
+}

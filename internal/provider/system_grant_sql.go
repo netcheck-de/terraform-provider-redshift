@@ -45,3 +45,11 @@ func systemGrantTarget(data types.Object) (privilegeTarget, error) {
 		grant: grantSpec{grantee: sqlclient.Kw("ROLE").Ident(role)},
 	}, nil
 }
+
+// listSystemGrantsQuery lists the system privileges granted directly to roles, narrowed to one role when set.
+func listSystemGrantsQuery(role string) sqlclient.Query {
+	return sqlclient.Select("identity_name", "system_privilege AS privilege_type").From("svv_system_privileges").
+		Where("identity_type = 'role'").
+		OptEq("identity_name", "role", role).
+		OrderBy("identity_name", "system_privilege")
+}
