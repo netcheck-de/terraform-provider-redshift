@@ -423,26 +423,32 @@ func (r *externalTableResource) fetch(ctx context.Context, data externalTableMod
 		return nil, fmt.Errorf("external table %q is ambiguous in the catalog", data.Name.ValueString())
 	}
 
-	catalog := &externalTableCatalog{table: rows[0]}
-
 	columnRows, err := r.selectRows(ctx, data.Database.ValueString(), readExternalTableColumnsQuery(data.Database.ValueString(), data.Schema.ValueString(), data.Name.ValueString()))
 	if err != nil {
 		return nil, err
 	}
 
+	return externalTableCatalogOf(rows[0], columnRows)
+}
+
+// externalTableCatalogOf combines an SVV_EXTERNAL_TABLES row with the table's SVV_EXTERNAL_COLUMNS rows.
+func externalTableCatalogOf(table sqlclient.Row, columnRows []sqlclient.Row) (*externalTableCatalog, error) {
+	catalog := &externalTableCatalog{table: table}
+
+	var err error
 	if catalog.columns, catalog.partitionKeys, err = externalTableCatalogColumns(columnRows); err != nil {
 		return nil, err
 	}
 
 	if len(catalog.columns) == 0 {
-		return nil, fmt.Errorf("external table %q has no columns in the catalog", data.Name.ValueString())
+		return nil, fmt.Errorf("external table %q has no columns in the catalog", table["tablename"])
 	}
 
-	if catalog.serdeParameters, err = externalTableCatalogMap("SerDe parameters", rows[0]["serde_parameters"]); err != nil {
+	if catalog.serdeParameters, err = externalTableCatalogMap("SerDe parameters", table["serde_parameters"]); err != nil {
 		return nil, err
 	}
 
-	if catalog.parameters, err = externalTableCatalogMap("parameters", rows[0]["parameters"]); err != nil {
+	if catalog.parameters, err = externalTableCatalogMap("parameters", table["parameters"]); err != nil {
 		return nil, err
 	}
 

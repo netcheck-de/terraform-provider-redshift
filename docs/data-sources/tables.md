@@ -1,27 +1,24 @@
 ---
 subcategory: Tables and Views
 page_title: redshift_tables Data Source - terraform-provider-redshift
-description: Lists the tables, views, materialized views, and external tables of one database.
+description: Lists the local tables of one database.
 ---
 
 # redshift_tables (Data Source)
 
-Lists the relations of one database with their type, owner, and comment. See AWS
-[SVV_ALL_TABLES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ALL_TABLES.html),
-[SVV_REDSHIFT_TABLES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_TABLES.html), and
-[SVV_MV_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MV_INFO.html).
+Lists the local tables of one database with their owners, the tables `redshift_table` manages. See AWS
+[SVV_REDSHIFT_TABLES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_REDSHIFT_TABLES.html).
 
 ## Example Usage
 
 ```terraform
-data "redshift_tables" "materialized" {
-  database   = "analytics"
-  schema     = "reporting"
-  table_type = "MATERIALIZED VIEW"
+data "redshift_tables" "reporting" {
+  database = "analytics"
+  schema   = "reporting"
 }
 
-output "materialized_views" {
-  value = [for table in data.redshift_tables.materialized.tables : "${table.schema}.${table.name}"]
+output "reporting_tables" {
+  value = { for table in data.redshift_tables.reporting.tables : "${table.schema}.${table.name}" => table.owner }
 }
 ```
 
@@ -31,9 +28,8 @@ output "materialized_views" {
 
 ### Optional
 
-- `database` (String) Database whose relations are listed; defaults to the provider's `database`.
-- `schema` (String) Only relations in this schema.
-- `table_type` (String) Only relations of this type: `TABLE`, `VIEW` (ordinary and late-binding views), `MATERIALIZED VIEW`, `EXTERNAL TABLE`, or `SHARED TABLE`.
+- `database` (String) Database whose tables are listed; defaults to the provider's `database`.
+- `schema` (String) Only tables in this schema.
 
 ### Read-Only
 
@@ -45,12 +41,10 @@ output "materialized_views" {
 
 Read-Only:
 
-- `database` (String) Database containing the relation.
-- `name` (String) Relation name.
-- `owner` (String) SQL user owning the relation; null for external tables.
-- `remarks` (String) Comment on the relation; null when it has none.
-- `schema` (String) Schema containing the relation.
-- `table_type` (String) Relation type in upper case: `TABLE`, `VIEW`, `MATERIALIZED VIEW`, `EXTERNAL TABLE`, or another type the catalog reports, such as `SHARED TABLE`.
+- `database` (String) Local database containing the table.
+- `name` (String) Table name, in lowercase, because Redshift folds ASCII letters of identifiers to lowercase.
+- `owner` (String) User owning the table; null when the catalog reports none.
+- `schema` (String) Existing schema containing the table, in lowercase.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -58,25 +52,20 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
--- List relations and their available ownership metadata.
-SELECT ... FROM svv_all_tables LEFT JOIN svv_redshift_tables ... WHERE database_name = '...';
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 
--- Identify materialized views among the listed relations.
-SELECT ... FROM svv_mv_info WHERE database_name = '...';
+-- List the tables of the selected database.
+SELECT ... FROM svv_redshift_tables WHERE database_name = '...' AND table_type = 'TABLE';
 ```
 
 ## Read Behavior
 
-`database` defaults to the provider's `database`; both reads run in the provider's database. `id` combines the
-listed database and configured filters within the warehouse. Items are ordered by schema and name; no match
-returns an empty `tables` list.
+`database` defaults to the provider's `database`; both reads run in the provider's database. Items are ordered by
+schema and name; no match returns an empty `tables` list. `id` combines the listed database and configured filters
+within the warehouse.
 
-`SVV_ALL_TABLES` reports materialized views as views. The listing reclassifies every view that `SVV_MV_INFO` knows as
-`MATERIALIZED VIEW`. `SVV_MV_INFO` shows a regular user only the materialized views it owns, so unless the provider's
-SQL identity is a superuser, a materialized view owned by another user is listed as `VIEW`: `table_type = "VIEW"`
-returns it, and `table_type = "MATERIALIZED VIEW"` does not. `SVV_MV_INFO` covers only the database it is queried in, so
-the listing reads it in the listed database; a shared database's materialized views are listed as `VIEW`. The
-`SVV_MV_INFO` read is skipped when the type filter cannot match a view or when nothing matched. Owners come from
-`SVV_REDSHIFT_TABLES`, and for materialized views from `SVV_MV_INFO`, because `SVV_REDSHIFT_TABLES` leaves them empty
-when read from another database. It does not cover external tables, so their `owner` is null. Superusers see every
-relation; other users see only their own.
+Views and materialized views are listed by `redshift_views` and `redshift_materialized_views`, and external tables by
+`redshift_external_tables`. Tables in schemas starting with `pg_` and in `information_schema` are system tables and are
+left out. A database that is not local, such as a datashare consumer database, lists no tables. Superusers see every
+table; other users see only the tables they have access to. Use `redshift_table` for a table's full definition.

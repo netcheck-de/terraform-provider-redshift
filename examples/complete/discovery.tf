@@ -45,10 +45,9 @@ data "redshift_schemas" "local" {
 }
 
 data "redshift_tables" "fixture" {
-  provider   = redshift.producer
-  database   = redshift_database.producer.name
-  schema     = data.redshift_schema.source.name
-  table_type = "TABLE"
+  provider = redshift.producer
+  database = redshift_database.producer.name
+  schema   = data.redshift_schema.source.name
 
   depends_on = [aws_redshiftdata_statement.source_table]
 }

@@ -28,10 +28,13 @@ func newViewDataSource() datasource.DataSource {
 		}
 
 		return found, err
-	}}), map[string]string{
-		"query":                  "Catalog definition from `pg_views`, as Redshift prints it.",
-		"late_binding":           "Whether the view is late-binding (`WITH NO SCHEMA BINDING`).",
-		"owner":                  "SQL user owning the view.",
-		"definition_fingerprint": viewLookupFingerprintDescription,
-	})
+	}}), viewOutputDescriptions)
+}
+
+// viewOutputDescriptions describe the catalog values that both the lookup and the listing report.
+var viewOutputDescriptions = map[string]string{
+	"query":                  "Catalog definition from `pg_views`, as Redshift prints it.",
+	"late_binding":           "Whether the view is late-binding (`WITH NO SCHEMA BINDING`).",
+	"owner":                  "SQL user owning the view.",
+	"definition_fingerprint": viewLookupFingerprintDescription,
 }
