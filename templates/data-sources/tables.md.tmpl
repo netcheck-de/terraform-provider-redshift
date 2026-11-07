@@ -1,5 +1,5 @@
 ---
-subcategory: Catalog Discovery
+subcategory: Tables and Views
 page_title: redshift_tables Data Source - terraform-provider-redshift
 description: Lists the tables, views, materialized views, and external tables of one database.
 ---

@@ -1,5 +1,5 @@
 ---
-subcategory: Catalog Discovery
+subcategory: Functions and Procedures
 page_title: redshift_models Data Source - terraform-provider-redshift
 description: Lists the machine learning models of one database.
 ---

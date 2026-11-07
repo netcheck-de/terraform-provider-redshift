@@ -1,5 +1,5 @@
 ---
-subcategory: Catalog Discovery
+subcategory: Databases and Schemas
 page_title: redshift_schemas Data Source - terraform-provider-redshift
 description: Lists the local, external, and datashare schemas of one database.
 ---

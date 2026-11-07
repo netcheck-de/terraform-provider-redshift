@@ -1,5 +1,5 @@
 ---
-subcategory: Catalog Discovery
+subcategory: Databases and Schemas
 page_title: redshift_configuration Data Source - terraform-provider-redshift
 description: Reads the value of one configuration parameter as the provider's session sees it.
 ---

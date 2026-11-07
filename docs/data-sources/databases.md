@@ -1,5 +1,5 @@
 ---
-subcategory: Catalog Discovery
+subcategory: Databases and Schemas
 page_title: redshift_databases Data Source - terraform-provider-redshift
 description: Lists local and datashare databases, optionally filtered by type and name pattern.
 ---

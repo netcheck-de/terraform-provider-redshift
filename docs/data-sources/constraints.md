@@ -1,5 +1,5 @@
 ---
-subcategory: Catalog Discovery
+subcategory: Tables and Views
 page_title: redshift_constraints Data Source - terraform-provider-redshift
 description: Lists primary key, unique, and foreign key constraints with their key columns.
 ---

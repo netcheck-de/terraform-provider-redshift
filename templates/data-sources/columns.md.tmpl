@@ -1,5 +1,5 @@
 ---
-subcategory: Catalog Discovery
+subcategory: Tables and Views
 page_title: redshift_columns Data Source - terraform-provider-redshift
 description: Lists relation columns with their position, type, nullability, and default.
 ---
