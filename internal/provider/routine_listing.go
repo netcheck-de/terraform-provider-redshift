@@ -12,21 +12,13 @@ import (
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
-// routineListingFilters are the optional filters every routine listing accepts.
-func routineListingFilters(nameFilter, noun string) map[string]schema.Attribute {
-	return map[string]schema.Attribute{
-		"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database to list " + noun + " from; defaults to the provider database."},
-		"schema":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only " + noun + " in this schema."},
-		nameFilter: schema.StringAttribute{Optional: true, MarkdownDescription: "Only " + noun + " with this exact name, including every overload."},
-	}
-}
-
-// routineCollectionFilters are the filters of the function, external function, and procedure listings.
-func routineCollectionFilters(noun string) map[string]schema.Attribute {
+// routineCollectionFilters are the database, schema, and name filters every routine listing accepts; nameFilter
+// names the name filter.
+func routineCollectionFilters(nameFilter, noun string) map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"database": discoveryDatabaseFilter(noun),
 		"schema":   discoveryFilter("Only " + noun + " in this schema."),
-		"name":     discoveryFilter("Only " + noun + " with this exact name, including every overload."),
+		nameFilter: discoveryFilter("Only " + noun + " with this exact name, including every overload."),
 	}
 }
 

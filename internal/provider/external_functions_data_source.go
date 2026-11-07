@@ -19,8 +19,8 @@ func newExternalFunctionsDataSource() datasource.DataSource {
 		name:          "external_functions",
 		databaseField: "database",
 		description: "Lists Lambda user-defined functions (`LANGUAGE EXFUNC`) in one database from `PG_PROC_INFO`, one element per overload, as `redshift_external_function` manages them. " +
-			"No catalog reports a function's Lambda function, IAM role, retry timeout, or batch limits, so the elements carry only its signature, return type, volatility, and owner.",
-		filters: routineCollectionFilters("functions"),
+			"No catalog reports a function's Lambda function, IAM role, retry timeout, or batch limits, so the elements carry only its signature, return type, volatility, and owner. " + discoveryLocalScope,
+		filters: routineCollectionFilters("name", "functions"),
 		element: routineCollectionElement(newExternalFunctionResource, descriptions,
 			"database", "schema", "name", "arguments", "return_type", "volatility", "owner"),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {

@@ -20,8 +20,8 @@ func newFunctionsDataSource() datasource.DataSource {
 		name:          "functions",
 		databaseField: "database",
 		description: "Lists scalar SQL user-defined functions (`LANGUAGE SQL`) in one database from `PG_PROC_INFO`, one element per overload, as `redshift_function` manages them. " +
-			"Lambda UDFs are listed by `redshift_external_functions`; Python UDFs and the built-in functions in `pg_*` schemas and `information_schema` are excluded.",
-		filters: routineCollectionFilters("functions"),
+			"Lambda UDFs are listed by `redshift_external_functions`; Python UDFs and the built-in functions in `pg_*` schemas and `information_schema` are excluded. " + discoveryLocalScope,
+		filters: routineCollectionFilters("name", "functions"),
 		element: routineCollectionElement(newFunctionResource, descriptions,
 			"database", "schema", "name", "arguments", "signature", "return_type", "volatility", "language", "owner"),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {

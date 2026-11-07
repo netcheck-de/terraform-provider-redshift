@@ -20,7 +20,7 @@ var _ = registerDataSource(newRoutineParametersDataSource)
 // overloads from pg_proc_info and then runs SHOW PARAMETERS for each one, because the catalog keeps parameter
 // modes and names in arrays that only SHOW PARAMETERS resolves to type names.
 func newRoutineParametersDataSource() datasource.DataSource {
-	filters := routineListingFilters("routine_name", "routines")
+	filters := routineCollectionFilters("routine_name", "routines")
 	filters["routine_type"] = schema.StringAttribute{
 		Optional: true, MarkdownDescription: "Only routines of this type: `FUNCTION` or `PROCEDURE`.",
 		Validators: []validator.String{stringvalidator.OneOf("FUNCTION", "PROCEDURE")},
@@ -38,10 +38,11 @@ func newRoutineParametersDataSource() datasource.DataSource {
 	}
 
 	return newCollectionDataSource(collectionSpec{
-		name:        "routine_parameters",
-		description: "Lists the parameters of user-defined functions and stored procedures in one database, one item per parameter and overload, without managing them. Narrow the listing with `schema` and `routine_name`, because each matching overload costs one `SHOW PARAMETERS` call.",
-		filters:     filters,
-		element:     element,
+		name:          "routine_parameters",
+		databaseField: "database",
+		description:   "Lists the parameters of user-defined functions and stored procedures in one database, one item per parameter and overload, without managing them. Narrow the listing with `schema` and `routine_name`, because each matching overload costs one `SHOW PARAMETERS` call. " + discoveryLocalScope,
+		filters:       filters,
+		element:       element,
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
 			database, routines, err := routineListingRows(ctx, client, filters, "routine_name", routineListingTypes[objectString(filters, "routine_type")])
 			if err != nil {

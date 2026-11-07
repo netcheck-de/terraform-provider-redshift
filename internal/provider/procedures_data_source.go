@@ -22,8 +22,8 @@ func newProceduresDataSource() datasource.DataSource {
 		name:          "procedures",
 		databaseField: "database",
 		description: "Lists stored procedures in one database from `PG_PROC_INFO`, one element per overload, as `redshift_procedure` manages them. " +
-			"`redshift_routine_parameters` reports every argument with its name and mode, and `redshift_procedure` the body.",
-		filters: routineCollectionFilters("procedures"),
+			"`redshift_routine_parameters` reports every argument with its name and mode, and `redshift_procedure` the body. " + discoveryLocalScope,
+		filters: routineCollectionFilters("name", "procedures"),
 		element: routineCollectionElement(newProcedureResource, descriptions, "database", "schema", "name", "signature", "security", "owner"),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
 			database, rows, err := routineListingRows(ctx, client, filters, "name", routineListingProcedures)

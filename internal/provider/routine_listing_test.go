@@ -51,9 +51,11 @@ func routineListingRead(t *testing.T, source datasource.DataSource, filters map[
 	return identity, items
 }
 
-// TestRoutineParametersListing runs SHOW PARAMETERS per overload and filters by routine type.
+// TestRoutineParametersListing runs SHOW PARAMETERS per overload, filters by routine type, and records the database
+// that was read in the identity.
 func TestRoutineParametersListing(t *testing.T) {
-	_, items := routineListingRead(t, newRoutineParametersDataSource(), nil, fullCatalog())
+	identity, items := routineListingRead(t, newRoutineParametersDataSource(), nil, fullCatalog())
+	assert.Equal(t, map[string]string{"database": "admin"}, identity, "the identity records the provider database that was read")
 	assert.Len(t, items, 7, "SQL UDF, Lambda UDF, and two procedures")
 	_, items = routineListingRead(t, newRoutineParametersDataSource(), map[string]string{"schema": "serving"}, fullCatalog())
 	require.Len(t, items, 4)
@@ -65,8 +67,8 @@ func TestRoutineParametersListing(t *testing.T) {
 		"database": "admin", "schema": "serving", "routine_name": fakeProcedureName, "routine_type": "PROCEDURE",
 		"arguments": []string{"INTEGER"}, "parameter_name": "refreshed", "ordinal_position": int64(2), "mode": "OUT", "data_type": "BIGINT",
 	}, items[3])
-	identity, items := routineListingRead(t, newRoutineParametersDataSource(), map[string]string{"schema": "serving", "routine_type": "PROCEDURE"}, fullCatalog())
-	assert.Equal(t, "PROCEDURE", identity["routine_type"])
+	identity, items = routineListingRead(t, newRoutineParametersDataSource(), map[string]string{"schema": "serving", "routine_type": "PROCEDURE"}, fullCatalog())
+	assert.Equal(t, map[string]string{"database": "admin", "schema": "serving", "routine_type": "PROCEDURE"}, identity)
 	require.Len(t, items, 2)
 
 	for _, item := range items {
