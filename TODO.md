@@ -19,6 +19,9 @@ These wait for a documented way to read their state back:
   indistinguishable. Use exclusive schema-kind membership until overload-specific readback exists.
 - **Remote ACCOUNT DEBUG grants:** `SHOW GRANTS ON DATABASE "db@catalog"` can return no rows despite an existing
   grant, and there is no reliable ACCOUNT-scoped alternative. Manage the grant through a producer-local provider.
+- **`redshift_external_models`:** `SHOW MODEL ALL`, `SVV_ML_MODEL_INFO`, and `STV_ML_MODEL_INFO` report no model type,
+  so only one `SHOW MODEL` per model tells external from trained models. Until a catalog reports the type,
+  `redshift_models` lists all models as the listing of `redshift_external_model`.
 
 ### Not planned
 
