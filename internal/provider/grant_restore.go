@@ -31,7 +31,7 @@ func languageGrantDestroyPrivileges(data types.Object) ([]string, error) {
 	return restoreGrantDefault(data, objectString(data, "grantee_type") == "PUBLIC", "USAGE")
 }
 
-// defaultPrivilegesDestroyPrivileges restores PUBLIC's implicit default EXECUTE on destroy when requested.
-func defaultPrivilegesDestroyPrivileges(data types.Object) ([]string, error) {
-	return restoreGrantDefault(data, defaultPrivilegesImplicit(data), "EXECUTE")
+// defaultPrivilegeDestroyPrivileges restores PUBLIC's implicit default EXECUTE on destroy when requested.
+func defaultPrivilegeDestroyPrivileges(data types.Object) ([]string, error) {
+	return restoreGrantDefault(data, defaultPrivilegeImplicit(data), "EXECUTE")
 }

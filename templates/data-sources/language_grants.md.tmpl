@@ -1,0 +1,41 @@
+---
+subcategory: Permissions
+page_title: redshift_language_grants Data Source - terraform-provider-redshift
+description: Lists explicit USAGE grants on the SQL and PLPGSQL languages of one database.
+---
+
+# redshift_language_grants (Data Source)
+
+Lists explicit `USAGE` grants on the `SQL` and `PLPGSQL` languages of one local database, one element per language
+and grantee, without taking ownership. Each element matches the identity and privileges of one
+`redshift_language_grant`. See AWS
+[SVV_LANGUAGE_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_LANUGAGE_PRIVILEGES.html).
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_language_grants/data-source.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
+-- List explicit SQL and PLPGSQL privileges in the selected database.
+SELECT ... FROM svv_language_privileges WHERE language_name IN ('sql', 'plpgsql') ...;
+```
+
+## Read Behavior
+
+The view reports only the current database, so the listing runs in `database_name`. It lists only explicit grants:
+`PUBLIC` holds `USAGE` on both languages by default, which may have no element until it is revoked. Other languages are
+left out. `grantee_type` tells a user and a role of the same name apart. Superusers and users with the
+`ACCESS SYSTEM TABLE` permission see every grant; other users see only the identities they have access to or own. `id`
+is the listing's provider-relative JSON identity: the target `database_name` and the configured filters.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

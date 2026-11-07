@@ -40,6 +40,14 @@ override_data {
   }
 }
 override_data {
+  target = data.redshift_functions.local
+  values = { id = "functions-listing-identity" }
+}
+override_data {
+  target = data.redshift_procedures.local
+  values = { id = "procedures-listing-identity" }
+}
+override_data {
   target = data.redshift_procedure.scale
   values = {
     id        = "procedure-lookup-identity"
@@ -95,6 +103,23 @@ run "routines_apply" {
       data.redshift_procedure.scale.arguments == tolist(["INTEGER", "BIGINT"])
     )
     error_message = "The procedure lookup must select the overload by the IN and INOUT types of the argument blocks only."
+  }
+  assert {
+    condition = (
+      data.redshift_functions.local.id == "functions-listing-identity" &&
+      data.redshift_functions.local.database == redshift_schema.local.database &&
+      data.redshift_functions.local.schema == redshift_schema.local.name &&
+      data.redshift_procedures.local.id == "procedures-listing-identity" &&
+      data.redshift_procedures.local.database == redshift_schema.local.database &&
+      data.redshift_procedures.local.schema == redshift_schema.local.name
+    )
+    error_message = "The routine listings must cover the consumer workspace schema."
+  }
+  # Terraform mocks cannot populate nested list attributes, so the listings stay empty here; the Go tests cover their
+  # contents, and this checks that the outputs are derived from the listings alone.
+  assert {
+    condition     = output.routines.functions == [] && output.routines.procedures == []
+    error_message = "The routines output must expose only what the routine listings observe."
   }
   assert {
     condition = (

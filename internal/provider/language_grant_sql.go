@@ -72,3 +72,12 @@ func languageGrantTarget(data types.Object) (privilegeTarget, error) {
 
 	return target, nil
 }
+
+// listLanguageGrantsQuery lists the explicit privileges on the managed languages in the current database, narrowed
+// to one grantee when set.
+func listLanguageGrantsQuery(grantee string) sqlclient.Query {
+	return sqlclient.Select("language_name", "privilege_type", "identity_name", "identity_type", "admin_option").From("svv_language_privileges").
+		Where("language_name IN ('sql', 'plpgsql')").
+		OptEq("identity_name", "grantee", grantee).
+		OrderBy("language_name", "identity_type", "identity_name", "privilege_type")
+}

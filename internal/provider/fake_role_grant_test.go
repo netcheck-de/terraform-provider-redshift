@@ -26,6 +26,25 @@ func (f *roleGrantFakeFamily) query(c *catalog, _ sqlclient.Connection, sql stri
 		}
 
 		return nil, true, nil
+	case strings.HasPrefix(sql, "SELECT role_name, user_name, admin_option FROM svv_user_grants"):
+		// The listing reports the legacy grant of sys:monitor to grafana.
+		if !c.user || !c.userGrant || !fakeFilterMatches(parameters, "role", "sys:monitor") || !fakeFilterMatches(parameters, "user", "grafana") {
+			return nil, true, nil
+		}
+
+		return []sqlclient.Row{{"role_name": "sys:monitor", "user_name": "grafana", "admin_option": fmt.Sprint(f.admin)}}, true, nil
+	case strings.HasPrefix(sql, "SELECT granted_role_name, role_name FROM svv_role_grants"):
+		// The listing reports the legacy grant of sys:dba to the test role.
+		recipient := c.roleName
+		if recipient == "" {
+			recipient = "example:readers"
+		}
+
+		if !c.role || !c.membership || !fakeFilterMatches(parameters, "role", "sys:dba") || !fakeFilterMatches(parameters, "recipient", recipient) {
+			return nil, true, nil
+		}
+
+		return []sqlclient.Row{{"granted_role_name": "sys:dba", "role_name": recipient}}, true, nil
 	case strings.HasPrefix(sql, "GRANT ROLE") && !strings.Contains(sql, " TO ROLE "):
 		// Granting again without the option keeps an option the user already holds, as in Redshift.
 		c.userGrant, f.admin = true, f.admin || strings.HasSuffix(sql, " WITH ADMIN OPTION")

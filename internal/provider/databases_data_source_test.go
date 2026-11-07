@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ = registerParity(parityCase{source: newDatabasesDataSource, collection: true, filters: []string{"database_type", "name_like"}})
+var _ = registerParity(parityCase{source: newDatabasesDataSource, resource: newDatabaseResource, collection: true, filters: []string{"database_type", "name_like"}})
 
 // TestDatabasesDataSource lists databases with and without filters and pins the bound values.
 func TestDatabasesDataSource(t *testing.T) {

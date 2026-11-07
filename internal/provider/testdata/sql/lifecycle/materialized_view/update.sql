@@ -3,7 +3,7 @@ SELECT schemaname, viewname, viewowner, definition FROM pg_views WHERE schemanam
 -- params: {"name":"sales_summary","schema":"serving"}
 
 -- database: admin
-SELECT autorefresh FROM svv_mv_info WHERE RTRIM(database_name) = :database AND RTRIM(schema_name) = :schema AND RTRIM(name) = :name;
+SELECT RTRIM(schema_name) AS schema_name, RTRIM(name) AS name, autorefresh FROM svv_mv_info WHERE RTRIM(database_name) = :database AND RTRIM(schema_name) = :schema AND RTRIM(name) = :name;
 -- params: {"database":"admin","name":"sales_summary","schema":"serving"}
 
 -- database: admin
@@ -11,5 +11,5 @@ SELECT schemaname, viewname, viewowner, definition FROM pg_views WHERE schemanam
 -- params: {"name":"sales_summary","schema":"serving"}
 
 -- database: admin
-SELECT autorefresh FROM svv_mv_info WHERE RTRIM(database_name) = :database AND RTRIM(schema_name) = :schema AND RTRIM(name) = :name;
+SELECT RTRIM(schema_name) AS schema_name, RTRIM(name) AS name, autorefresh FROM svv_mv_info WHERE RTRIM(database_name) = :database AND RTRIM(schema_name) = :schema AND RTRIM(name) = :name;
 -- params: {"database":"admin","name":"sales_summary","schema":"serving"}

@@ -1,0 +1,43 @@
+---
+subcategory: Identity and Access
+page_title: redshift_role_grants Data Source - terraform-provider-redshift
+description: Lists explicit role grants to users and roles, with the admin option.
+---
+
+# redshift_role_grants (Data Source)
+
+Lists explicit role grants to users and to other roles, including grants of built-in system roles, and whether a
+user holds the role with the admin option. Inherited/transitive role access is not listed. See AWS
+[SVV_USER_GRANTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_USER_GRANTS.html) and
+[SVV_ROLE_GRANTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_ROLE_GRANTS.html).
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_role_grants/data-source.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List role grants to users, narrowed by the configured role and user.
+SELECT ... FROM svv_user_grants WHERE ...;
+
+-- List role grants to roles, narrowed by the configured role and recipient role.
+SELECT ... FROM svv_role_grants WHERE ...;
+```
+
+## Read Behavior
+
+Grants to users come first, then grants to roles, each ordered by role and recipient. Exactly one of `to_user`
+and `to_role` is set on each item. A grant given by several grantors is listed once, with `admin_option` true when any
+of them gave it; grants to roles always report `false`. A `to_user` filter skips `SVV_ROLE_GRANTS`, and a `to_role`
+filter skips `SVV_USER_GRANTS`; the two filters conflict.
+
+Superusers and users with the `ACCESS SYSTEM TABLE` permission see every grant. Other users see only the roles granted
+to them and the role grants of identities they have access to or own. `id` contains the configured filters within the
+warehouse.

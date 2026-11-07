@@ -103,8 +103,9 @@ func readGrantStatement(data grantModel) string {
 	return sqlclient.Stmt("SHOW GRANTS FOR ROLE").Ident(data.Role.ValueString()).KwIdent("FROM DATABASE", data.DatabaseName.ValueString()).String()
 }
 
-// grantRowMatches reports whether a SHOW GRANTS row belongs to the tuple. Reads on a database or schema list
-// every identity and omit object_type, so the identity type and the empty object type are accepted there.
+// grantRowMatches reports whether a SHOW GRANTS row belongs to the tuple. SHOW GRANTS ON DATABASE lists every
+// identity and has no object_type column, so the empty object type is accepted and a user's rows are told apart
+// by their identity type.
 func (data grantModel) grantRowMatches(row sqlclient.Row, identity string) bool {
 	schemaName, scope := knownString(data.SchemaName), data.Scope.ValueString()
 
@@ -116,9 +117,9 @@ func (data grantModel) grantRowMatches(row sqlclient.Row, identity string) bool 
 	routine := func(value string) bool { return value == "FUNCTIONS" || value == "PROCEDURES" }
 	matchingScope := row["privilege_scope"] == scope || (routine(scope) && routine(row["privilege_scope"]))
 
-	matchingObject := row["object_type"] == objectType
+	matchingObject := row["object_type"] == "" || row["object_type"] == objectType
 	if knownString(data.User) != "" {
-		matchingObject = (row["object_type"] == "" || matchingObject) && strings.EqualFold(row["identity_type"], "user")
+		matchingObject = matchingObject && strings.EqualFold(row["identity_type"], "user")
 	}
 
 	return row["identity_name"] == identity && row["database_name"] == data.DatabaseName.ValueString() && matchingObject && matchingScope && (schemaName == "" || row["schema_name"] == schemaName) && (schemaName != "" || row["schema_name"] == "")

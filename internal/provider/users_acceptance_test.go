@@ -38,6 +38,15 @@ resource "redshift_group_membership" "iam" {
 data "redshift_user" "iam" { name = redshift_user.iam.name }
 data "redshift_group" "readers" {
   name = redshift_group_membership.iam.group
+}
+data "redshift_users" "all" {
+  depends_on = [redshift_user.iam]
+}
+data "redshift_groups" "all" {
+  depends_on = [redshift_group_membership.iam]
+}
+data "redshift_group_memberships" "readers" {
+  group = redshift_group_membership.iam.group
 }`, region, profile, workgroup, database, suffix, options)
 	}
 	options := `
@@ -59,6 +68,15 @@ data "redshift_group" "readers" {
 				resource.TestCheckResourceAttr("data.redshift_user.iam", "session_defaults.timezone", "Europe/Berlin"),
 				resource.TestCheckResourceAttr("data.redshift_user.iam", "session_timeout", "600"),
 				resource.TestCheckResourceAttr("data.redshift_group.readers", "members.#", "1"),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_users.all", "users.*", map[string]string{
+					"name": "acc_iam_" + suffix, "session_timeout": "600", "connection_limit": "5", "syslog_access": "UNRESTRICTED",
+					"search_path.2": `Odd"Schema`, "session_defaults.timezone": "Europe/Berlin", "valid_until": "2037-12-31T00:00:00Z",
+				}),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_groups.all", "groups.*", map[string]string{
+					"name": "acc_group_" + suffix, "members.#": "1",
+				}),
+				resource.TestCheckResourceAttr("data.redshift_group_memberships.readers", "group_memberships.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_group_memberships.readers", "group_memberships.0.user", "acc_iam_"+suffix),
 			)},
 			{Config: configuration(options), PlanOnly: true},
 			// Import cannot observe a disabled password and records the default instead.

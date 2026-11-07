@@ -1,0 +1,39 @@
+---
+subcategory: Permissions
+page_title: redshift_default_privilege Data Source - terraform-provider-redshift
+description: Reads explicit creator-specific default permissions for future objects.
+---
+
+# redshift_default_privilege (Data Source)
+
+Reads one default-privilege tuple without changing permissions on current or future objects. See AWS
+[ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_default_privilege/data-source.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read default privileges for the selected owner and scope.
+SELECT ... FROM svv_default_privileges WHERE owner_name = 'owner' ...;
+```
+
+## Read Behavior
+
+`id` (String, computed) is the permission tuple's JSON identity, using the paired resource's warehouse, provider
+database, `database_name`, `object_type`, `grantee`, and `grantee_type` keys. `owner` and `schema_name` are included
+when configured; without `owner` the lookup reads the defaults of the user the provider connects as. An existing tuple
+with no explicit privileges still has an ID.
+
+`privileges` is empty when no entries exist for this exact tuple. Missing parents raise errors. Global and
+schema-specific defaults are distinct; inherited access is excluded. The database-wide `PUBLIC` `FUNCTIONS` tuple also
+reports the `EXECUTE` that Redshift grants on new functions implicitly, until it is revoked. `grant_option_privileges`
+lists the privileges a user receives `WITH GRANT OPTION`.

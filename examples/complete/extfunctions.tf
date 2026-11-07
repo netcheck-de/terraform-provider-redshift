@@ -78,17 +78,11 @@ resource "redshift_external_function" "upper" {
   depends_on = [aws_iam_role_policy.consumer_lambda_udf]
 }
 
-data "redshift_functions" "example" {
+data "redshift_external_functions" "example" {
   provider = redshift.consumer
   database = redshift_external_function.upper.database
   schema   = redshift_external_function.upper.schema
   name     = redshift_external_function.upper.name
-}
-
-data "redshift_procedures" "example" {
-  provider = redshift.consumer
-  database = redshift_schema.local.database
-  schema   = redshift_schema.local.name
 }
 
 data "redshift_routine_parameters" "upper" {

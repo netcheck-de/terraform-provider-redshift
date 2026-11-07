@@ -1,8 +1,9 @@
-data "redshift_default_privileges" "reports" {
+# Default privileges of objects the loader creates in one database.
+data "redshift_default_privileges" "loader" {
   database_name = "analytics"
-  owner         = "report_loader"
-  schema_name   = "reporting"
-  object_type   = "TABLES"
-  grantee       = "report_readers"
-  grantee_type  = "GROUP"
+  owner         = "loader"
+}
+
+output "loader_defaults" {
+  value = [for rule in data.redshift_default_privileges.loader.default_privileges : "${coalesce(rule.schema_name, "*")} ${rule.object_type} -> ${rule.grantee}: ${join(", ", rule.privileges)}"]
 }

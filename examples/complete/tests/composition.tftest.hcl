@@ -175,10 +175,10 @@ run "private_same_account_defaults" {
       redshift_object_grant.loader_events.grantee_type == "USER" && redshift_object_grant.loader_events.grantee == redshift_user.loader.name &&
       redshift_object_grant.operators_database.object_type == "DATABASE" && redshift_object_grant.operators_database.grantee_type == "ROLE" &&
       redshift_object_grant.public_schema_usage.grantee_type == "PUBLIC" && redshift_object_grant.public_schema_usage.grantee == "public" &&
-      redshift_default_privileges.reader_tables.grantee_type == "GROUP" &&
-      redshift_default_privileges.reader_schema_tables.schema_name == redshift_schema.local.name &&
-      redshift_default_privileges.reader_schema_tables.grantee_type == "ROLE" &&
-      toset(keys(redshift_default_privileges.operator_routines)) == toset(["FUNCTIONS", "PROCEDURES"]) &&
+      redshift_default_privilege.reader_tables.grantee_type == "GROUP" &&
+      redshift_default_privilege.reader_schema_tables.schema_name == redshift_schema.local.name &&
+      redshift_default_privilege.reader_schema_tables.grantee_type == "ROLE" &&
+      toset(keys(redshift_default_privilege.operator_routines)) == toset(["FUNCTIONS", "PROCEDURES"]) &&
       length(redshift_assumerole_grant.loader) == 1 && redshift_assumerole_grant.loader[0].iam_role_arn == aws_iam_role.consumer.arn &&
       redshift_assumerole_grant.loader[0].grantee_type == "USER"
     )

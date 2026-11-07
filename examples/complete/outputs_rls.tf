@@ -1,5 +1,5 @@
 output "row_level_security" {
-  description = "Read-only observations of the row-level security policy, its attachment, and the protected table."
+  description = "Read-only observations of the row-level security policy, its attachment, the protected table, and their listings."
   value = {
     policy = {
       id          = data.redshift_rls_policy.own_region.id
@@ -14,5 +14,13 @@ output "row_level_security" {
       datashare_row_level_security = data.redshift_table_security.rls_events.datashare_row_level_security
     }
     policies = [for policy in data.redshift_rls_policies.local.rls_policies : policy.name]
+    attachments = [
+      for attachment in data.redshift_rls_policy_attachments.rls_events.rls_policy_attachments :
+      "${attachment.policy} ${attachment.grantee_type} ${attachment.grantee}"
+    ]
+    protected_tables = [
+      for relation in data.redshift_table_securities.local.table_securities :
+      relation.relation if relation.row_level_security
+    ]
   }
 }

@@ -50,6 +50,14 @@ func registerLookupExemption(typeName, reason string) bool {
 	return resourcesWithoutLookup.add(typeName, reason)
 }
 
+// resourcesWithoutCollection maps resource types that deliberately have no listing to the reason.
+var resourcesWithoutCollection testRegistry[string]
+
+// registerCollectionExemption records why a resource type has no listing.
+func registerCollectionExemption(typeName, reason string) bool {
+	return resourcesWithoutCollection.add(typeName, reason)
+}
+
 // readableAttributes returns the resource attributes a lookup can observe.
 func readableAttributes(factory func() resource.Resource) map[string]schema.Attribute {
 	var response resource.SchemaResponse
@@ -347,5 +355,33 @@ func TestDataSourceReadableAttributeParity(t *testing.T) {
 
 	for _, name := range resourcesWithoutLookup.keys() {
 		assert.Contains(t, resources, name, "lookup exemption for unregistered resource")
+	}
+}
+
+// TestEveryResourceHasOneCollection requires each resource to have exactly one paired listing or a recorded reason
+// why it has none, so every managed type can be enumerated as well as looked up.
+func TestEveryResourceHasOneCollection(t *testing.T) {
+	require.Empty(t, resourcesWithoutCollection.duplicates, "duplicate collection exemptions")
+
+	resources, _ := registeredTypeNames()
+	collections := map[string][]string{}
+
+	for _, test := range parityCases {
+		if test.collection && test.resource != nil {
+			name := "redshift_" + registeredResourceName(test.resource)
+			collections[name] = append(collections[name], "redshift_"+registeredDataSourceName(test.source))
+		}
+	}
+
+	for _, name := range resources {
+		if _, exempt := resourcesWithoutCollection.entries[name]; exempt {
+			assert.Empty(t, collections[name], "resource %s has a collection exemption and a listing", name)
+		} else {
+			assert.Len(t, collections[name], 1, "resource %s needs exactly one listing or a collection exemption", name)
+		}
+	}
+
+	for _, name := range resourcesWithoutCollection.keys() {
+		assert.Contains(t, resources, name, "collection exemption for unregistered resource")
 	}
 }

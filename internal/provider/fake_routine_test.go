@@ -57,6 +57,27 @@ func fakeRoutineKey(schema, name, signature string) string {
 	return schema + "." + name + "(" + signature + ")"
 }
 
+// listingRows answers the pg_proc_info routine listing with this kind's overloads. Keys hold the schema, name, and
+// signature, which the fake's simple names never confuse.
+func (f *routineFamily) listingRows() []sqlclient.Row {
+	kind, language := "f", "sql"
+	if f.kind == "PROCEDURE" {
+		kind, language = "p", "plpgsql"
+	}
+
+	rows := make([]sqlclient.Row, 0, len(f.routines))
+	for key, routine := range f.routines {
+		schema, rest, _ := strings.Cut(key, ".")
+		name, _, _ := strings.Cut(rest, "(")
+		rows = append(rows, sqlclient.Row{
+			"schema_name": schema, "routine_name": name, "arguments": routine.signature(), "return_type": routine.returnType, "volatility": routine.volatility,
+			"security_definer": strconv.FormatBool(routine.definer), "language": language, "owner": routine.owner, "kind": kind,
+		})
+	}
+
+	return rows
+}
+
 // populate stores the lifecycle cases' representative routines.
 func (f *routineFamily) populate() {
 	if f.kind == "FUNCTION" {
@@ -86,7 +107,14 @@ func (f *routineFamily) query(_ *catalog, _ sqlclient.Connection, sql string, pa
 			"return_type": routine.returnType, "arguments": routine.signature(), "body": routine.body, "security_definer": strconv.FormatBool(routine.definer),
 		}}, true, nil
 	case strings.HasPrefix(sql, "SHOW PARAMETERS OF "+f.kind+" "):
-		key, _, err := fakeRoutineTarget(strings.TrimPrefix(sql, "SHOW PARAMETERS OF "+f.kind+" "))
+		target := strings.TrimPrefix(sql, "SHOW PARAMETERS OF "+f.kind+" ")
+		// redshift_routine_parameters qualifies the routine with its database as well.
+		if _, _, rest, err := fakeQualifiedName(target); err == nil && strings.HasPrefix(rest, ".") {
+			_, target, _ = fakeQuotedName(target)
+			target = strings.TrimPrefix(target, ".")
+		}
+
+		key, _, err := fakeRoutineTarget(target)
 		if err != nil {
 			return nil, true, err
 		}

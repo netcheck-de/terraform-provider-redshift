@@ -65,5 +65,5 @@ SELECT ... FROM svv_masking_policy WHERE policy_database = '...';
 
 ## Read Behavior
 
-Items are ordered by database and name. Only superusers and `sys:secadmin` members see policies; for other identities
-the list is empty. `id` contains the `database` filter when configured; without it, the identity is an empty JSON object.
+Items are ordered by database and name. Superusers and users with the `sys:secadmin` role see every policy; other users
+see none. `id` contains the `database` filter when configured; without it, the identity is an empty JSON object.

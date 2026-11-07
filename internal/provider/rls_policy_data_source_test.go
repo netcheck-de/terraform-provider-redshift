@@ -84,13 +84,13 @@ func TestRlsPoliciesListing(t *testing.T) {
 		{"poldb": "analytics", "polname": "open", "polalias": "", "polatts": "[]", "polqual": "true"},
 		{"poldb": "analytics", "polname": "region_filter", "polalias": "t", "polatts": rlsFakeColumns, "polqual": `"t"."region" = current_user`},
 	}
-	client := queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
+	client := withLocalDatabases(queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
 		require.Contains(t, sql, "FROM svv_rls_policy")
 
 		target, parameters = connection, params
 
 		return rows, nil
-	})
+	}))
 	source := newRlsPoliciesDataSource()
 	state, diagnostics := readSource(t, source, collectionConfig(t, source, map[string]string{"database": "analytics"}), client)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)

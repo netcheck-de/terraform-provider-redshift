@@ -1,0 +1,1 @@
+SELECT share_name, object_type, object_name, include_new FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND object_type IN ('schema', 'schemas') AND share_name IN (SELECT share_name FROM svv_datashares WHERE share_type = 'OUTBOUND' AND BTRIM(source_database) = :database) AND share_name = :share ORDER BY share_name, object_name;

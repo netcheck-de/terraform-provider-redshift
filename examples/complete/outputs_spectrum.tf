@@ -17,3 +17,11 @@ output "spectrum_parquet_table" {
     input_format = data.redshift_external_table.parquet_events.input_format
   }
 }
+
+output "spectrum_listings" {
+  description = "External tables of the Glue-backed schema with their locations, and the managed table's partitions."
+  value = {
+    tables     = { for table in data.redshift_external_tables.glue.external_tables : table.name => table.location }
+    partitions = [for partition in data.redshift_external_partitions.events.external_partitions : partition.location]
+  }
+}

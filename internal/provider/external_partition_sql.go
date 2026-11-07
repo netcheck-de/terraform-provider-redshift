@@ -188,21 +188,42 @@ func dropExternalPartitionStatement(spec externalPartitionSpec) string {
 	return externalPartitionAlter(spec).Kw("DROP").Append(externalPartitionClause(spec)).String()
 }
 
-// readExternalPartitionsQuery lists the table's partitions. Matching happens in Go, because the view reports
-// values as a JSON array whose exact spelling the reference does not pin down.
+// externalPartitionsSource selects partitions with their tables. Matching values happens in Go, because the view
+// reports values as a JSON array whose exact spelling the reference does not pin down.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_PARTITIONS.html
+func externalPartitionsSource() sqlclient.Query {
+	return sqlclient.Select("values", "location", "schemaname", "tablename").From("svv_external_partitions")
+}
+
+// readExternalPartitionsQuery lists the table's partitions, matching names as readExternalTableQuery does.
 func readExternalPartitionsQuery(spec externalPartitionSpec) sqlclient.Query {
-	return sqlclient.Select("values", "location").
-		From("svv_external_partitions").
+	return externalPartitionsSource().
 		Where("LOWER(schemaname) = LOWER(:schema)", sqlclient.Bind("schema", spec.schema)).
 		Where("LOWER(tablename) = LOWER(:table)", sqlclient.Bind("table", spec.table))
 }
 
-// externalPartitionValuesMatch reports whether a catalog values array holds the spec's values in key order.
-func externalPartitionValuesMatch(spec externalPartitionSpec, catalog string) (bool, error) {
+// listExternalPartitionsQuery lists partitions, optionally of one schema and table.
+func listExternalPartitionsQuery(schema, table string) sqlclient.Query {
+	return externalPartitionsSource().
+		WhereIf(schema != "", "LOWER(schemaname) = LOWER(:schema)", sqlclient.Bind("schema", schema)).
+		WhereIf(table != "", "LOWER(tablename) = LOWER(:table)", sqlclient.Bind("table", table))
+}
+
+// externalPartitionCatalogValues decodes a catalog values array, which holds the values in partition-key order.
+func externalPartitionCatalogValues(catalog string) ([]string, error) {
 	var values []string
 	if err := json.Unmarshal([]byte(catalog), &values); err != nil {
-		return false, fmt.Errorf("decode external partition values %q: %w", catalog, err)
+		return nil, fmt.Errorf("decode external partition values %q: %w", catalog, err)
+	}
+
+	return values, nil
+}
+
+// externalPartitionValuesMatch reports whether a catalog values array holds the spec's values in key order.
+func externalPartitionValuesMatch(spec externalPartitionSpec, catalog string) (bool, error) {
+	values, err := externalPartitionCatalogValues(catalog)
+	if err != nil {
+		return false, err
 	}
 
 	return slices.Equal(values, spec.values), nil

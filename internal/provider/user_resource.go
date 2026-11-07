@@ -389,6 +389,38 @@ func userInfo(data *userModel, rows []sqlclient.Row) error {
 	return nil
 }
 
+// userCatalog applies a pg_user row: the name, capabilities, expiration, and stored session defaults.
+func userCatalog(data *userModel, row sqlclient.Row) error {
+	superuser, err := strconv.ParseBool(row["usesuper"])
+	if err != nil {
+		return fmt.Errorf("decode user superuser flag: %w", err)
+	}
+
+	createDB, err := strconv.ParseBool(row["usecreatedb"])
+	if err != nil {
+		return fmt.Errorf("decode user CREATEDB flag: %w", err)
+	}
+
+	data.Name = types.StringValue(row["usename"])
+	data.Superuser = types.BoolValue(superuser)
+	data.CreateDB = types.BoolValue(createDB)
+	data.ValidUntil = userObservedValidUntil(data.ValidUntil, row["valuntil"])
+	entries := userConfigEntries(row["useconfig"])
+	data.SearchPath = userObservedSearchPath(entries)
+	data.SessionDefaults = userObservedSessionDefaults(data.SessionDefaults, entries)
+
+	return nil
+}
+
+// userLookupValidUntil reports no expiration as null, as the lookups do, where the resource records infinity.
+func userLookupValidUntil(value types.String) types.String {
+	if value.ValueString() == userValidUntilInfinity {
+		return types.StringNull()
+	}
+
+	return value
+}
+
 // read refreshes user capabilities and options without reading a password.
 func (r *userResource) read(ctx context.Context, data *userModel) (bool, error) {
 	if err := r.bound(data.ID, r.database.ValueString()); err != nil {
@@ -404,29 +436,15 @@ func (r *userResource) read(ctx context.Context, data *userModel) (bool, error) 
 		return false, fmt.Errorf("user %q is ambiguous in the catalog", data.Name.ValueString())
 	}
 
-	superuser, err := strconv.ParseBool(rows[0]["usesuper"])
-	if err != nil {
-		return false, fmt.Errorf("decode user superuser flag: %w", err)
+	if err := userCatalog(data, rows[0]); err != nil {
+		return false, err
 	}
 
-	createDB, err := strconv.ParseBool(rows[0]["usecreatedb"])
-	if err != nil {
-		return false, fmt.Errorf("decode user CREATEDB flag: %w", err)
-	}
-
-	data.Name = types.StringValue(rows[0]["usename"])
 	// The catalog does not show a disabled password, so state from an import or from before the attribute existed
 	// records the default; a later password_disabled = true then has a known prior and renders PASSWORD DISABLE.
 	if data.PasswordDisabled.IsNull() {
 		data.PasswordDisabled = types.BoolValue(false)
 	}
-
-	data.Superuser = types.BoolValue(superuser)
-	data.CreateDB = types.BoolValue(createDB)
-	data.ValidUntil = userObservedValidUntil(data.ValidUntil, rows[0]["valuntil"])
-	entries := userConfigEntries(rows[0]["useconfig"])
-	data.SearchPath = userObservedSearchPath(entries)
-	data.SessionDefaults = userObservedSessionDefaults(data.SessionDefaults, entries)
 
 	info, err := r.selectRows(ctx, r.database.ValueString(), readUserInfoQuery(*data))
 	if err != nil {

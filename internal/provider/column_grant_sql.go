@@ -204,3 +204,49 @@ func validateColumnGrant(m columnGrantModel) error {
 
 	return nil
 }
+
+// listColumnGrantsQuery lists explicit column privileges in the current database, narrowed by the optional filters.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_COLUMN_PRIVILEGES.html
+func listColumnGrantsQuery(schema, object, grantee, granteeType string) sqlclient.Query {
+	return sqlclient.Select("namespace_name", "relation_name", "column_name", "privilege_type", "identity_name", "identity_type").
+		From("svv_column_privileges").
+		OptEq("namespace_name", "schema", schema).
+		OptEq("relation_name", "object", object).
+		OptEq("identity_name", "grantee", grantee).
+		OptEq("identity_type", "identity_type", columnGrantIdentityType(granteeType)).
+		OrderBy("namespace_name", "relation_name", "identity_type", "identity_name", "privilege_type", "column_name")
+}
+
+// columnGrantsItems folds SVV_COLUMN_PRIVILEGES rows into one element per relation and grantee of the selected
+// database, with the privilege-to-columns map the column grant resource reads.
+func columnGrantsItems(database string, rows []sqlclient.Row) []map[string]attr.Value {
+	type relationGrantee struct{ schema, relation, granteeType, grantee string }
+
+	grouped := map[relationGrantee][]sqlclient.Row{}
+
+	var order []relationGrantee
+
+	for _, row := range rows {
+		key := relationGrantee{row["namespace_name"], row["relation_name"], strings.ToUpper(row["identity_type"]), row["identity_name"]}
+		if _, ok := grouped[key]; !ok {
+			order = append(order, key)
+		}
+
+		grouped[key] = append(grouped[key], row)
+	}
+
+	slices.SortFunc(order, func(a, b relationGrantee) int {
+		return slices.Compare([]string{a.schema, a.relation, a.granteeType, a.grantee}, []string{b.schema, b.relation, b.granteeType, b.grantee})
+	})
+
+	items := make([]map[string]attr.Value, 0, len(order))
+	for _, key := range order {
+		items = append(items, map[string]attr.Value{
+			"database_name": types.StringValue(database), "schema_name": types.StringValue(key.schema),
+			"object_name": types.StringValue(key.relation), "grantee": types.StringValue(key.grantee),
+			"grantee_type": types.StringValue(key.granteeType), "privileges": columnGrantValue(columnGrantRows(grouped[key])),
+		})
+	}
+
+	return items
+}

@@ -45,6 +45,14 @@ override_data {
     definition_fingerprint = "observed-mv-fingerprint"
   }
 }
+override_data {
+  target = data.redshift_views.example
+  values = { id = "views-listing-identity" }
+}
+override_data {
+  target = data.redshift_materialized_views.example
+  values = { id = "materialized-views-listing-identity" }
+}
 
 run "views_apply" {
   command = apply
@@ -100,8 +108,23 @@ run "views_apply" {
           auto_refresh = true
           fingerprint  = "observed-mv-fingerprint"
         }
+        views              = {}
+        materialized_views = {}
       }
     )
     error_message = "View lookups must select the managed views and expose their observations through output.views."
+  }
+  # Terraform mocks generate empty lists for nested-attribute lists and cannot override their elements, so the
+  # listing contents are covered by the Go tests; here the listings must be scoped to the managed example schema.
+  assert {
+    condition = (
+      data.redshift_views.example.id == "views-listing-identity" &&
+      data.redshift_views.example.database == redshift_database.local.name &&
+      data.redshift_views.example.schema == redshift_schema.local.name &&
+      data.redshift_materialized_views.example.id == "materialized-views-listing-identity" &&
+      data.redshift_materialized_views.example.database == redshift_database.local.name &&
+      data.redshift_materialized_views.example.schema == redshift_schema.local.name
+    )
+    error_message = "The view listings must cover the managed example schema."
   }
 }

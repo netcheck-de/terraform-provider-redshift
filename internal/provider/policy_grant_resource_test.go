@@ -27,6 +27,8 @@ var _ = registerReplacementPolicy("redshift_policy_grant", map[string]replaceRul
 
 var _ = registerLookupExemption("redshift_policy_grant", "Redshift documents no catalog that lists grants to RLS or masking policies, so a lookup could not observe them.")
 
+var _ = registerCollectionExemption("redshift_policy_grant", "Redshift documents no catalog that lists grants to RLS or masking policies, so a listing could not observe them.")
+
 var _ = registerValidateConfigCase("policy_grant", func() validateConfigCase {
 	unknown := policyGrantObject(nil, "SELECT")
 	lookupValue(&unknown, "policy_name", types.StringUnknown())

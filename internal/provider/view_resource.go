@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // viewResource manages an ordinary or late-binding view.
@@ -124,14 +125,26 @@ func readViewCatalog(ctx context.Context, client *resourceClient, database, sche
 		return viewCatalogEntry{}, false, err
 	}
 
-	if len(rows) != 1 || rows[0]["viewowner"] == "" || rows[0]["definition"] == "" {
-		return viewCatalogEntry{}, false, fmt.Errorf("view %s.%s has incomplete or ambiguous catalog metadata", schemaName, name)
+	if len(rows) != 1 {
+		return viewCatalogEntry{}, false, fmt.Errorf("view %s.%s has ambiguous catalog metadata", schemaName, name)
 	}
 
-	entry := viewCatalogEntry{owner: rows[0]["viewowner"], definition: rows[0]["definition"]}
+	entry, err := viewCatalogEntryOf(rows[0])
+
+	return entry, err == nil, err
+}
+
+// viewCatalogEntryOf parses one pg_views row; a row without owner or definition is an error, because the binding
+// mode and kind come from the definition.
+func viewCatalogEntryOf(row sqlclient.Row) (viewCatalogEntry, error) {
+	if row["viewowner"] == "" || row["definition"] == "" {
+		return viewCatalogEntry{}, fmt.Errorf("view %s.%s has incomplete catalog metadata", row["schemaname"], row["viewname"])
+	}
+
+	entry := viewCatalogEntry{owner: row["viewowner"], definition: row["definition"]}
 	entry.lateBinding, entry.materialized = viewDefinitionKind(entry.definition)
 
-	return entry, true, nil
+	return entry, nil
 }
 
 // errViewIsMaterialized keeps the view resource from adopting a materialized view, whose lifecycle differs.

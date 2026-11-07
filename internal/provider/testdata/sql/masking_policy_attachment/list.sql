@@ -1,0 +1,1 @@
+SELECT policy_name, schema_name, table_name, grantee, grantee_type, priority, input_columns, output_columns FROM svv_attached_masking_policy ORDER BY schema_name, table_name, policy_name, grantee_type, grantee, output_columns;

@@ -1,36 +1,33 @@
 ---
 subcategory: Permissions
 page_title: redshift_grants Data Source - terraform-provider-redshift
-description: Lists the grants on one database, schema, or table, or the grants of one user or role.
+description: Lists the database, schema, and scoped grants of one database or schema.
 ---
 
 # redshift_grants (Data Source)
 
-Lists what `SHOW GRANTS` reports, without taking ownership: either every grant on one database, schema, or table
-(including views), or every grant of one user or role in one database. See AWS
+Lists the grants on one database, or on one of its schemas, together with the scoped grants that cover current and
+future objects, one element per recipient and scope, without taking ownership. Each element matches the identity and
+privileges of one `redshift_grant`. See AWS
 [SHOW GRANTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_GRANTS.html).
 
 ## Example Usage
 
 ```terraform
-# Every grant on one table, including group and PUBLIC grantees.
-data "redshift_grants" "events" {
+# Database-wide and scoped grants of one database.
+data "redshift_grants" "analytics" {
   database_name = "analytics"
-  object_type   = "TABLE"
-  schema_name   = "reporting"
-  object_name   = "events"
 }
 
-# Every grant one role holds in one database, narrowed to one schema.
-data "redshift_grants" "analysts" {
+# Grants on one schema and the scoped grants limited to it, for one role.
+data "redshift_grants" "reporting" {
   database_name = "analytics"
-  grantee       = "analysts"
-  grantee_type  = "ROLE"
   schema_name   = "reporting"
+  role          = "analysts"
 }
 
-output "events_grants" {
-  value = [for grant in data.redshift_grants.events.grants : "${grant.grantee_type} ${grant.grantee}: ${grant.privilege}"]
+output "analytics_grants" {
+  value = [for grant in data.redshift_grants.analytics.grants : "${coalesce(grant.role, grant.user, grant.datashare)} ${grant.scope}: ${join(", ", grant.privileges)}"]
 }
 ```
 
@@ -40,12 +37,10 @@ output "events_grants" {
 
 ### Optional
 
-- `database_name` (String) Local database whose grants are listed; defaults to the provider database.
-- `grantee` (String) Only grants to this identity name; `public` for `PUBLIC`.
-- `grantee_type` (String) Only grants to `USER`, `ROLE`, `GROUP`, or `PUBLIC` identities.
-- `object_name` (String) Only grants on this table or view.
-- `object_type` (String) `DATABASE`, `SCHEMA`, or `TABLE` (including views) lists `SHOW GRANTS ON` that object, named by `database_name`, `schema_name`, and `object_name`. Omit it to list `SHOW GRANTS FOR` the `USER` or `ROLE` named by `grantee` and `grantee_type`.
-- `schema_name` (String) Only grants on objects in this schema.
+- `database_name` (String) Database whose scoped grants are listed; defaults to the provider's `database`.
+- `role` (String) Only grants to this role.
+- `schema_name` (String) Lists the grants on this schema and the scoped grants limited to it; database-wide grants when omitted.
+- `user` (String) Only grants to this user.
 
 ### Read-Only
 
@@ -57,16 +52,14 @@ output "events_grants" {
 
 Read-Only:
 
-- `admin_option` (Boolean) Whether the grantee holds the grant option; null when `SHOW GRANTS FOR` does not report it.
-- `database_name` (String) Database of the granted object.
-- `grantee` (String) Receiving identity name; `public` for `PUBLIC`.
-- `grantee_type` (String) `USER`, `ROLE`, `GROUP`, `PUBLIC`, or another identity type SHOW GRANTS reports, in upper case.
-- `grantor` (String) Identity that granted the privilege; null when not reported.
-- `object_name` (String) Granted object name as SHOW GRANTS reports it; null when not reported.
-- `object_type` (String) `DATABASE`, `SCHEMA`, `TABLE`, or another object type SHOW GRANTS reports.
-- `privilege` (String) Privilege name, with `TEMP` reported as `TEMPORARY` and `EXFUNC` as `EXTERNAL FUNCTION`.
-- `privilege_scope` (String) Scope of the grant, such as `TABLE`, `SCHEMA`, `DATABASE`, or `TABLES` for a scoped grant on all tables.
-- `schema_name` (String) Schema of the granted object; null for database grants.
+- `database_name` (String) Database receiving the grants.
+- `datashare` (String) Receiving producer datashare; null for other recipients.
+- `grant_option_privileges` (Set of String) Subset of `privileges` the recipient holds `WITH GRANT OPTION`; only users hold grant options.
+- `privileges` (Set of String) Explicit privileges the recipient holds in this scope, with `TEMP` reported as `TEMPORARY`.
+- `role` (String) Receiving role; null for other recipients.
+- `schema_name` (String) Schema the grants apply to; null for database-wide grants.
+- `scope` (String) `DATABASE`, `SCHEMA`, or the object class of a scoped grant: `SCHEMAS`, `TABLES`, `FUNCTIONS`, `PROCEDURES`, `LANGUAGES`, `COPY JOBS`, or `TEMPLATES`.
+- `user` (String) Receiving user; null for other recipients.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -74,22 +67,28 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
--- List grants on the selected object.
-SHOW GRANTS ON { DATABASE | SCHEMA | TABLE } ...;
+-- Read whether the database is local or shared, which selects the connection.
+SELECT database_type FROM svv_redshift_databases WHERE database_name = '...';
 
--- List a user's or role's grants in the database.
-SHOW GRANTS FOR [ROLE] ... FROM DATABASE ...;
+-- List every identity's grants on the database, without schema_name.
+SHOW GRANTS ON DATABASE ...;
+
+-- List every identity's grants on the schema, with schema_name.
+SHOW GRANTS ON SCHEMA ...;
 ```
 
 ## Read Behavior
 
-Set `object_type` to list the grants on that object; `grantee` and `grantee_type` then narrow the rows, which also
-covers groups and `PUBLIC`. Without `object_type`, `grantee` and `grantee_type` (`USER` or `ROLE`) select
-`SHOW GRANTS FOR`; `schema_name` and `object_name` then narrow the rows. Other combinations are errors.
+Without `schema_name`, elements are the `DATABASE` grants and the database-wide scoped grants (`SCHEMAS`, `TABLES`,
+`FUNCTIONS`, `PROCEDURES`, `LANGUAGES`, `COPY JOBS`, `TEMPLATES`). With `schema_name`, they are the `SCHEMA` grants and
+the scoped grants limited to that schema. `role` and `user` narrow the elements to one recipient.
 
-Rows include scoped grants, whose `privilege_scope` names the object kind they cover, such as `TABLES`. `admin_option`
-is null for `SHOW GRANTS FOR`, which does not report it. `SHOW GRANTS` documents no column that separates grants
-inherited through roles from explicit ones, so the listing exposes none. It reports only grants visible to the
-provider's identity and fails when more than 10,000 rows match. Function grants need a signature and are not listed.
+Local databases are read in their own database and shared databases from the provider database, as `redshift_grant`
+reads them; a database that does not exist lists nothing. Elements cover roles, users, and producer datashares, which
+`SHOW GRANTS` reports as `ds:<name>`. Grants to groups and `PUBLIC` are listed by
+[`redshift_object_grants`](object_grants.md). `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope, which is
+listed under the name the catalog reports.
 
-`id` is the listing's provider-relative JSON identity: the target `database_name` and the configured filters.
+Superusers see every grant; other users see only the grants `SHOW GRANTS` shows them. `SHOW GRANTS` fails when more than
+10,000 rows match. `id` is the listing's provider-relative JSON identity: the target `database_name` and the configured
+filters.

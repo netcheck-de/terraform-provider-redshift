@@ -50,6 +50,23 @@ type externalSchemaData struct {
 
 var _ = registerDataSource(newExternalSchemaDataSource)
 
+// externalSchemaOutputDescriptions describe the observed attributes for the lookup and the listing, where the
+// resource's text describes configuration.
+var externalSchemaOutputDescriptions = map[string]string{
+	"source_type":        "`DATA_CATALOG`, `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, `REDSHIFT`, `KINESIS`, or `MSK`.",
+	"glue_database":      "Glue database name of a `DATA_CATALOG` schema.",
+	"source_database":    "External database of a Hive, federated, or Redshift schema.",
+	"source_schema":      "PostgreSQL or Redshift source schema. Null when the catalog does not record it.",
+	"iam_role_arn":       "IAM role, or role chain, used to reach the source. Null when the catalog does not record it.",
+	"region":             "Glue catalog or stream AWS region. Null when the catalog does not record it.",
+	"uri":                "Hive metastore URI, federated hostname, or Kafka bootstrap URI. Null when the catalog does not record it.",
+	"port":               "Hive metastore or federated database port. Null when the catalog does not record it.",
+	"secret_arn":         "Secrets Manager ARN of the federated credentials or mTLS certificate. Null when the catalog does not record it.",
+	"authentication":     "Streaming authentication mode `NONE`, `IAM`, or `MTLS`. Null when the catalog does not record it.",
+	"authentication_arn": "ACM certificate ARN used for mTLS. Null when the catalog does not record it.",
+	"owner":              "SQL user owning the external schema.",
+}
+
 // newExternalSchemaDataSource constructs a read-only external schema lookup.
 func newExternalSchemaDataSource() datasource.DataSource { return &externalSchemaDataSource{} }
 
@@ -60,28 +77,23 @@ func (d *externalSchemaDataSource) Metadata(_ context.Context, req datasource.Me
 
 // Schema defines the external schema lookup and its observed source and owner.
 func (d *externalSchemaDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
-	recorded := func(description string) schema.StringAttribute {
-		return schema.StringAttribute{Computed: true, MarkdownDescription: description + " Null when the catalog does not record it."}
+	attributes := map[string]schema.Attribute{
+		"id":       dataSourceIDAttribute(),
+		"database": schema.StringAttribute{Required: true, MarkdownDescription: "Local Redshift database."},
+		"name":     schema.StringAttribute{Required: true, MarkdownDescription: "External schema name."},
 	}
+
+	for name, description := range externalSchemaOutputDescriptions {
+		if name == "port" {
+			attributes[name] = schema.Int64Attribute{Computed: true, MarkdownDescription: description}
+		} else {
+			attributes[name] = schema.StringAttribute{Computed: true, MarkdownDescription: description}
+		}
+	}
+
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Looks up an external schema with its source form, recorded options, and owner.",
-		Attributes: map[string]schema.Attribute{
-			"id":                 dataSourceIDAttribute(),
-			"database":           schema.StringAttribute{Required: true, MarkdownDescription: "Local Redshift database."},
-			"name":               schema.StringAttribute{Required: true, MarkdownDescription: "External schema name."},
-			"source_type":        schema.StringAttribute{Computed: true, MarkdownDescription: "`DATA_CATALOG`, `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, `REDSHIFT`, `KINESIS`, or `MSK`."},
-			"glue_database":      schema.StringAttribute{Computed: true, MarkdownDescription: "Glue database name of a `DATA_CATALOG` schema."},
-			"source_database":    schema.StringAttribute{Computed: true, MarkdownDescription: "External database of a Hive, federated, or Redshift schema."},
-			"source_schema":      recorded("PostgreSQL or Redshift source schema."),
-			"iam_role_arn":       recorded("IAM role, or role chain, used to reach the source."),
-			"region":             recorded("Glue catalog or stream AWS region."),
-			"uri":                recorded("Hive metastore URI, federated hostname, or Kafka bootstrap URI."),
-			"port":               schema.Int64Attribute{Computed: true, MarkdownDescription: "Hive metastore or federated database port. Null when the catalog does not record it."},
-			"secret_arn":         recorded("Secrets Manager ARN of the federated credentials or mTLS certificate."),
-			"authentication":     recorded("Streaming authentication mode `NONE`, `IAM`, or `MTLS`."),
-			"authentication_arn": recorded("ACM certificate ARN used for mTLS."),
-			"owner":              schema.StringAttribute{Computed: true, MarkdownDescription: "SQL user owning the external schema."},
-		},
+		Attributes:          attributes,
 	}
 }
 

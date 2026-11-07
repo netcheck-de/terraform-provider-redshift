@@ -37,18 +37,16 @@ data "redshift_databases" "example" {
 }
 
 data "redshift_schemas" "local" {
-  provider    = redshift.consumer
-  database    = redshift_schema.local.database
-  schema_type = "local"
+  provider = redshift.consumer
+  database = redshift_schema.local.database
 
   depends_on = [redshift_schema.local]
 }
 
 data "redshift_tables" "fixture" {
-  provider   = redshift.producer
-  database   = redshift_database.producer.name
-  schema     = data.redshift_schema.source.name
-  table_type = "TABLE"
+  provider = redshift.producer
+  database = redshift_database.producer.name
+  schema   = data.redshift_schema.source.name
 
   depends_on = [aws_redshiftdata_statement.source_table]
 }

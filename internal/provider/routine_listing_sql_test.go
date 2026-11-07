@@ -23,10 +23,11 @@ func TestRoutineListingSQL(t *testing.T) {
 		}
 	}
 	checkSQL(t, "routine_listing", []sqlCase{
-		{"functions", built(routineListingQuery(routineListingFunctions, "", ""))},
-		{"functions_filtered", built(routineListingQuery(routineListingFunctions, `Odd"Schema`, `it's \f`))},
-		{"procedures", built(routineListingQuery(routineListingProcedures, "serving", ""))},
-		{"routines", built(routineListingQuery(routineListingRoutines, "", "f_exfunc_upper"))},
+		{"functions", built(routineListingQuery("", "", routineListingFunctions, routineListingSQL))},
+		{"functions_filtered", built(routineListingQuery(`Odd"Schema`, `it's \f`, routineListingFunctions, routineListingSQL))},
+		{"external_functions", built(routineListingQuery("serving", "", routineListingFunctions, routineListingLambda))},
+		{"procedures", built(routineListingQuery("serving", "", routineListingProcedures))},
+		{"routines", built(routineListingQuery("", "f_exfunc_upper", routineListingRoutines))},
 		{"show_function_parameters", show("analytics", "serving", "f_exfunc_upper", "FUNCTION", "character varying, numeric")},
 		{"show_procedure_parameters_quoted", show(`Odd"Db`, `Odd"Schema`, `Sp"Refresh`, "PROCEDURE", "integer")},
 		{"show_parameters_without_arguments", show("analytics", "serving", "f_now", "FUNCTION", "")},
@@ -37,10 +38,10 @@ func TestRoutineListingSQL(t *testing.T) {
 
 // TestRoutineListingBindings sends listing filters as bindings and omits unset ones.
 func TestRoutineListingBindings(t *testing.T) {
-	_, parameters, err := routineListingQuery(routineListingRoutines, `Odd"Schema`, `it's \f`).Build()
+	_, parameters, err := routineListingQuery(`Odd"Schema`, `it's \f`, routineListingRoutines).Build()
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"schema": `Odd"Schema`, "name": `it's \f`}, parameters)
-	_, parameters, err = routineListingQuery(routineListingFunctions, "", "").Build()
+	_, parameters, err = routineListingQuery("", "", routineListingFunctions, routineListingSQL).Build()
 	require.NoError(t, err)
 	assert.Nil(t, parameters)
 	assert.Equal(t, routineListingRoutines, routineListingTypes[""])

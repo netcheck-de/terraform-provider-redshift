@@ -64,6 +64,22 @@ data "redshift_procedure" "scale" {
   arguments = [for argument in redshift_procedure.scale.argument : argument.type if argument.mode != "OUT"]
 }
 
+# The listings report every SQL UDF overload and procedure of the workspace schema. They read after the routines exist,
+# because Terraform cannot infer that dependency from the schema filter alone.
+data "redshift_functions" "local" {
+  provider   = redshift.consumer
+  database   = redshift_schema.local.database
+  schema     = redshift_schema.local.name
+  depends_on = [redshift_function.label]
+}
+
+data "redshift_procedures" "local" {
+  provider   = redshift.consumer
+  database   = redshift_schema.local.database
+  schema     = redshift_schema.local.name
+  depends_on = [redshift_procedure.scale]
+}
+
 # The loader may run the function and pass that right on. Redshift also grants EXECUTE to PUBLIC on creation; this
 # tuple owns only the loader's explicit privileges on this overload.
 resource "redshift_object_grant" "loader_label" {

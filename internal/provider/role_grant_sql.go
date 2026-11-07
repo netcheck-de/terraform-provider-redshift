@@ -105,3 +105,17 @@ func readRoleGrantQuery(data roleGrantModel) sqlclient.Query {
 
 	return sqlclient.Select("role_name").From("svv_role_grants").Where("role_name = :recipient", sqlclient.Bind("recipient", data.ToRole.ValueString())).Where("granted_role_name = :role", role)
 }
+
+// listRoleUserGrantsQuery lists explicit role grants to users with their admin option, optionally of one role or
+// to one user. A grant can appear once per grantor.
+func listRoleUserGrantsQuery(role, user string) sqlclient.Query {
+	return sqlclient.Select("role_name", "user_name", "admin_option").From("svv_user_grants").
+		OptEq("role_name", "role", role).OptEq("user_name", "user", user).OrderBy("role_name", "user_name")
+}
+
+// listRoleRoleGrantsQuery lists explicit role grants to roles, optionally of one role or to one recipient role.
+// svv_role_grants names the recipient role_name and the granted role granted_role_name.
+func listRoleRoleGrantsQuery(role, recipient string) sqlclient.Query {
+	return sqlclient.Select("granted_role_name", "role_name").From("svv_role_grants").
+		OptEq("granted_role_name", "role", role).OptEq("role_name", "recipient", recipient).OrderBy("granted_role_name", "role_name")
+}

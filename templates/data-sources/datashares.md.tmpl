@@ -1,13 +1,14 @@
 ---
 subcategory: Data Sharing
 page_title: redshift_datashares Data Source - terraform-provider-redshift
-description: Lists the inbound and outbound datashares of the provider's namespace.
+description: Lists the outbound datashares of the provider's namespace.
 ---
 
 # redshift_datashares (Data Source)
 
-Lists the inbound and outbound datashares visible in the provider's namespace, optionally narrowed by type or name. See
-AWS [SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html).
+Lists the outbound datashares of the provider's namespace with the attributes `redshift_datashare` reports, optionally
+narrowed by name. See AWS [SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARES.html).
+Use `redshift_inbound_datashares` for the shares other namespaces share with this one.
 
 ## Example Usage
 
@@ -22,17 +23,17 @@ AWS [SVV_DATASHARES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASH
 Simplified SQL used by the provider to read this data source.
 
 ```sql
--- List visible datashares matching the configured filters.
-SELECT ... FROM svv_datashares ...;
+-- List visible outbound datashares and their owners.
+SELECT ... FROM svv_datashares LEFT JOIN pg_user ... WHERE share_type = 'OUTBOUND' ...;
 ```
 
 ## Read Behavior
 
-`datashares` is empty when nothing matches; it is ordered by share type and name. Outbound shares report their producer
-`database` and `owner`. Inbound shares report the `consumer_database` created from them, while `producer_account` and
-`producer_namespace` identify the producer; their `database` and `owner` are null.
+`datashares` is empty when nothing matches; it is ordered by name. One query in the provider database covers the shares
+of every producer database of the namespace, each reported with its `database`. Shares managed by another AWS service
+are listed too, although `redshift_datashare` cannot manage them.
 
 `id` (String, computed) is the listing's provider-relative JSON identity containing the configured filters.
 
-`SVV_DATASHARES` shows rows only to superusers, share owners, and users with `ALTER` or `USAGE` on a share, so the
-listing is limited to what the provider user can see. Only read-only SQL is executed.
+Superusers, share owners, and users with `ALTER` or `USAGE` on a share see it; other users see no shares. Only read-only
+SQL is executed.

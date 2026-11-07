@@ -1,0 +1,35 @@
+---
+subcategory: Permissions
+page_title: redshift_system_grants Data Source - terraform-provider-redshift
+description: Lists the system permissions granted to roles.
+---
+
+# redshift_system_grants (Data Source)
+
+Lists the system permissions granted directly to roles, one element per role, without taking ownership. Each element
+matches the identity and privileges of one `redshift_system_grant`. See AWS
+[SVV_SYSTEM_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_SYSTEM_PRIVILEGES.html).
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_system_grants/data-source.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List system permissions granted to roles.
+SELECT ... FROM svv_system_privileges WHERE identity_type = 'role' ...;
+```
+
+## Read Behavior
+
+System permissions are warehouse-wide, so the listing runs in the provider database. Permissions granted to users
+are left out, because only roles receive them through `redshift_system_grant`. The view shows only identities visible
+to the provider's identity (superusers and users with `ACCESS SYSTEM TABLE` see all). `id` is the listing's
+provider-relative JSON identity: the configured filters.

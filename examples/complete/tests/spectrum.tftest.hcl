@@ -41,6 +41,15 @@ override_data {
 }
 
 override_data {
+  target = data.redshift_external_tables.glue
+  values = { id = "external-tables-listing-identity" }
+}
+override_data {
+  target = data.redshift_external_partitions.events
+  values = { id = "external-partitions-listing-identity" }
+}
+
+override_data {
   target = data.redshift_external_table.parquet_events
   values = {
     location     = "s3://mock-fixture/spectrum/parquet_events/"
@@ -107,6 +116,20 @@ run "spectrum_apply" {
       data.redshift_external_partition.events_first_day.values == redshift_external_partition.events_first_day.values
     )
     error_message = "The Spectrum lookups must be wired to the managed table and partition and exposed as outputs."
+  }
+  # Terraform mocks generate empty lists for nested-attribute lists and cannot override their elements, so the
+  # listing contents are covered by the Go tests; here the listings must target the managed schema and table.
+  assert {
+    condition = (
+      data.redshift_external_tables.glue.id == "external-tables-listing-identity" &&
+      data.redshift_external_tables.glue.database == redshift_external_schema.glue.database &&
+      data.redshift_external_tables.glue.schema == redshift_external_schema.glue.name &&
+      data.redshift_external_partitions.events.id == "external-partitions-listing-identity" &&
+      data.redshift_external_partitions.events.schema == redshift_external_table.events.schema &&
+      data.redshift_external_partitions.events.table == redshift_external_table.events.name &&
+      output.spectrum_listings == { tables = {}, partitions = [] }
+    )
+    error_message = "The Spectrum listings must cover the managed schema and table and be exposed as outputs."
   }
 }
 

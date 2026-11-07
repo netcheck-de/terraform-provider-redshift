@@ -1,0 +1,1 @@
+SELECT n.nspname AS schema_name, u.usename AS owner FROM pg_namespace n JOIN pg_user u ON n.nspowner = u.usesysid LEFT JOIN pg_external_schema e ON e.esoid = n.oid WHERE e.esoid IS NULL ORDER BY n.nspname;

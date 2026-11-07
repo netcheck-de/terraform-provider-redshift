@@ -44,6 +44,14 @@ override_data {
   target = data.redshift_table_security.rls_events
   values = { row_level_security = true, conjunction_type = "AND", datashare_row_level_security = true }
 }
+override_data {
+  target = data.redshift_rls_policy_attachments.rls_events
+  values = { id = "rls-attachments-listing-identity" }
+}
+override_data {
+  target = data.redshift_table_securities.local
+  values = { id = "table-securities-listing-identity" }
+}
 
 run "rls_apply" {
   command = apply
@@ -95,5 +103,26 @@ run "rls_apply" {
       can(length(output.row_level_security.policies))
     )
     error_message = "Row-level security lookups must be exposed from the catalog observations, not from configuration."
+  }
+  assert {
+    condition = (
+      data.redshift_rls_policy_attachments.rls_events.id == "rls-attachments-listing-identity" &&
+      data.redshift_rls_policy_attachments.rls_events.database == redshift_database.local.name &&
+      data.redshift_rls_policy_attachments.rls_events.schema == redshift_table.rls_events.schema &&
+      data.redshift_rls_policy_attachments.rls_events.relation == redshift_table.rls_events.name &&
+      data.redshift_rls_policy_attachments.rls_events.policy == null &&
+      output.row_level_security.attachments == [
+        for attachment in data.redshift_rls_policy_attachments.rls_events.rls_policy_attachments :
+        "${attachment.policy} ${attachment.grantee_type} ${attachment.grantee}"
+      ] &&
+      data.redshift_table_securities.local.id == "table-securities-listing-identity" &&
+      data.redshift_table_securities.local.database == redshift_database.local.name &&
+      data.redshift_table_securities.local.schema == redshift_schema.local.name &&
+      output.row_level_security.protected_tables == [
+        for relation in data.redshift_table_securities.local.table_securities :
+        relation.relation if relation.row_level_security
+      ]
+    )
+    error_message = "The attachment and table security listings must be scoped to the protected table and exposed in row_level_security."
   }
 }

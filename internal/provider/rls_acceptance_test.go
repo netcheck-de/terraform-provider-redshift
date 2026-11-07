@@ -90,6 +90,15 @@ data "redshift_rls_policy" "own_region" {
   database = redshift_rls_policy.own_region.database
   name = redshift_rls_policy.own_region.name
 }
+data "redshift_rls_policy_attachments" "fixture" {
+  database = redshift_rls_policy_attachment.reader.database
+  schema = redshift_rls_policy_attachment.reader.schema
+  relation = redshift_rls_policy_attachment.reader.relation
+}
+data "redshift_table_securities" "local" {
+  database = redshift_table_security.fixture.database
+  schema = redshift_table_security.fixture.schema
+}
 `, conjunction)
 	}
 	// respelled and widened rewrite the WITH clause: the first only respells it, the second changes it.
@@ -153,6 +162,15 @@ resource "redshift_database" "local" { name = "` + name + `" }`},
 					resource.TestCheckResourceAttr("data.redshift_rls_policy_attachment.reader", "exists", "true"),
 					resource.TestCheckResourceAttr("data.redshift_rls_policy.own_region", "column.0.type", "CHARACTER VARYING(64)"),
 					resource.TestCheckResourceAttrSet("redshift_rls_policy.own_region", "definition_fingerprint"),
+					resource.TestCheckResourceAttr("data.redshift_rls_policy_attachments.fixture", "rls_policy_attachments.#", "1"),
+					resource.TestCheckResourceAttr("data.redshift_rls_policy_attachments.fixture", "rls_policy_attachments.0.policy", "own_region"),
+					resource.TestCheckResourceAttr("data.redshift_rls_policy_attachments.fixture", "rls_policy_attachments.0.grantee", role),
+					resource.TestCheckResourceAttr("data.redshift_rls_policy_attachments.fixture", "rls_policy_attachments.0.grantee_type", "ROLE"),
+					resource.TestCheckResourceAttr("data.redshift_table_securities.local", "table_securities.#", "1"),
+					resource.TestCheckResourceAttr("data.redshift_table_securities.local", "table_securities.0.relation", "fixture"),
+					resource.TestCheckResourceAttr("data.redshift_table_securities.local", "table_securities.0.row_level_security", "true"),
+					resource.TestCheckResourceAttr("data.redshift_table_securities.local", "table_securities.0.conjunction_type", "AND"),
+					resource.TestCheckResourceAttr("data.redshift_table_securities.local", "table_securities.0.datashare_row_level_security", "true"),
 				),
 			},
 			{Config: configuration("t.region = current_user", "AND", true), PlanOnly: true},
@@ -164,7 +182,10 @@ resource "redshift_database" "local" { name = "` + name + `" }`},
 			{ResourceName: "redshift_rls_policy.own_region", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"predicate", "column"}},
 			{
 				Config: configuration("t.region = current_user OR t.region IS NULL", "OR", true),
-				Check:  resource.TestCheckResourceAttr("data.redshift_table_security.fixture", "conjunction_type", "OR"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("data.redshift_table_security.fixture", "conjunction_type", "OR"),
+					resource.TestCheckResourceAttr("data.redshift_table_securities.local", "table_securities.0.conjunction_type", "OR"),
+				),
 			},
 			{
 				Config: configuration("t.region = current_user OR t.region IS NULL", "OR", true), PlanOnly: true, ExpectNonEmptyPlan: true,

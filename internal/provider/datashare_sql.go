@@ -39,11 +39,30 @@ func readDatashareQuery(data datashareModel) sqlclient.Query {
 		Where("d.share_type = 'OUTBOUND'")
 }
 
-// listDatasharesQuery lists inbound and outbound shares, optionally narrowed to one type or name, in a stable order.
-func listDatasharesQuery(shareType, name string) sqlclient.Query {
+// listDatasharesQuery lists the outbound or inbound shares of the namespace, optionally narrowed to one name, in
+// name order.
+func listDatasharesQuery(outbound bool, name string) sqlclient.Query {
 	return sqlclient.Select(datashareColumns...).
 		From(datashareSource).
-		OptEq("d.share_type", "share_type", shareType).
+		WhereEither(outbound, "d.share_type = 'OUTBOUND'", "d.share_type = 'INBOUND'").
 		OptEq("d.share_name", "name", name).
-		OrderBy("d.share_type", "d.share_name")
+		OrderBy("d.share_name")
+}
+
+// datashareRelationTypes are the svv_datashare_objects types that ALTER DATASHARE ADD TABLE and ADD ALL TABLES share.
+const datashareRelationTypes sqlclient.Keyword = "object_type IN ('table', 'view', 'late binding view', 'materialized view')"
+
+// datashareSchemaTypes are the svv_datashare_objects spellings the catalog uses for a shared schema.
+const datashareSchemaTypes sqlclient.Keyword = "object_type IN ('schema', 'schemas')"
+
+// listDatashareObjectsQuery lists the members of the outbound shares of one producer database, optionally of one
+// share, matching the given object type condition. svv_datashare_objects has no database column, so the share
+// names come from svv_datashares, whose documented samples trim source_database.
+func listDatashareObjectsQuery(database, share string, objectTypes sqlclient.Keyword) sqlclient.Query {
+	return sqlclient.Select("share_name", "object_type", "object_name", "include_new").From("svv_datashare_objects").
+		Where("share_type = 'OUTBOUND'").
+		Where(objectTypes).
+		Where("share_name IN (SELECT share_name FROM svv_datashares WHERE share_type = 'OUTBOUND' AND BTRIM(source_database) = :database)", sqlclient.Bind("database", database)).
+		OptEq("share_name", "share", share).
+		OrderBy("share_name", "object_name")
 }

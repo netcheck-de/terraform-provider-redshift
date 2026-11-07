@@ -64,3 +64,20 @@ resource "redshift_view" "order_totals" {
   late_binding = true
   query        = "SELECT account_id, COUNT(*) AS orders, SUM(amount) AS amount FROM ${redshift_table.orders.schema}.${redshift_table.orders.name} GROUP BY account_id"
 }
+
+# Listings of the managed example schema: ordinary and late-binding views, and materialized views.
+data "redshift_views" "example" {
+  provider = redshift.consumer
+  database = redshift_schema.local.database
+  schema   = redshift_schema.local.name
+
+  depends_on = [redshift_view.event_labels, redshift_view.event_labels_late, redshift_view.order_totals]
+}
+
+data "redshift_materialized_views" "example" {
+  provider = redshift.consumer
+  database = redshift_schema.local.database
+  schema   = redshift_schema.local.name
+
+  depends_on = [redshift_materialized_view.label_counts]
+}
