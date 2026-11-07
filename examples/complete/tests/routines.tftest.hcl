@@ -98,6 +98,21 @@ run "routines_apply" {
   }
   assert {
     condition = (
+      data.redshift_functions.local.database == redshift_schema.local.database &&
+      data.redshift_functions.local.schema == redshift_schema.local.name &&
+      data.redshift_procedures.local.database == redshift_schema.local.database &&
+      data.redshift_procedures.local.schema == redshift_schema.local.name
+    )
+    error_message = "The routine listings must cover the consumer workspace schema."
+  }
+  # Terraform mocks cannot populate nested list attributes, so the listings stay empty here; the Go tests cover their
+  # contents, and this checks that the outputs are derived from the listings alone.
+  assert {
+    condition     = output.routines.functions == [] && output.routines.procedures == []
+    error_message = "The routines output must expose only what the routine listings observe."
+  }
+  assert {
+    condition = (
       output.routines.function.signature == "INTEGER, CHARACTER VARYING" &&
       output.routines.function.owner == "observed_function_owner" &&
       output.routines.procedure.signature == "INTEGER, BIGINT" &&

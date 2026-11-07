@@ -1,13 +1,13 @@
 ---
 subcategory: Functions and Procedures
 page_title: redshift_functions Data Source - terraform-provider-redshift
-description: Lists user-defined scalar functions, including Lambda UDFs.
+description: Lists SQL user-defined functions.
 ---
 
 # redshift_functions (Data Source)
 
-Lists the user-defined scalar functions of one database without managing them: SQL, Python, and Lambda UDFs (language
-`exfunc`). See AWS [PG_PROC_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_PROC_INFO.html).
+Lists the scalar SQL user-defined functions (`LANGUAGE SQL`) of one database, one element per overload, with the values
+`redshift_function` reads. See AWS [PG_PROC_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_PROC_INFO.html).
 
 ## Example Usage
 
@@ -17,8 +17,8 @@ data "redshift_functions" "public" {
   schema   = "public"
 }
 
-output "lambda_udfs" {
-  value = [for function in data.redshift_functions.public.functions : function.name if function.language == "exfunc"]
+output "immutable_udfs" {
+  value = [for function in data.redshift_functions.public.functions : "${function.name}(${function.signature})" if function.volatility == "IMMUTABLE"]
 }
 ```
 
@@ -28,7 +28,7 @@ output "lambda_udfs" {
 
 ### Optional
 
-- `database` (String) Database to list functions from; defaults to the provider database.
+- `database` (String) Database whose functions are listed; defaults to the provider's `database`.
 - `name` (String) Only functions with this exact name, including every overload.
 - `schema` (String) Only functions in this schema.
 
@@ -42,13 +42,14 @@ output "lambda_udfs" {
 
 Read-Only:
 
-- `arguments` (List of String) Input argument types in order, as the catalog reports them without length or precision but in uppercase, such as `INTEGER` or `CHARACTER VARYING`; with the name they identify the overload.
+- `arguments` (List of String) Input argument types in order, as the catalog reports them without modifiers but in uppercase, such as `INTEGER` or `CHARACTER VARYING`; empty for a function without arguments. With the name they identify the overload.
 - `database` (String) Database containing the function.
-- `language` (String) Implementation language in uppercase, such as `SQL`, `PLPYTHONU`, `PLPGSQL`, or `EXFUNC` for Lambda UDFs.
-- `name` (String) Name of the function.
+- `language` (String) Implementation language, always `SQL`.
+- `name` (String) Name of the function; overloads share a name.
 - `owner` (String) SQL user owning the function; empty when the catalog no longer resolves the owner.
-- `return_type` (String) Result type, as the catalog reports it without length or precision but in uppercase, such as `INTEGER`.
+- `return_type` (String) Result type, as the catalog reports it without modifiers but in uppercase, such as `INTEGER` or `CHARACTER VARYING`.
 - `schema` (String) Schema containing the function.
+- `signature` (String) Input argument types as one comma-separated string, such as `INTEGER, CHARACTER VARYING`, as `ALTER`, `DROP`, and `GRANT` identify the overload; empty without arguments.
 - `volatility` (String) `VOLATILE`, `STABLE`, or `IMMUTABLE`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -57,12 +58,13 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
--- List function overloads matching the configured filters.
-SELECT ... FROM pg_proc_info WHERE prokind = 'f' AND nspname = '...' AND proname = '...';
+-- List SQL UDF overloads matching the configured filters from pg_proc_info.
+SELECT ... FROM pg_proc_info WHERE prokind = 'f' AND lanname = 'sql' AND nspname = '...' AND proname = '...';
 ```
 
 ## Read Behavior
 
-The listing reads the catalog of the selected database, so it shows only functions the provider's SQL identity can see.
-Built-in functions in `pg_*` schemas and `information_schema` are excluded. An empty `functions` list means that nothing
-matches; a missing database or a catalog failure is an error.
+The listing reads the catalog of the selected database, ordered by schema, name, and argument types. Lambda UDFs are
+listed by `redshift_external_functions`; Python UDFs and the built-in functions in `pg_*` schemas and
+`information_schema` are excluded. Use `redshift_function` for an overload's body. An empty `functions` list means that
+nothing matches; a missing database or a catalog failure is an error. `id` contains the database and configured filters.
