@@ -52,7 +52,7 @@ func TestColumnGrantsListing(t *testing.T) {
 		values   []types.Map
 	}{
 		{"unfiltered", nil, "admin", []string{"GROUP:readers", "ROLE:example:readers"}, []types.Map{readers, role}},
-		{"group", map[string]string{"database_name": "warehouse", "schema_name": "serving", "object_name": "events", "grantee_type": "GROUP"}, "warehouse", []string{"GROUP:readers"}, []types.Map{readers}},
+		{"group", map[string]string{"database_name": "analytics", "schema_name": "serving", "object_name": "events", "grantee_type": "GROUP"}, "analytics", []string{"GROUP:readers"}, []types.Map{readers}},
 		{"role", map[string]string{"grantee": "example:readers", "grantee_type": "ROLE"}, "admin", []string{"ROLE:example:readers"}, []types.Map{role}},
 		{"empty", map[string]string{"object_name": "missing"}, "admin", nil, nil},
 	} {

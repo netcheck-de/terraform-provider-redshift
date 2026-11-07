@@ -40,6 +40,11 @@ var commentListingSources = []struct{ kind, fragment string }{
 
 // Query returns the annotated object of the recognized type.
 func (c *commentListingCatalog) Query(_ context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+	if local, _, _ := localDatabaseQuery(parameters["database"]).Build(); sql == local {
+		// Every database of this catalog is local.
+		return []sqlclient.Row{{"database_name": parameters["database"]}}, nil
+	}
+
 	kind := ""
 
 	for _, source := range commentListingSources {

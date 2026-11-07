@@ -18,7 +18,7 @@ func newColumnsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:          "columns",
 		databaseField: "database",
-		description:   "Lists the columns of the tables, views, and external tables of one database visible to the provider's SQL identity, from `SVV_ALL_COLUMNS`, ordered by schema, table, and position.",
+		description:   "Lists the columns of the tables, views, and external tables of one database visible to the provider's SQL identity, from `SVV_ALL_COLUMNS`, ordered by schema, table, and position. " + discoverySharedScope,
 		filters: map[string]schema.Attribute{
 			"database": discoveryDatabaseFilter("columns"),
 			"schema":   discoveryFilter("Only columns of relations in this schema."),

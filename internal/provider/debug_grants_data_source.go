@@ -23,7 +23,7 @@ func newDebugGrantsDataSource() datasource.DataSource {
 		databaseField: "database",
 		description: "Lists the `DEBUG` grants `SHOW GRANTS ON DATABASE` reports on one database of a warehouse with federated permissions, one element per grantee, without taking ownership. " +
 			"Only producer-local database names are accepted: for a remote `database@catalog` alias, `SHOW GRANTS ON` can silently omit existing grants, so use the `redshift_debug_grant` lookup there. " +
-			"`SHOW GRANTS` shows superusers every grant and other users only the grants visible to them.",
+			"Superusers see every grant; other users see only the grants `SHOW GRANTS` shows them. " + discoverySharedScope,
 		filters: map[string]schema.Attribute{
 			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database whose `DEBUG` grants are listed; defaults to the provider database.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
 		},
@@ -38,9 +38,14 @@ func newDebugGrantsDataSource() datasource.DataSource {
 				return nil, fmt.Errorf("SHOW GRANTS ON can omit DEBUG grants of the remote database %q; list a producer-local database or use the redshift_debug_grant lookup", database)
 			}
 
-			// The statement names the database, so it runs in admin, like the resource's read.
+			// The statement names the database, so it runs in admin, like the resource's read, which also treats a
+			// failure for a database SHOW DATABASES no longer lists as absence.
 			rows, err := client.query(ctx, readDebugGrantStatement(database), nil)
 			if err != nil {
+				if listed, listErr := client.databaseListed(ctx, database); listErr == nil && !listed {
+					return []map[string]attr.Value{}, nil
+				}
+
 				return nil, err
 			}
 

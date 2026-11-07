@@ -23,7 +23,7 @@ func newLanguageGrantsDataSource() datasource.DataSource {
 		databaseField: "database_name",
 		description: "Lists explicit `USAGE` grants on the `SQL` and `PLPGSQL` languages of one local database from `SVV_LANGUAGE_PRIVILEGES`, one element per language and grantee, without taking ownership. " +
 			"The view lists only explicit grants, so `PUBLIC`'s built-in `USAGE` may have no element. " +
-			"Superusers and users with the `ACCESS SYSTEM TABLE` permission see every grant; other users see only the identities they have access to or own.",
+			"Superusers and users with the `ACCESS SYSTEM TABLE` permission see every grant; other users see only the identities they have access to or own. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database_name": schema.StringAttribute{Optional: true, MarkdownDescription: "Local database whose language grants are listed; defaults to the provider database.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
 			"grantee":       schema.StringAttribute{Optional: true, MarkdownDescription: "Only grants to this identity name; `public` for `PUBLIC`.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
@@ -37,9 +37,9 @@ func newLanguageGrantsDataSource() datasource.DataSource {
 			"grant_option_privileges": languageGrantOptionLookupDescription,
 		}),
 		list: func(ctx context.Context, client *resourceClient, data types.Object) ([]map[string]attr.Value, error) {
-			database := objectString(data, "database_name")
-			if database == "" {
-				database = client.database.ValueString()
+			database, local, err := discoveryLocalDatabase(ctx, client, data, "database_name")
+			if err != nil || !local {
+				return []map[string]attr.Value{}, err
 			}
 
 			rows, err := client.selectRows(ctx, database, listLanguageGrantsQuery(objectString(data, "grantee")))

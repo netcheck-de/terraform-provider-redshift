@@ -36,8 +36,8 @@ func TestLanguageGrantsListing(t *testing.T) {
 		return c.Query(ctx, connection, sql, parameters)
 	})
 
-	items := listingItems(t, newLanguageGrantsDataSource(), map[string]string{"database_name": "warehouse"}, client)
-	assert.Equal(t, "warehouse", database)
+	items := listingItems(t, newLanguageGrantsDataSource(), map[string]string{"database_name": "analytics"}, client)
+	assert.Equal(t, "analytics", database)
 
 	if assert.Len(t, items, 2) {
 		assert.Equal(t, types.StringValue("PLPGSQL"), items[0]["language_name"])
@@ -45,7 +45,7 @@ func TestLanguageGrantsListing(t *testing.T) {
 		assert.Equal(t, stringSet(), items[0]["grant_option_privileges"])
 		assert.Equal(t, types.StringValue("SQL"), items[1]["language_name"])
 		assert.Equal(t, types.StringValue("analyst"), items[1]["grantee"])
-		assert.Equal(t, types.StringValue("warehouse"), items[1]["database_name"])
+		assert.Equal(t, types.StringValue("analytics"), items[1]["database_name"])
 		assert.Equal(t, stringSet("USAGE"), items[1]["privileges"])
 		assert.Equal(t, stringSet("USAGE"), items[1]["grant_option_privileges"])
 	}

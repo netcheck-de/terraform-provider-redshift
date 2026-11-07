@@ -42,8 +42,8 @@ func (r *debugGrantResource) Schema(_ context.Context, _ resource.SchemaRequest,
 	}
 }
 
-// listed reports whether SHOW DATABASES still lists the database.
-func (r *debugGrantResource) listed(ctx context.Context, database string) (bool, error) {
+// databaseListed reports whether SHOW DATABASES still lists the database.
+func (r *resourceClient) databaseListed(ctx context.Context, database string) (bool, error) {
 	rows, err := r.query(ctx, readDatabaseStatement(database), nil)
 	if err != nil {
 		return false, err
@@ -75,7 +75,7 @@ func (r *debugGrantResource) remoteVisible(ctx context.Context, database string)
 		return fmt.Errorf("remote DEBUG requires a verified IAM AssumeUser authentication context, got %q; password, unavailable, or unverified sessions cannot safely read remote grants. Use supported IAM authentication or a producer-local provider", method)
 	}
 
-	listed, err := r.listed(ctx, database)
+	listed, err := r.databaseListed(ctx, database)
 	if err != nil {
 		return fmt.Errorf("cannot verify remote DEBUG database visibility: %w", err)
 	}
@@ -125,7 +125,7 @@ func (r *debugGrantResource) read(ctx context.Context, data debugGrantModel) (bo
 
 	rows, err := r.query(ctx, readDebugGrantStatement(database), nil)
 	if err != nil {
-		if listed, listErr := r.listed(ctx, database); listErr == nil && !listed {
+		if listed, listErr := r.databaseListed(ctx, database); listErr == nil && !listed {
 			return false, nil
 		}
 

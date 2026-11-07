@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -22,7 +21,7 @@ func newGrantsDataSource() datasource.DataSource {
 		databaseField: "database_name",
 		description: "Lists the grants `redshift_grant` manages on one local or shared database, or on one schema of it, one element per recipient and scope, from `SHOW GRANTS ON DATABASE` or `SHOW GRANTS ON SCHEMA`, without taking ownership. " +
 			"Elements cover roles, users, and producer datashares; grants to groups and `PUBLIC` are left out. `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope, which is listed under the name the catalog reports. " +
-			"`SHOW GRANTS` shows superusers every grant and other users only the grants visible to them.",
+			"Superusers see every grant; other users see only the grants `SHOW GRANTS` shows them. " + discoverySharedScope,
 		filters: map[string]schema.Attribute{
 			"database_name": schema.StringAttribute{Optional: true, MarkdownDescription: "Local or shared database whose scoped grants are listed; defaults to the provider database.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
 			"schema_name":   schema.StringAttribute{Optional: true, MarkdownDescription: "Lists the grants on this schema and the scoped grants limited to it; database-wide grants when omitted.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
@@ -40,24 +39,12 @@ func newGrantsDataSource() datasource.DataSource {
 			"grant_option_privileges": "Subset of `privileges` the recipient holds `WITH GRANT OPTION`; only users hold grant options.",
 		}),
 		list: func(ctx context.Context, client *resourceClient, data types.Object) ([]map[string]attr.Value, error) {
-			admin, database, schemaName := client.database.ValueString(), objectString(data, "database_name"), objectString(data, "schema_name")
-			if database == "" {
-				database = admin
-			}
+			database, schemaName := discoveryDatabaseOf(client, data, "database_name"), objectString(data, "schema_name")
 
 			// Local grants are read in their database and shared ones from admin, as redshift_grant reads them.
-			kinds, err := client.selectRows(ctx, admin, grantDatabaseTypeQuery(database))
-			if err != nil {
-				return nil, err
-			}
-
-			if len(kinds) == 0 {
-				return nil, fmt.Errorf("database %q does not exist", database)
-			}
-
-			target := admin
-			if kinds[0]["database_type"] == "local" {
-				target = database
+			target, exists, err := discoveryGrantTarget(ctx, client, database)
+			if err != nil || !exists {
+				return []map[string]attr.Value{}, err
 			}
 
 			rows, err := client.queryDatabase(ctx, target, listGrantsStatement(database, schemaName), nil)

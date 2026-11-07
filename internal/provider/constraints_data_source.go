@@ -17,7 +17,7 @@ func newConstraintsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:          "constraints",
 		databaseField: "database",
-		description:   "Lists the primary key, unique, and foreign key constraints of one database's tables from `PG_CONSTRAINT`, with key columns in key order. Redshift does not enforce these constraints, but the query planner relies on them.",
+		description:   "Lists the primary key, unique, and foreign key constraints of one database's tables from `PG_CONSTRAINT`, with key columns in key order. Redshift does not enforce these constraints, but the query planner relies on them. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database":        discoveryDatabaseFilter("constraints"),
 			"schema":          discoveryFilter("Only constraints of tables in this schema."),
@@ -42,7 +42,10 @@ func newConstraintsDataSource() datasource.DataSource {
 
 // constraintsList reads constraints inside the selected database, because pg_constraint is per database.
 func constraintsList(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
-	database := discoveryDatabase(client, filters)
+	database, local, err := discoveryLocalDatabase(ctx, client, filters, "database")
+	if err != nil || !local {
+		return []map[string]attr.Value{}, err
+	}
 
 	query, err := readConstraintsQuery(objectString(filters, "schema"), objectString(filters, "table"), objectString(filters, "constraint_type"))
 	if err != nil {

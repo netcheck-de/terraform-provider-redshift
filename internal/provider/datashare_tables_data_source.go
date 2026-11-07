@@ -45,7 +45,7 @@ func newDatashareTablesDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:          "datashare_tables",
 		databaseField: "database",
-		description:   "Lists the tables, views, late-binding views, and materialized views of the outbound datashares in one producer database from `SVV_DATASHARE_OBJECTS`, without taking ownership. Includes relations added explicitly, in bulk, or by `INCLUDENEW`, which the catalog does not distinguish. " + datashareListVisibility,
+		description:   "Lists the tables, views, late-binding views, and materialized views of the outbound datashares in one producer database from `SVV_DATASHARE_OBJECTS`, without taking ownership. Includes relations added explicitly, in bulk, or by `INCLUDENEW`, which the catalog does not distinguish. " + datashareMemberScope,
 		filters:       filters,
 		element: describedOutputs(collectionElement(newDatashareTableResource, "database", "datashare", "schema", "table"), map[string]string{
 			"schema": "Schema containing the shared relation.",

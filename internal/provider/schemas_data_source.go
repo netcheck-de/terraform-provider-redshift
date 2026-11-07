@@ -20,7 +20,7 @@ func newSchemasDataSource() datasource.DataSource {
 		name:          "schemas",
 		databaseField: "database",
 		description: "Lists the local schemas of one database from `PG_NAMESPACE`, including system schemas such as `pg_catalog`, with their owners and disk quotas. " +
-			"Schemas that `PG_EXTERNAL_SCHEMA` records as external are left out; `redshift_external_schemas` lists those. `PG_EXTERNAL_SCHEMA` shows a regular user only the external schemas whose metadata they may access, so for a regular user other external schemas appear as local ones.",
+			"Schemas that `PG_EXTERNAL_SCHEMA` records as external are left out; `redshift_external_schemas` lists those. `PG_EXTERNAL_SCHEMA` shows a regular user only the external schemas whose metadata they may access, so for a regular user other external schemas appear as local ones. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database": discoveryDatabaseFilter("local schemas"),
 		},
@@ -38,7 +38,10 @@ func newSchemasDataSource() datasource.DataSource {
 // queries, however many schemas it holds. A schema without a quota row is UNLIMITED when the connection may see
 // its quota, as in the lookup, and null otherwise.
 func schemasList(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
-	database := discoveryDatabase(client, filters)
+	database, local, err := discoveryLocalDatabase(ctx, client, filters, "database")
+	if err != nil || !local {
+		return []map[string]attr.Value{}, err
+	}
 
 	rows, err := client.selectRows(ctx, database, listSchemasQuery())
 	if err != nil {

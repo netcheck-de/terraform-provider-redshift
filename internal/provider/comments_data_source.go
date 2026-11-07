@@ -19,7 +19,7 @@ func newCommentsDataSource() datasource.DataSource {
 		name:          "comments",
 		databaseField: "database_name",
 		description: "Lists the comments on the database itself and on its schemas, tables, views, columns, and constraints, from `PG_DESCRIPTION` joined to the catalog of each object type. " +
-			"Objects without a comment are not listed. With metadata security enabled, objects the connection may not access are hidden from the catalog and their comments are not listed.",
+			"Objects without a comment are not listed. With metadata security enabled, objects the connection may not access are hidden from the catalog and their comments are not listed. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database_name": discoveryFilter("Local database whose comments are listed; defaults to the provider's `database`."),
 			"object_type": schema.StringAttribute{
@@ -44,9 +44,9 @@ func newCommentsDataSource() datasource.DataSource {
 // commentsList runs one query per selected object type in the selected database, at most one per supported type
 // however many objects carry comments, and concatenates the results in type order.
 func commentsList(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
-	database := objectString(filters, "database_name")
-	if database == "" {
-		database = client.database.ValueString()
+	database, local, err := discoveryLocalDatabase(ctx, client, filters, "database_name")
+	if err != nil || !local {
+		return []map[string]attr.Value{}, err
 	}
 
 	schemaName := objectString(filters, "schema_name")

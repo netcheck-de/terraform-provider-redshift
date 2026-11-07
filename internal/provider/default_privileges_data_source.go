@@ -24,7 +24,7 @@ func newDefaultPrivilegesDataSource() datasource.DataSource {
 		description: "Lists the default privileges of one local database from `SVV_DEFAULT_PRIVILEGES`, one element per owner, schema, object type, and grantee, without taking ownership. " +
 			"Redshift grants `EXECUTE` on new functions to `PUBLIC` without being asked, until the owner's first `ALTER DEFAULT PRIVILEGES` on functions; " +
 			"that implicit rule is read from `PG_DEFAULT_ACL` and listed as a database-wide `PUBLIC` `FUNCTIONS` element for every such user. " +
-			"Superusers and users with the `ACCESS SYSTEM TABLE` permission see every rule; other users see only the defaults granted to them.",
+			"Superusers and users with the `ACCESS SYSTEM TABLE` permission see every rule; other users see only the defaults granted to them. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database_name": schema.StringAttribute{Optional: true, MarkdownDescription: "Local database whose default privileges are listed; defaults to the provider database.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
 			"owner":         schema.StringAttribute{Optional: true, MarkdownDescription: "Only the defaults of objects this user creates.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
@@ -42,9 +42,9 @@ func newDefaultPrivilegesDataSource() datasource.DataSource {
 			"grant_option_privileges": "Subset of `privileges` the grantee receives `WITH GRANT OPTION`; only users hold grant options.",
 		}),
 		list: func(ctx context.Context, client *resourceClient, data types.Object) ([]map[string]attr.Value, error) {
-			database := objectString(data, "database_name")
-			if database == "" {
-				database = client.database.ValueString()
+			database, local, err := discoveryLocalDatabase(ctx, client, data, "database_name")
+			if err != nil || !local {
+				return []map[string]attr.Value{}, err
 			}
 
 			rows, err := client.selectRows(ctx, database, listDefaultPrivilegesQuery(objectString(data, "owner"), objectString(data, "schema_name"), objectString(data, "grantee")))

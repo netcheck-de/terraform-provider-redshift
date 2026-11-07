@@ -15,8 +15,10 @@ import (
 
 var _ = registerDataSource(newDatashareSchemasDataSource)
 
-// datashareListVisibility documents the row visibility of SVV_DATASHARE_OBJECTS that every member listing inherits.
-const datashareListVisibility = "Superusers see the members of every share; other users see only rows visible to them in `SVV_DATASHARE_OBJECTS` and `SVV_DATASHARES`."
+// datashareMemberScope documents the database scope and the row visibility of SVV_DATASHARE_OBJECTS that every
+// member listing inherits.
+const datashareMemberScope = "Superusers see the members of every share; other users see only rows visible to them in `SVV_DATASHARE_OBJECTS` and `SVV_DATASHARES`. " +
+	"Only datashares of `database`, the provider database by default, are listed; `redshift_datashares` lists the datashares of every database. " + discoveryLocalScope
 
 // datashareObjectFilters are the database and share filters of the member listings.
 func datashareObjectFilters() map[string]schema.Attribute {
@@ -26,13 +28,11 @@ func datashareObjectFilters() map[string]schema.Attribute {
 	}
 }
 
-// listDatashareObjects reads the outbound share members of the selected database that match objectTypes. A missing
-// database yields no rows instead of an error.
+// listDatashareObjects reads the outbound share members of the selected database that match objectTypes. A database
+// that does not exist or is not local yields no rows instead of an error.
 func listDatashareObjects(ctx context.Context, client *resourceClient, filters types.Object, objectTypes sqlclient.Keyword) (string, []sqlclient.Row, error) {
-	database := discoveryDatabase(client, filters)
-
-	exists, err := client.localDatabaseExists(ctx, database)
-	if err != nil || !exists {
+	database, local, err := discoveryLocalDatabase(ctx, client, filters, "database")
+	if err != nil || !local {
 		return database, nil, err
 	}
 
@@ -51,7 +51,7 @@ func newDatashareSchemasDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:          "datashare_schemas",
 		databaseField: "database",
-		description:   "Lists the schemas of the outbound datashares in one producer database from `SVV_DATASHARE_OBJECTS`, without taking ownership. " + datashareListVisibility,
+		description:   "Lists the schemas of the outbound datashares in one producer database from `SVV_DATASHARE_OBJECTS`, without taking ownership. " + datashareMemberScope,
 		filters:       datashareObjectFilters(),
 		element: describedOutputs(collectionElement(newDatashareSchemaResource, "database", "datashare", "schema", "include_new"), map[string]string{
 			"schema":      "Schema included in the share.",

@@ -19,10 +19,10 @@ func TestFunctionsListing(t *testing.T) {
 		"return_type": "INTEGER", "volatility": "IMMUTABLE", "language": "SQL", "owner": "admin",
 	}, items[0])
 
-	identity, items = routineListingRead(t, newFunctionsDataSource(), map[string]string{"database": "warehouse", "schema": "public", "name": "f_example"}, fullCatalog())
-	assert.Equal(t, map[string]string{"database": "warehouse", "schema": "public", "name": "f_example"}, identity)
+	identity, items = routineListingRead(t, newFunctionsDataSource(), map[string]string{"database": "analytics", "schema": "public", "name": "f_example"}, fullCatalog())
+	assert.Equal(t, map[string]string{"database": "analytics", "schema": "public", "name": "f_example"}, identity)
 	require.Len(t, items, 1)
-	assert.Equal(t, "warehouse", items[0]["database"])
+	assert.Equal(t, "analytics", items[0]["database"])
 
 	_, items = routineListingRead(t, newFunctionsDataSource(), map[string]string{"schema": "serving"}, fullCatalog())
 	assert.Empty(t, items)

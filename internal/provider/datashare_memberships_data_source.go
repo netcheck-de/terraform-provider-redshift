@@ -26,7 +26,7 @@ func newDatashareMembershipsDataSource() datasource.DataSource {
 		description: "Lists, for every schema of the outbound datashares in one producer database and each kind, whether the share holds every current source object of that kind, without taking ownership or requiring a SQL superuser. " +
 			"Compares `SVV_DATASHARE_OBJECTS` with `SVV_ALL_TABLES` and `PG_PROC_INFO` in a fixed number of queries. " +
 			"A schema whose name contains a period is omitted, as is a kind with a source object whose name contains one, because the catalog does not quote qualification. " +
-			"Only visible rows are compared, so restricted visibility can report `all = true` without proving complete coverage.",
+			"Only visible rows are compared, so restricted visibility can report `all = true` without proving complete coverage. " + datashareMemberScope,
 		filters: filters,
 		element: describedOutputs(collectionElement(newDatashareMembershipResource, "database", "datashare", "schema", "kind", "all"), map[string]string{
 			"schema": "Shared schema whose members are compared.",

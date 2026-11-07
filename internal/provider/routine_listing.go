@@ -84,9 +84,14 @@ func functionCollectionItem(database string, row sqlclient.Row) (map[string]attr
 	return item, nil
 }
 
-// routineListingRows runs a routine listing query with the given conditions in the selected database.
+// routineListingRows runs a routine listing query with the given conditions in the selected database; a database
+// that does not exist or is not local yields no rows.
 func routineListingRows(ctx context.Context, client *resourceClient, filters types.Object, nameFilter string, conditions ...sqlclient.Keyword) (string, []sqlclient.Row, error) {
-	database := discoveryDatabase(client, filters)
+	database, local, err := discoveryLocalDatabase(ctx, client, filters, "database")
+	if err != nil || !local {
+		return database, nil, err
+	}
+
 	rows, err := client.selectRows(ctx, database, routineListingQuery(objectString(filters, "schema"), objectString(filters, nameFilter), conditions...))
 
 	return database, rows, err

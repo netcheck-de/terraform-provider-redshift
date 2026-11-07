@@ -57,13 +57,13 @@ func TestMaskingPolicyAttachmentsListing(t *testing.T) {
 		rows       []sqlclient.Row
 	)
 
-	client := queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
+	client := withLocalDatabases(queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
 		require.Contains(t, sql, "FROM svv_attached_masking_policy")
 
 		target, parameters = connection, params
 
 		return rows, nil
-	})
+	}))
 	rows = []sqlclient.Row{{
 		"policy_name": "mask_card", "schema_name": "sales", "table_name": "cards", "grantee": "public", "grantee_type": "public",
 		"priority": "100", "input_columns": `["is_fraud", "card_number"]`, "output_columns": `["card_number"]`,

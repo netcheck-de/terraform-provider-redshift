@@ -56,7 +56,7 @@ func TestRlsPolicyAttachmentsListing(t *testing.T) {
 		parameters map[string]string
 	)
 
-	client := queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
+	client := withLocalDatabases(queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
 		require.Contains(t, sql, "FROM svv_rls_attached_policy")
 
 		target, parameters = connection, params
@@ -65,7 +65,7 @@ func TestRlsPolicyAttachmentsListing(t *testing.T) {
 			{"polname": "region_filter", "relschema": "sales", "relname": "orders", "grantee": "public", "granteekind": "role"},
 			{"polname": "region_filter", "relschema": "sales", "relname": "orders", "grantee": "loader", "granteekind": "user"},
 		}, nil
-	})
+	}))
 	items := rlsAttachmentListing(t, map[string]string{"database": "analytics", "schema": "sales"}, client)
 	assert.Equal(t, "analytics", target.Database, "the view covers only the connected database")
 	assert.Equal(t, map[string]string{"schema": "sales"}, parameters)

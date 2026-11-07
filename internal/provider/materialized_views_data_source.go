@@ -20,7 +20,7 @@ func newMaterializedViewsDataSource() datasource.DataSource {
 		databaseField: "database",
 		description: "Lists the materialized views of one local database from `pg_views`, with automatic refresh settings from `SVV_MV_INFO`. " +
 			"`SVV_MV_INFO` shows a provider identity that is not a superuser only the materialized views it owns, so `auto_refresh` is null for the others. " +
-			"A database that is not local, such as a datashare consumer database, lists no materialized views.",
+			discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database": discoveryDatabaseFilter("materialized views"),
 			"schema":   discoveryFilter("Only materialized views in this schema."),

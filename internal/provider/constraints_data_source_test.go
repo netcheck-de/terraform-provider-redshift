@@ -34,10 +34,10 @@ func TestConstraintsDataSource(t *testing.T) {
 
 	var target sqlclient.Connection
 
-	_, _, diagnostics := discoveryRead(t, newConstraintsDataSource, map[string]string{"database": "analytics"}, queryFunc(func(_ context.Context, connection sqlclient.Connection, _ string, _ map[string]string) ([]sqlclient.Row, error) {
+	_, _, diagnostics := discoveryRead(t, newConstraintsDataSource, map[string]string{"database": "analytics"}, withLocalDatabases(queryFunc(func(_ context.Context, connection sqlclient.Connection, _ string, _ map[string]string) ([]sqlclient.Row, error) {
 		target = connection
 		return nil, nil
-	}))
+	})))
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
 	assert.Equal(t, "analytics", target.Database, "constraints are read inside the listed database")
 	_, _, diagnostics = discoveryRead(t, newConstraintsDataSource, map[string]string{"constraint_type": "CHECK"}, fullCatalog())

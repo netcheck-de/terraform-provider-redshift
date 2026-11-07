@@ -26,7 +26,8 @@ func newRlsPolicyAttachmentsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:          "rls_policy_attachments",
 		databaseField: "database",
-		description:   "Lists the row-level security policy attachments of one database from `svv_rls_attached_policy`, including attachments Terraform does not manage. Only superusers and `sys:secadmin` holders can query the view.",
+		description: "Lists the row-level security policy attachments of one database from `SVV_RLS_ATTACHED_POLICY`, including attachments Terraform does not manage. " +
+			"Users with the `sys:secadmin` role see every attachment; AWS documents no other user as able to query the view. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database whose attachments are listed; defaults to the provider database."},
 			"policy":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only attachments of this policy; all policies when omitted."},
@@ -35,7 +36,11 @@ func newRlsPolicyAttachmentsDataSource() datasource.DataSource {
 		},
 		element: describedOutputs(collectionElement(newRlsPolicyAttachmentResource, "database", "policy", "schema", "relation", "grantee", "grantee_type"), rlsPolicyAttachmentOutputDescriptions),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
-			database := discoveryDatabase(client, filters)
+			database, local, err := discoveryLocalDatabase(ctx, client, filters, "database")
+			if err != nil || !local {
+				return []map[string]attr.Value{}, err
+			}
+
 			query := listRlsPolicyAttachmentsQuery(objectString(filters, "policy"), objectString(filters, "schema"), objectString(filters, "relation"))
 
 			rows, err := client.selectRows(ctx, database, query)

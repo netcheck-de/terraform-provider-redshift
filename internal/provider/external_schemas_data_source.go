@@ -29,7 +29,7 @@ func newExternalSchemasDataSource() datasource.DataSource {
 		name:          "external_schemas",
 		databaseField: "database",
 		description: "Lists the external schemas of one local database from `PG_NAMESPACE` joined to `SVV_EXTERNAL_SCHEMAS`, with their source form, recorded options, and owner. " +
-			"`SVV_EXTERNAL_SCHEMAS` shows a regular user only their own external schemas, so only a superuser connection lists every one. Schemas of source kinds `redshift_external_schema` cannot manage, such as system-table schemas, are omitted.",
+			"Superusers see every external schema; other users see only their own, as `SVV_EXTERNAL_SCHEMAS` shows them. Schemas of source kinds `redshift_external_schema` cannot manage, such as system-table schemas, are omitted. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database": discoveryDatabaseFilter("external schemas"),
 		},
@@ -41,7 +41,10 @@ func newExternalSchemasDataSource() datasource.DataSource {
 // externalSchemasList reads every visible external schema of the selected database in one query and decodes each
 // row as the lookup does.
 func externalSchemasList(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
-	database := discoveryDatabase(client, filters)
+	database, local, err := discoveryLocalDatabase(ctx, client, filters, "database")
+	if err != nil || !local {
+		return []map[string]attr.Value{}, err
+	}
 
 	rows, err := client.selectRows(ctx, database, listExternalSchemasQuery())
 	if err != nil {

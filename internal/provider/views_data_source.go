@@ -18,7 +18,7 @@ func newViewsDataSource() datasource.DataSource {
 		name:          "views",
 		databaseField: "database",
 		description: "Lists the ordinary and late-binding views of one local database from `pg_views`, without materialized views or system views. " +
-			"A database that is not local, such as a datashare consumer database, lists no views.",
+			discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database": discoveryDatabaseFilter("views"),
 			"schema":   discoveryFilter("Only views in this schema."),

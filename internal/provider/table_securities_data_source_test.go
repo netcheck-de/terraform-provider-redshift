@@ -54,13 +54,13 @@ func TestTableSecuritiesListing(t *testing.T) {
 		parameters map[string]string
 	)
 
-	client := queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
+	client := withLocalDatabases(queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, params map[string]string) ([]sqlclient.Row, error) {
 		require.Contains(t, sql, "FROM svv_rls_relation")
 
 		target, parameters = connection, params
 
 		return []sqlclient.Row{{"relschema": "sales", "relname": "orders", "is_rls_on": "false", "is_rls_datashare_on": "false", "rls_conjunction_type": ""}}, nil
-	})
+	}))
 	items := tableSecurityListing(t, map[string]string{"database": "analytics"}, client)
 	assert.Equal(t, "analytics", target.Database)
 	assert.Equal(t, map[string]string{"database": "analytics"}, parameters, "the view is filtered by the listed database")

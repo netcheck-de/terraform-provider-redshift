@@ -33,10 +33,10 @@ func TestModelsList(t *testing.T) {
 
 			var databases []string
 
-			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+			client := withLocalDatabases(queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				databases = append(databases, target.Database)
 				return c.Query(ctx, target, sql, parameters)
-			})
+			}))
 			source := newModelsDataSource()
 			state, diagnostics := readSource(t, source, collectionConfig(t, source, test.filters), client)
 			require.False(t, diagnostics.HasError(), "%v", diagnostics)

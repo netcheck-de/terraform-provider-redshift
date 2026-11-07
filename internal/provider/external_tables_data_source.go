@@ -24,7 +24,7 @@ func newExternalTablesDataSource() datasource.DataSource {
 		name:          "external_tables",
 		databaseField: "database",
 		description: "Lists the Redshift Spectrum external tables of one local database with their definitions, from `SVV_EXTERNAL_TABLES` and `SVV_EXTERNAL_COLUMNS`. " +
-			"Superusers see every table; other users see only the tables they have access to. A database that is not local lists no tables.",
+			"Superusers see every table; other users see only the tables they have access to. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database": discoveryDatabaseFilter("external tables"),
 			"schema":   discoveryFilter("Only tables in this external schema; compared without case."),

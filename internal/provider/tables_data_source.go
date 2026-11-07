@@ -18,7 +18,7 @@ func newTablesDataSource() datasource.DataSource {
 		name:          "tables",
 		databaseField: "database",
 		description: "Lists the local tables of one database from `SVV_REDSHIFT_TABLES`, without views, materialized views, external tables, or system tables. " +
-			"Superusers see every table; other users see only the tables they have access to. A database that is not local, such as a datashare consumer database, lists no tables.",
+			"Superusers see every table; other users see only the tables they have access to. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database": discoveryDatabaseFilter("tables"),
 			"schema":   discoveryFilter("Only tables in this schema."),

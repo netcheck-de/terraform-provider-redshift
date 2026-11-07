@@ -29,7 +29,8 @@ func newMaskingPolicyAttachmentsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:          "masking_policy_attachments",
 		databaseField: "database",
-		description:   "Lists the dynamic data masking policy attachments of one database from `SVV_ATTACHED_MASKING_POLICY`, including attachments Terraform does not manage. Only superusers and `sys:secadmin` members see attachments; for other users the list is empty.",
+		description: "Lists the dynamic data masking policy attachments of one database from `SVV_ATTACHED_MASKING_POLICY`, including attachments Terraform does not manage. " +
+			"Superusers and users with the `sys:secadmin` role see every attachment; other users see none. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database": schema.StringAttribute{Optional: true, MarkdownDescription: "Database whose attachments are listed; defaults to the provider database."},
 			"policy":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only attachments of this policy; all policies when omitted."},
@@ -38,7 +39,11 @@ func newMaskingPolicyAttachmentsDataSource() datasource.DataSource {
 		},
 		element: describedOutputs(collectionElement(newMaskingPolicyAttachmentResource, "database", "policy", "schema", "relation", "grantee", "grantee_type", "columns", "input_columns", "priority"), maskingAttachmentOutputDescriptions),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
-			database := discoveryDatabase(client, filters)
+			database, local, err := discoveryLocalDatabase(ctx, client, filters, "database")
+			if err != nil || !local {
+				return []map[string]attr.Value{}, err
+			}
+
 			query := listMaskingAttachmentsQuery(objectString(filters, "policy"), objectString(filters, "schema"), objectString(filters, "relation"))
 
 			rows, err := client.selectRows(ctx, database, query)

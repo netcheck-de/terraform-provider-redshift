@@ -227,3 +227,15 @@ func discoveryFailures(t *testing.T, factory func() datasource.DataSource, filte
 		require.True(t, diagnostics.HasError(), "malformed row %v must be an error", row)
 	}
 }
+
+// withLocalDatabases reports every database as local and passes every other query to client, for listing tests
+// whose fakes pin only the listing's own reads.
+func withLocalDatabases(client sqlclient.Client) sqlclient.Client {
+	return queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		if local, _, _ := localDatabaseQuery(parameters["database"]).Build(); sql == local {
+			return []sqlclient.Row{{"database_name": parameters["database"]}}, nil
+		}
+
+		return client.Query(ctx, connection, sql, parameters)
+	})
+}

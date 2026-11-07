@@ -13,7 +13,7 @@ import (
 var _ = registerParity(parityCase{source: newGrantsDataSource, resource: newGrantResource, collection: true, filters: []string{"database_name", "schema_name", "role", "user"}})
 
 // TestGrantsListing lists the scoped grants of a database or schema from the fake, in the connection
-// redshift_grant reads them from, and reports missing databases and catalog failures as errors.
+// redshift_grant reads them from, lists nothing for a missing database, and reports catalog failures as errors.
 func TestGrantsListing(t *testing.T) {
 	c := fullCatalog()
 
@@ -60,8 +60,14 @@ func TestGrantsListing(t *testing.T) {
 	assert.Empty(t, listingItems(t, newGrantsDataSource(), map[string]string{"database_name": "warehouse"}, local))
 	assert.Equal(t, []string{"admin", "warehouse"}, connections, "a local database is read in that database")
 
-	assertListingFails(t, newGrantsDataSource(), map[string]string{"database_name": "missing"}, queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+	var statements []string
+
+	missing := queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+		statements = append(statements, sql)
 		return nil, nil
-	}))
+	})
+	assert.Empty(t, listingItems(t, newGrantsDataSource(), map[string]string{"database_name": "missing"}, missing), "a database that does not exist lists nothing")
+	assert.Equal(t, []string{`SELECT database_type FROM svv_redshift_databases WHERE database_name = :database`}, statements, "SHOW GRANTS never runs for a missing database")
+
 	assertListingFails(t, newGrantsDataSource(), nil, nil)
 }

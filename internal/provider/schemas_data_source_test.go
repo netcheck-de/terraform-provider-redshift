@@ -61,7 +61,7 @@ func TestSchemasDataSourceQuotaVisibility(t *testing.T) {
 // failures and malformed rows.
 func TestSchemasDataSourceQueries(t *testing.T) {
 	answer := func(schemas []sqlclient.Row, fail string) sqlclient.Client {
-		return queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+		return withLocalDatabases(queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 			if connection.Database != "analytics" {
 				return nil, errors.New("unexpected database " + connection.Database)
 			}
@@ -78,14 +78,14 @@ func TestSchemasDataSourceQueries(t *testing.T) {
 			default:
 				return []sqlclient.Row{{"name": "admin", "superuser": "true"}}, nil
 			}
-		})
+		}))
 	}
 
 	schemas := []sqlclient.Row{{"schema_name": "padded ", "owner": "etl"}, {"schema_name": "plain", "owner": "etl"}}
 	recorder := &recordingClient{client: answer(schemas, "")}
 	items, _, diagnostics := discoveryRead(t, newSchemasDataSource, map[string]string{"database": "analytics"}, recorder)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
-	assert.Len(t, recorder.take(), 3, "one query each for schemas, quotas, and the session")
+	assert.Len(t, recorder.take(), 4, "one query each for the database check, schemas, quotas, and the session")
 	assert.Equal(t, types.StringValue("padded "), items[0]["name"], "quoted names keep their spaces")
 	assert.Equal(t, types.Int64Value(4096), items[0]["quota"], "the trimmed quota row matches the padded name")
 	assert.Equal(t, types.Int64Value(schemaUnlimited), items[1]["quota"])

@@ -23,7 +23,7 @@ func newExternalPartitionsDataSource() datasource.DataSource {
 		name:          "external_partitions",
 		databaseField: "database",
 		description: "Lists the partitions of the partitioned Redshift Spectrum external tables of one local database, from `SVV_EXTERNAL_PARTITIONS` with partition keys from `SVV_EXTERNAL_COLUMNS`. " +
-			"Superusers see every partition; other users see only the tables they have access to. A database that is not local lists no partitions.",
+			"Superusers see every partition; other users see only the tables they have access to. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database": discoveryDatabaseFilter("partitions"),
 			"schema":   discoveryFilter("Only partitions of tables in this external schema; compared without case."),
