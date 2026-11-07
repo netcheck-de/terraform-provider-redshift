@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -205,3 +206,102 @@ func TestCollectionIdentityIncludesBooleanFilter(t *testing.T) {
 var failingCatalog = queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 	return nil, errors.New("catalog unavailable")
 })
+
+// localListings are the database-scoped listings whose objects exist only in local databases, with their database
+// filter.
+var localListings = map[string]struct {
+	factory func() datasource.DataSource
+	field   string
+}{
+	"column_grants":              {newColumnGrantsDataSource, "database_name"},
+	"comments":                   {newCommentsDataSource, "database_name"},
+	"constraints":                {newConstraintsDataSource, "database"},
+	"copy_jobs":                  {newCopyJobsDataSource, "database"},
+	"datashare_memberships":      {newDatashareMembershipsDataSource, "database"},
+	"datashare_schemas":          {newDatashareSchemasDataSource, "database"},
+	"datashare_tables":           {newDatashareTablesDataSource, "database"},
+	"default_privileges":         {newDefaultPrivilegesDataSource, "database_name"},
+	"external_functions":         {newExternalFunctionsDataSource, "database"},
+	"external_partitions":        {newExternalPartitionsDataSource, "database"},
+	"external_schemas":           {newExternalSchemasDataSource, "database"},
+	"external_tables":            {newExternalTablesDataSource, "database"},
+	"functions":                  {newFunctionsDataSource, "database"},
+	"language_grants":            {newLanguageGrantsDataSource, "database_name"},
+	"masking_policy_attachments": {newMaskingPolicyAttachmentsDataSource, "database"},
+	"materialized_views":         {newMaterializedViewsDataSource, "database"},
+	"models":                     {newModelsDataSource, "database"},
+	"procedures":                 {newProceduresDataSource, "database"},
+	"rls_policies":               {newRlsPoliciesDataSource, "database"},
+	"rls_policy_attachments":     {newRlsPolicyAttachmentsDataSource, "database"},
+	"routine_parameters":         {newRoutineParametersDataSource, "database"},
+	"schemas":                    {newSchemasDataSource, "database"},
+	"table_securities":           {newTableSecuritiesDataSource, "database"},
+	"tables":                     {newTablesDataSource, "database"},
+	"templates":                  {newTemplatesDataSource, "database"},
+	"views":                      {newViewsDataSource, "database"},
+}
+
+// TestLocalListingsSkipNonLocalDatabases lists nothing for a missing or shared database without connecting to it,
+// records the selected database in the identity, documents that policy, and reports a failing database lookup.
+func TestLocalListingsSkipNonLocalDatabases(t *testing.T) {
+	for name, listing := range localListings {
+		t.Run(name, func(t *testing.T) {
+			var response datasource.SchemaResponse
+			listing.factory().Schema(context.Background(), datasource.SchemaRequest{}, &response)
+			assert.Contains(t, response.Schema.MarkdownDescription, discoveryLocalScope)
+
+			for _, database := range []string{"consumer_db", "dropped"} {
+				recorder := &recordingClient{client: fullCatalog()}
+				items, identity, diagnostics := discoveryRead(t, listing.factory, map[string]string{listing.field: database}, recorder)
+				require.False(t, diagnostics.HasError(), "%v", diagnostics)
+				assert.Empty(t, items, "%s lists nothing", database)
+				assert.Equal(t, database, identity[listing.field])
+
+				for _, entry := range recorder.take() {
+					assert.Equal(t, "admin", entry.database, "%s is never connected to: %s", database, entry.sql)
+				}
+			}
+
+			_, _, diagnostics := discoveryRead(t, listing.factory, map[string]string{listing.field: "analytics"}, failingCatalog)
+			assert.True(t, diagnostics.HasError(), "a failing database lookup is an error, not an empty listing")
+		})
+	}
+}
+
+// TestSharedListingsDocumentRouting documents, for the listings that read shared databases from the provider
+// database, that policy.
+func TestSharedListingsDocumentRouting(t *testing.T) {
+	for _, factory := range []func() datasource.DataSource{newColumnsDataSource, newDebugGrantsDataSource, newGrantsDataSource, newObjectGrantsDataSource} {
+		var response datasource.SchemaResponse
+		factory().Schema(context.Background(), datasource.SchemaRequest{}, &response)
+		assert.Contains(t, response.Schema.MarkdownDescription, discoverySharedScope)
+	}
+}
+
+// TestCollectionFiltersRejectEmptyStrings requires every string filter of every listing to reject an empty string,
+// which would otherwise read as an unset filter.
+func TestCollectionFiltersRejectEmptyStrings(t *testing.T) {
+	ctx := context.Background()
+	minimum := stringvalidator.LengthAtLeast(1).Description(ctx)
+
+	for _, factory := range registeredDataSources() {
+		listing, ok := factory().(*collectionDataSource)
+		if !ok {
+			continue
+		}
+
+		for name, filter := range listing.spec.filters {
+			text, ok := filter.(schema.StringAttribute)
+			if !ok {
+				continue
+			}
+
+			var descriptions []string
+			for _, validator := range text.Validators {
+				descriptions = append(descriptions, validator.Description(ctx))
+			}
+
+			assert.Contains(t, descriptions, minimum, "%s.%s", listing.spec.name, name)
+		}
+	}
+}
