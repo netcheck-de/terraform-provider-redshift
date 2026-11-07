@@ -56,7 +56,7 @@ func newObjectGrantsDataSource() datasource.DataSource {
 		databaseField: "database_name",
 		description: "Lists the explicit object grants `SHOW GRANTS` reports on one database, schema, table, or template, or for one user or role in one database, one element per object and grantee, without taking ownership. " +
 			"Elements are the `DATABASE`, `SCHEMA`, `TABLE`, and `TEMPLATE` grants `redshift_object_grant` manages; scoped grants (see `redshift_grants`), routine and model grants, `ALL …` snapshots, and identities other than users, roles, groups, and `PUBLIC` are left out. " +
-			"`SHOW GRANTS` shows superusers every grant and other users only the grants visible to them, and documents no column for grants inherited through roles, so none is exposed.",
+			"Superusers see every grant; other users see only the grants `SHOW GRANTS` shows them. `SHOW GRANTS` documents no column for grants inherited through roles, so none is exposed. " + discoverySharedScope,
 		filters: filters,
 		element: describedOutputs(collectionElement(newObjectGrantResource, "database_name", "schema_name", "object_type", "object_name", "grantee", "grantee_type", "privileges", "grant_option_privileges"), objectGrantsOutputDescriptions),
 		list: func(ctx context.Context, client *resourceClient, data types.Object) ([]map[string]attr.Value, error) {
@@ -67,7 +67,14 @@ func newObjectGrantsDataSource() datasource.DataSource {
 				return nil, err
 			}
 
-			rows, err := client.queryDatabase(ctx, filters.database, statement, nil)
+			// Local grants are read in their database and shared ones from admin, as redshift_object_grant reads them;
+			// the statement qualifies every name with the database.
+			target, exists, err := discoveryGrantTarget(ctx, client, filters.database)
+			if err != nil || !exists {
+				return []map[string]attr.Value{}, err
+			}
+
+			rows, err := client.queryDatabase(ctx, target, statement, nil)
 			if err != nil {
 				return nil, err
 			}

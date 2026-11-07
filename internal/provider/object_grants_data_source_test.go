@@ -55,12 +55,35 @@ func stringSet(values ...string) types.Set {
 	return types.SetValueMust(types.StringType, grantStringValues(values))
 }
 
-// TestObjectGrantsListing reads SHOW GRANTS in the selected database, groups each object's privileges per grantee,
-// and reports invalid selections as errors.
+// grantDatabaseTypes answers the database type query of the grant listings: warehouse is local, consumer_db is
+// shared, and other databases do not exist. It reports whether sql was that query.
+func grantDatabaseTypes(sql string, parameters map[string]string) ([]sqlclient.Row, bool) {
+	if query, _, _ := grantDatabaseTypeQuery("any").Build(); sql != query {
+		return nil, false
+	}
+
+	switch parameters["database"] {
+	case "warehouse", "admin":
+		return []sqlclient.Row{{"database_type": "local"}}, true
+	case "consumer_db":
+		return []sqlclient.Row{{"database_type": "shared"}}, true
+	default:
+		return nil, true
+	}
+}
+
+// TestObjectGrantsListing reads SHOW GRANTS in a local database, and from the provider database for a shared one, as
+// redshift_object_grant does, groups each object's privileges per grantee, lists nothing for a missing database, and
+// reports invalid selections as errors.
 func TestObjectGrantsListing(t *testing.T) {
 	var database, statement string
 
 	client := queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+		if rows, ok := grantDatabaseTypes(sql, parameters); ok {
+			assert.Equal(t, "admin", connection.Database, "the database type is read from the provider database")
+			return rows, nil
+		}
+
 		database, statement = connection.Database, sql
 
 		assert.Empty(t, parameters, "SHOW GRANTS takes no bindings")
@@ -81,6 +104,8 @@ func TestObjectGrantsListing(t *testing.T) {
 		{"table", "warehouse", `SHOW GRANTS ON TABLE "warehouse"."serving"."events"`, map[string]string{"database_name": "warehouse", "object_type": "TABLE", "schema_name": "serving", "object_name": "events"}, []string{"GROUP:readers", "USER:analyst"}, stringSet("SELECT")},
 		{"table group", "warehouse", `SHOW GRANTS ON TABLE "warehouse"."serving"."events"`, map[string]string{"database_name": "warehouse", "object_type": "TABLE", "schema_name": "serving", "object_name": "events", "grantee_type": "GROUP"}, []string{"GROUP:readers"}, stringSet()},
 		{"user", "admin", `SHOW GRANTS FOR "analyst" FROM DATABASE "admin"`, map[string]string{"grantee": "analyst", "grantee_type": "USER"}, []string{"USER:analyst"}, types.SetNull(types.StringType)},
+		{"shared table", "admin", `SHOW GRANTS ON TABLE "consumer_db"."serving"."events"`, map[string]string{"database_name": "consumer_db", "object_type": "TABLE", "schema_name": "serving", "object_name": "events"}, []string{"GROUP:readers", "USER:analyst"}, stringSet("SELECT")},
+		{"shared user", "admin", `SHOW GRANTS FOR "analyst" FROM DATABASE "consumer_db"`, map[string]string{"database_name": "consumer_db", "grantee": "analyst", "grantee_type": "USER"}, []string{"USER:analyst"}, types.SetNull(types.StringType)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			items := listingItems(t, newObjectGrantsDataSource(), test.filters, client)
@@ -117,6 +142,14 @@ func TestObjectGrantsListing(t *testing.T) {
 			assert.Empty(t, statement, "invalid selections never reach SQL")
 		})
 	}
+
+	t.Run("missing database", func(t *testing.T) {
+		statement = ""
+
+		items := listingItems(t, newObjectGrantsDataSource(), map[string]string{"database_name": "dropped", "object_type": "DATABASE"}, client)
+		assert.Empty(t, items, "a database that does not exist lists nothing")
+		assert.Empty(t, statement, "SHOW GRANTS never runs for a missing database")
+	})
 
 	assertListingFails(t, newObjectGrantsDataSource(), map[string]string{"object_type": "DATABASE"}, nil)
 }
