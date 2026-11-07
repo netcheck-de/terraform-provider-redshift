@@ -26,10 +26,15 @@ func newDefaultPrivilegesDataSource() datasource.DataSource {
 			"that implicit rule is read from `PG_DEFAULT_ACL` and listed as a database-wide `PUBLIC` `FUNCTIONS` element for every such user. " +
 			"Superusers and users with the `ACCESS SYSTEM TABLE` permission see every rule; other users see only the defaults granted to them. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
-			"database_name": schema.StringAttribute{Optional: true, MarkdownDescription: "Local database whose default privileges are listed; defaults to the provider database.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
-			"owner":         schema.StringAttribute{Optional: true, MarkdownDescription: "Only the defaults of objects this user creates.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
-			"schema_name":   schema.StringAttribute{Optional: true, MarkdownDescription: "Only the defaults of this schema; database-wide defaults are left out.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
-			"grantee":       schema.StringAttribute{Optional: true, MarkdownDescription: "Only defaults granted to this identity name; `public` for `PUBLIC`.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
+			"database_name": discoveryDatabaseFilter("default privileges"),
+			"owner":         discoveryFilter("Only the defaults of objects this user creates."),
+			"schema_name":   discoveryFilter("Only the defaults of this schema; database-wide defaults are left out."),
+			"object_type": schema.StringAttribute{
+				Optional: true, MarkdownDescription: "Only the defaults of `TABLES` (tables and views), `FUNCTIONS`, or `PROCEDURES`.",
+				Validators: []validator.String{stringvalidator.LengthAtLeast(1), stringvalidator.OneOf(defaultPrivilegeListedTypes...)},
+			},
+			"grantee":      discoveryFilter("Only defaults granted to this identity name; `public` for `PUBLIC`."),
+			"grantee_type": discoveryGranteeTypeFilter(),
 		},
 		element: describedOutputs(collectionElement(newDefaultPrivilegeResource, "database_name", "owner", "schema_name", "object_type", "grantee", "grantee_type", "privileges", "grant_option_privileges"), map[string]string{
 			"database_name":           "Database whose default privileges are listed.",
@@ -52,17 +57,22 @@ func newDefaultPrivilegesDataSource() datasource.DataSource {
 				return nil, err
 			}
 
-			return defaultPrivilegesItems(database, rows), nil
+			return defaultPrivilegesItems(database, objectString(data, "object_type"), objectString(data, "grantee_type"), rows), nil
 		},
 	})
 }
 
+// defaultPrivilegeListedTypes are the object types the resource manages, in the spelling it configures them.
+var defaultPrivilegeListedTypes = []string{"TABLES", "FUNCTIONS", "PROCEDURES"}
+
 // defaultPrivilegesItems folds SVV_DEFAULT_PRIVILEGES rows into one element per default privilege rule, skipping
-// object and grantee types the resource does not manage.
-func defaultPrivilegesItems(database string, rows []sqlclient.Row) []map[string]attr.Value {
+// object and grantee types the resource does not manage and, when set, other object and grantee types than the
+// selected ones.
+func defaultPrivilegesItems(database, selectedObjectType, selectedGranteeType string, rows []sqlclient.Row) []map[string]attr.Value {
 	groups := groupPrivilegeRows(rows, func(row sqlclient.Row) []string {
 		objectType, granteeType := defaultPrivilegeObjectTypes[strings.ToUpper(row["object_type"])], strings.ToUpper(row["grantee_type"])
-		if objectType == "" || !slices.Contains(grantGranteeTypes, granteeType) {
+		if objectType == "" || !slices.Contains(grantGranteeTypes, granteeType) ||
+			(selectedObjectType != "" && objectType != selectedObjectType) || (selectedGranteeType != "" && granteeType != selectedGranteeType) {
 			return nil
 		}
 

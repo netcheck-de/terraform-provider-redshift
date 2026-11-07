@@ -12,9 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ = registerParity(parityCase{source: newDatashareSchemasDataSource, resource: newDatashareSchemaResource, collection: true, filters: []string{"database", "datashare"}})
+var _ = registerParity(parityCase{source: newDatashareSchemasDataSource, resource: newDatashareSchemaResource, collection: true, filters: []string{"database", "datashare", "schema"}})
 
-// TestDatashareSchemasList lists the shared schemas of the provider database or a named share with include_new.
+// TestDatashareSchemasList lists the shared schemas of the provider database, a named share, or one schema, with
+// include_new.
 func TestDatashareSchemasList(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -24,6 +25,8 @@ func TestDatashareSchemasList(t *testing.T) {
 		{"defaults", nil, 2},
 		{"share", map[string]string{"database": "admin", "datashare": "producer"}, 2},
 		{"missing_share", map[string]string{"datashare": "missing"}, 0},
+		{"schema", map[string]string{"schema": "serving"}, 1},
+		{"missing_schema", map[string]string{"schema": "missing"}, 0},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			id, items := readListing(t, newDatashareSchemasDataSource(), test.filters, fullCatalog())
@@ -31,6 +34,12 @@ func TestDatashareSchemasList(t *testing.T) {
 			maps.Copy(expected, test.filters)
 			assertLookupIdentity(t, id, expected)
 			require.Len(t, items, test.count)
+
+			if test.count == 1 {
+				assert.Equal(t, []map[string]attr.Value{
+					{"database": types.StringValue("admin"), "datashare": types.StringValue("producer"), "schema": types.StringValue("serving"), "include_new": types.BoolValue(true)},
+				}, items)
+			}
 
 			if test.count == 2 {
 				assert.Equal(t, []map[string]attr.Value{

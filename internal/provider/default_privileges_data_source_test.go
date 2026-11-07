@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var _ = registerParity(parityCase{source: newDefaultPrivilegesDataSource, resource: newDefaultPrivilegeResource, collection: true, filters: []string{"database_name", "owner", "schema_name", "grantee"}})
+var _ = registerParity(parityCase{source: newDefaultPrivilegesDataSource, resource: newDefaultPrivilegeResource, collection: true, filters: []string{"database_name", "owner", "schema_name", "object_type", "grantee", "grantee_type"}})
 
 // TestDefaultPrivilegesSQL pins the default privilege listing, with the implicit PUBLIC rule, with and without filters.
 func TestDefaultPrivilegesSQL(t *testing.T) {
@@ -23,7 +23,8 @@ func TestDefaultPrivilegesSQL(t *testing.T) {
 }
 
 // TestDefaultPrivilegesListing groups the catalog rows per rule in the selected database, maps catalog object types
-// to the resource's, and keeps the implicit PUBLIC EXECUTE rule as a database-wide FUNCTIONS element.
+// to the resource's, keeps the implicit PUBLIC EXECUTE rule as a database-wide FUNCTIONS element, and narrows the rules
+// by object and grantee type.
 func TestDefaultPrivilegesListing(t *testing.T) {
 	var (
 		database   string
@@ -59,6 +60,15 @@ func TestDefaultPrivilegesListing(t *testing.T) {
 		assert.Equal(t, stringSet("INSERT", "RULE", "SELECT"), items[3]["privileges"])
 		assert.Equal(t, stringSet("SELECT"), items[3]["grant_option_privileges"])
 	}
+
+	items = listingItems(t, newDefaultPrivilegesDataSource(), map[string]string{"object_type": "TABLES"}, client)
+	assert.Equal(t, []string{"readers", "analyst"}, discoveryNames(items, "grantee"), "only the TABLES rules")
+
+	items = listingItems(t, newDefaultPrivilegesDataSource(), map[string]string{"object_type": "TABLES", "grantee_type": "USER"}, client)
+	assert.Equal(t, []string{"analyst"}, discoveryNames(items, "grantee"), "only the TABLES rules of users")
+
+	items = listingItems(t, newDefaultPrivilegesDataSource(), map[string]string{"grantee_type": "ROLE"}, client)
+	assert.Equal(t, []string{"operators"}, discoveryNames(items, "grantee"), "only the rules of roles")
 
 	listingItems(t, newDefaultPrivilegesDataSource(), map[string]string{"owner": "loader", "schema_name": "serving", "grantee": "analyst"}, client)
 	assert.Equal(t, "admin", database)

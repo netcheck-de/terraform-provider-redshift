@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var _ = registerParity(parityCase{source: newDatasharePrivilegesDataSource, resource: newDatasharePrivilegeResource, collection: true, filters: []string{"datashare_name", "grantee"}})
+var _ = registerParity(parityCase{source: newDatasharePrivilegesDataSource, resource: newDatasharePrivilegeResource, collection: true, filters: []string{"datashare_name", "grantee", "grantee_type"}})
 
 // datasharePrivilegeItem is one expected element on the representative share.
 func datasharePrivilegeItem(granteeType, grantee string, privileges ...string) map[string]attr.Value {
@@ -25,8 +25,8 @@ func datasharePrivilegeItem(granteeType, grantee string, privileges ...string) m
 	}
 }
 
-// TestDatasharePrivilegesList groups permissions per share and grantee, names PUBLIC public, and filters by share
-// and grantee.
+// TestDatasharePrivilegesList groups permissions per share and grantee, names PUBLIC public, and filters by share,
+// grantee, and grantee type.
 func TestDatasharePrivilegesList(t *testing.T) {
 	for _, test := range []struct {
 		name     string
@@ -42,6 +42,8 @@ func TestDatasharePrivilegesList(t *testing.T) {
 			datasharePrivilegeItem("ROLE", "example:readers", "ALTER", "SHARE"),
 		}},
 		{"public", map[string]string{"grantee": "public"}, []map[string]attr.Value{datasharePrivilegeItem("PUBLIC", "public", "SHARE")}},
+		{"grantee_type", map[string]string{"grantee_type": "USER"}, []map[string]attr.Value{datasharePrivilegeItem("USER", "grafana", "ALTER")}},
+		{"other_grantee_type", map[string]string{"grantee": "grafana", "grantee_type": "ROLE"}, nil},
 		{"missing_share", map[string]string{"datashare_name": "missing"}, nil},
 	} {
 		t.Run(test.name, func(t *testing.T) {

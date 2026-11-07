@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var _ = registerParity(parityCase{source: newAssumeroleGrantsDataSource, resource: newAssumeroleGrantResource, collection: true, filters: []string{"iam_role_arn", "grantee"}})
+var _ = registerParity(parityCase{source: newAssumeroleGrantsDataSource, resource: newAssumeroleGrantResource, collection: true, filters: []string{"iam_role_arn", "grantee", "grantee_type"}})
 
 // TestAssumeroleGrantsSQL pins the IAM privilege listing with and without each filter.
 func TestAssumeroleGrantsSQL(t *testing.T) {
@@ -23,7 +23,7 @@ func TestAssumeroleGrantsSQL(t *testing.T) {
 }
 
 // TestAssumeroleGrantsListing groups commands per IAM role and grantee, maps the catalog's role markers to the
-// resource's selectors, and translates the iam_role_arn filter to the catalog name.
+// resource's selectors, translates the iam_role_arn filter to the catalog name, and narrows by grantee type.
 func TestAssumeroleGrantsListing(t *testing.T) {
 	const arn = "arn:aws:iam::123456789012:role/loader"
 
@@ -48,6 +48,11 @@ func TestAssumeroleGrantsListing(t *testing.T) {
 		assert.Equal(t, stringSet("COPY", "EXTERNAL FUNCTION"), items[1]["privileges"])
 		assert.Equal(t, types.StringValue(arn), items[2]["iam_role_arn"])
 		assert.Equal(t, types.StringValue("USER"), items[2]["grantee_type"])
+	}
+
+	for kind, grantees := range map[string][]string{"USER": {"loader"}, "ROLE": {"operators", "readers"}, "GROUP": {}} {
+		items = listingItems(t, newAssumeroleGrantsDataSource(), map[string]string{"grantee_type": kind}, client)
+		assert.Equal(t, grantees, discoveryNames(items, "grantee"), "only the grants to %s identities", kind)
 	}
 
 	for selector, catalogRole := range map[string]string{"default": assumeroleGrantDefaultRole, "ALL": assumeroleGrantAllRoles, arn: arn} {

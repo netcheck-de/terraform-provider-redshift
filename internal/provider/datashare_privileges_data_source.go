@@ -22,6 +22,7 @@ func newDatasharePrivilegesDataSource() datasource.DataSource {
 		filters: map[string]schema.Attribute{
 			"datashare_name": discoveryFilter("Only permissions on this outbound datashare; all visible shares when omitted."),
 			"grantee":        discoveryFilter("Only permissions of this user, role, or group; `public` selects `PUBLIC`. All grantees when omitted."),
+			"grantee_type":   discoveryGranteeTypeFilter(),
 		},
 		element: describedOutputs(collectionElement(newDatasharePrivilegeResource, "database_name", "datashare_name", "grantee", "grantee_type", "privileges"), map[string]string{
 			"database_name": "Producer database owning the datashare.",
@@ -35,12 +36,17 @@ func newDatasharePrivilegesDataSource() datasource.DataSource {
 
 			type key struct{ database, share, granteeType, grantee string }
 
+			selectedType := objectString(filters, "grantee_type")
+
 			var order []key
 
 			privileges := map[key][]string{}
 
 			for _, row := range rows {
 				granteeType := strings.ToUpper(strings.TrimSpace(row["identity_type"]))
+				if selectedType != "" && granteeType != selectedType {
+					continue
+				}
 
 				grantee := row["identity_name"]
 				if granteeType == "PUBLIC" {

@@ -25,7 +25,8 @@ func newAssumeroleGrantsDataSource() datasource.DataSource {
 			"Superusers and users with the `ACCESS SYSTEM TABLE` permission see every grant; other users see only the entries they have access to.",
 		filters: map[string]schema.Attribute{
 			"iam_role_arn": schema.StringAttribute{Optional: true, MarkdownDescription: "Only grants on this IAM role ARN, `DEFAULT` for the namespace default role, or `ALL` for grants on every role; `DEFAULT` and `ALL` are accepted in any case.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
-			"grantee":      schema.StringAttribute{Optional: true, MarkdownDescription: "Only grants to this identity name; `public` for `PUBLIC`.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
+			"grantee":      discoveryFilter("Only grants to this identity name; `public` for `PUBLIC`."),
+			"grantee_type": discoveryGranteeTypeFilter(),
 		},
 		element: describedOutputs(collectionElement(newAssumeroleGrantResource, "iam_role_arn", "grantee", "grantee_type", "privileges"), map[string]string{
 			"iam_role_arn": "IAM role ARN, `DEFAULT` for the namespace default IAM role, or `ALL` for a grant on every IAM role.",
@@ -43,6 +44,8 @@ func newAssumeroleGrantsDataSource() datasource.DataSource {
 				}
 			}
 
+			selectedType := objectString(data, "grantee_type")
+
 			rows, err := client.selectRows(ctx, client.database.ValueString(), listAssumeroleGrantsQuery(catalogRole, objectString(data, "grantee")))
 			if err != nil {
 				return nil, err
@@ -50,7 +53,7 @@ func newAssumeroleGrantsDataSource() datasource.DataSource {
 
 			groups := groupPrivilegeRows(rows, func(row sqlclient.Row) []string {
 				granteeType := strings.ToUpper(row["identity_type"])
-				if !slices.Contains(grantGranteeTypes, granteeType) {
+				if !slices.Contains(grantGranteeTypes, granteeType) || (selectedType != "" && granteeType != selectedType) {
 					return nil
 				}
 

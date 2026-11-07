@@ -5,11 +5,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
@@ -25,8 +23,9 @@ func newLanguageGrantsDataSource() datasource.DataSource {
 			"The view lists only explicit grants, so `PUBLIC`'s built-in `USAGE` may have no element. " +
 			"Superusers and users with the `ACCESS SYSTEM TABLE` permission see every grant; other users see only the identities they have access to or own. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
-			"database_name": schema.StringAttribute{Optional: true, MarkdownDescription: "Local database whose language grants are listed; defaults to the provider database.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
-			"grantee":       schema.StringAttribute{Optional: true, MarkdownDescription: "Only grants to this identity name; `public` for `PUBLIC`.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
+			"database_name": discoveryDatabaseFilter("language grants"),
+			"grantee":       discoveryFilter("Only grants to this identity name; `public` for `PUBLIC`."),
+			"grantee_type":  discoveryGranteeTypeFilter(),
 		},
 		element: describedOutputs(collectionElement(newLanguageGrantResource, "database_name", "language_name", "grantee", "grantee_type", "privileges", "grant_option_privileges"), map[string]string{
 			"database_name":           "Database whose language privileges are listed.",
@@ -42,6 +41,8 @@ func newLanguageGrantsDataSource() datasource.DataSource {
 				return []map[string]attr.Value{}, err
 			}
 
+			selectedType := objectString(data, "grantee_type")
+
 			rows, err := client.selectRows(ctx, database, listLanguageGrantsQuery(objectString(data, "grantee")))
 			if err != nil {
 				return nil, err
@@ -49,7 +50,7 @@ func newLanguageGrantsDataSource() datasource.DataSource {
 
 			groups := groupPrivilegeRows(rows, func(row sqlclient.Row) []string {
 				granteeType := strings.ToUpper(row["identity_type"])
-				if !slices.Contains(grantGranteeTypes, granteeType) {
+				if !slices.Contains(grantGranteeTypes, granteeType) || (selectedType != "" && granteeType != selectedType) {
 					return nil
 				}
 

@@ -48,11 +48,14 @@ func datashareListedSchema(row sqlclient.Row) bool {
 
 // newDatashareSchemasDataSource lists the schemas of outbound datashares in one producer database.
 func newDatashareSchemasDataSource() datasource.DataSource {
+	filters := datashareObjectFilters()
+	filters["schema"] = discoveryFilter("Only this shared schema; all shared schemas when omitted.")
+
 	return newCollectionDataSource(collectionSpec{
 		name:          "datashare_schemas",
 		databaseField: "database",
 		description:   "Lists the schemas of the outbound datashares in one producer database from `SVV_DATASHARE_OBJECTS`, without taking ownership. " + datashareMemberScope,
-		filters:       datashareObjectFilters(),
+		filters:       filters,
 		element: describedOutputs(collectionElement(newDatashareSchemaResource, "database", "datashare", "schema", "include_new"), map[string]string{
 			"schema":      "Schema included in the share.",
 			"include_new": "Whether future objects created in the schema are added to the share automatically.",
@@ -63,8 +66,14 @@ func newDatashareSchemasDataSource() datasource.DataSource {
 				return nil, err
 			}
 
+			selected := objectString(filters, "schema")
 			items := make([]map[string]attr.Value, 0, len(rows))
+
 			for _, row := range rows {
+				if selected != "" && row["object_name"] != selected {
+					continue
+				}
+
 				includeNew := types.BoolNull()
 
 				if text := strings.TrimSpace(row["include_new"]); text != "" {

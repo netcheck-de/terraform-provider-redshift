@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-var _ = registerParity(parityCase{source: newLanguageGrantsDataSource, resource: newLanguageGrantResource, collection: true, filters: []string{"database_name", "grantee"}})
+var _ = registerParity(parityCase{source: newLanguageGrantsDataSource, resource: newLanguageGrantResource, collection: true, filters: []string{"database_name", "grantee", "grantee_type"}})
 
 // TestLanguageGrantsSQL pins the language privilege listing with and without the grantee filter.
 func TestLanguageGrantsSQL(t *testing.T) {
@@ -23,7 +23,7 @@ func TestLanguageGrantsSQL(t *testing.T) {
 }
 
 // TestLanguageGrantsListing lists the fake's language grants in the selected database, one element per language and
-// grantee, with grant options and canonical language names.
+// grantee, with grant options and canonical language names, narrowed by grantee and grantee type.
 func TestLanguageGrantsListing(t *testing.T) {
 	c := fullCatalog()
 	fake := fakeState[*languageGrantFake](c, "language_grant")
@@ -53,6 +53,11 @@ func TestLanguageGrantsListing(t *testing.T) {
 	items = listingItems(t, newLanguageGrantsDataSource(), map[string]string{"grantee": "analyst"}, client)
 	assert.Equal(t, "admin", database)
 	assert.Len(t, items, 1)
+
+	for kind, language := range map[string]string{"USER": "SQL", "ROLE": "PLPGSQL"} {
+		items = listingItems(t, newLanguageGrantsDataSource(), map[string]string{"grantee_type": kind}, client)
+		assert.Equal(t, []string{language}, discoveryNames(items, "language_name"), "only the grants to %s identities", kind)
+	}
 
 	assertListingFails(t, newLanguageGrantsDataSource(), nil, nil)
 }
