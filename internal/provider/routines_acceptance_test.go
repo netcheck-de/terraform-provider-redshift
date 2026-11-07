@@ -20,8 +20,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAccRoutinesLifecycle verifies function and procedure creation, overload lookups, in-place redefinition, drift
-// repair, import followed by an in-place plan, and restrictive deletion in an isolated database.
+// TestAccRoutinesLifecycle verifies function and procedure creation, overload lookups and listings, in-place
+// redefinition, drift repair, import followed by an in-place plan, and restrictive deletion in an isolated database.
 func TestAccRoutinesLifecycle(t *testing.T) {
 	region, profile, workgroup, database := testAccWorkgroup(t)
 	name := "acc_routines_" + strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -100,6 +100,17 @@ data "redshift_procedure" "scale" {
   name = redshift_procedure.scale.name
   arguments = [for argument in redshift_procedure.scale.argument : argument.type if argument.mode != "OUT"]
 }
+data "redshift_functions" "label" {
+  database = redshift_schema.local.database
+  schema = redshift_schema.local.name
+  name = "f_acc_label"
+  depends_on = [redshift_function.label, redshift_function.label_overload]
+}
+data "redshift_procedures" "local" {
+  database = redshift_schema.local.database
+  schema = redshift_schema.local.name
+  depends_on = [redshift_procedure.scale, redshift_procedure.nonatomic]
+}
 `, region, profile, workgroup, database, name, volatility, functionBody, security)
 	}
 	ctx := context.Background()
@@ -142,6 +153,21 @@ data "redshift_procedure" "scale" {
 				resource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.#", "3"),
 				resource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.2.mode", "OUT"),
 				resource.TestCheckResourceAttr("data.redshift_procedure.scale", "argument.2.type", "CHARACTER VARYING"),
+				// Listings are ordered by schema, name, and argument types.
+				resource.TestCheckResourceAttr("data.redshift_functions.label", "functions.#", "2"),
+				resource.TestCheckResourceAttr("data.redshift_functions.label", "functions.0.signature", "INTEGER"),
+				resource.TestCheckResourceAttr("data.redshift_functions.label", "functions.1.signature", "INTEGER, CHARACTER VARYING"),
+				resource.TestCheckResourceAttr("data.redshift_functions.label", "functions.1.arguments.1", "CHARACTER VARYING"),
+				resource.TestCheckResourceAttr("data.redshift_functions.label", "functions.1.return_type", "CHARACTER VARYING"),
+				resource.TestCheckResourceAttr("data.redshift_functions.label", "functions.1.volatility", "IMMUTABLE"),
+				resource.TestCheckResourceAttr("data.redshift_functions.label", "functions.1.language", "SQL"),
+				resource.TestCheckResourceAttrPair("data.redshift_functions.label", "functions.1.owner", "redshift_function.label", "owner"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.local", "procedures.#", "2"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.local", "procedures.0.name", "sp_acc_nonatomic"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.local", "procedures.0.signature", ""),
+				resource.TestCheckResourceAttr("data.redshift_procedures.local", "procedures.1.name", "sp_acc_scale"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.local", "procedures.1.signature", "INTEGER, BIGINT"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.local", "procedures.1.security", "INVOKER"),
 			)},
 			{Config: configuration("SELECT $2 || '-' || $1::varchar", "IMMUTABLE", "INVOKER"), PlanOnly: true},
 			// Imports report canonical catalog spellings and the catalog body, and cannot observe nonatomic or SET.

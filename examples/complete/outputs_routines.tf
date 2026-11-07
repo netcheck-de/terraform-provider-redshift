@@ -1,5 +1,5 @@
 output "routines" {
-  description = "Function and procedure lookups: overload signatures, owners, and import-compatible identities."
+  description = "Function and procedure lookups and listings: overload signatures, owners, and import-compatible identities."
   value = {
     function = {
       id          = data.redshift_function.label.id
@@ -15,5 +15,7 @@ output "routines" {
       owner     = data.redshift_procedure.scale.owner
       outputs   = [for argument in data.redshift_procedure.scale.argument : argument.name if argument.mode == "OUT"]
     }
+    functions  = [for function in data.redshift_functions.local.functions : "${function.schema}.${function.name}(${function.signature}) -> ${function.return_type}"]
+    procedures = [for procedure in data.redshift_procedures.local.procedures : "${procedure.schema}.${procedure.name}(${procedure.signature}) ${procedure.security}"]
   }
 }

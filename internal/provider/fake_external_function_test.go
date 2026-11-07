@@ -1,7 +1,9 @@
 package provider
 
 import (
+	"cmp"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
@@ -48,20 +50,40 @@ func (f *externalFunctionFake) procedureRow() sqlclient.Row {
 	return sqlclient.Row{"schema_name": "serving", "routine_name": fakeProcedureName, "arguments": "integer", "return_type": "void", "volatility": "v", "security_definer": "true", "language": "plpgsql", "owner": "etl", "kind": "p"}
 }
 
-// listing answers the pg_proc_info listing with the routines matching its kind and filters.
-func (f *externalFunctionFake) listing(sql string, parameters map[string]string) []sqlclient.Row {
-	var rows []sqlclient.Row
-	if f.exists && (strings.Contains(sql, "p.prokind = 'f'") || strings.Contains(sql, "p.prokind IN")) {
-		rows = append(rows, f.functionRow())
+// listing answers the pg_proc_info listing with this family's routines and those of the function and procedure
+// families that match its kind, language, and filters, in the query's order.
+func (f *externalFunctionFake) listing(c *catalog, sql string, parameters map[string]string) []sqlclient.Row {
+	functions, procedures := strings.Contains(sql, "p.prokind = 'f'"), strings.Contains(sql, "p.prokind = 'p'")
+	if strings.Contains(sql, "p.prokind IN ('f', 'p')") {
+		functions, procedures = true, true
 	}
 
-	if f.procedure && (strings.Contains(sql, "p.prokind = 'p'") || strings.Contains(sql, "p.prokind IN")) {
-		rows = append(rows, f.procedureRow())
+	var rows []sqlclient.Row
+
+	if functions {
+		if f.exists {
+			rows = append(rows, f.functionRow())
+		}
+
+		rows = append(rows, c.family("function").(*routineFamily).listingRows()...)
+	}
+
+	if procedures {
+		if f.procedure {
+			rows = append(rows, f.procedureRow())
+		}
+
+		rows = append(rows, c.family("procedure").(*routineFamily).listingRows()...)
 	}
 
 	var matching []sqlclient.Row
 
 	for _, row := range rows {
+		_, language, constrained := strings.Cut(sql, "l.lanname = '")
+		if constrained && !strings.HasPrefix(language, row["language"]+"'") {
+			continue
+		}
+
 		if schema, ok := parameters["schema"]; ok && schema != row["schema_name"] {
 			continue
 		}
@@ -73,15 +95,19 @@ func (f *externalFunctionFake) listing(sql string, parameters map[string]string)
 		matching = append(matching, row)
 	}
 
+	slices.SortFunc(matching, func(a, b sqlclient.Row) int {
+		return cmp.Or(cmp.Compare(a["schema_name"], b["schema_name"]), cmp.Compare(a["routine_name"], b["routine_name"]), cmp.Compare(a["arguments"], b["arguments"]))
+	})
+
 	return matching
 }
 
 // query applies the statements of the two routines and answers their catalog reads.
-func (f *externalFunctionFake) query(_ *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
+func (f *externalFunctionFake) query(c *catalog, _ sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
 	function := strings.Contains(sql, `."`+fakeExternalFunctionName+`"(`)
 	switch {
 	case strings.HasPrefix(sql, "SELECT n.nspname AS schema_name, p.proname AS routine_name,") && strings.Contains(sql, " FROM pg_proc_info p JOIN "):
-		return f.listing(sql, parameters), true, nil
+		return f.listing(c, sql, parameters), true, nil
 	case strings.Contains(sql, "FROM pg_proc p JOIN") && parameters["name"] == fakeExternalFunctionName:
 		if f.exists {
 			return []sqlclient.Row{f.functionRow()}, true, nil

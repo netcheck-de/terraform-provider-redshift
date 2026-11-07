@@ -43,7 +43,7 @@ func newRoutineParametersDataSource() datasource.DataSource {
 		filters:     filters,
 		element:     element,
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
-			database, routines, err := routineListingRows(ctx, client, filters, routineListingTypes[objectString(filters, "routine_type")], "routine_name")
+			database, routines, err := routineListingRows(ctx, client, filters, "routine_name", routineListingTypes[objectString(filters, "routine_type")])
 			if err != nil {
 				return nil, err
 			}

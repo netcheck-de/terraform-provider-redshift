@@ -14,20 +14,31 @@ const (
 	routineListingRoutines   sqlclient.Keyword = "p.prokind IN ('f', 'p')"
 )
 
+// Function languages as pg_language.lanname reports them: SQL UDFs, which redshift_function manages, and Lambda UDFs,
+// which redshift_external_function manages. Python UDFs (plpythonu) belong to neither.
+const (
+	routineListingSQL    sqlclient.Keyword = "l.lanname = 'sql'"
+	routineListingLambda sqlclient.Keyword = "l.lanname = 'exfunc'"
+)
+
 // routineListingTypes maps the routine_type filter of redshift_routine_parameters to its prokind condition.
 var routineListingTypes = map[string]sqlclient.Keyword{"": routineListingRoutines, "FUNCTION": routineListingFunctions, "PROCEDURE": routineListingProcedures}
 
 // routineListingKinds maps pg_proc_info.prokind to the keyword SHOW PARAMETERS and routine_type use.
 var routineListingKinds = map[string]sqlclient.Keyword{"f": "FUNCTION", "p": "PROCEDURE"}
 
-// routineListingQuery lists user-defined routines of one kind in the connected database. pg_proc_info adds prokind
-// to pg_proc; schemas starting with pg_ and information_schema hold only built-in routines, which would otherwise
-// swamp the listing.
-func routineListingQuery(kind sqlclient.Keyword, schema, name string) sqlclient.Query {
+// routineListingQuery lists user-defined routines in the connected database that meet every condition, such as a
+// routine kind and a function language. pg_proc_info adds prokind to pg_proc; schemas starting with pg_ and
+// information_schema hold only built-in routines, which would otherwise swamp the listing.
+func routineListingQuery(schema, name string, conditions ...sqlclient.Keyword) sqlclient.Query {
 	columns := append(slices.Clone(externalFunctionColumns), "p.prokind AS kind")
 
-	return sqlclient.Select(columns...).From("pg_proc_info p JOIN "+externalFunctionSource).
-		Where(kind).
+	query := sqlclient.Select(columns...).From("pg_proc_info p JOIN " + externalFunctionSource)
+	for _, condition := range conditions {
+		query = query.Where(condition)
+	}
+
+	return query.
 		Where("n.nspname !~ '^pg_'").
 		Where("n.nspname <> 'information_schema'").
 		OptEq("n.nspname", "schema", schema).

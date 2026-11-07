@@ -2,42 +2,43 @@ package provider
 
 import (
 	"context"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 var _ = registerDataSource(newFunctionsDataSource)
 
-// newFunctionsDataSource lists user-defined scalar functions, including Lambda UDFs, from pg_proc_info.
+// newFunctionsDataSource lists the SQL user-defined functions redshift_function manages, from pg_proc_info.
 func newFunctionsDataSource() datasource.DataSource {
-	element := routineListingElement("name", "function")
-	element["return_type"] = schema.StringAttribute{Computed: true, MarkdownDescription: "Result type, as the catalog reports it without length or precision but in uppercase, such as `INTEGER`."}
-	element["volatility"] = schema.StringAttribute{Computed: true, MarkdownDescription: "`VOLATILE`, `STABLE`, or `IMMUTABLE`."}
+	descriptions := routineCollectionDescriptions("function")
+	descriptions["language"] = "Implementation language, always `SQL`."
 
 	return newCollectionDataSource(collectionSpec{
-		name:        "functions",
-		description: "Lists user-defined scalar functions in one database, including SQL, Python, and Lambda (`EXFUNC`) UDFs, without managing them. Built-in functions in `pg_*` schemas and `information_schema` are excluded.",
-		filters:     routineListingFilters("name", "functions"),
-		element:     element,
+		name:          "functions",
+		databaseField: "database",
+		description: "Lists scalar SQL user-defined functions (`LANGUAGE SQL`) in one database from `PG_PROC_INFO`, one element per overload, as `redshift_function` manages them. " +
+			"Lambda UDFs are listed by `redshift_external_functions`; Python UDFs and the built-in functions in `pg_*` schemas and `information_schema` are excluded.",
+		filters: routineCollectionFilters("functions"),
+		element: routineCollectionElement(newFunctionResource, descriptions,
+			"database", "schema", "name", "arguments", "signature", "return_type", "volatility", "language", "owner"),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
-			database, rows, err := routineListingRows(ctx, client, filters, routineListingFunctions, "name")
+			database, rows, err := routineListingRows(ctx, client, filters, "name", routineListingFunctions, routineListingSQL)
 			if err != nil {
 				return nil, err
 			}
 
 			items := make([]map[string]attr.Value, 0, len(rows))
 			for _, row := range rows {
-				volatility, err := externalFunctionVolatility(row["volatility"])
+				item, err := functionCollectionItem(database, row)
 				if err != nil {
 					return nil, err
 				}
 
-				item := routineListingItem(database, "name", row)
-				item["return_type"], item["volatility"] = types.StringValue(sqlclient.CatalogType(row["return_type"])), types.StringValue(volatility)
+				item["signature"] = types.StringValue(routineCatalogSignature(row["arguments"]))
+				item["language"] = types.StringValue(strings.ToUpper(row["language"]))
 				items = append(items, item)
 			}
 

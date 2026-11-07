@@ -52,10 +52,9 @@ run "extfunctions_apply" {
 
   assert {
     condition = (
-      data.redshift_functions.example.database == redshift_external_function.upper.database &&
-      data.redshift_functions.example.schema == redshift_external_function.upper.schema &&
-      data.redshift_functions.example.name == redshift_external_function.upper.name &&
-      data.redshift_procedures.example.schema == redshift_schema.local.name &&
+      data.redshift_external_functions.example.database == redshift_external_function.upper.database &&
+      data.redshift_external_functions.example.schema == redshift_external_function.upper.schema &&
+      data.redshift_external_functions.example.name == redshift_external_function.upper.name &&
       data.redshift_routine_parameters.upper.routine_name == redshift_external_function.upper.name &&
       data.redshift_routine_parameters.upper.routine_type == "FUNCTION"
     )
@@ -67,7 +66,7 @@ run "extfunctions_apply" {
   assert {
     condition = (
       output.extfunction_checks.lambda_udfs == [] &&
-      output.extfunction_checks.procedures == [] &&
+      output.extfunction_checks.lambda_owners == {} &&
       output.extfunction_checks.upper_parameters == []
     )
     error_message = "The routine checks must expose only what the routine listings observe."
