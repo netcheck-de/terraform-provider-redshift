@@ -13,10 +13,22 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/require"
 )
+
+// externalSchemasCheck verifies the listed cross-database external schema when the test creates one.
+func externalSchemasCheck(shared, owner string) resource.TestCheckFunc {
+	if shared == "" {
+		return func(*terraform.State) error { return nil }
+	}
+
+	return resource.TestCheckTypeSetElemNestedAttrs("data.redshift_external_schemas.local", "external_schemas.*", map[string]string{
+		"name": "shared_sales", "source_type": "REDSHIFT", "source_database": shared, "source_schema": "public", "owner": owner,
+	})
+}
 
 // TestAccDatabaseOptionsLifecycle creates a local database and schema with every option, changes the in-place
 // options, imports both, and checks that no drift remains. REDSHIFT_ACC_SHARED_DATABASE optionally names an existing
@@ -38,6 +50,10 @@ resource "redshift_external_schema" "shared" {
   source_database = %q
   source_schema   = "public"
   owner           = %s
+}
+data "redshift_external_schemas" "local" {
+  database   = redshift_database.local.name
+  depends_on = [redshift_external_schema.shared]
 }`, shared, schemaOwner)
 		}
 
@@ -77,6 +93,14 @@ data "redshift_database" "local" {
 data "redshift_schema" "local" {
   database = redshift_schema.local.database
   name     = redshift_schema.local.name
+}
+data "redshift_databases" "local" {
+  name_like  = redshift_database.local.name
+  depends_on = [redshift_database.local]
+}
+data "redshift_schemas" "local" {
+  database   = redshift_schema.local.database
+  depends_on = [redshift_schema.local]
 }%s
 `, region, profile, workgroup, database, owner, successor, name, limit, isolation, schemaOwner, quota, external)
 	}
@@ -106,6 +130,11 @@ data "redshift_schema" "local" {
 				resource.TestCheckResourceAttr("data.redshift_database.local", "isolation_level", "SNAPSHOT"),
 				resource.TestCheckResourceAttr("data.redshift_schema.local", "owner", owner),
 				resource.TestCheckResourceAttr("data.redshift_schema.local", "quota", "2048"),
+				resource.TestCheckResourceAttr("data.redshift_databases.local", "databases.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_databases.local", "databases.0.owner", owner),
+				resource.TestCheckResourceAttr("data.redshift_databases.local", "databases.0.isolation_level", "SNAPSHOT"),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_schemas.local", "schemas.*", map[string]string{"name": "serving", "owner": owner, "quota": "2048"}),
+				externalSchemasCheck(shared, owner),
 			)},
 			{Config: configuration(10, "SNAPSHOT", 2048, "redshift_user.owner.name"), PlanOnly: true},
 			{Config: configuration(-1, "SERIALIZABLE", -1, "redshift_user.successor.name"), Check: resource.ComposeTestCheckFunc(

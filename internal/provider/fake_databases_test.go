@@ -215,6 +215,20 @@ func (f *databasesFamily) query(c *catalog, connection sqlclient.Connection, sql
 		f.applyDatabaseOptions(strings.TrimPrefix(sql, `ALTER DATABASE "warehouse"`))
 
 		return nil, true, nil
+	case strings.Contains(sql, " FROM "+string(localSchemasSource)+" "):
+		// The listing also reports the public schema every database has.
+		rows := []sqlclient.Row{{"schema_name": "public", "owner": "rdsdb"}}
+		if c.schema {
+			rows = append(rows, sqlclient.Row{"schema_name": "serving", "owner": f.schemaOwner})
+		}
+
+		return rows, true, nil
+	case strings.HasPrefix(sql, "SELECT TRIM(schema_name) AS schema_name, quota FROM svv_redshift_schema_quota"):
+		if c.schema && f.schemaQuota != "" && (!f.sessionRegular || f.schemaOwner == f.sessionUser) {
+			return []sqlclient.Row{{"schema_name": "serving", "quota": f.schemaQuota}}, true, nil
+		}
+
+		return nil, true, nil
 	case strings.HasPrefix(sql, "SELECT n.nspname AS schema_name, u.usename AS owner FROM pg_namespace"):
 		if c.schema {
 			return []sqlclient.Row{{"schema_name": "serving", "owner": f.schemaOwner}}, true, nil
@@ -256,6 +270,11 @@ func (f *databasesFamily) query(c *catalog, connection sqlclient.Connection, sql
 		}
 
 		if f.externalHidden {
+			// The listing's inner join drops the schema SVV_EXTERNAL_SCHEMAS hides; the lookup's outer join keeps it.
+			if strings.Contains(sql, " FROM pg_namespace n JOIN svv_external_schemas ") {
+				return nil, true, nil
+			}
+
 			return []sqlclient.Row{{"schemaname": "example_external", "eskind": "", "databasename": "", "esoptions": "", "owner": f.externalOwner}}, true, nil
 		}
 		// Map keys marshal in sorted order, so transcripts stay deterministic.

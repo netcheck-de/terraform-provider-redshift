@@ -37,9 +37,8 @@ data "redshift_databases" "example" {
 }
 
 data "redshift_schemas" "local" {
-  provider    = redshift.consumer
-  database    = redshift_schema.local.database
-  schema_type = "local"
+  provider = redshift.consumer
+  database = redshift_schema.local.database
 
   depends_on = [redshift_schema.local]
 }

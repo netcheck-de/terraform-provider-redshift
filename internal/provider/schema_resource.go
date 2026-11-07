@@ -145,21 +145,44 @@ func (r *schemaResource) schemaQuota(ctx context.Context, data schemaModel, owne
 		return quota, err == nil, err
 	}
 
-	sessions, err := r.selectRows(ctx, data.Database.ValueString(), readSchemaSessionQuery())
+	session, err := schemaSessionOf(ctx, &r.resourceClient, data.Database.ValueString())
 	if err != nil {
 		return 0, false, err
 	}
 
+	return schemaUnlimited, session.sees(owner), nil
+}
+
+// schemaSession is the connected user, which decides whose quotas SVV_REDSHIFT_SCHEMA_QUOTA shows.
+type schemaSession struct {
+	// name is the connected user.
+	name string
+	// superuser sees every schema's quota.
+	superuser bool
+}
+
+// sees reports whether a schema of owner without a quota row is UNLIMITED rather than hidden.
+func (s schemaSession) sees(owner string) bool {
+	return s.superuser || s.name == owner
+}
+
+// schemaSessionOf reads the connected user in the database.
+func schemaSessionOf(ctx context.Context, client *resourceClient, database string) (schemaSession, error) {
+	sessions, err := client.selectRows(ctx, database, readSchemaSessionQuery())
+	if err != nil {
+		return schemaSession{}, err
+	}
+
 	if len(sessions) != 1 {
-		return 0, false, errors.New("pg_user has no unique row for the connected user")
+		return schemaSession{}, errors.New("pg_user has no unique row for the connected user")
 	}
 
 	superuser, err := strconv.ParseBool(sessions[0]["superuser"])
 	if err != nil {
-		return 0, false, fmt.Errorf("unrecognized usesuper %q", sessions[0]["superuser"])
+		return schemaSession{}, fmt.Errorf("unrecognized usesuper %q", sessions[0]["superuser"])
 	}
 
-	return schemaUnlimited, superuser || sessions[0]["name"] == owner, nil
+	return schemaSession{name: sessions[0]["name"], superuser: superuser}, nil
 }
 
 // schemaQuotaValue decodes visible SVV_REDSHIFT_SCHEMA_QUOTA rows, where an empty or non-positive quota means

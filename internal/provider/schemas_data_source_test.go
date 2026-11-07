@@ -2,46 +2,99 @@ package provider
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-var _ = registerParity(parityCase{source: newSchemasDataSource, collection: true, filters: []string{"database", "schema_type"}})
+var _ = registerParity(parityCase{source: newSchemasDataSource, resource: newSchemaResource, collection: true, filters: []string{"database"}})
 
-// TestSchemasDataSource lists schemas of the provider database and of a selected database, by type.
+// TestSchemasDataSource lists the local schemas of the provider database and of a selected database with the quotas
+// the lookup reports.
 func TestSchemasDataSource(t *testing.T) {
 	items := discoveryTranscript(t, "discovery/schemas", "default_database", newSchemasDataSource, nil)
-	assert.Empty(t, items, "the provider database has no schemas in the fake")
+	assert.Equal(t, []string{"public", "serving"}, discoveryNames(items, "name"))
+	assert.Equal(t, types.StringValue("admin"), items[0]["database"])
+	assert.Equal(t, types.StringValue("rdsdb"), items[0]["owner"])
+	assert.Equal(t, types.Int64Value(schemaUnlimited), items[0]["quota"], "a superuser sees no quota row as UNLIMITED")
+	assert.Equal(t, types.Int64Value(schemaUnlimited), items[1]["quota"])
 
 	items = discoveryTranscript(t, "discovery/schemas", "database", newSchemasDataSource, map[string]string{"database": "analytics"})
-	assert.Equal(t, []string{"public", "serving", "spectrum"}, discoveryNames(items, "name"))
-	assert.Equal(t, types.StringValue("glue_events"), items[2]["source_database"])
-	assert.True(t, items[1]["source_database"].IsNull())
-	assert.Equal(t, types.StringValue("analytics"), items[0]["database"])
+	assert.Equal(t, types.StringValue("analytics"), items[1]["database"])
 
-	items = discoveryTranscript(t, "discovery/schemas", "external", newSchemasDataSource, map[string]string{"database": "analytics", "schema_type": "external"})
-	assert.Equal(t, []string{"spectrum"}, discoveryNames(items, "name"))
-
-	items = discoveryTranscript(t, "discovery/schemas", "quoted_database", newSchemasDataSource, map[string]string{"database": `Odd"Database's`})
-	assert.Empty(t, items)
-
-	items = discoveryTranscript(t, "discovery/schemas", "shared", newSchemasDataSource, map[string]string{"database": "consumer_db", "schema_type": "shared"})
-	require.Len(t, items, 1)
-	assert.True(t, items[0]["owner"].IsNull(), "a shared schema's producer owner is not resolved")
-
-	var target sqlclient.Connection
-
-	_, identity, diagnostics := discoveryRead(t, newSchemasDataSource, map[string]string{"database": "analytics"}, queryFunc(func(_ context.Context, connection sqlclient.Connection, _ string, _ map[string]string) ([]sqlclient.Row, error) {
-		target = connection
-		return nil, nil
-	}))
+	_, identity, diagnostics := discoveryRead(t, newSchemasDataSource, map[string]string{"database": "analytics"}, fullCatalog())
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
-	assert.Equal(t, "admin", target.Database, "SVV_ALL_SCHEMAS is read from the administration database")
 	assert.Equal(t, map[string]string{"database": "analytics"}, identity)
+}
 
-	discoveryFailures(t, newSchemasDataSource, nil, sqlclient.Row{"schema_name": ""})
+// TestSchemasDataSourceQuotaVisibility reports a quota a regular user may see and null for another owner's schema
+// without a visible quota row, as the lookup does.
+func TestSchemasDataSourceQuotaVisibility(t *testing.T) {
+	for _, test := range []struct {
+		name, owner string
+		serving     attr.Value
+	}{
+		{"own schema", "etl", types.Int64Value(2048)},
+		{"other owner", "admin", types.Int64Null()},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := catalogWith(func(c *catalog) {
+				f := c.family("databases").(*databasesFamily)
+				f.schemaOwner, f.schemaQuota, f.sessionUser, f.sessionRegular = test.owner, "2048", "etl", true
+			})()
+			items, _, diagnostics := discoveryRead(t, newSchemasDataSource, nil, client)
+			require.False(t, diagnostics.HasError(), "%v", diagnostics)
+			require.Len(t, items, 2)
+			assert.True(t, items[0]["quota"].IsNull(), "rdsdb's public schema quota is hidden from a regular user")
+			assert.Equal(t, test.serving, items[1]["quota"])
+		})
+	}
+}
+
+// TestSchemasDataSourceQueries reads in the selected database with a fixed number of queries and reports catalog
+// failures and malformed rows.
+func TestSchemasDataSourceQueries(t *testing.T) {
+	answer := func(schemas []sqlclient.Row, fail string) sqlclient.Client {
+		return queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
+			if connection.Database != "analytics" {
+				return nil, errors.New("unexpected database " + connection.Database)
+			}
+
+			if fail != "" && strings.Contains(sql, fail) {
+				return nil, errors.New("catalog unavailable")
+			}
+
+			switch {
+			case strings.Contains(sql, "pg_external_schema"):
+				return schemas, nil
+			case strings.Contains(sql, "svv_redshift_schema_quota"):
+				return []sqlclient.Row{{"schema_name": "padded", "quota": "4096"}}, nil
+			default:
+				return []sqlclient.Row{{"name": "admin", "superuser": "true"}}, nil
+			}
+		})
+	}
+
+	schemas := []sqlclient.Row{{"schema_name": "padded ", "owner": "etl"}, {"schema_name": "plain", "owner": "etl"}}
+	recorder := &recordingClient{client: answer(schemas, "")}
+	items, _, diagnostics := discoveryRead(t, newSchemasDataSource, map[string]string{"database": "analytics"}, recorder)
+	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+	assert.Len(t, recorder.take(), 3, "one query each for schemas, quotas, and the session")
+	assert.Equal(t, types.StringValue("padded "), items[0]["name"], "quoted names keep their spaces")
+	assert.Equal(t, types.Int64Value(4096), items[0]["quota"], "the trimmed quota row matches the padded name")
+	assert.Equal(t, types.Int64Value(schemaUnlimited), items[1]["quota"])
+
+	for _, fail := range []string{"pg_external_schema", "svv_redshift_schema_quota", "usesuper"} {
+		_, _, diagnostics = discoveryRead(t, newSchemasDataSource, map[string]string{"database": "analytics"}, answer(schemas, fail))
+		assert.True(t, diagnostics.HasError(), "a failing %s query is an error", fail)
+	}
+
+	_, _, diagnostics = discoveryRead(t, newSchemasDataSource, map[string]string{"database": "analytics"}, answer([]sqlclient.Row{{"schema_name": "orphan", "owner": ""}}, ""))
+	assert.True(t, diagnostics.HasError(), "a schema without an owner is malformed")
 }

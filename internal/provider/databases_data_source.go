@@ -22,12 +22,12 @@ func newDatabasesDataSource() datasource.DataSource {
 			"database_type": discoveryFilter("Only databases of this type, in any case: `LOCAL`, or `SHARED` for databases created from a datashare.", databaseTypeLocal, databaseTypeShared),
 			"name_like":     discoveryFilter("Only databases whose name matches this case-sensitive SQL `LIKE` pattern, where `%` matches any sequence and `_` any single character."),
 		},
-		element: map[string]schema.Attribute{
-			"name":            discoveryComputed("string", "Database name."),
-			"owner":           discoveryComputed("string", "SQL user owning the database; null when the owner is not a local user."),
-			"database_type":   discoveryComputed("string", "`LOCAL` or `SHARED`."),
-			"isolation_level": discoveryComputed("string", "`SNAPSHOT` or `SERIALIZABLE`, the keyword of the isolation level the catalog reports; null when unknown."),
-		},
+		element: describedOutputs(collectionElement(newDatabaseResource, "name", "owner", "database_type", "isolation_level"), map[string]string{
+			"name":            "Database name.",
+			"owner":           "SQL user owning the database; null when the owner is not a local user.",
+			"database_type":   "`LOCAL` or `SHARED`.",
+			"isolation_level": "`SNAPSHOT` or `SERIALIZABLE`, the keyword of the isolation level the catalog reports; null when unknown.",
+		}),
 		list: databasesList,
 	})
 }

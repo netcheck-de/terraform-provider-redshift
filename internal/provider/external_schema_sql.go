@@ -345,12 +345,24 @@ func dropExternalSchemaStatement(data externalSchemaModel) string {
 	return sqlclient.Stmt("DROP SCHEMA").Ident(data.Name.ValueString()).String()
 }
 
+// externalSchemaColumns select a schema's name and owner with the kind, source database, and options of its
+// external mapping, for externalSchemaFromRow.
+var externalSchemaColumns = []sqlclient.Keyword{"n.nspname AS schemaname", "s.eskind", "s.databasename", "s.esoptions", "u.usename AS owner"}
+
 // readExternalSchemaQuery selects the namespace and owner of one schema with the kind, source database, and options
 // of its external mapping. Existence comes from PG_NAMESPACE, which every user can read, because
 // SVV_EXTERNAL_SCHEMAS shows a regular user only their own schemas: after a non-superuser hands the schema to
 // another owner, its SVV columns are null while the schema still exists.
 func readExternalSchemaQuery(data externalSchemaModel) sqlclient.Query {
-	return sqlclient.Select("n.nspname AS schemaname", "s.eskind", "s.databasename", "s.esoptions", "u.usename AS owner").
+	return sqlclient.Select(externalSchemaColumns...).
 		From("pg_namespace n LEFT JOIN svv_external_schemas s ON s.esoid = n.oid LEFT JOIN pg_user u ON u.usesysid = n.nspowner").
 		Where("n.nspname = :name", sqlclient.Bind("name", data.Name.ValueString()))
+}
+
+// listExternalSchemasQuery lists the external schemas of the connected database in the lookup's shape. The inner
+// join keeps only the schemas SVV_EXTERNAL_SCHEMAS shows, so a regular user lists only their own.
+func listExternalSchemasQuery() sqlclient.Query {
+	return sqlclient.Select(externalSchemaColumns...).
+		From("pg_namespace n JOIN svv_external_schemas s ON s.esoid = n.oid LEFT JOIN pg_user u ON u.usesysid = n.nspowner").
+		OrderBy("n.nspname")
 }

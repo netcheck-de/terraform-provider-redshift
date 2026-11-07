@@ -141,5 +141,11 @@ func TestExternalSchemaSQL(t *testing.T) {
 
 			return sql, err
 		}},
+		{"list", func() (string, error) {
+			sql, parameters, err := listExternalSchemasQuery().Build()
+			assert.Nil(t, parameters)
+
+			return sql, err
+		}},
 	})
 }
