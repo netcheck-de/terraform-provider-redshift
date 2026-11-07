@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // tableSecurityResource owns the row-level security switch of one relation; policies and their attachments are
@@ -104,29 +105,50 @@ func (r *tableSecurityResource) read(ctx context.Context, data *tableSecurityMod
 		return false, err
 	}
 
-	on, datashare, conjunction := false, true, "AND"
+	settings := tableSecurityDefaults()
 
 	switch len(rows) {
 	case 0:
 	case 1:
-		if on, err = strconv.ParseBool(rows[0]["is_rls_on"]); err != nil {
-			return false, fmt.Errorf("parse is_rls_on: %w", err)
-		}
-
-		if datashare, err = strconv.ParseBool(rows[0]["is_rls_datashare_on"]); err != nil {
-			return false, fmt.Errorf("parse is_rls_datashare_on: %w", err)
-		}
-		// The column is CHAR(3), so OR arrives padded.
-		if reported := strings.ToUpper(strings.TrimSpace(rows[0]["rls_conjunction_type"])); reported != "" {
-			conjunction = reported
+		if settings, err = tableSecuritySettings(rows[0]); err != nil {
+			return false, err
 		}
 	default:
 		return false, fmt.Errorf("relation %s.%s has ambiguous row-level security metadata", data.Schema.ValueString(), data.Relation.ValueString())
 	}
 
-	data.RowLevelSecurity, data.DatashareRowLevelSecurity, data.ConjunctionType = types.BoolValue(on), types.BoolValue(datashare), types.StringValue(conjunction)
+	data.RowLevelSecurity, data.DatashareRowLevelSecurity, data.ConjunctionType = settings.RowLevelSecurity, settings.DatashareRowLevelSecurity, settings.ConjunctionType
 
 	return true, nil
+}
+
+// tableSecurityDefaults are the settings of a relation that svv_rls_relation does not list: RLS off, AND, and RLS on
+// for datashares.
+func tableSecurityDefaults() tableSecurityModel {
+	return tableSecurityModel{RowLevelSecurity: types.BoolValue(false), ConjunctionType: types.StringValue("AND"), DatashareRowLevelSecurity: types.BoolValue(true)}
+}
+
+// tableSecuritySettings parses one svv_rls_relation row into the switch, conjunction type, and datashare setting.
+func tableSecuritySettings(row sqlclient.Row) (tableSecurityModel, error) {
+	settings := tableSecurityDefaults()
+
+	on, err := strconv.ParseBool(row["is_rls_on"])
+	if err != nil {
+		return settings, fmt.Errorf("parse is_rls_on: %w", err)
+	}
+
+	datashare, err := strconv.ParseBool(row["is_rls_datashare_on"])
+	if err != nil {
+		return settings, fmt.Errorf("parse is_rls_datashare_on: %w", err)
+	}
+
+	settings.RowLevelSecurity, settings.DatashareRowLevelSecurity = types.BoolValue(on), types.BoolValue(datashare)
+	// The column is CHAR(3), so OR arrives padded.
+	if reported := strings.ToUpper(strings.TrimSpace(row["rls_conjunction_type"])); reported != "" {
+		settings.ConjunctionType = types.StringValue(reported)
+	}
+
+	return settings, nil
 }
 
 // verify re-reads the settings after Create or Update and fails unless every planned value took effect.
