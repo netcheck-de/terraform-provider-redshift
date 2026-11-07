@@ -47,13 +47,33 @@ override_data {
   values = { id = "outbound-listing-identity" }
 }
 override_data {
-  target = data.redshift_datashares.inbound
+  target = data.redshift_inbound_datashares.consumer
   values = { id = "inbound-listing-identity" }
 }
 
 override_data {
-  target = data.redshift_datashare_objects.producer
-  values = { id = "producer-objects-identity" }
+  target = data.redshift_datashare_schemas.producer
+  values = { id = "producer-schemas-identity" }
+}
+
+override_data {
+  target = data.redshift_datashare_tables.producer
+  values = { id = "producer-tables-identity" }
+}
+
+override_data {
+  target = data.redshift_datashare_memberships.producer
+  values = { id = "producer-memberships-identity" }
+}
+
+override_data {
+  target = data.redshift_datashare_grants.producer
+  values = { id = "producer-grants-identity" }
+}
+
+override_data {
+  target = data.redshift_datashare_privileges.grants
+  values = { id = "grants-privileges-identity" }
 }
 
 override_data {
@@ -100,8 +120,8 @@ run "datasharing_apply" {
   assert {
     condition = (
       length(redshift_datashare_grant.lake_formation) == 0 && length(aws_redshift_data_share_authorization.lake_formation) == 0 &&
-      data.redshift_datashares.outbound.share_type == "OUTBOUND" && data.redshift_datashares.outbound.name == null &&
-      data.redshift_datashares.inbound.share_type == "INBOUND" && data.redshift_datashares.inbound.name == redshift_datashare.producer.name
+      data.redshift_datashares.outbound.name == null &&
+      data.redshift_inbound_datashares.consumer.name == redshift_datashare.producer.name
     )
     error_message = "Without a Lake Formation account no Data Catalog grant exists, and the listings filter each side of the share."
   }
@@ -110,15 +130,35 @@ run "datasharing_apply" {
       output.datasharing.producer_owner == "observed_share_owner" && output.datasharing.producer_share_id == 100 &&
       output.datasharing.producer_namespace == "11111111-2222-3333-4444-555555555555" &&
       output.datasharing.share_operator_privileges == toset(["ALTER", "SHARE"]) &&
-      data.redshift_datashare_objects.producer.id == "producer-objects-identity" &&
-      data.redshift_datashare_objects.producer.database == redshift_datashare.producer.database &&
-      data.redshift_datashare_objects.producer.datashare == redshift_datashare.producer.name &&
-      output.datasharing.producer_objects == data.redshift_datashare_objects.producer.datashare_objects &&
-      data.redshift_datashares.outbound.id == "outbound-listing-identity" && data.redshift_datashares.inbound.id == "inbound-listing-identity" &&
+      data.redshift_datashares.outbound.id == "outbound-listing-identity" && data.redshift_inbound_datashares.consumer.id == "inbound-listing-identity" &&
       output.datasharing.outbound_shares == [for share in data.redshift_datashares.outbound.datashares : share.name] &&
-      length(output.datasharing.inbound_shares) == length(data.redshift_datashares.inbound.datashares)
+      length(output.datasharing.inbound_shares) == length(data.redshift_inbound_datashares.consumer.inbound_datashares) &&
+      length(output.datasharing.grants_share_privileges) == length(data.redshift_datashare_privileges.grants.datashare_privileges)
     )
     error_message = "The datasharing output must pass the observed share metadata, listings, and permissions through unchanged."
+  }
+
+  assert {
+    condition = (
+      data.redshift_datashare_schemas.producer.id == "producer-schemas-identity" &&
+      data.redshift_datashare_schemas.producer.database == redshift_datashare.producer.database &&
+      data.redshift_datashare_schemas.producer.datashare == redshift_datashare.producer.name &&
+      length(output.datasharing.producer_schemas) == length(data.redshift_datashare_schemas.producer.datashare_schemas) &&
+      data.redshift_datashare_tables.producer.id == "producer-tables-identity" &&
+      data.redshift_datashare_tables.producer.datashare == redshift_datashare.producer.name &&
+      data.redshift_datashare_tables.producer.schema == null &&
+      output.datasharing.producer_tables == [for item in data.redshift_datashare_tables.producer.datashare_tables : "${item.schema}.${item.table}"] &&
+      data.redshift_datashare_memberships.producer.id == "producer-memberships-identity" &&
+      data.redshift_datashare_memberships.producer.datashare == redshift_datashare.producer.name &&
+      length(output.datasharing.membership_coverage) == length(data.redshift_datashare_memberships.producer.datashare_memberships) &&
+      data.redshift_datashare_grants.producer.id == "producer-grants-identity" &&
+      data.redshift_datashare_grants.producer.datashare == redshift_datashare.producer.name &&
+      length(output.datasharing.consumers) == length(data.redshift_datashare_grants.producer.datashare_grants) &&
+      data.redshift_datashare_privileges.grants.id == "grants-privileges-identity" &&
+      data.redshift_datashare_privileges.grants.datashare_name == redshift_datashare.grants.name &&
+      data.redshift_datashare_privileges.grants.grantee == null
+    )
+    error_message = "The member, coverage, consumer, and permission listings must filter the producer shares and reach the datasharing output."
   }
 }
 

@@ -155,6 +155,20 @@ data "redshift_datashare_membership" "functions" {
   datashare = redshift_datashare_membership.functions.datashare
   schema = redshift_datashare_membership.functions.schema
   kind = redshift_datashare_membership.functions.kind
+}
+data "redshift_datashare_schemas" "local" {
+  database = redshift_datashare_schema.local.database
+  datashare = redshift_datashare_schema.local.datashare
+}
+data "redshift_datashare_tables" "local" {
+  database = redshift_datashare_membership.tables.database
+  datashare = redshift_datashare_membership.tables.datashare
+  schema = redshift_datashare_membership.tables.schema
+}
+data "redshift_datashare_memberships" "local" {
+  database = redshift_datashare_schema.local.database
+  datashare = redshift_datashare_schema.local.datashare
+  depends_on = [redshift_datashare_membership.tables, redshift_datashare_membership.functions]
 }`
 	coverage := func(value string) resource.TestCheckFunc {
 		return resource.ComposeTestCheckFunc(
@@ -166,6 +180,21 @@ data "redshift_datashare_membership" "functions" {
 			resource.TestCheckResourceAttr("data.redshift_datashare_membership.functions", "all", value),
 		)
 	}
+	// The listings agree with the lookups: one schema, both relations, and full coverage of each kind.
+	listings := resource.ComposeTestCheckFunc(
+		resource.TestCheckResourceAttr("data.redshift_datashare_schemas.local", "datashare_schemas.#", "1"),
+		resource.TestCheckResourceAttr("data.redshift_datashare_schemas.local", "datashare_schemas.0.schema", name),
+		resource.TestCheckResourceAttr("data.redshift_datashare_schemas.local", "datashare_schemas.0.include_new", "false"),
+		resource.TestCheckResourceAttr("data.redshift_datashare_tables.local", "datashare_tables.#", "2"),
+		resource.TestCheckResourceAttr("data.redshift_datashare_tables.local", "datashare_tables.0.schema", name),
+		resource.TestCheckResourceAttr("data.redshift_datashare_tables.local", "datashare_tables.0.table", "audit"),
+		resource.TestCheckResourceAttr("data.redshift_datashare_tables.local", "datashare_tables.1.table", "events"),
+		resource.TestCheckResourceAttr("data.redshift_datashare_memberships.local", "datashare_memberships.#", "2"),
+		resource.TestCheckResourceAttr("data.redshift_datashare_memberships.local", "datashare_memberships.0.kind", "FUNCTIONS"),
+		resource.TestCheckResourceAttr("data.redshift_datashare_memberships.local", "datashare_memberships.0.all", "true"),
+		resource.TestCheckResourceAttr("data.redshift_datashare_memberships.local", "datashare_memberships.1.kind", "TABLES"),
+		resource.TestCheckResourceAttr("data.redshift_datashare_memberships.local", "datashare_memberships.1.all", "true"),
+	)
 	memberCounts := func(tables, functions int) resource.TestCheckFunc {
 		return func(*terraform.State) error {
 			rows, err := query(producer, sqlclient.Select("object_name", "object_type").From("svv_datashare_objects").Where("share_type = 'OUTBOUND'").Where("share_name = :share", sqlclient.Bind("share", name)))
@@ -206,7 +235,7 @@ data "redshift_datashare_membership" "functions" {
 			return nil
 		},
 		Steps: []resource.TestStep{
-			{Config: configuration, Check: resource.ComposeTestCheckFunc(coverage("true"), memberCounts(2, 2))},
+			{Config: configuration, Check: resource.ComposeTestCheckFunc(coverage("true"), memberCounts(2, 2), listings)},
 			{ResourceName: "redshift_datashare_membership.tables", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_datashare_membership.functions", ImportState: true, ImportStateVerify: true},
 			{Config: configuration, PlanOnly: true},

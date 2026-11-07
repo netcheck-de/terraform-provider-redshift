@@ -35,5 +35,5 @@ func readDatashareSchemaQuery(data datashareSchemaModel) sqlclient.Query {
 		Where("share_type = 'OUTBOUND'").
 		Where("share_name = :share", sqlclient.Bind("share", data.Datashare.ValueString())).
 		Where("object_name = :schema", sqlclient.Bind("schema", data.Schema.ValueString())).
-		Where("object_type IN ('schema', 'schemas')")
+		Where(datashareSchemaTypes)
 }

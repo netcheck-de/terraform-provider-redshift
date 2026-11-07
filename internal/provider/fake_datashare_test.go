@@ -35,7 +35,10 @@ func (f *fakeDatashares) populate() {
 	f.owner = "admin"
 	f.privileges["role:example:readers"] = map[string]bool{"ALTER": true}
 	// Live Redshift reports duplicate name-only rows for shared overloads.
+	// A schema name containing a period shows how unquoted member names resolve against the shared schemas.
 	f.objects = []sqlclient.Row{
+		{"object_name": "odd.schema", "object_type": "schema", "include_new": "false"},
+		{"object_name": "odd.schema.events", "object_type": "view"},
 		{"object_name": "serving", "object_type": "schema", "include_new": "true"},
 		{"object_name": "serving.table", "object_type": "table"},
 		{"object_name": "serving.function", "object_type": "function"},
@@ -99,28 +102,27 @@ func (f *fakeDatashares) query(c *catalog, connection sqlclient.Connection, sql 
 		}
 
 		return nil, true, nil
-	case strings.HasPrefix(sql, "SELECT share_name, object_name, object_type, include_new FROM svv_datashare_objects"):
+	case strings.HasPrefix(sql, "SELECT share_name, object_type, object_name, include_new FROM svv_datashare_objects"):
+		return f.members(c, sql, parameters), true, nil
+	case strings.HasPrefix(sql, "SELECT schema_name, table_name AS member_name FROM svv_all_tables"), strings.HasPrefix(sql, "SELECT n.nspname AS schema_name, p.proname AS member_name FROM pg_proc_info"):
+		kind := "TABLES"
+		if strings.Contains(sql, "pg_proc_info") {
+			kind = "FUNCTIONS"
+		}
+
 		var rows []sqlclient.Row
 
-		if c.share && (parameters["share"] == "" || parameters["share"] == "producer") {
-			for _, row := range f.objects {
-				if parameters["object_type"] == "" || parameters["object_type"] == row["object_type"] {
-					item := maps.Clone(row)
-					item["share_name"] = "producer"
-					rows = append(rows, item)
-				}
+		if parameters["schema"] == "" || parameters["schema"] == "serving" {
+			for _, name := range f.bulkCandidates[kind] {
+				rows = append(rows, sqlclient.Row{"schema_name": "serving", "member_name": name})
 			}
 		}
 
-		slices.SortFunc(rows, func(a, b sqlclient.Row) int {
-			if order := strings.Compare(a["object_type"], b["object_type"]); order != 0 {
-				return order
-			}
-
-			return strings.Compare(a["object_name"], b["object_name"])
-		})
-
 		return rows, true, nil
+	case strings.HasPrefix(sql, "SELECT BTRIM(d.source_database) AS source_database, c.share_name"):
+		return f.consumers(c, connection, parameters), true, nil
+	case strings.HasPrefix(sql, "SELECT BTRIM(d.source_database) AS database_name, p.datashare_name"):
+		return f.permissions(c, connection, sql, parameters), true, nil
 	case strings.HasPrefix(sql, "SELECT d.share_name") && strings.Contains(sql, "FROM svv_datashares d"):
 		return f.shares(c, connection, sql, parameters), true, nil
 	case strings.HasPrefix(sql, "SELECT share_name FROM svv_datashares") && strings.Contains(sql, "source_database"):
@@ -200,13 +202,78 @@ func (f *fakeDatashares) shares(c *catalog, connection sqlclient.Connection, sql
 		})
 	}
 
-	outboundOnly := strings.Contains(sql, "d.share_type = 'OUTBOUND'")
+	outboundOnly, inboundOnly := strings.Contains(sql, "d.share_type = 'OUTBOUND'"), strings.Contains(sql, "d.share_type = 'INBOUND'")
 
 	return slices.DeleteFunc(rows, func(row sqlclient.Row) bool {
-		return (outboundOnly && row["share_type"] != "OUTBOUND") ||
-			(parameters["share_type"] != "" && row["share_type"] != parameters["share_type"]) ||
+		return (outboundOnly && row["share_type"] != "OUTBOUND") || (inboundOnly && row["share_type"] != "INBOUND") ||
 			(parameters["name"] != "" && row["share_name"] != parameters["name"])
 	})
+}
+
+// members lists the representative share's objects whose type the query's object_type list names, ordered by
+// name as the listing query orders them.
+func (f *fakeDatashares) members(c *catalog, sql string, parameters map[string]string) []sqlclient.Row {
+	var rows []sqlclient.Row
+
+	if c.share && (parameters["share"] == "" || parameters["share"] == "producer") {
+		for _, row := range f.objects {
+			if strings.Contains(sql, "'"+row["object_type"]+"'") {
+				item := maps.Clone(row)
+				item["share_name"] = "producer"
+				rows = append(rows, item)
+			}
+		}
+	}
+
+	slices.SortStableFunc(rows, func(a, b sqlclient.Row) int { return strings.Compare(a["object_name"], b["object_name"]) })
+
+	return rows
+}
+
+// consumers lists the account and namespace usage grants of the representative share.
+func (f *fakeDatashares) consumers(c *catalog, connection sqlclient.Connection, parameters map[string]string) []sqlclient.Row {
+	var rows []sqlclient.Row
+
+	if !c.share || (parameters["share"] != "" && parameters["share"] != "producer") {
+		return rows
+	}
+
+	if c.shareGrant {
+		rows = append(rows, sqlclient.Row{"source_database": connection.Database, "share_name": "producer", "consumer_account": "123456789012", "consumer_namespace": ""})
+	}
+
+	if c.shareNamespaceGrant {
+		rows = append(rows, sqlclient.Row{"source_database": connection.Database, "share_name": "producer", "consumer_account": "123456789012", "consumer_namespace": "12345678-1234-1234-1234-123456789abc"})
+	}
+
+	return rows
+}
+
+// permissions lists the explicit permissions on the representative share, one row per grantee and privilege,
+// narrowed by the grantee condition the query carries.
+func (f *fakeDatashares) permissions(c *catalog, connection sqlclient.Connection, sql string, parameters map[string]string) []sqlclient.Row {
+	var rows []sqlclient.Row
+
+	if !c.share || (parameters["share"] != "" && parameters["share"] != "producer") {
+		return rows
+	}
+
+	for _, key := range slices.Sorted(maps.Keys(f.privileges)) {
+		kind, name, _ := strings.Cut(key, ":")
+		if key == "public" {
+			kind, name = "public", ""
+		}
+
+		if (strings.Contains(sql, "p.identity_type = 'public'") && kind != "public") || (parameters["grantee"] != "" && name != parameters["grantee"]) {
+			continue
+		}
+
+		for _, privilege := range slices.Sorted(maps.Keys(f.privileges[key])) {
+			rows = append(rows, sqlclient.Row{"database_name": connection.Database, "datashare_name": "producer", "identity_type": kind, "identity_name": name, "privilege_type": privilege})
+		}
+	}
+
+	return rows
 }
 
 // datashareFakePermission recognizes GRANT or REVOKE of ALTER or SHARE on a datashare; USAGE stays with the
