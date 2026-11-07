@@ -43,5 +43,5 @@ func readDatashareTableQuery(data datashareTableModel) sqlclient.Query {
 		Where("share_type = 'OUTBOUND'").
 		Where("share_name = :share", sqlclient.Bind("share", data.Datashare.ValueString())).
 		Where("object_name = :object", sqlclient.Bind("object", data.Schema.ValueString()+"."+data.Table.ValueString())).
-		Where("object_type IN ('table', 'view', 'late binding view', 'materialized view')")
+		Where(datashareRelationTypes)
 }

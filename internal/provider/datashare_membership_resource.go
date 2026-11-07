@@ -144,16 +144,14 @@ func (r *datashareMembershipResource) read(ctx context.Context, data *datashareM
 		return found, includeNew, members, err
 	}
 
-	wanted := map[string]int{}
-
+	names := make([]string, 0, len(candidates))
 	for _, row := range candidates {
-		name := row["member_name"]
-		if name == "" || strings.Contains(name, ".") {
-			err = fmt.Errorf("exclusive membership cannot distinguish catalog member name %q", name)
-			return found, includeNew, members, err
-		}
+		names = append(names, row["member_name"])
+	}
 
-		wanted[data.Schema.ValueString()+"."+name]++
+	wanted, err := datashareMembershipWanted(data.Schema.ValueString(), names)
+	if err != nil {
+		return found, includeNew, members, err
 	}
 
 	rows, readErr := r.selectRows(ctx, data.Database.ValueString(), readDatashareMembershipObjectsQuery(*data))
@@ -162,26 +160,55 @@ func (r *datashareMembershipResource) read(ctx context.Context, data *datashareM
 		return found, includeNew, members, err
 	}
 
-	actual := map[string]int{}
-
+	shared := make([]string, 0, len(rows))
 	for _, row := range rows {
-		if _, ok := wanted[row["object_name"]]; ok {
-			actual[row["object_name"]]++
+		shared = append(shared, row["object_name"])
+	}
+
+	var complete bool
+
+	complete, members = datashareMembershipComplete(wanted, shared)
+	data.All = types.BoolValue(complete)
+
+	return found, includeNew, members, err
+}
+
+// datashareMembershipWanted counts the qualified catalog names that ADD ALL of one kind would share from the
+// schema's source object names. Each SQL overload contributes one row, so a name can count more than once.
+func datashareMembershipWanted(schema string, candidates []string) (map[string]int, error) {
+	wanted := map[string]int{}
+
+	for _, name := range candidates {
+		if name == "" || strings.Contains(name, ".") {
+			return nil, fmt.Errorf("exclusive membership cannot distinguish catalog member name %q", name)
+		}
+
+		wanted[schema+"."+name]++
+	}
+
+	return wanted, nil
+}
+
+// datashareMembershipComplete compares the wanted names with the share's member rows of the kind. The catalog
+// reports name-only rows for overloads, so equal counts per qualified name prove that every overload is shared.
+// It also returns how many member rows belong to the wanted set.
+func datashareMembershipComplete(wanted map[string]int, shared []string) (bool, int) {
+	actual, members := map[string]int{}, 0
+
+	for _, name := range shared {
+		if _, ok := wanted[name]; ok {
+			actual[name]++
 			members++
 		}
 	}
 
-	complete := true
-
 	for name, count := range wanted {
 		if actual[name] != count {
-			complete = false
+			return false, members
 		}
 	}
 
-	data.All = types.BoolValue(complete)
-
-	return found, includeNew, members, err
+	return true, members
 }
 
 // apply adds every current member of the selected kind after checking that the schema is shared without include_new.

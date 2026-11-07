@@ -1,0 +1,39 @@
+---
+subcategory: Data Sharing
+page_title: redshift_datashare_schemas Data Source - terraform-provider-redshift
+description: Lists the schemas of the outbound datashares in a producer database.
+---
+
+# redshift_datashare_schemas (Data Source)
+
+Lists the schemas of the outbound datashares in one producer database, with their future-object inclusion, as
+`redshift_datashare_schema` manages them. See AWS
+[SVV_DATASHARE_OBJECTS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARE_OBJECTS.html).
+
+## Example Usage
+
+{{ tffile "examples/data-sources/redshift_datashare_schemas/data-source.tf" }}
+
+<!-- markdownlint-disable MD012 MD013 MD022 MD033 -->
+{{ .SchemaMarkdown | trimspace }}
+<!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- List the shared schemas of the database's outbound datashares.
+SELECT ... FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND object_type IN ('schema', ...) ...;
+```
+
+## Read Behavior
+
+`datashare_schemas` is empty when nothing matches; it is ordered by share and schema. Omit `database` to use the
+provider database and `datashare` to list every outbound share of that database. A missing database yields an empty
+list. Catalog permission and execution errors are errors, not an empty result.
+
+`id` (String, computed) is the listing's provider-relative JSON identity containing the database and configured filters.
+
+Superusers see the schemas of every share; other users see only the rows `SVV_DATASHARE_OBJECTS` and `SVV_DATASHARES`
+show them. Only read-only SQL is executed.

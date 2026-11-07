@@ -52,3 +52,12 @@ func readDatashareGrantQuery(data datashareGrantModel) (sqlclient.Query, error) 
 		WhereEither(consumerType == datashareGrantNamespace, "consumer_namespace = :namespace", "consumer_account = :account AND NVL(consumer_namespace, '') = ''",
 			sqlclient.Bind("namespace", value), sqlclient.Bind("account", value)), nil
 }
+
+// listDatashareGrantsQuery lists consumer usage of the namespace's outbound shares, optionally of one share. The
+// consumer view has no database column, so the producer database comes from svv_datashares.
+func listDatashareGrantsQuery(share string) sqlclient.Query {
+	return sqlclient.Select("BTRIM(d.source_database) AS source_database", "c.share_name", "c.consumer_account", "c.consumer_namespace").
+		From("svv_datashare_consumers c JOIN svv_datashares d ON d.share_name = c.share_name AND d.share_type = 'OUTBOUND'").
+		OptEq("c.share_name", "share", share).
+		OrderBy("c.share_name", "c.consumer_account", "c.consumer_namespace")
+}

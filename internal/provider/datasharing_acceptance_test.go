@@ -18,9 +18,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAccDatasharing checks the datashare catalog attributes, the listing, ALTER/SHARE permissions with import and
-// drift repair, and, when REDSHIFT_ACC_LAKE_FORMATION_ACCOUNT names a Lake Formation account, a VIA DATA CATALOG
-// grant. Everything lives in an isolated database that the cleanup removes without cascading.
+// TestAccDatasharing checks the datashare catalog attributes, the share, inbound, permission, and consumer listings,
+// ALTER/SHARE permissions with import and drift repair, and, when REDSHIFT_ACC_LAKE_FORMATION_ACCOUNT names a Lake
+// Formation account, a VIA DATA CATALOG grant. Everything lives in an isolated database that the cleanup removes
+// without cascading.
 func TestAccDatasharing(t *testing.T) {
 	region, profile, workgroup, database := testAccWorkgroup(t)
 	name := "acc_sharing_" + strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -47,7 +48,7 @@ func TestAccDatasharing(t *testing.T) {
 		}
 	})
 
-	lakeFormation := ""
+	lakeFormation, grantDependency, grantCount := "", "redshift_datashare.local", "0"
 	if account := os.Getenv("REDSHIFT_ACC_LAKE_FORMATION_ACCOUNT"); account != "" {
 		lakeFormation = fmt.Sprintf(`
 resource "redshift_datashare_grant" "lake_formation" {
@@ -56,6 +57,7 @@ resource "redshift_datashare_grant" "lake_formation" {
   account_id = %q
   via_data_catalog = true
 }`, account)
+		grantDependency, grantCount = "redshift_datashare_grant.lake_formation", "1"
 	}
 
 	configuration := fmt.Sprintf(`
@@ -85,9 +87,20 @@ data "redshift_datashare_privilege" "operators" {
   grantee = redshift_datashare_privilege.operators.grantee
 }
 data "redshift_datashares" "named" {
-  share_type = "OUTBOUND"
   name = redshift_datashare.local.name
-}%s`, region, profile, workgroup, database, name, name, name, lakeFormation)
+}
+data "redshift_inbound_datashares" "named" {
+  name = redshift_datashare.local.name
+  depends_on = [redshift_datashare.local]
+}
+data "redshift_datashare_privileges" "share" {
+  datashare_name = redshift_datashare_privilege.operators.datashare_name
+  grantee = redshift_datashare_privilege.operators.grantee
+}
+data "redshift_datashare_grants" "share" {
+  datashare = redshift_datashare.local.name
+  depends_on = [%s]
+}%s`, region, profile, workgroup, database, name, name, name, grantDependency, lakeFormation)
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
@@ -100,6 +113,13 @@ data "redshift_datashares" "named" {
 				resource.TestCheckResourceAttr("data.redshift_datashares.named", "datashares.#", "1"),
 				resource.TestCheckResourceAttrPair("data.redshift_datashares.named", "datashares.0.owner", "redshift_datashare.local", "owner"),
 				resource.TestCheckResourceAttrPair("data.redshift_datashares.named", "datashares.0.share_id", "redshift_datashare.local", "share_id"),
+				resource.TestCheckResourceAttrPair("data.redshift_datashares.named", "datashares.0.database", "redshift_datashare.local", "database"),
+				resource.TestCheckResourceAttr("data.redshift_inbound_datashares.named", "inbound_datashares.#", "0"),
+				resource.TestCheckResourceAttr("data.redshift_datashare_privileges.share", "datashare_privileges.#", "1"),
+				resource.TestCheckResourceAttrPair("data.redshift_datashare_privileges.share", "datashare_privileges.0.database_name", "redshift_datashare.local", "database"),
+				resource.TestCheckResourceAttr("data.redshift_datashare_privileges.share", "datashare_privileges.0.grantee_type", "ROLE"),
+				resource.TestCheckResourceAttr("data.redshift_datashare_privileges.share", "datashare_privileges.0.privileges.#", "2"),
+				resource.TestCheckResourceAttr("data.redshift_datashare_grants.share", "datashare_grants.#", grantCount),
 			)},
 			{ResourceName: "redshift_datashare.local", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_datashare_privilege.operators", ImportState: true, ImportStateVerify: true},

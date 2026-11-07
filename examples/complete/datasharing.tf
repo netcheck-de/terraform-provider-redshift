@@ -54,16 +54,20 @@ data "redshift_datashare_table" "source" {
 }
 
 # Observe automatic and explicit membership without claiming ownership of bulk-added objects or UDF overloads.
-data "redshift_datashare_objects" "producer" {
+data "redshift_datashare_schemas" "producer" {
   provider  = redshift.producer
   database  = redshift_datashare.producer.database
   datashare = redshift_datashare.producer.name
 
-  depends_on = [
-    redshift_datashare_table.source,
-    redshift_datashare_membership.bulk,
-    aws_redshiftdata_statement.share_procedure,
-  ]
+  depends_on = [redshift_datashare_schema.source, redshift_datashare_schema.bulk]
+}
+
+data "redshift_datashare_tables" "producer" {
+  provider  = redshift.producer
+  database  = redshift_datashare.producer.database
+  datashare = redshift_datashare.producer.name
+
+  depends_on = [redshift_datashare_table.source, redshift_datashare_membership.bulk]
 }
 
 # Bulk owners use a dedicated source schema: no overlap with the explicit table above or its include_new policy.
@@ -127,6 +131,15 @@ data "redshift_datashare_membership" "bulk" {
   kind      = each.value.kind
 }
 
+# Lists coverage of both kinds for every schema of the share, including the include_new schema with its explicit table.
+data "redshift_datashare_memberships" "producer" {
+  provider  = redshift.producer
+  database  = redshift_datashare.producer.database
+  datashare = redshift_datashare.producer.name
+
+  depends_on = [redshift_datashare_membership.bulk, redshift_datashare_table.source]
+}
+
 # Same-account sharing is namespace-scoped; cross-account mode uses an account grant plus AWS authorization.
 resource "redshift_datashare_grant" "consumer" {
   provider     = redshift.producer
@@ -144,6 +157,11 @@ data "redshift_datashare_grant" "consumer" {
   datashare    = redshift_datashare_grant.consumer.datashare
   account_id   = redshift_datashare_grant.consumer.account_id
   namespace_id = redshift_datashare_grant.consumer.namespace_id
+}
+
+data "redshift_datashare_grants" "producer" {
+  provider  = redshift.producer
+  datashare = redshift_datashare_grant.consumer.datashare
 }
 
 resource "aws_redshift_data_share_authorization" "consumer" {
@@ -233,6 +251,11 @@ data "redshift_datashare_privilege" "share_operators" {
   grantee        = redshift_datashare_privilege.share_operators.grantee
 }
 
+data "redshift_datashare_privileges" "grants" {
+  provider       = redshift.producer
+  datashare_name = redshift_datashare_privilege.share_operators.datashare_name
+}
+
 # Lake Formation consumers receive usage VIA DATA CATALOG and an AWS authorization for the DataCatalog/ identifier.
 resource "redshift_datashare_grant" "lake_formation" {
   provider         = redshift.producer
@@ -254,16 +277,14 @@ resource "aws_redshift_data_share_authorization" "lake_formation" {
 
 # Listings observe both sides of the share: the producer's outbound shares and the consumer's inbound share.
 data "redshift_datashares" "outbound" {
-  provider   = redshift.producer
-  share_type = "OUTBOUND"
+  provider = redshift.producer
 
   depends_on = [redshift_datashare.producer, redshift_datashare.grants]
 }
 
-data "redshift_datashares" "inbound" {
-  provider   = redshift.consumer
-  share_type = "INBOUND"
-  name       = redshift_datashare.producer.name
+data "redshift_inbound_datashares" "consumer" {
+  provider = redshift.consumer
+  name     = redshift_datashare.producer.name
 
   depends_on = [redshift_database.shared]
 }
