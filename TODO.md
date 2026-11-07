@@ -7,8 +7,6 @@ Open work on the provider. Implemented types and their ownership boundaries are 
 
 ### Deferred
 
-These wait for a documented way to read their state back:
-
 - **`redshift_system_setting`:** [ALTER SYSTEM](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_SYSTEM.html) has
   no readback of the persisted value and no reset. `redshift_configuration` reads the session value.
 - **`redshift_connect_grant`:**
