@@ -31,6 +31,7 @@ output "shared_schemas" {
 
 - `database` (String) Database whose outbound share members are listed; defaults to the provider's `database`.
 - `datashare` (String) Only members of this outbound datashare; all outbound shares of the database when omitted.
+- `schema` (String) Only this shared schema; all shared schemas when omitted.
 
 ### Read-Only
 
@@ -53,6 +54,8 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List the shared schemas of the database's outbound datashares.
 SELECT ... FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND object_type IN ('schema', ...) ...;
 ```
@@ -60,8 +63,10 @@ SELECT ... FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND object_t
 ## Read Behavior
 
 `datashare_schemas` is empty when nothing matches; it is ordered by share and schema. Omit `database` to use the
-provider database and `datashare` to list every outbound share of that database. A missing database yields an empty
-list. Catalog permission and execution errors are errors, not an empty result.
+provider database, `datashare` to list every outbound share of that database, and `schema` to list every shared schema.
+Only datashares of that one database are listed; `redshift_datashares` lists the datashares of every database. A
+database that does not exist or is not local, such as a datashare consumer database, lists nothing. Catalog permission
+and execution errors are errors, not an empty result.
 
 `id` (String, computed) is the listing's provider-relative JSON identity containing the database and configured filters.
 

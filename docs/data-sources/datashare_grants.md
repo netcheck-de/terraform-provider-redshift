@@ -66,5 +66,5 @@ does not report the grant form. Grants apply to SQL usage only; AWS authorizatio
 
 `id` (String, computed) is the listing's provider-relative JSON identity containing the configured filters.
 
-Only superusers, share owners, and users with `ALTER` or `USAGE` on a share see its consumers. Only read-only SQL is
-executed.
+Superusers, share owners, and users with `ALTER` or `USAGE` on a share see its consumers; other users see none. Only
+read-only SQL is executed.

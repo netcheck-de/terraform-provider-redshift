@@ -34,5 +34,5 @@ identify the producer. `consumer_database` is null until a database is created f
 
 `id` (String, computed) is the listing's provider-relative JSON identity containing the configured filters.
 
-`SVV_DATASHARES` shows rows only to superusers, share owners, and users with `ALTER` or `USAGE` on a share, so the
-listing is limited to what the provider user can see. Only read-only SQL is executed.
+Superusers, share owners, and users with `ALTER` or `USAGE` on a share see it; other users see no shares. Only read-only
+SQL is executed.

@@ -31,11 +31,11 @@ SELECT ... FROM svv_datashare_privileges JOIN svv_datashares ... WHERE share_typ
 ## Read Behavior
 
 `datashare_privileges` is empty when nothing matches; it is ordered by share, grantee type, and grantee. One query in
-the provider database covers the shares of every producer database, each reported with its `database_name`. `PUBLIC`
-is reported with `grantee = "public"`; the `grantee` filter `public` selects it. Permissions held with grant option are
-reported like any other.
+the provider database covers the shares of every producer database, each reported with its `database_name`. `PUBLIC` is
+reported with `grantee = "public"`; the `grantee` filter `public` selects it, and `grantee_type` tells a user and a role
+of the same name apart. Permissions held with grant option are reported like any other.
 
 `id` (String, computed) is the listing's provider-relative JSON identity containing the configured filters.
 
-Superusers and users with the `ACCESS SYSTEM TABLE` permission see every grant; other users see only identities they
-can access or own. Only read-only SQL is executed.
+Superusers and users with the `ACCESS SYSTEM TABLE` permission see every grant; other users see only the identities they
+have access to or own. Only read-only SQL is executed.

@@ -55,6 +55,8 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List the shared schemas and relations of the database's outbound datashares.
 SELECT ... FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND object_type IN ('schema', 'table', ...) ...;
 ```
@@ -62,8 +64,9 @@ SELECT ... FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND object_t
 ## Read Behavior
 
 `datashare_tables` is empty when nothing matches; it is ordered by share and qualified name. Omit `database` to use the
-provider database, `datashare` to list every outbound share of that database, and `schema` to list every schema. A
-missing database yields an empty list.
+provider database, `datashare` to list every outbound share of that database, and `schema` to list every schema. Only
+datashares of that one database are listed; `redshift_datashares` lists the datashares of every database. A database
+that does not exist or is not local, such as a datashare consumer database, lists nothing.
 
 The listing observes current membership, not the statements that established it: it includes relations added
 explicitly, by `ADD ALL TABLES IN SCHEMA`, by scoped grants, or by `INCLUDENEW`, which the catalog does not distinguish.

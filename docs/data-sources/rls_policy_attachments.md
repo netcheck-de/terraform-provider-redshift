@@ -30,7 +30,7 @@ output "rls_policy_recipients" {
 
 ### Optional
 
-- `database` (String) Database whose attachments are listed; defaults to the provider database.
+- `database` (String) Database whose attachments are listed; defaults to the provider's `database`.
 - `policy` (String) Only attachments of this policy; all policies when omitted.
 - `relation` (String) Only attachments to relations of this name; all relations when omitted.
 - `schema` (String) Only attachments to relations of this schema; all schemas when omitted.
@@ -58,6 +58,8 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List the policy attachments of the connected database, optionally of one policy, schema, or relation.
 SELECT ... FROM svv_rls_attached_policy WHERE polname = 'policy' AND relschema = 'schema' AND relname = 'relation';
 ```
@@ -67,5 +69,7 @@ SELECT ... FROM svv_rls_attached_policy WHERE polname = 'policy' AND relschema =
 The view covers the connected database, so the provider runs the query in `database`, which defaults to the provider
 database. Items are ordered by schema, relation, policy, and recipient; no attachment yields an empty list. The view
 reports user and role recipients by kind; the recipient named `public` is listed as `grantee_type = "PUBLIC"`, as
-`redshift_rls_policy_attachment` configures it. Only superusers and `sys:secadmin` holders can query the view. `id`
-contains the target database and configured filters within the warehouse.
+`redshift_rls_policy_attachment` configures it. Users with the `sys:secadmin` role see every attachment; AWS documents
+no other user as able to query the view. `id` contains the target database and configured filters within the warehouse.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

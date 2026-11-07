@@ -37,7 +37,7 @@ output "analytics_grants" {
 
 ### Optional
 
-- `database_name` (String) Local or shared database whose scoped grants are listed; defaults to the provider database.
+- `database_name` (String) Database whose scoped grants are listed; defaults to the provider's `database`.
 - `role` (String) Only grants to this role.
 - `schema_name` (String) Lists the grants on this schema and the scoped grants limited to it; database-wide grants when omitted.
 - `user` (String) Only grants to this user.
@@ -84,10 +84,11 @@ Without `schema_name`, elements are the `DATABASE` grants and the database-wide 
 the scoped grants limited to that schema. `role` and `user` narrow the elements to one recipient.
 
 Local databases are read in their own database and shared databases from the provider database, as `redshift_grant`
-reads them; a missing database is an error. Elements cover roles, users, and producer datashares, which
+reads them; a database that does not exist lists nothing. Elements cover roles, users, and producer datashares, which
 `SHOW GRANTS` reports as `ds:<name>`. Grants to groups and `PUBLIC` are listed by
 [`redshift_object_grants`](object_grants.md). `FUNCTIONS` and `PROCEDURES` share one Redshift catalog scope, which is
 listed under the name the catalog reports.
 
-`SHOW GRANTS` reports only grants visible to the provider's identity and fails when more than 10,000 rows match. `id`
-is the listing's provider-relative JSON identity: the target `database_name` and the configured filters.
+Superusers see every grant; other users see only the grants `SHOW GRANTS` shows them. `SHOW GRANTS` fails when more than
+10,000 rows match. `id` is the listing's provider-relative JSON identity: the target `database_name` and the configured
+filters.

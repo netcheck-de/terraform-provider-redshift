@@ -76,5 +76,6 @@ configured filters within the warehouse.
 `pg_views` decides which materialized views exist, and each item reports what the `redshift_materialized_view` lookup
 reports. `SVV_MV_INFO` shows a provider identity that is not a superuser only the materialized views it owns, so
 `auto_refresh` is null for materialized views owned by other users. Ordinary and late-binding views are left out;
-`redshift_views` lists them. A database that is not local lists no materialized views. Storage options have no catalog
-source every user can read; use the `redshift_materialized_view` lookup, which reports them as null too.
+`redshift_views` lists them. A database that does not exist or is not local, such as a datashare consumer database,
+lists nothing. Storage options have no catalog source every user can read; use the `redshift_materialized_view` lookup,
+which reports them as null too.

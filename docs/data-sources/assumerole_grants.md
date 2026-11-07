@@ -30,6 +30,7 @@ output "default_role_commands" {
 ### Optional
 
 - `grantee` (String) Only grants to this identity name; `public` for `PUBLIC`.
+- `grantee_type` (String) Only grants to `USER`, `ROLE`, `GROUP`, or `PUBLIC` identities.
 - `iam_role_arn` (String) Only grants on this IAM role ARN, `DEFAULT` for the namespace default role, or `ALL` for grants on every role; `DEFAULT` and `ALL` are accepted in any case.
 
 ### Read-Only
@@ -64,5 +65,6 @@ reports them as `DEFAULT` and `ALL`, and translates an `iam_role_arn` filter the
 grantee's `ON ALL` commands under every IAM role that another grant names, so those elements show access the `ALL`
 element supplies. `PUBLIC` holds every command `ON ALL` until it is revoked.
 
-The view shows only entries visible to the provider's identity (superusers and users with `ACCESS SYSTEM TABLE` see
-all). `id` is the listing's provider-relative JSON identity: the configured filters.
+`grantee_type` tells a user and a role of the same name apart. Superusers and users with the `ACCESS SYSTEM TABLE`
+permission see every grant; other users see only the entries they have access to. `id` is the listing's
+provider-relative JSON identity: the configured filters.

@@ -31,8 +31,10 @@ output "loader_defaults" {
 
 ### Optional
 
-- `database_name` (String) Local database whose default privileges are listed; defaults to the provider database.
+- `database_name` (String) Database whose default privileges are listed; defaults to the provider's `database`.
 - `grantee` (String) Only defaults granted to this identity name; `public` for `PUBLIC`.
+- `grantee_type` (String) Only grants to `USER`, `ROLE`, `GROUP`, or `PUBLIC` identities.
+- `object_type` (String) Only the defaults of `TABLES` (tables and views), `FUNCTIONS`, or `PROCEDURES`.
 - `owner` (String) Only the defaults of objects this user creates.
 - `schema_name` (String) Only the defaults of this schema; database-wide defaults are left out.
 
@@ -61,21 +63,26 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List explicit default privileges, plus PUBLIC's implicit EXECUTE for users without a function default.
 SELECT ... FROM svv_default_privileges UNION ALL SELECT ... FROM pg_user WHERE NOT EXISTS (... pg_default_acl ...);
 ```
 
 ## Read Behavior
 
-The catalogs report the current database only, so the listing runs in `database_name`. Catalog object types are
-listed as the resource names them: `RELATION` as `TABLES`, `FUNCTION` as `FUNCTIONS`, and `PROCEDURE` as `PROCEDURES`.
-Database-wide defaults have a null `schema_name`; a `schema_name` filter leaves them out.
+The catalogs report the current database only, so the listing runs in `database_name`. Catalog object types are listed
+as the resource names them: `RELATION` as `TABLES`, `FUNCTION` as `FUNCTIONS`, and `PROCEDURE` as `PROCEDURES`.
+Database-wide defaults have a null `schema_name`; a `schema_name` filter leaves them out. `object_type` and
+`grantee_type` narrow the elements to one object type and one grantee type, so a user and a role of the same name can be
+told apart.
 
 Redshift grants `EXECUTE` on new functions to `PUBLIC` without being asked. Until a user's first
 `ALTER DEFAULT PRIVILEGES` on functions creates their `PG_DEFAULT_ACL` row, the catalog has no row for it, so the
 listing adds a database-wide `PUBLIC` `FUNCTIONS` element with `EXECUTE` for every such user, as the
 [`redshift_default_privilege`](default_privilege.md) lookup reads it.
 
-The view shows only defaults visible to the provider's identity (superusers and users with `ACCESS SYSTEM TABLE` see
-all; other users see only the defaults granted to them). `id` is the listing's provider-relative JSON identity: the
-target `database_name` and the configured filters.
+Superusers and users with the `ACCESS SYSTEM TABLE` permission see every rule; other users see only the defaults granted
+to them. `id` is the listing's provider-relative JSON identity: the target `database_name` and the configured filters.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

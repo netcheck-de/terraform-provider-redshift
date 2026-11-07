@@ -38,4 +38,5 @@ listed database and configured filters within the warehouse.
 Each item reports what `redshift_view` reports: `query` is the catalog's rendering of the definition, the `SELECT` of an
 ordinary view and the complete `CREATE VIEW ... WITH NO SCHEMA BINDING` statement of a late-binding view. Materialized
 views, which `pg_views` also lists, are left out; `redshift_materialized_views` lists them. Views in schemas starting
-with `pg_` and in `information_schema` are system views and are left out. A database that is not local lists no views.
+with `pg_` and in `information_schema` are system views and are left out. A database that does not exist or is not
+local, such as a datashare consumer database, lists nothing.

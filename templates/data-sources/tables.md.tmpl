@@ -37,5 +37,6 @@ within the warehouse.
 
 Views and materialized views are listed by `redshift_views` and `redshift_materialized_views`, and external tables by
 `redshift_external_tables`. Tables in schemas starting with `pg_` and in `information_schema` are system tables and are
-left out. A database that is not local, such as a datashare consumer database, lists no tables. Superusers see every
-table; other users see only the tables they have access to. Use `redshift_table` for a table's full definition.
+left out. A database that does not exist or is not local, such as a datashare consumer database, lists nothing.
+Superusers see every table; other users see only the tables they have access to. Use `redshift_table` for a table's full
+definition.

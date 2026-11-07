@@ -28,7 +28,7 @@ output "debug_grantees" {
 
 ### Optional
 
-- `database` (String) Database whose `DEBUG` grants are listed; defaults to the provider database.
+- `database` (String) Database whose `DEBUG` grants are listed; defaults to the provider's `database`.
 
 ### Read-Only
 
@@ -52,6 +52,9 @@ Simplified SQL used by the provider to read this data source.
 ```sql
 -- List the grants on the database, including its DEBUG grants.
 SHOW GRANTS ON DATABASE ...;
+
+-- After a failed read, check whether the database still exists.
+SHOW DATABASES LIKE '...';
 ```
 
 ## Read Behavior
@@ -61,5 +64,7 @@ rows are listed as `USER`, `global_group` rows as `ROLE`, and `admins_of_account
 `database@catalog` aliases are rejected, because `SHOW GRANTS ON` can silently omit their grants; read those with the
 [`redshift_debug_grant`](debug_grant.md) lookup.
 
-`SHOW GRANTS` reports only grants visible to the provider's identity. `id` is the listing's provider-relative JSON
-identity: the target `database` and the configured filters.
+Superusers see every grant; other users see only the grants `SHOW GRANTS` shows them. When `SHOW GRANTS` fails for a
+database that `SHOW DATABASES` no longer lists, the database does not exist and the listing is empty, as
+`redshift_debug_grant` reads it. `id` is the listing's provider-relative JSON identity: the target `database` and the
+configured filters.

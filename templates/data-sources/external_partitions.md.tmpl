@@ -45,4 +45,5 @@ location, without a folder's trailing slash and truncated to 128 characters. `SV
 column, so the partition keys of the listed database's tables decide which partitions belong to it; an equally named
 external schema of another database can therefore add partitions with matching keys. The same values with different
 locations are ambiguous and fail the read. Without `schema` and `table`, the partition read covers every partition the
-provider's SQL identity can see. A database that is not local lists no partitions.
+provider's SQL identity can see. A database that does not exist or is not local, such as a datashare consumer database,
+lists nothing.

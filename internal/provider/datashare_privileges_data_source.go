@@ -18,7 +18,7 @@ var _ = registerDataSource(newDatasharePrivilegesDataSource)
 func newDatasharePrivilegesDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:        "datashare_privileges",
-		description: "Lists the explicit `ALTER` and `SHARE` permissions on the outbound datashares of the provider's namespace from `SVV_DATASHARE_PRIVILEGES`, one element per share and grantee, without taking ownership. Superusers and users with the `ACCESS SYSTEM TABLE` permission see every grant; other users see only identities they can access or own.",
+		description: "Lists the explicit `ALTER` and `SHARE` permissions on the outbound datashares of every producer database of the provider's namespace from `SVV_DATASHARE_PRIVILEGES`, one element per share and grantee, without taking ownership. Superusers and users with the `ACCESS SYSTEM TABLE` permission see every grant; other users see only the identities they have access to or own.",
 		filters: map[string]schema.Attribute{
 			"datashare_name": discoveryFilter("Only permissions on this outbound datashare; all visible shares when omitted."),
 			"grantee":        discoveryFilter("Only permissions of this user, role, or group; `public` selects `PUBLIC`. All grantees when omitted."),

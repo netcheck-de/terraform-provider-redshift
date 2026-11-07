@@ -21,7 +21,7 @@ var datashareNameFilter = discoveryFilter("Only the share with exactly this name
 func newDatasharesDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:        "datashares",
-		description: "Lists the outbound datashares of the provider's namespace from `SVV_DATASHARES`, across all of its producer databases, without taking ownership. Only superusers, share owners, and users with `ALTER` or `USAGE` on a share see it.",
+		description: "Lists the outbound datashares of every producer database of the provider's namespace from `SVV_DATASHARES`, without taking ownership. Superusers, share owners, and users with `ALTER` or `USAGE` on a share see it; other users see no shares.",
 		filters:     map[string]schema.Attribute{"name": datashareNameFilter},
 		element: describedOutputs(collectionElement(newDatashareResource, "database", "name", "publicly_accessible", "owner", "share_id", "producer_account", "producer_namespace", "created_at"), map[string]string{
 			"database":            "Producer database owning the datashare.",

@@ -30,7 +30,7 @@ output "masked_columns" {
 
 ### Optional
 
-- `database` (String) Database whose attachments are listed; defaults to the provider database.
+- `database` (String) Database whose attachments are listed; defaults to the provider's `database`.
 - `policy` (String) Only attachments of this policy; all policies when omitted.
 - `relation` (String) Only attachments to relations of this name; all relations when omitted.
 - `schema` (String) Only attachments to relations of this schema; all schemas when omitted.
@@ -61,6 +61,8 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List the masking policy attachments of the connected database, optionally of one policy, schema, or relation.
 SELECT ... FROM svv_attached_masking_policy WHERE policy_name = '...' AND schema_name = '...' AND table_name = '...';
 ```
@@ -70,5 +72,7 @@ SELECT ... FROM svv_attached_masking_policy WHERE policy_name = '...' AND schema
 The view covers the connected database, so the provider runs the query in `database`, which defaults to the provider
 database. Items are ordered by schema, relation, policy, and recipient; no attachment yields an empty list. `columns`
 and `input_columns` are decoded from the view's JSON column lists, as `redshift_masking_policy_attachment` reads them,
-and `grantee_type` is reported in uppercase. Only superusers and `sys:secadmin` members see attachments; for other
-identities the list is empty. `id` contains the target database and configured filters within the warehouse.
+and `grantee_type` is reported in uppercase. Superusers and users with the `sys:secadmin` role see every attachment;
+other users see none. `id` contains the target database and configured filters within the warehouse.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

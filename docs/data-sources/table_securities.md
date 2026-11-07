@@ -29,7 +29,7 @@ output "rls_protected_relations" {
 
 ### Optional
 
-- `database` (String) Database whose relations are listed; defaults to the provider database.
+- `database` (String) Database whose relations are listed; defaults to the provider's `database`.
 - `schema` (String) Only relations of this schema; all schemas when omitted.
 
 ### Read-Only
@@ -55,6 +55,8 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List the row-level security settings of the selected database, optionally of one schema.
 SELECT ... FROM svv_rls_relation WHERE datname = 'database' AND relschema = 'schema';
 ```
@@ -65,3 +67,5 @@ AWS documents `svv_rls_relation` as listing the RLS-protected relations, not eve
 view does not report is absent from this list, while `redshift_table_security` reports the defaults for it: row-level
 security off, `AND`, and on for datashares. Items are ordered by schema and relation. Superusers see every relation;
 other users see only their own. `id` contains the target database and configured filters within the warehouse.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

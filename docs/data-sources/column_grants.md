@@ -30,7 +30,7 @@ output "events_column_grants" {
 
 ### Optional
 
-- `database_name` (String) Local database whose grants are listed; defaults to the provider database.
+- `database_name` (String) Database whose grants are listed; defaults to the provider's `database`.
 - `grantee` (String) Only grants to this identity name; `public` for `PUBLIC`.
 - `grantee_type` (String) Only grants to `USER`, `ROLE`, `GROUP`, or `PUBLIC` identities.
 - `object_name` (String) Only grants on this table or view.
@@ -59,13 +59,17 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List column privileges matching the configured filters.
 SELECT ... FROM svv_column_privileges WHERE ...;
 ```
 
 ## Read Behavior
 
-All filters are optional and combine with AND; an empty result is an empty list. `privileges` maps `SELECT` and
-`UPDATE` to the columns that hold them. The view shows only grants visible to the provider's identity (superusers and
-users with `ACCESS SYSTEM TABLE` see all). Column grants have no grant option. `id` is the listing's provider-relative
-JSON identity: the target `database_name` and the configured filters.
+All filters are optional and combine with AND; an empty result is an empty list. `privileges` maps `SELECT` and `UPDATE`
+to the columns that hold them. Superusers and users with the `ACCESS SYSTEM TABLE` permission see every grant; other
+users see only the identities they have access to or own. Column grants have no grant option. `id` is the listing's
+provider-relative JSON identity: the target `database_name` and the configured filters.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

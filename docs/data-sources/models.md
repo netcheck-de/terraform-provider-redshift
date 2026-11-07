@@ -51,6 +51,8 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List visible models in the selected database.
 SHOW MODEL ALL;
 ```
@@ -62,3 +64,5 @@ runs in the listed database. `id` combines the listed database and configured fi
 Items are ordered by schema and name; no match returns an empty `models` list. `SHOW MODEL ALL` has no filter clause,
 so `schema` is applied to its rows. It lists only the models the provider's SQL identity can use. Only read-only SQL
 is executed.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

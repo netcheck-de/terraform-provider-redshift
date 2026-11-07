@@ -41,7 +41,7 @@ output "events_grants" {
 
 ### Optional
 
-- `database_name` (String) Local database whose grants are listed; defaults to the provider database.
+- `database_name` (String) Database whose grants are listed; defaults to the provider's `database`.
 - `grantee` (String) Only grants to this identity name; `public` for `PUBLIC`.
 - `grantee_type` (String) Only grants to `USER`, `ROLE`, `GROUP`, or `PUBLIC` identities.
 - `object_name` (String) Table, view, or template whose grants are listed with `object_type`; otherwise only grants on objects of this name.
@@ -73,6 +73,9 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Read whether the database is local or shared, which selects the connection.
+SELECT database_type FROM svv_redshift_databases WHERE database_name = '...';
+
 -- List grants on the selected object.
 SHOW GRANTS ON { DATABASE | SCHEMA | TABLE | TEMPLATE } ...;
 
@@ -82,9 +85,11 @@ SHOW GRANTS FOR [ROLE] ... FROM DATABASE ...;
 
 ## Read Behavior
 
-Set `object_type` to list the grants on that object; `grantee` and `grantee_type` then narrow the elements, which
-also covers groups and `PUBLIC`. Without `object_type`, `grantee` and `grantee_type` (`USER` or `ROLE`) select
-`SHOW GRANTS FOR`; `schema_name` and `object_name` then narrow the elements. Other combinations are errors.
+Set `object_type` to list the grants on that object; `grantee` and `grantee_type` then narrow the elements, which also
+covers groups and `PUBLIC`. Without `object_type`, `grantee` and `grantee_type` (`USER` or `ROLE`) select
+`SHOW GRANTS FOR`; `schema_name` and `object_name` then narrow the elements. Other combinations are errors. Local
+databases are read in their own database and shared (datashare consumer) databases from the provider database, as
+`redshift_object_grant` reads them; a database that does not exist lists nothing.
 
 Elements cover the `DATABASE`, `SCHEMA`, `TABLE`, and `TEMPLATE` grants of users, roles, groups, and `PUBLIC`.
 Scoped grants, whose privilege scope is an object class such as `TABLES`, are listed by
@@ -93,5 +98,6 @@ read them with the [`redshift_object_grant`](object_grant.md) lookup. `grant_opt
 `SHOW GRANTS FOR`, which does not report grant options.
 
 `SHOW GRANTS` documents no column that separates grants inherited through roles from explicit ones, so the listing
-exposes none. It reports only grants visible to the provider's identity and fails when more than 10,000 rows match.
-`id` is the listing's provider-relative JSON identity: the target `database_name` and the configured filters.
+exposes none. Superusers see every grant; other users see only the grants `SHOW GRANTS` shows them. `SHOW GRANTS` fails
+when more than 10,000 rows match. `id` is the listing's provider-relative JSON identity: the target `database_name` and
+the configured filters.

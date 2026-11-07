@@ -29,7 +29,7 @@ output "staging_templates" {
 
 ### Optional
 
-- `database` (String) Local database to list; the provider database when omitted.
+- `database` (String) Database whose templates are listed; defaults to the provider's `database`.
 - `schema` (String) Only visible templates of this schema; all visible templates of the database when omitted.
 
 ### Read-Only
@@ -53,12 +53,16 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List visible COPY templates in the selected database.
 SELECT ... FROM sys_redshift_template WHERE database_name = '...';
 ```
 
 ## Read Behavior
 
-Items are ordered by schema and name. Superusers see all templates; regular users see only their own, even if they
-have `USAGE` on other templates. Listing does not probe schemas or require `USAGE` on every schema. Explicit `schema`
-filters use the same catalog visibility. `id` contains the target database and configured filters within the warehouse.
+Items are ordered by schema and name. Superusers see every template; other users see only their own, even if they have
+`USAGE` on other templates. Listing does not probe schemas or require `USAGE` on every schema. Explicit `schema` filters
+use the same catalog visibility. `id` contains the target database and configured filters within the warehouse.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

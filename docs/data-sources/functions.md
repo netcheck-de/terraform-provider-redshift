@@ -58,6 +58,8 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List SQL UDF overloads matching the configured filters from pg_proc_info.
 SELECT ... FROM pg_proc_info WHERE prokind = 'f' AND lanname = 'sql' AND nspname = '...' AND proname = '...';
 ```
@@ -67,4 +69,6 @@ SELECT ... FROM pg_proc_info WHERE prokind = 'f' AND lanname = 'sql' AND nspname
 The listing reads the catalog of the selected database, ordered by schema, name, and argument types. Lambda UDFs are
 listed by `redshift_external_functions`; Python UDFs and the built-in functions in `pg_*` schemas and
 `information_schema` are excluded. Use `redshift_function` for an overload's body. An empty `functions` list means that
-nothing matches; a missing database or a catalog failure is an error. `id` contains the database and configured filters.
+nothing matches; a catalog failure is an error. `id` contains the database and configured filters.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

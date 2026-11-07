@@ -27,7 +27,7 @@ output "rls_policy_names" {
 
 ### Optional
 
-- `database` (String) Database whose policies are listed; defaults to the provider database.
+- `database` (String) Database whose policies are listed; defaults to the provider's `database`.
 
 ### Read-Only
 
@@ -60,10 +60,13 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List visible row-level security policies in the selected database.
 SELECT ... FROM svv_rls_policy WHERE poldb = 'database';
 ```
 
 ## Read Behavior
 
-Items are sorted by name; an empty database yields an empty list. Regular users see only their own policies.
+Items are sorted by name; an empty database yields an empty list. Superusers see every policy; other users see only
+their own. A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

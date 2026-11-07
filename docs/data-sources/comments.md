@@ -29,7 +29,7 @@ output "column_comments" {
 
 ### Optional
 
-- `database_name` (String) Local database whose comments are listed; defaults to the provider's `database`.
+- `database_name` (String) Database whose comments are listed; defaults to the provider's `database`.
 - `object_type` (String) Only comments on objects of this type: `DATABASE`, `SCHEMA`, `TABLE`, `VIEW`, `COLUMN`, or `CONSTRAINT`; every type when omitted.
 - `schema_name` (String) Only comments on tables, views, columns, and constraints in this schema; database and schema comments, which have no `schema_name`, are then left out.
 
@@ -57,6 +57,8 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List the comment on the database itself.
 SELECT ... FROM pg_database LEFT JOIN pg_description ... WHERE datname = '...' AND description IS NOT NULL;
 -- List schema comments.
@@ -71,14 +73,15 @@ SELECT ... FROM pg_constraint JOIN pg_class ... LEFT JOIN pg_description ... WHE
 
 ## Read Behavior
 
-`database_name` defaults to the provider's `database`, and the read runs in that database, so it must be a local
-database the connection can reach. The listing runs one query per object type: all six without `object_type`, only the
-selected one with it. `schema_name` narrows tables, views, columns, and constraints to one schema and skips database
-and schema comments, which have no `schema_name`. `id` combines the listed database and configured filters within the
-warehouse.
+`database_name` defaults to the provider's `database`, and the read runs in that database. The listing runs one query
+per object type: all six without `object_type`, only the selected one with it. `schema_name` narrows tables, views,
+columns, and constraints to one schema and skips database and schema comments, which have no `schema_name`. `id`
+combines the listed database and configured filters within the warehouse.
 
 Items are ordered by object type in the order `DATABASE`, `SCHEMA`, `TABLE`, `VIEW`, `COLUMN`, `CONSTRAINT`, then by
 schema, object, and column position or constraint name. Objects without a comment are not listed; a database without
 comments returns an empty `comments` list. Comments on system objects that the catalog records are included as well.
 With metadata security enabled, objects the connection may not access are hidden from the catalog and their comments
 are not listed.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

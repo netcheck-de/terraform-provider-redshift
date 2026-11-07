@@ -16,7 +16,7 @@ var _ = registerDataSource(newDatashareGrantsDataSource)
 func newDatashareGrantsDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:        "datashare_grants",
-		description: "Lists the consumer accounts and namespaces granted `USAGE` on the outbound datashares of the provider's namespace from `SVV_DATASHARE_CONSUMERS`, without taking ownership. `SVV_DATASHARE_CONSUMERS` reports an account granted `VIA DATA CATALOG` like a plain account grant, so the form is not listed. Only superusers, share owners, and users with `ALTER` or `USAGE` on a share see its consumers.",
+		description: "Lists the consumer accounts and namespaces granted `USAGE` on the outbound datashares of every producer database of the provider's namespace from `SVV_DATASHARE_CONSUMERS`, without taking ownership. `SVV_DATASHARE_CONSUMERS` reports an account granted `VIA DATA CATALOG` like a plain account grant, so the form is not listed. Superusers, share owners, and users with `ALTER` or `USAGE` on a share see its consumers; other users see none.",
 		filters:     map[string]schema.Attribute{"datashare": discoveryFilter("Only consumers of this outbound datashare; consumers of all visible shares when omitted.")},
 		element: describedOutputs(collectionElement(newDatashareGrantResource, "database", "datashare", "account_id", "namespace_id"), map[string]string{
 			"account_id":   "Consumer AWS account ID of an account grant; null for a namespace grant.",

@@ -55,6 +55,8 @@ Read-Only:
 Simplified SQL used by the provider to read this data source.
 
 ```sql
+-- Check that the selected database is local.
+SELECT ... FROM svv_redshift_databases WHERE database_name = '...' AND database_type = 'local';
 -- List procedure overloads matching the configured filters from pg_proc_info.
 SELECT ... FROM pg_proc_info WHERE prokind = 'p' AND nspname = '...' AND proname = '...';
 ```
@@ -63,5 +65,7 @@ SELECT ... FROM pg_proc_info WHERE prokind = 'p' AND nspname = '...' AND proname
 
 The listing reads the catalog of the selected database, ordered by schema, name, and signature. `signature` holds the
 input (`IN` and `INOUT`) types that identify each overload; `redshift_routine_parameters` reports every argument with
-its name and mode, and `redshift_procedure` the body. An empty `procedures` list means that nothing matches; a missing
-database or a catalog failure is an error. `id` contains the database and configured filters.
+its name and mode, and `redshift_procedure` the body. An empty `procedures` list means that nothing matches; a catalog
+failure is an error. `id` contains the database and configured filters.
+
+A database that does not exist or is not local, such as a datashare consumer database, lists nothing.
