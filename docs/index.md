@@ -16,6 +16,14 @@ connections require endpoint connectivity. See the
 [Amazon Redshift Database Developer Guide](https://docs.aws.amazon.com/redshift/latest/dg/welcome.html) and its
 [SQL commands reference](https://docs.aws.amazon.com/redshift/latest/dg/c_SQL_commands.html).
 
+## Upgrade guides
+
+Each release with breaking changes has a guide that lists them and the configuration updates they need.
+
+| Version | Guide                                                     |
+|---------|-----------------------------------------------------------|
+| 0.5     | [Upgrading to version 0.5](guides/version_0_5_upgrade.md) |
+
 ## Example Usage
 
 ```terraform
@@ -231,7 +239,7 @@ state.
 
 ## Resources
 
-The provider implements 41 SQL resources and 58 read-only data sources, grouped below as in the Registry
+The provider implements 41 SQL resources and 85 read-only data sources, grouped below as in the Registry
 navigation. AWS infrastructure remains with the `hashicorp/aws` provider.
 
 ### Databases and Schemas
