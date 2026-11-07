@@ -361,7 +361,6 @@ func TestDataSourceReadableAttributeParity(t *testing.T) {
 // TestEveryResourceHasOneCollection requires each resource to have exactly one paired listing or a recorded reason
 // why it has none, so every managed type can be enumerated as well as looked up.
 func TestEveryResourceHasOneCollection(t *testing.T) {
-	t.Skip("enabled once every resource has its listing")
 	require.Empty(t, resourcesWithoutCollection.duplicates, "duplicate collection exemptions")
 
 	resources, _ := registeredTypeNames()
