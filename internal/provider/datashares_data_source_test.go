@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -36,11 +35,6 @@ func readListing(t *testing.T, source datasource.DataSource, filters map[string]
 
 	return observed.Attributes()["id"].(types.String), items
 }
-
-// failingCatalog reports a catalog error for every query.
-var failingCatalog = queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
-	return nil, errors.New("catalog unavailable")
-})
 
 // TestDatasharesList lists only outbound shares, filtered by name, with the resource's observed attributes.
 func TestDatasharesList(t *testing.T) {

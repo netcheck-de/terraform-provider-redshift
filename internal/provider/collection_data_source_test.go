@@ -200,3 +200,8 @@ func TestCollectionIdentityIncludesBooleanFilter(t *testing.T) {
 	data := types.ObjectValueMust(map[string]attr.Type{"enabled": types.BoolType}, map[string]attr.Value{"enabled": types.BoolValue(true)})
 	assertLookupIdentity(t, d.collectionID(data), map[string]string{"enabled": "true"})
 }
+
+// failingCatalog fails every query, for the error paths of the listings.
+var failingCatalog = queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+	return nil, errors.New("catalog unavailable")
+})

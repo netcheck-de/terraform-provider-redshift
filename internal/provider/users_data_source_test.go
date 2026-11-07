@@ -58,11 +58,6 @@ func assertListedAsLookup(t *testing.T, item types.Object, lookup func() datasou
 	}
 }
 
-// failingCatalog fails every query, for the error paths of the listings.
-var failingCatalog = queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
-	return nil, errors.New("catalog unavailable")
-})
-
 // TestUsersListing lists users with their options exactly as the user lookup reports them.
 func TestUsersListing(t *testing.T) {
 	c := &catalog{user: true, createDB: true}
