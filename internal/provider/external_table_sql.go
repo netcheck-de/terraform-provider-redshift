@@ -859,29 +859,67 @@ func dropExternalTableStatement(data externalTableModel) string {
 	return sqlclient.Stmt("DROP TABLE").Append(externalTableRelation(data.Schema.ValueString(), data.Name.ValueString())).String()
 }
 
-// readExternalTableQuery reads one external table. Redshift folds ASCII letters of quoted identifiers to lowercase
-// too, so schema and table names are compared without case; redshift_database_name excludes tables of other
-// databases, which the view also lists.
+// externalTablesSource selects external tables of one database; redshift_database_name excludes tables of other
+// databases, which the view also lists. Redshift folds ASCII letters of quoted identifiers to lowercase too, so the
+// reads compare schema and table names without case.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_names.html
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_TABLES.html
-func readExternalTableQuery(data externalTableModel) sqlclient.Query {
+func externalTablesSource(database string) sqlclient.Query {
 	return sqlclient.Select("schemaname", "tablename", "location", "input_format", "output_format", "serialization_lib", "serde_parameters", "parameters").
 		From("svv_external_tables").
-		Where("redshift_database_name = :database", sqlclient.Bind("database", data.Database.ValueString())).
+		Where("redshift_database_name = :database", sqlclient.Bind("database", database))
+}
+
+// readExternalTableQuery reads one external table.
+func readExternalTableQuery(data externalTableModel) sqlclient.Query {
+	return externalTablesSource(data.Database.ValueString()).
 		Where("LOWER(schemaname) = LOWER(:schema)", sqlclient.Bind("schema", data.Schema.ValueString())).
 		Where("LOWER(tablename) = LOWER(:name)", sqlclient.Bind("name", data.Name.ValueString()))
 }
 
+// listExternalTablesQuery lists the external tables of one database, optionally in one schema.
+func listExternalTablesQuery(database, schema string) sqlclient.Query {
+	return externalTablesSource(database).
+		WhereIf(schema != "", "LOWER(schemaname) = LOWER(:schema)", sqlclient.Bind("schema", schema)).
+		OrderBy("schemaname", "tablename")
+}
+
+// externalTableColumnsSource selects the columns and partition keys of the external tables of one database.
+// https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_COLUMNS.html
+func externalTableColumnsSource(database string) sqlclient.Query {
+	return sqlclient.Select("columnname", "external_type", "columnnum", "part_key", "schemaname", "tablename").
+		From("svv_external_columns").
+		Where("redshift_database_name = :database", sqlclient.Bind("database", database))
+}
+
 // readExternalTableColumnsQuery reads the columns and partition keys of one external table, matching names as
 // readExternalTableQuery does.
-// https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_COLUMNS.html
 func readExternalTableColumnsQuery(database, schema, table string) sqlclient.Query {
-	return sqlclient.Select("columnname", "external_type", "columnnum", "part_key").
-		From("svv_external_columns").
-		Where("redshift_database_name = :database", sqlclient.Bind("database", database)).
+	return externalTableColumnsSource(database).
 		Where("LOWER(schemaname) = LOWER(:schema)", sqlclient.Bind("schema", schema)).
 		Where("LOWER(tablename) = LOWER(:table)", sqlclient.Bind("table", table)).
 		OrderBy("columnnum")
+}
+
+// listExternalTableColumnsQuery lists the columns and partition keys of the external tables of one database,
+// optionally of one schema and table.
+func listExternalTableColumnsQuery(database, schema, table string) sqlclient.Query {
+	return externalTableColumnsSource(database).
+		WhereIf(schema != "", "LOWER(schemaname) = LOWER(:schema)", sqlclient.Bind("schema", schema)).
+		WhereIf(table != "", "LOWER(tablename) = LOWER(:table)", sqlclient.Bind("table", table)).
+		OrderBy("schemaname", "tablename", "columnnum")
+}
+
+// externalTableColumnGroups groups catalog column rows by schema and table name, as the catalog spells them.
+func externalTableColumnGroups(rows []sqlclient.Row) map[[2]string][]sqlclient.Row {
+	groups := map[[2]string][]sqlclient.Row{}
+
+	for _, row := range rows {
+		key := [2]string{row["schemaname"], row["tablename"]}
+		groups[key] = append(groups[key], row)
+	}
+
+	return groups
 }
 
 // externalTableCatalogColumns splits catalog column rows into data columns in column order and partition keys in

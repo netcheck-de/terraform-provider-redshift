@@ -33,14 +33,14 @@ type discoveryListing struct {
 	like map[string]string
 	// connected filters rows by the connection's database, for catalogs that only cover the current database.
 	connected bool
+	// fixed maps a column to the value a constant predicate of the listing's SQL requires.
+	fixed map[string]string
 }
 
 // discoveryListings are the reads of the discovery data sources.
 var discoveryListings = []discoveryListing{
 	{name: "databases", source: string(databasesSource), equal: map[string]string{"database_type": "database_type"}, like: map[string]string{"name_like": "database_name"}},
-	{name: "tables", source: string(tablesSource), equal: map[string]string{"database": "database_name", "schema": "schema_name", "table_type": "table_type"}},
-	// SVV_MV_INFO lists only the materialized views of the connected database.
-	{name: "materialized", source: "svv_mv_info", selects: "TRIM(schema_name) AS schema_name", equal: map[string]string{"database": "database_name", "schema": "schema_name"}, connected: true},
+	{name: "tables", source: string(tablesSource), equal: map[string]string{"database": "database_name", "schema": "schema_name"}, fixed: map[string]string{"table_type": "TABLE"}},
 	{name: "columns", source: "svv_all_columns", equal: map[string]string{"database": "database_name", "schema": "schema_name", "table": "table_name"}},
 	{name: "constraints", source: string(constraintsSource), equal: map[string]string{"schema": "schema_name", "table": "table_name", "contype": "contype"}, connected: true},
 }
@@ -71,7 +71,7 @@ func discoveryLike(pattern string) *regexp.Regexp {
 
 // query answers the discovery listings with the rows matching their bound filters.
 func (f *discoveryFamily) query(_ *catalog, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, bool, error) {
-	// The tables listing asks whether the selected database is local; other families answer for their databases.
+	// Listings ask whether the selected database is local; other families answer for their databases.
 	if local, _, _ := localDatabaseQuery(parameters["database"]).Build(); sql == local {
 		for _, row := range f.rows["databases"] {
 			if row["database_name"] == parameters["database"] {
@@ -97,6 +97,12 @@ func (f *discoveryFamily) query(_ *catalog, connection sqlclient.Connection, sql
 				continue
 			}
 
+			for column, value := range listing.fixed {
+				if row[column] != value {
+					continue rows
+				}
+			}
+
 			for parameter, column := range listing.equal {
 				if value, ok := parameters[parameter]; ok && row[column] != value {
 					continue rows
@@ -118,8 +124,7 @@ func (f *discoveryFamily) query(_ *catalog, connection sqlclient.Connection, sql
 	return nil, false, nil
 }
 
-// populate adds a representative warehouse: local and shared databases, a table with
-// a view and a materialized view over it, and key constraints.
+// populate adds a representative warehouse: local and shared databases, tables and a view, and key constraints.
 func (f *discoveryFamily) populate() {
 	f.rows = map[string][]sqlclient.Row{
 		"databases": {
@@ -128,14 +133,13 @@ func (f *discoveryFamily) populate() {
 			{"database_name": "consumer_db", "owner": "", "database_type": "shared", "isolation_level": ""},
 		},
 		"tables": {
-			{"database_name": "analytics", "schema_name": "serving", "table_name": "orders", "table_type": "TABLE", "owner": "admin", "remarks": "Order facts."},
-			{"database_name": "analytics", "schema_name": "serving", "table_name": "order_labels", "table_type": "VIEW", "owner": "admin", "remarks": ""},
-			// SVV_REDSHIFT_TABLES read from another database leaves a materialized view's owner empty.
-			{"database_name": "analytics", "schema_name": "serving", "table_name": "order_totals", "table_type": "VIEW", "owner": "", "remarks": ""},
-			{"database_name": "analytics", "schema_name": "spectrum", "table_name": "events", "table_type": "EXTERNAL TABLE", "owner": "", "remarks": ""},
-		},
-		"materialized": {
-			{"database_name": "analytics", "schema_name": "serving", "name": "order_totals", "owner": "etl"},
+			// Rows are in the listing's schema and name order.
+			{"database_name": "analytics", "schema_name": "serving", "table_name": "order_labels", "table_type": "VIEW", "table_owner": "admin"},
+			// The catalog may report no owner, which the listing reports as null.
+			{"database_name": "analytics", "schema_name": "serving", "table_name": "order_lines", "table_type": "TABLE", "table_owner": ""},
+			{"database_name": "analytics", "schema_name": "serving", "table_name": "orders", "table_type": "TABLE", "table_owner": "admin"},
+			{"database_name": "analytics", "schema_name": "staging", "table_name": "raw_orders", "table_type": "TABLE", "table_owner": "etl"},
+			{"database_name": "consumer_db", "schema_name": "public", "table_name": "shared_orders", "table_type": "TABLE", "table_owner": ""},
 		},
 		"columns": {
 			{"database_name": "analytics", "schema_name": "serving", "table_name": "orders", "column_name": "id", "ordinal_position": "1", "data_type": "integer", "character_maximum_length": "", "numeric_precision": "32", "numeric_scale": "0", "is_nullable": "NO", "column_default": "", "remarks": "Order key."},

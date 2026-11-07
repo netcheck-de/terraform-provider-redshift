@@ -1,9 +1,8 @@
-data "redshift_tables" "materialized" {
-  database   = "analytics"
-  schema     = "reporting"
-  table_type = "MATERIALIZED VIEW"
+data "redshift_tables" "reporting" {
+  database = "analytics"
+  schema   = "reporting"
 }
 
-output "materialized_views" {
-  value = [for table in data.redshift_tables.materialized.tables : "${table.schema}.${table.name}"]
+output "reporting_tables" {
+  value = { for table in data.redshift_tables.reporting.tables : "${table.schema}.${table.name}" => table.owner }
 }

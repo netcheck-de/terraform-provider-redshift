@@ -131,7 +131,7 @@ documented beside the resources; they are not a production security baseline.
 | `iam.tf`                   | Scoped warehouse IAM roles and fixture policies.                                                     |
 | `databases.tf`             | Owned SQL databases, local and external schemas, comments, and paired lookups.                       |
 | `tables.tf`                | Managed tables with keys, identity, defaults, and AUTO layout, a constraint comment, and a lookup.   |
-| `views.tf`                 | Ordinary, late-binding, and materialized views, including a view over a managed table.               |
+| `views.tf`                 | Ordinary, late-binding, and materialized views over fixture and managed tables, lookups, listings.   |
 | `routines.tf`              | SQL function, stored procedure, a function object grant, and paired lookups.                         |
 | `extfunctions.tf`          | Lambda UDF with its AWS function and IAM role, and the routine listings.                             |
 | `datasharing.tf`           | Datashare membership, grants and privileges, shared database, listings, and paired lookups.          |
@@ -146,7 +146,7 @@ documented beside the resources; they are not a production security baseline.
 | `discovery.tf`             | Catalog listings of databases, schemas, tables, columns, and constraints, and a constraint comment.  |
 | `models.tf`                | Optional Bedrock model, role/group/delegated-user grants, PUBLIC lockdown, and lookups.              |
 | `s3.tf`                    | Private fixture bucket module, TLS/cross-account policy, and CSV object.                             |
-| `spectrum.tf`              | Glue catalog resources/policy, SQL external schema, external table and partition, and lookups.       |
+| `spectrum.tf`              | Glue catalog resources/policy, SQL external schema, external tables and partitions, lookups, lists.  |
 | `secrets.tf`               | Reader credential secret module.                                                                     |
 | `bootstrap.tf`             | Idempotent fixture tables/view and optional PUBLIC ASSUMEROLE policy setup.                          |
 | `verification.tf`          | Live shared-data and Spectrum queries.                                                               |

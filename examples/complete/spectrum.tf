@@ -180,6 +180,24 @@ data "redshift_external_partition" "events_first_day" {
   values   = redshift_external_partition.events_first_day.values
 }
 
+# Listings of the Glue-backed external schema: its tables with their definitions, and the managed table's partitions.
+data "redshift_external_tables" "glue" {
+  provider = redshift.producer
+  database = redshift_external_schema.glue.database
+  schema   = redshift_external_schema.glue.name
+
+  depends_on = [redshift_external_table.events, redshift_external_table.parquet_events]
+}
+
+data "redshift_external_partitions" "events" {
+  provider = redshift.producer
+  database = redshift_external_table.events.database
+  schema   = redshift_external_table.events.schema
+  table    = redshift_external_table.events.name
+
+  depends_on = [redshift_external_partition.events_first_day]
+}
+
 variable "spectrum_parquet_add_column" {
   description = "Add amount between id and label in place: Parquet maps by name even though the catalog appends the column."
   type        = bool
