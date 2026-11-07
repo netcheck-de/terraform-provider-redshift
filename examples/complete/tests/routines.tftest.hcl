@@ -40,6 +40,14 @@ override_data {
   }
 }
 override_data {
+  target = data.redshift_functions.local
+  values = { id = "functions-listing-identity" }
+}
+override_data {
+  target = data.redshift_procedures.local
+  values = { id = "procedures-listing-identity" }
+}
+override_data {
   target = data.redshift_procedure.scale
   values = {
     id        = "procedure-lookup-identity"
@@ -98,8 +106,10 @@ run "routines_apply" {
   }
   assert {
     condition = (
+      data.redshift_functions.local.id == "functions-listing-identity" &&
       data.redshift_functions.local.database == redshift_schema.local.database &&
       data.redshift_functions.local.schema == redshift_schema.local.name &&
+      data.redshift_procedures.local.id == "procedures-listing-identity" &&
       data.redshift_procedures.local.database == redshift_schema.local.database &&
       data.redshift_procedures.local.schema == redshift_schema.local.name
     )

@@ -41,6 +41,15 @@ override_data {
 }
 
 override_data {
+  target = data.redshift_external_tables.glue
+  values = { id = "external-tables-listing-identity" }
+}
+override_data {
+  target = data.redshift_external_partitions.events
+  values = { id = "external-partitions-listing-identity" }
+}
+
+override_data {
   target = data.redshift_external_table.parquet_events
   values = {
     location     = "s3://mock-fixture/spectrum/parquet_events/"
@@ -112,8 +121,10 @@ run "spectrum_apply" {
   # listing contents are covered by the Go tests; here the listings must target the managed schema and table.
   assert {
     condition = (
+      data.redshift_external_tables.glue.id == "external-tables-listing-identity" &&
       data.redshift_external_tables.glue.database == redshift_external_schema.glue.database &&
       data.redshift_external_tables.glue.schema == redshift_external_schema.glue.name &&
+      data.redshift_external_partitions.events.id == "external-partitions-listing-identity" &&
       data.redshift_external_partitions.events.schema == redshift_external_table.events.schema &&
       data.redshift_external_partitions.events.table == redshift_external_table.events.name &&
       output.spectrum_listings == { tables = {}, partitions = [] }
