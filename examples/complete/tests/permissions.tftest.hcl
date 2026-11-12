@@ -14,17 +14,38 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
 }
-mock_provider "redshift" { alias = "producer_data_api_iam" }
-mock_provider "redshift" { alias = "consumer_data_api_iam" }
-mock_provider "redshift" { alias = "producer_direct_iam" }
-mock_provider "redshift" { alias = "consumer_direct_iam" }
-mock_provider "redshift" { alias = "producer_direct_password" }
-mock_provider "redshift" { alias = "consumer_direct_password" }
+mock_provider "redshift" {
+  alias  = "producer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
 
 # Observed catalog state, as the lookups would report it after apply.
 override_data {
@@ -104,4 +125,44 @@ run "permissions_apply" {
     )
     error_message = "Permission outputs must expose the observed column, language, and listed grants."
   }
+}
+
+run "missing_column_privilege_blocks_apply" {
+  command   = apply
+  state_key = "missing_column_privilege"
+  override_data {
+    target = data.redshift_column_grant.reader_events
+    values = { privileges = { SELECT = ["id", "label"] } }
+  }
+  expect_failures = [data.redshift_column_grant.reader_events]
+}
+
+run "excluded_column_exposed_blocks_apply" {
+  command   = apply
+  state_key = "excluded_column_exposed"
+  override_data {
+    target = data.redshift_column_grant.groups["orders"]
+    values = { privileges = { SELECT = ["order_id", "account_id", "amount", "status", "created_at"] } }
+  }
+  expect_failures = [data.redshift_column_grant.groups]
+}
+
+run "missing_language_grant_option_blocks_apply" {
+  command   = apply
+  state_key = "missing_language_grant_option"
+  override_data {
+    target = data.redshift_language_grant.loader_sql
+    values = { privileges = ["USAGE"], grant_option_privileges = [] }
+  }
+  expect_failures = [data.redshift_language_grant.loader_sql]
+}
+
+run "missing_procedural_language_usage_blocks_apply" {
+  command   = apply
+  state_key = "missing_procedural_language_usage"
+  override_data {
+    target = data.redshift_language_grant.operator_procedures
+    values = { privileges = [], grant_option_privileges = [] }
+  }
+  expect_failures = [data.redshift_language_grant.operator_procedures]
 }

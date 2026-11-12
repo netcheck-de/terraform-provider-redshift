@@ -14,7 +14,10 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
@@ -25,19 +28,6 @@ mock_provider "redshift" { alias = "producer_direct_iam" }
 mock_provider "redshift" { alias = "consumer_direct_iam" }
 mock_provider "redshift" { alias = "producer_direct_password" }
 mock_provider "redshift" { alias = "consumer_direct_password" }
-
-# Observed metadata; Terraform cannot mock values for computed nested attribute lists, so columns stay generated.
-override_data {
-  target = data.redshift_table.orders
-  values = {
-    id                     = "orders-lookup-identity"
-    owner                  = "example_loader"
-    primary_key            = { columns = ["order_id"] }
-    distribution           = { style = "KEY", key = "account_id" }
-    sort_key               = { style = "COMPOUND", columns = ["created_at", "order_id"] }
-    effective_distribution = { style = "KEY", key = "account_id", auto = false }
-  }
-}
 
 # What Redshift chose for the AUTO table, as a read after apply reports it.
 override_resource {
@@ -117,12 +107,42 @@ run "tables_rename_column" {
     table_rename_event_id = true
   }
 
+  override_data {
+    target = data.redshift_table.events
+    values = {
+      column = [
+        { name = "event_key", type = "BIGINT", renamed_from = null },
+        { name = "payload", type = "SUPER", renamed_from = null },
+      ]
+      effective_distribution = { style = "EVEN", key = null, auto = true }
+      effective_sort_key     = { style = "NONE", columns = [], auto = true }
+    }
+  }
+
   assert {
     condition = (
       redshift_table.events.column[0].name == "event_key" &&
       redshift_table.events.column[0].renamed_from == "event_id" &&
-      redshift_table.events.column[1].name == "payload"
+      redshift_table.events.column[1].name == "payload" &&
+      data.redshift_table.events.column[0].name == "event_key" && data.redshift_table.events.column[0].renamed_from == null
     )
     error_message = "The opt-in migration must change only the identifier and retain its retry-safe source hint."
   }
+}
+
+run "table_readback_rejects_stale_rename" {
+  command = apply
+  variables {
+    table_rename_event_id = true
+  }
+  expect_failures = [data.redshift_table.events]
+}
+
+run "table_readback_rejects_missing_columns" {
+  command = apply
+  override_data {
+    target = data.redshift_table.orders
+    values = { column = [], owner = "example_loader" }
+  }
+  expect_failures = [data.redshift_table.orders]
 }

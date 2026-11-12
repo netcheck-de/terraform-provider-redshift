@@ -77,6 +77,13 @@ data "redshift_debug_grant" "account_admins" {
   database     = redshift_debug_grant.account_admins[0].database
   grantee      = redshift_debug_grant.account_admins[0].grantee
   grantee_type = redshift_debug_grant.account_admins[0].grantee_type
+
+  lifecycle {
+    postcondition {
+      condition     = self.exists
+      error_message = "The federated producer-local database catalog must report the managed ACCOUNT DEBUG grant. Check the database prerequisite and provider warehouse binding."
+    }
+  }
 }
 
 data "redshift_debug_grants" "federated" {

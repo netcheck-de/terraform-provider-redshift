@@ -14,7 +14,10 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
@@ -26,29 +29,7 @@ mock_provider "redshift" { alias = "consumer_direct_iam" }
 mock_provider "redshift" { alias = "producer_direct_password" }
 mock_provider "redshift" { alias = "consumer_direct_password" }
 
-# Observed metadata deliberately differs from the configured resources, so the assertions show lookup wiring.
-override_data {
-  target = data.redshift_view.event_labels
-  values = {
-    id                     = "view-lookup-identity"
-    owner                  = "observed_view_owner"
-    late_binding           = false
-    definition_fingerprint = "observed-view-fingerprint"
-  }
-}
-override_data {
-  target = data.redshift_materialized_view.label_counts
-  values = {
-    id                     = "materialized-view-lookup-identity"
-    owner                  = "observed_mv_owner"
-    auto_refresh           = true
-    definition_fingerprint = "observed-mv-fingerprint"
-  }
-}
-override_data {
-  target = data.redshift_views.example
-  values = { id = "views-listing-identity" }
-}
+# Lookup IDs and owners remain independent of the resources in the shared observations.
 override_data {
   target = data.redshift_materialized_views.example
   values = { id = "materialized-views-listing-identity" }
@@ -100,22 +81,21 @@ run "views_apply" {
           id           = "view-lookup-identity"
           owner        = "observed_view_owner"
           late_binding = false
-          fingerprint  = "observed-view-fingerprint"
+          fingerprint  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         }
         label_counts = {
           id           = "materialized-view-lookup-identity"
           owner        = "observed_mv_owner"
           auto_refresh = true
-          fingerprint  = "observed-mv-fingerprint"
+          fingerprint  = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
         }
-        views              = {}
+        views              = { event_labels = false, event_labels_late = true, order_totals = true }
         materialized_views = {}
       }
     )
     error_message = "View lookups must select the managed views and expose their observations through output.views."
   }
-  # Terraform mocks generate empty lists for nested-attribute lists and cannot override their elements, so the
-  # listing contents are covered by the Go tests; here the listings must be scoped to the managed example schema.
+  # The listings must remain scoped to the managed example schema.
   assert {
     condition = (
       data.redshift_views.example.id == "views-listing-identity" &&
@@ -127,4 +107,43 @@ run "views_apply" {
     )
     error_message = "The view listings must cover the managed example schema."
   }
+}
+
+run "view_readback_rejects_wrong_binding" {
+  command = apply
+  override_data {
+    target = data.redshift_view.event_labels
+    values = { late_binding = true, definition_fingerprint = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+  }
+  expect_failures = [data.redshift_view.event_labels]
+}
+
+run "view_readback_rejects_changed_catalog_definition" {
+  command = apply
+  override_data {
+    target = data.redshift_view.event_labels
+    values = { late_binding = false, definition_fingerprint = "0000000000000000000000000000000000000000000000000000000000000000" }
+  }
+  expect_failures = [data.redshift_view.event_labels]
+}
+
+run "view_readback_rejects_missing_late_views" {
+  command = apply
+  override_data {
+    target = data.redshift_views.example
+    values = { views = [] }
+  }
+  expect_failures = [data.redshift_views.example]
+}
+
+run "materialized_view_readback_rejects_wrong_refresh" {
+  command = apply
+  override_data {
+    target = data.redshift_materialized_view.label_counts
+    values = {
+      auto_refresh = false, definition_fingerprint = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      distribution = null, sort_key = null
+    }
+  }
+  expect_failures = [data.redshift_materialized_view.label_counts]
 }

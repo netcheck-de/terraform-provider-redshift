@@ -92,7 +92,8 @@ replicated tables. Existing tables must be `Synced` to switch mode, and switchin
 For DynamoDB, use `aws_redshift_integration` instead of `aws_rds_integration`, omit `source_database`, and set
 `refresh_interval` to at least 900 seconds. The source table needs point-in-time recovery and a resource policy
 authorizing Redshift exports. The [complete example](https://github.com/netcheck-de/terraform-provider-redshift/tree/main/examples/complete)
-supports an existing table ARN in `zero_etl_source_arn` or a disposable table with `zero_etl_create_dynamodb_source = true`.
+creates a disposable DynamoDB source by default. To use an existing table ARN in `zero_etl_source_arn`, set
+`zero_etl_create_dynamodb_source = false`.
 
 ## Lifecycle and Ownership
 

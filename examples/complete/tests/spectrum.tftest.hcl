@@ -14,7 +14,10 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
@@ -26,18 +29,10 @@ mock_provider "redshift" { alias = "consumer_direct_iam" }
 mock_provider "redshift" { alias = "producer_direct_password" }
 mock_provider "redshift" { alias = "consumer_direct_password" }
 
-# Observed values deliberately differ from configuration where the catalog reports its own form. Terraform cannot mock
-# lists of nested objects, so the column lists keep their generated values.
-override_data {
-  target = data.redshift_external_table.events
-  values = {
-    location     = "s3://mock-fixture/spectrum/events/"
-    input_format = "org.apache.hadoop.mapred.TextInputFormat"
-  }
-}
-override_data {
-  target = data.redshift_external_partition.events_first_day
-  values = { location = "s3://mock-fixture/spectrum/events/event_date=2024-01-01" }
+# Give readback fixtures a deterministic S3 location; no AWS provider calls are made.
+override_resource {
+  target = module.fixture_bucket.aws_s3_bucket.this[0]
+  values = { id = "mock-fixture", arn = "arn:aws:s3:::mock-fixture" }
 }
 
 override_data {
@@ -49,12 +44,44 @@ override_data {
   values = { id = "external-partitions-listing-identity" }
 }
 
-override_data {
-  target = data.redshift_external_table.parquet_events
-  values = {
-    location     = "s3://mock-fixture/spectrum/parquet_events/"
-    input_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+run "spectrum_scalar_readbacks" {
+  command = apply
+  # The whole-example runs below still require real nonempty column lists, which Terraform 1.17 cannot mock.
+  plan_options { target = [data.redshift_external_schema.glue, data.redshift_external_partition.events_first_day] }
+}
+
+run "spectrum_schema_mismatch_blocks_apply" {
+  command = apply
+  plan_options { target = [data.redshift_external_schema.glue] }
+  override_data {
+    target = data.redshift_external_schema.glue
+    values = { source_type = "DATA_CATALOG", glue_database = "wrong_catalog", iam_role_arn = "arn:aws:iam::111111111111:role/producer-fixture", region = "eu-central-1" }
   }
+  expect_failures = [data.redshift_external_schema.glue]
+}
+
+run "spectrum_missing_columns_block_apply" {
+  command = apply
+  plan_options { target = [data.redshift_external_table.events] }
+  expect_failures = [data.redshift_external_table.events]
+}
+
+run "spectrum_partition_mismatch_blocks_apply" {
+  command = apply
+  plan_options { target = [data.redshift_external_partition.events_first_day] }
+  override_data {
+    target = data.redshift_external_partition.events_first_day
+    values = { location = "s3://mock-fixture/spectrum/events/event_date=2024-01-02" }
+  }
+  expect_failures = [data.redshift_external_partition.events_first_day]
+}
+
+run "spectrum_missing_added_column_blocks_apply" {
+  command = apply
+  plan_options { target = [data.redshift_external_table.parquet_events] }
+  variables { spectrum_parquet_add_column = true }
+  # The generated empty observation is incomplete after the toggle, so the same postcondition must reject it.
+  expect_failures = [data.redshift_external_table.parquet_events]
 }
 
 run "spectrum_apply" {
@@ -138,6 +165,16 @@ run "spectrum_parquet_insert_column" {
 
   variables {
     spectrum_parquet_add_column = true
+  }
+
+  override_data {
+    target = data.redshift_external_table.parquet_events
+    values = {
+      # A real catalog physically appends amount. Terraform 1.17 cannot mock that nested list.
+      location     = "s3://mock-fixture/spectrum/parquet_events/"
+      stored_as    = "PARQUET"
+      input_format = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+    }
   }
 
   assert {

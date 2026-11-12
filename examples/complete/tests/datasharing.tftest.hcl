@@ -14,7 +14,10 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
@@ -40,8 +43,7 @@ override_data {
   target = data.redshift_datashare_privilege.share_operators
   values = { privileges = ["ALTER", "SHARE"] }
 }
-# Terraform test mocks cannot override list-nested attributes such as a listing's elements, so the listing runs
-# assert the filters and the output wiring instead of element values.
+# Retain independent identities for the non-verifying inventory outputs.
 override_data {
   target = data.redshift_datashares.outbound
   values = { id = "outbound-listing-identity" }
@@ -52,13 +54,62 @@ override_data {
 }
 
 override_data {
-  target = data.redshift_datashare_schemas.producer
-  values = { id = "producer-schemas-identity" }
-}
-
-override_data {
   target = data.redshift_datashare_tables.producer
   values = { id = "producer-tables-identity" }
+}
+
+run "datashare_readback_rejects_missing_table_membership" {
+  command = apply
+  override_data {
+    target = data.redshift_datashare_table.source
+    values = { exists = false }
+  }
+  expect_failures = [data.redshift_datashare_table.source]
+}
+
+run "datashare_readback_rejects_wrong_future_object_policy" {
+  command = apply
+  override_data {
+    target = data.redshift_datashare_schema.source
+    values = { exists = true, include_new = false }
+  }
+  expect_failures = [data.redshift_datashare_schema.source]
+}
+
+run "datashare_readback_rejects_incomplete_table_membership" {
+  command = apply
+  override_data {
+    target = data.redshift_datashare_membership.bulk["TABLES"]
+    values = { exists = true, all = false }
+  }
+  expect_failures = [data.redshift_datashare_membership.bulk["TABLES"]]
+}
+
+run "datashare_readback_rejects_incomplete_function_membership" {
+  command = apply
+  override_data {
+    target = data.redshift_datashare_membership.bulk["FUNCTIONS"]
+    values = { exists = true, all = false }
+  }
+  expect_failures = [data.redshift_datashare_membership.bulk["FUNCTIONS"]]
+}
+
+run "datashare_readback_rejects_vacuous_helper_coverage" {
+  command = apply
+  override_data {
+    target = data.redshift_functions.bulk_share
+    values = { functions = [] }
+  }
+  expect_failures = [data.redshift_functions.bulk_share]
+}
+
+run "datashare_readback_rejects_missing_consumer_grant" {
+  command = apply
+  override_data {
+    target = data.redshift_datashare_grant.consumer
+    values = { exists = false }
+  }
+  expect_failures = [data.redshift_datashare_grant.consumer]
 }
 
 override_data {
@@ -181,6 +232,18 @@ run "datasharing_lake_formation" {
     )
     error_message = "A Lake Formation account must receive usage VIA DATA CATALOG on the grants share and the matching DataCatalog authorization."
   }
+}
+
+run "datashare_readback_rejects_missing_lake_formation_grant" {
+  command = apply
+  variables {
+    lake_formation_account_id = "333333333333"
+  }
+  override_data {
+    target = data.redshift_datashare_grant.lake_formation[0]
+    values = { exists = false }
+  }
+  expect_failures = [data.redshift_datashare_grant.lake_formation[0]]
 }
 
 run "datasharing_rejects_invalid_lake_formation_account" {

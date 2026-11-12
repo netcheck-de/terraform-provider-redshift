@@ -1,4 +1,4 @@
-# Mocked runs for COPY templates, the template grant, and the optional copy job. The mocks are shared with
+# Mocked runs for COPY templates, the template grant, and the default copy job. The mocks are shared with
 # composition.tftest.hcl through tests/mocks, so this block adds runs and assertions here without editing the composition
 # suite.
 mock_provider "aws" {
@@ -15,7 +15,10 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
@@ -27,14 +30,9 @@ mock_provider "redshift" { alias = "consumer_direct_iam" }
 mock_provider "redshift" { alias = "producer_direct_password" }
 mock_provider "redshift" { alias = "consumer_direct_password" }
 
-# Observed catalog values deliberately differ from the configuration where Redshift reports its own spelling.
-override_data {
-  target = data.redshift_template.csv_events
-  values = {
-    owner      = "observed_admin"
-    format     = "CSV"
-    parameters = { IGNOREHEADER = "1", TIMEFORMAT = "auto", EMPTYASNULL = "", ENCODING = "UTF8" }
-  }
+override_resource {
+  target = module.fixture_bucket.aws_s3_bucket.this[0]
+  values = { id = "mock-fixture", arn = "arn:aws:s3:::mock-fixture" }
 }
 override_data {
   target = data.redshift_templates.local
@@ -46,17 +44,111 @@ override_data {
 }
 
 override_data {
-  target = data.redshift_template.shapefile
-  values = { format = "SHAPEFILE", format_argument = "SIMPLIFY AUTO 0.000001" }
-}
-
-override_data {
   target = data.redshift_templates.database
   values = { id = "database-templates-listing-identity" }
 }
 
+run "copy_scalar_readbacks" {
+  command = apply
+  # Computed nested lists cannot be populated by Terraform 1.17 mocks. Exercise all supported readbacks
+  # independently; the whole-example runs below retain the table-column postcondition and expose that limitation.
+  plan_options {
+    target = [data.redshift_template.csv_events, data.redshift_template.json_events, data.redshift_template.shapefile, data.redshift_object_grant.loader_template, data.redshift_copy_job.fixture]
+  }
+}
+
+run "copy_auto_readback_update" {
+  command = apply
+  plan_options { target = [data.redshift_copy_job.fixture] }
+  variables { copy_job = { auto = true } }
+  override_data {
+    target = data.redshift_copy_job.fixture
+    values = {
+      auto            = true
+      iam_role        = "arn:aws:iam::111111111111:role/consumer-fixture"
+      source          = "s3://mock-fixture/data/"
+      format          = "CSV"
+      format_argument = null
+      parameters      = { IGNOREHEADER = "1" }
+      table           = { schema = "example_schema", name = "example_copy_target", columns = ["id", "label"] }
+    }
+  }
+}
+
+run "csv_parameters_mismatch_blocks_apply" {
+  command = apply
+  plan_options { target = [data.redshift_template.csv_events] }
+  override_data {
+    target = data.redshift_template.csv_events
+    values = { format = "CSV", format_argument = null, parameters = { IGNOREHEADER = "2" } }
+  }
+  expect_failures = [data.redshift_template.csv_events]
+}
+
+run "json_owner_mismatch_blocks_apply" {
+  command = apply
+  plan_options { target = [data.redshift_template.json_events] }
+  override_data {
+    target = data.redshift_template.json_events
+    values = { owner = "wrong_owner", format = "JSON", format_argument = "auto ignorecase", parameters = { MAXERROR = "10", TRUNCATECOLUMNS = "" } }
+  }
+  expect_failures = [data.redshift_template.json_events]
+}
+
+run "shapefile_argument_mismatch_blocks_apply" {
+  command = apply
+  plan_options { target = [data.redshift_template.shapefile] }
+  override_data {
+    target = data.redshift_template.shapefile
+    values = { format = "SHAPEFILE", format_argument = "SIMPLIFY AUTO 0.1", parameters = {} }
+  }
+  expect_failures = [data.redshift_template.shapefile]
+}
+
+run "template_grant_mismatch_blocks_apply" {
+  command = apply
+  plan_options { target = [data.redshift_object_grant.loader_template] }
+  override_data {
+    target = data.redshift_object_grant.loader_template
+    values = { privileges = [] }
+  }
+  expect_failures = [data.redshift_object_grant.loader_template]
+}
+
+run "copy_target_missing_columns_block_apply" {
+  command = apply
+  plan_options { target = [data.redshift_table.copy_target] }
+  expect_failures = [data.redshift_table.copy_target]
+}
+
+run "copy_job_definition_mismatch_blocks_apply" {
+  command = apply
+  plan_options { target = [data.redshift_copy_job.fixture] }
+  override_data {
+    target = data.redshift_copy_job.fixture
+    values = {
+      auto            = false
+      iam_role        = "arn:aws:iam::111111111111:role/consumer-fixture"
+      source          = "s3://wrong-bucket/data/"
+      format          = "CSV"
+      format_argument = null
+      parameters      = { IGNOREHEADER = "1" }
+      table           = { schema = "example_schema", name = "example_copy_target", columns = ["id", "label"] }
+    }
+  }
+  expect_failures = [data.redshift_copy_job.fixture]
+}
+
+run "copy_job_stale_auto_blocks_apply" {
+  command = apply
+  plan_options { target = [data.redshift_copy_job.fixture] }
+  variables { copy_job = { auto = true } }
+  expect_failures = [data.redshift_copy_job.fixture]
+}
+
 run "copy_templates" {
   command = apply
+  variables { copy_job = null }
 
   assert {
     condition = (
@@ -126,24 +218,8 @@ run "copy_templates" {
   }
 }
 
-run "copy_job_enabled" {
+run "copy_job_defaults" {
   command = apply
-
-  variables {
-    copy_job = {}
-  }
-
-  override_data {
-    target = data.redshift_copy_job.fixture
-    values = {
-      auto       = false
-      iam_role   = "arn:aws:iam::222222222222:role/observed"
-      source     = "s3://observed-bucket/data/"
-      format     = "CSV"
-      parameters = { IGNOREHEADER = "2" }
-      table      = { schema = "observed_schema", name = "observed_target", columns = ["id", "label"] }
-    }
-  }
 
   assert {
     condition = (
@@ -180,12 +256,33 @@ run "copy_job_enabled" {
   assert {
     condition = (
       output.copy_checks.copy_job_auto == false &&
-      output.copy_checks.copy_job_role == "arn:aws:iam::222222222222:role/observed" &&
-      output.copy_checks.copy_job_source == "s3://observed-bucket/data/" &&
-      output.copy_checks.copy_job_table.name == "observed_target" &&
+      output.copy_checks.copy_job_role == "arn:aws:iam::111111111111:role/consumer-fixture" &&
+      output.copy_checks.copy_job_source == "s3://mock-fixture/data/" &&
+      output.copy_checks.copy_job_table.name == "example_copy_target" &&
       output.copy_checks.copy_job_format == "CSV" &&
-      output.copy_checks.copy_job_parameters["IGNOREHEADER"] == "2"
+      output.copy_checks.copy_job_parameters["IGNOREHEADER"] == "1"
     )
     error_message = "The copy job lookup must be exposed through copy_checks."
+  }
+}
+
+run "copy_job_enable_auto" {
+  command = apply
+  variables { copy_job = { auto = true } }
+  override_data {
+    target = data.redshift_copy_job.fixture
+    values = {
+      auto            = true
+      iam_role        = "arn:aws:iam::111111111111:role/consumer-fixture"
+      source          = "s3://mock-fixture/data/"
+      format          = "CSV"
+      format_argument = null
+      parameters      = { IGNOREHEADER = "1" }
+      table           = { schema = "example_schema", name = "example_copy_target", columns = ["id", "label"] }
+    }
+  }
+  assert {
+    condition     = output.copy_checks.copy_job_auto == true
+    error_message = "The same COPY JOB readback must verify and expose AUTO after an update."
   }
 }

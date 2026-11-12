@@ -14,7 +14,10 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
@@ -54,15 +57,37 @@ run "discovery_apply" {
     )
     error_message = "The constraint comment must target the block-owned keyed table in the consumer-local database."
   }
-  # Terraform mocks generate empty lists for nested-attribute lists and cannot override their elements, so the
-  # listing contents are covered by the Go tests; here the output must keep its shape over empty listings.
+  # Listing-backed outputs must contain the observed fixture metadata, not resource-derived substitutes.
   assert {
     condition = (
-      output.discovery.local_databases == [] && output.discovery.local_schemas == [] &&
-      output.discovery.fixture_tables == [] && length(output.discovery.fixture_columns) == 0 &&
-      length(output.discovery.primary_keys) == 0 &&
+      output.discovery.local_databases == ["example_local"] && output.discovery.local_schemas == ["example_schema"] &&
+      output.discovery.fixture_tables == ["fixture"] && length(output.discovery.fixture_columns) == 2 &&
+      length(output.discovery.primary_keys) == 1 &&
       output.discovery.key_comment == "Example primary key found by redshift_constraints."
     )
     error_message = "The discovery output must expose every listing and the constraint comment."
   }
+}
+
+run "discovery_readback_rejects_missing_key" {
+  command = apply
+  override_data {
+    target = data.redshift_constraints.discovery_keys
+    values = { constraints = [] }
+  }
+  expect_failures = [data.redshift_constraints.discovery_keys]
+}
+
+run "discovery_readback_rejects_wrong_column_order" {
+  command = apply
+  override_data {
+    target = data.redshift_columns.fixture
+    values = {
+      columns = [
+        { name = "label", ordinal_position = 1, data_type = "CHARACTER VARYING" },
+        { name = "id", ordinal_position = 2, data_type = "INTEGER" },
+      ]
+    }
+  }
+  expect_failures = [data.redshift_columns.fixture]
 }

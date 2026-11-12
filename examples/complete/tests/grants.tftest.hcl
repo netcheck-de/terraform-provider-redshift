@@ -14,17 +14,38 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
 }
-mock_provider "redshift" { alias = "producer_data_api_iam" }
-mock_provider "redshift" { alias = "consumer_data_api_iam" }
-mock_provider "redshift" { alias = "producer_direct_iam" }
-mock_provider "redshift" { alias = "consumer_direct_iam" }
-mock_provider "redshift" { alias = "producer_direct_password" }
-mock_provider "redshift" { alias = "consumer_direct_password" }
+mock_provider "redshift" {
+  alias  = "producer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
 
 override_data {
   target = data.redshift_grant.loader_schema_tables
@@ -32,28 +53,28 @@ override_data {
 }
 override_data {
   target = data.redshift_object_grant.operators_public_tables
-  values = { privileges = ["SELECT"] }
+  values = { privileges = ["SELECT"], grant_option_privileges = [] }
 }
 override_data {
   target = data.redshift_default_privilege.loader_functions_public
-  values = { privileges = [] }
+  values = { privileges = [], grant_option_privileges = [] }
 }
 
 override_data {
   target = data.redshift_language_grant.public_sql
-  values = { privileges = [] }
+  values = { privileges = [], grant_option_privileges = [] }
 }
 override_data {
   target = data.redshift_object_grant.shared_reader["DATABASE"]
-  values = { privileges = ["USAGE"] }
+  values = { privileges = ["USAGE"], grant_option_privileges = [] }
 }
 override_data {
   target = data.redshift_object_grant.shared_reader["SCHEMA"]
-  values = { privileges = ["USAGE"] }
+  values = { privileges = ["USAGE"], grant_option_privileges = [] }
 }
 override_data {
   target = data.redshift_object_grant.shared_reader["TABLE"]
-  values = { privileges = ["SELECT"] }
+  values = { privileges = ["SELECT"], grant_option_privileges = [] }
 }
 
 override_data {
@@ -76,11 +97,11 @@ override_data {
 
 override_data {
   target = data.redshift_object_grant.shared_procedure
-  values = { privileges = ["EXECUTE"] }
+  values = { privileges = ["EXECUTE"], grant_option_privileges = [] }
 }
 override_data {
   target = data.redshift_object_grant.shared_procedure_snapshot
-  values = { privileges = ["EXECUTE"] }
+  values = { privileges = ["EXECUTE"], grant_option_privileges = [] }
 }
 
 run "grants_apply" {
@@ -159,4 +180,104 @@ run "grants_apply" {
     )
     error_message = "The scoped, system, ASSUMEROLE, and default privilege listings must select the managed tuples and be exposed."
   }
+}
+
+run "missing_shared_scope_blocks_apply" {
+  command   = apply
+  state_key = "missing_shared_scope"
+  override_data {
+    target = data.redshift_grant.shared_read["TABLES"]
+    values = { privileges = [], grant_option_privileges = [] }
+  }
+  expect_failures = [data.redshift_grant.shared_read]
+}
+
+run "missing_scoped_language_usage_blocks_apply" {
+  command   = apply
+  state_key = "missing_scoped_language_usage"
+  override_data {
+    target = data.redshift_grant.remaining["languages"]
+    values = { privileges = [], grant_option_privileges = [] }
+  }
+  expect_failures = [data.redshift_grant.remaining]
+}
+
+run "scoped_grant_option_drift_blocks_apply" {
+  command   = apply
+  state_key = "scoped_grant_option_drift"
+  override_data {
+    target = data.redshift_grant.loader_schema_tables
+    values = { privileges = ["INSERT", "SELECT"], grant_option_privileges = ["INSERT", "SELECT"] }
+  }
+  expect_failures = [data.redshift_grant.loader_schema_tables]
+}
+
+run "wrong_database_acl_blocks_apply" {
+  command   = apply
+  state_key = "wrong_database_acl"
+  override_data {
+    target = data.redshift_object_grant.remaining["operators_database"]
+    values = { privileges = ["CREATE"], grant_option_privileges = [] }
+  }
+  expect_failures = [data.redshift_object_grant.remaining]
+}
+
+run "shared_snapshot_missing_option_blocks_apply" {
+  command   = apply
+  state_key = "shared_snapshot_missing_option"
+  override_data {
+    target = data.redshift_object_grant.shared_snapshots["ALL FUNCTIONS"]
+    values = { privileges = ["EXECUTE"], grant_option_privileges = [] }
+  }
+  expect_failures = [data.redshift_object_grant.shared_snapshots]
+}
+
+run "public_function_default_restored_blocks_apply" {
+  command   = apply
+  state_key = "public_function_default_restored"
+  override_data {
+    target = data.redshift_default_privilege.loader_functions_public
+    values = { privileges = ["EXECUTE"], grant_option_privileges = [] }
+  }
+  expect_failures = [data.redshift_default_privilege.loader_functions_public]
+}
+
+run "missing_procedure_default_blocks_apply" {
+  command   = apply
+  state_key = "missing_procedure_default"
+  override_data {
+    target = data.redshift_default_privilege.remaining["PROCEDURES"]
+    values = { privileges = [], grant_option_privileges = [] }
+  }
+  expect_failures = [data.redshift_default_privilege.remaining]
+}
+
+run "missing_loader_assumerole_blocks_apply" {
+  command   = apply
+  state_key = "missing_loader_assumerole"
+  override_data {
+    target = data.redshift_assumerole_grant.loader[0]
+    values = { privileges = [] }
+  }
+  expect_failures = [data.redshift_assumerole_grant.loader]
+}
+
+run "unexpected_system_privilege_blocks_apply" {
+  command   = apply
+  state_key = "unexpected_system_privilege"
+  override_data {
+    target = data.redshift_system_grant.operators
+    values = { privileges = ["CREATE ROLE", "DROP ROLE"] }
+  }
+  expect_failures = [data.redshift_system_grant.operators]
+}
+
+run "public_language_usage_restored_blocks_apply" {
+  command   = apply
+  state_key = "public_language_usage_restored"
+  override_data {
+    target = data.redshift_language_grant.public_sql
+    values = { privileges = ["USAGE"], grant_option_privileges = [] }
+  }
+  expect_failures = [data.redshift_language_grant.public_sql]
 }

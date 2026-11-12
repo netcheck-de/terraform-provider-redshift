@@ -87,6 +87,13 @@ data "redshift_object_grant" "model_delegate_schema" {
   object_type   = "SCHEMA"
   grantee_type  = "USER"
   grantee       = redshift_object_grant.model_delegate_schema[0].grantee
+
+  lifecycle {
+    postcondition {
+      condition     = try(self.privileges == toset(["USAGE"]) && length(self.grant_option_privileges) == 0, false)
+      error_message = "The model delegate must have exactly schema USAGE without grant option in the catalog."
+    }
+  }
 }
 
 resource "redshift_object_grant" "delegate_summarizer" {
@@ -131,6 +138,13 @@ data "redshift_user" "model_delegate" {
   provider = redshift.consumer
   count    = local.bedrock_enabled ? 1 : 0
   name     = redshift_user.model_delegate[0].name
+
+  lifecycle {
+    postcondition {
+      condition     = try(!self.superuser && !self.create_database, false)
+      error_message = "The model delegate catalog identity must have neither CREATEUSER nor CREATEDB. Password-disabled status is not exposed by this lookup."
+    }
+  }
 }
 
 data "redshift_object_grant" "delegate_summarizer" {
@@ -142,6 +156,13 @@ data "redshift_object_grant" "delegate_summarizer" {
   object_type   = "MODEL"
   grantee_type  = "USER"
   grantee       = redshift_object_grant.delegate_summarizer[0].grantee
+
+  lifecycle {
+    postcondition {
+      condition     = try(self.privileges == toset(["EXECUTE"]) && self.grant_option_privileges == toset(["EXECUTE"]), false)
+      error_message = "The catalog must report exactly model EXECUTE WITH GRANT OPTION for the model delegate."
+    }
+  }
 }
 
 data "redshift_object_grant" "group_summarizer" {
@@ -153,6 +174,13 @@ data "redshift_object_grant" "group_summarizer" {
   object_type   = "MODEL"
   grantee_type  = "GROUP"
   grantee       = redshift_object_grant.group_summarizer[0].grantee
+
+  lifecycle {
+    postcondition {
+      condition     = try(self.privileges == toset(["EXECUTE"]) && length(self.grant_option_privileges) == 0, false)
+      error_message = "The readers group must have exactly model EXECUTE without grant option in the catalog."
+    }
+  }
 }
 
 data "redshift_object_grant" "public_summarizer" {
@@ -164,6 +192,13 @@ data "redshift_object_grant" "public_summarizer" {
   object_type   = "MODEL"
   grantee_type  = "PUBLIC"
   grantee       = redshift_object_grant.public_summarizer[0].grantee
+
+  lifecycle {
+    postcondition {
+      condition     = try(length(self.privileges) == 0 && length(self.grant_option_privileges) == 0, false)
+      error_message = "The catalog must report no PUBLIC model privileges or grant options."
+    }
+  }
 }
 
 data "redshift_external_model" "summarizer" {
@@ -172,6 +207,20 @@ data "redshift_external_model" "summarizer" {
   database = redshift_external_model.summarizer[0].database
   schema   = redshift_external_model.summarizer[0].schema
   name     = redshift_external_model.summarizer[0].name
+
+  lifecycle {
+    postcondition {
+      condition = try(
+        self.function == redshift_external_model.summarizer[0].function &&
+        self.model_id == var.bedrock_model_id &&
+        self.prompt == redshift_external_model.summarizer[0].prompt &&
+        self.request_type == "UNIFIED" && self.response_type == "VARCHAR" &&
+        (upper(self.iam_role) == "DEFAULT" || self.iam_role == aws_iam_role.consumer.arn),
+        false,
+      )
+      error_message = "SHOW MODEL must report the configured inference function, Bedrock model, prompt, UNIFIED/VARCHAR formats, and the consumer namespace's default IAM role. This metadata check does not invoke Bedrock."
+    }
+  }
 }
 
 data "redshift_object_grant" "readers_summarizer" {
@@ -183,6 +232,13 @@ data "redshift_object_grant" "readers_summarizer" {
   object_type   = "MODEL"
   grantee_type  = "ROLE"
   grantee       = redshift_object_grant.readers_summarizer[0].grantee
+
+  lifecycle {
+    postcondition {
+      condition     = try(self.privileges == toset(["EXECUTE"]) && length(self.grant_option_privileges) == 0, false)
+      error_message = "The readers role must have exactly model EXECUTE without grant option in the catalog."
+    }
+  }
 }
 
 # SHOW MODEL ALL lists trained models too; the listing works with or without the Bedrock model.

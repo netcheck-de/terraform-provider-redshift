@@ -41,6 +41,24 @@ Open work on the provider. Implemented types and their ownership boundaries are 
 
 ## Follow-ups
 
+### Testing
+
+- **Terraform nested-attribute mocks:** native `mock_provider` and `override_data` cannot populate nonempty computed
+  nested lists/sets (verified with Terraform 1.17.2;
+  [hashicorp/terraform#38369](https://github.com/hashicorp/terraform/issues/38369)). Complete-example readback
+  postconditions therefore prevent ordinary mocked applies as well as negative runs from executing reliably.
+  - **Temporary skip:** `Taskfile.yml`'s `terraform-check` prints an explicit skip instead of invoking
+    `terraform -chdir=examples/complete test`. All suites and shared fixtures under `examples/complete/tests/` remain
+    as restoration sources, not executed coverage. There is no custom fake-backend adapter or verification bypass.
+  - **Retained checks and gap:** formatting, initialization, validation, provider Go contracts, and native mocks in
+    `tests/acceptance/infra/tests/` still run. Normal local and release-example applies retain blocking AWS/catalog
+    postconditions and behavioral SQL checks, but default deployments do not cover optional SSO, cross-account/model
+    scenarios, negative fixture cases, or in-place update scenarios. Failures may surface only during live CI.
+  - **Switch back:** first prove native mocks can populate nested lists/sets and nullable nested objects, and that both
+    positive and negative postcondition runs pass on every supported Terraform version, updating retained fixtures as
+    needed. Replace the skip in `Taskfile.yml` with `terraform -chdir=examples/complete test`, document the restored test
+    command in `DEVELOPMENT.md`, and remove this limitation entry. Keep live postconditions intact.
+
 ### Features
 
 - **`redshift_user_lockouts`:** Redshift 1.0.485645 rejects `SHOW USER LOCKOUT` ("account lockout security is not

@@ -1,7 +1,7 @@
 variable "zero_etl_create_dynamodb_source" {
-  description = "Create a disposable on-demand DynamoDB table with PITR and an export resource policy as the zero-ETL source. Adds DynamoDB, backup, and export charges. Mutually exclusive with zero_etl_create_source and zero_etl_source_arn."
+  description = "Create a disposable on-demand DynamoDB table with PITR and an export resource policy as the default zero-ETL source. Adds DynamoDB, backup, and export charges. Set false to skip zero-ETL or use zero_etl_create_source or zero_etl_source_arn instead."
   type        = bool
-  default     = false
+  default     = true
 
   validation {
     condition     = !var.zero_etl_create_dynamodb_source || var.zero_etl_source_arn == null

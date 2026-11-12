@@ -76,6 +76,16 @@ data "redshift_masking_policy" "email" {
   provider = redshift.consumer
   database = redshift_masking_policy.email.database
   name     = redshift_masking_policy.email.name
+
+  lifecycle {
+    postcondition {
+      condition = try(
+        self.definition_fingerprint == redshift_masking_policy.email.definition_fingerprint,
+        false,
+      )
+      error_message = "The masking policy catalog must report the expression fingerprint recorded after creation, without comparing rewritten SQL text."
+    }
+  }
 }
 
 data "redshift_masking_policy_attachment" "email_readers" {
@@ -87,6 +97,13 @@ data "redshift_masking_policy_attachment" "email_readers" {
   columns      = redshift_masking_policy_attachment.email_readers.columns
   grantee      = redshift_masking_policy_attachment.email_readers.grantee
   grantee_type = redshift_masking_policy_attachment.email_readers.grantee_type
+
+  lifecycle {
+    postcondition {
+      condition     = try(self.exists && self.priority == 10 && self.input_columns == tolist(["email"]), false)
+      error_message = "The catalog must attach the email masking policy to the readers role at priority 10, mapping its input to the email column."
+    }
+  }
 }
 
 data "redshift_masking_policies" "local" {
@@ -99,4 +116,37 @@ data "redshift_masking_policy_attachments" "customers" {
   database = redshift_masking_policy_attachment.email_readers.database
   schema   = redshift_masking_policy_attachment.email_readers.schema
   relation = redshift_masking_policy_attachment.email_readers.relation
+}
+
+# Policy SELECT grants have no catalog readback; verification.tf exercises lookup access as the restricted reader.
+data "redshift_table" "customers" {
+  provider = redshift.consumer
+  database = redshift_table.customers.database
+  schema   = redshift_table.customers.schema
+  name     = redshift_table.customers.name
+
+  lifecycle {
+    postcondition {
+      condition = try(
+        self.owner == redshift_table.customers.owner && length(self.owner) > 0, false,
+      )
+      error_message = "The masking customers table must exist in the catalog with the owner recorded after creation."
+    }
+  }
+}
+
+data "redshift_table" "masking_exempt" {
+  provider = redshift.consumer
+  database = redshift_table.masking_exempt.database
+  schema   = redshift_table.masking_exempt.schema
+  name     = redshift_table.masking_exempt.name
+
+  lifecycle {
+    postcondition {
+      condition = try(
+        self.owner == redshift_table.masking_exempt.owner && length(self.owner) > 0, false,
+      )
+      error_message = "The masking exemption table must exist in the catalog with the owner recorded after creation."
+    }
+  }
 }
