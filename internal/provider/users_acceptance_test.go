@@ -15,22 +15,21 @@ import (
 // group lookup's members against a live warehouse, including no-change plans that prove the catalog reads match
 // the configuration.
 func TestAccUserOptionsLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(options string) string {
 		return fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
 resource "redshift_user" "iam" {
-  name = "acc_iam_%[5]s"
+  name = "acc_iam_%[4]s"
   password_disabled = true
-  %[6]s
+  %[5]s
 }
-resource "redshift_group" "readers" { name = "acc_group_%[5]s" }
+resource "redshift_group" "readers" { name = "acc_group_%[4]s" }
 resource "redshift_group_membership" "iam" {
   group = redshift_group.readers.name
   user = redshift_user.iam.name
@@ -47,7 +46,7 @@ data "redshift_groups" "all" {
 }
 data "redshift_group_memberships" "readers" {
   group = redshift_group_membership.iam.group
-}`, region, profile, workgroup, database, suffix, options)
+}`, region, workgroup, database, suffix, options)
 	}
 	options := `
   valid_until = "2037-12-31T00:00:00Z"

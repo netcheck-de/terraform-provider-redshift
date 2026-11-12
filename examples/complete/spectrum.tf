@@ -1,4 +1,12 @@
 locals {
+  # Compare configured and catalog type spellings consistently across ingestion readbacks.
+  ingestion_type_aliases = {
+    INT                    = "INTEGER"
+    INT4                   = "INTEGER"
+    CHARACTERVARYING       = "VARCHAR"
+    "CHARACTERVARYING(64)" = "VARCHAR(64)"
+    "NUMERIC(8,2)"         = "DECIMAL(8,2)"
+  }
   # Warehouse policies must precede the external schema and table, so they cannot reference the table resource.
   # Derive catalog/table ARNs from the database's ARN to retain its actual partition, region, and account.
   glue_catalog_arn = "${split(":database/", aws_glue_catalog_database.fixture.arn)[0]}:catalog"
@@ -20,6 +28,19 @@ data "redshift_external_schema" "glue" {
   provider = redshift.producer
   database = redshift_external_schema.glue.database
   name     = redshift_external_schema.glue.name
+
+  lifecycle {
+    postcondition {
+      condition = try(
+        self.source_type == "DATA_CATALOG" &&
+        self.glue_database == redshift_external_schema.glue.glue_database &&
+        self.iam_role_arn == redshift_external_schema.glue.iam_role_arn &&
+        self.region == redshift_external_schema.glue.region,
+        false,
+      )
+      error_message = "The Spectrum schema catalog mapping must report the configured Glue database, role, and region."
+    }
+  }
 }
 
 resource "aws_glue_catalog_database" "fixture" {
@@ -170,6 +191,28 @@ data "redshift_external_table" "events" {
   database = redshift_external_table.events.database
   schema   = redshift_external_table.events.schema
   name     = redshift_external_table.events.name
+
+  lifecycle {
+    postcondition {
+      condition = try(
+        [for column in self.column : {
+          name = column.name
+          type = lookup(local.ingestion_type_aliases, upper(replace(column.type, " ", "")), upper(replace(column.type, " ", "")))
+          }] == [for column in redshift_external_table.events.column : {
+          name = column.name
+          type = lookup(local.ingestion_type_aliases, upper(replace(column.type, " ", "")), upper(replace(column.type, " ", "")))
+        }] &&
+        [for key in self.partition_key : { name = key.name, type = upper(key.type) }] ==
+        [for key in redshift_external_table.events.partition_key : { name = key.name, type = upper(key.type) }] &&
+        self.stored_as == redshift_external_table.events.stored_as &&
+        self.field_delimiter == redshift_external_table.events.field_delimiter &&
+        trimsuffix(self.location, "/") == trimsuffix(redshift_external_table.events.location, "/") &&
+        alltrue([for key, value in redshift_external_table.events.table_properties : self.table_properties[key] == value]),
+        false,
+      )
+      error_message = "The Spectrum events catalog definition must match its ordered columns, partition keys, format, delimiter, location, and managed properties."
+    }
+  }
 }
 
 data "redshift_external_partition" "events_first_day" {
@@ -178,6 +221,17 @@ data "redshift_external_partition" "events_first_day" {
   schema   = redshift_external_partition.events_first_day.schema
   table    = redshift_external_partition.events_first_day.table
   values   = redshift_external_partition.events_first_day.values
+
+  lifecycle {
+    postcondition {
+      # SVV_EXTERNAL_PARTITIONS removes the trailing slash and limits locations to 128 characters.
+      condition = try(
+        trimsuffix(self.location, "/") == substr(trimsuffix(redshift_external_partition.events_first_day.location, "/"), 0, 128),
+        false,
+      )
+      error_message = "The Spectrum partition catalog location must match the managed partition's S3 prefix."
+    }
+  }
 }
 
 # Listings of the Glue-backed external schema: its tables with their definitions, and the managed table's partitions.
@@ -240,4 +294,19 @@ data "redshift_external_table" "parquet_events" {
   database = redshift_external_table.parquet_events.database
   schema   = redshift_external_table.parquet_events.schema
   name     = redshift_external_table.parquet_events.name
+
+  lifecycle {
+    postcondition {
+      # Parquet maps by name: an inserted configuration column is physically appended in Glue.
+      condition = try(
+        { for column in self.column : column.name => lookup(local.ingestion_type_aliases, upper(replace(column.type, " ", "")), upper(replace(column.type, " ", ""))) } ==
+        { for column in redshift_external_table.parquet_events.column : column.name => lookup(local.ingestion_type_aliases, upper(replace(column.type, " ", "")), upper(replace(column.type, " ", ""))) } &&
+        length(coalesce(self.partition_key, [])) == 0 &&
+        self.stored_as == redshift_external_table.parquet_events.stored_as &&
+        trimsuffix(self.location, "/") == trimsuffix(redshift_external_table.parquet_events.location, "/"),
+        false,
+      )
+      error_message = "The Parquet catalog definition must match its name/type mapping, unpartitioned format, and location, including after column insertion."
+    }
+  }
 }

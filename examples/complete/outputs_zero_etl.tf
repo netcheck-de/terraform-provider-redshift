@@ -7,6 +7,7 @@ output "zero_etl_database" {
     integration_id   = data.redshift_database.zero_etl[0].integration.integration_id
     source_database  = data.redshift_database.zero_etl[0].integration.source_database
     refresh_interval = data.redshift_database.zero_etl[0].integration.refresh_interval
+    auto_remediation = data.redshift_database.zero_etl[0].integration.auto_remediation
     history_mode     = data.redshift_database.zero_etl[0].integration.history_mode
     integration_arn  = local.zero_etl_integration_arn
   } : null

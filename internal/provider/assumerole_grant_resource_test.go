@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleExemption("redshift_assumerole_grant", "TestAssumeroleGrantLifecycle uses exercisePrivilege and privilegeCatalog.")
+
 var _ = registerReplacementPolicy("redshift_assumerole_grant", map[string]replaceRule{
 	"iam_role_arn": replaceAlways,
 	"grantee":      replaceAlways,

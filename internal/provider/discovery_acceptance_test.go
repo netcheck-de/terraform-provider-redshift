@@ -22,18 +22,17 @@ import (
 // the offline fakes can only approximate: owners, table, view, and materialized view classification, nullability
 // spelling, and pg_get_constraintdef output.
 func TestAccDiscoveryListings(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_discovery_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(text string, enabled bool) string {
 		base := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
 resource "redshift_database" "local" { name = %q }
-`, region, profile, workgroup, database, name)
+`, region, workgroup, database, name)
 		if !enabled {
 			return base
 		}
@@ -97,7 +96,7 @@ data "redshift_comments" "keys" {
 `, text)
 	}
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}

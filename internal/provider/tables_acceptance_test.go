@@ -22,9 +22,9 @@ import (
 // the physical order, checks that catalog reads plan no drift, imports the table, narrows a column in place without
 // losing its rows, refuses to narrow it below a stored value, and destroys it.
 func TestAccTableLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_table_" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	client := testAccRolesClient(t, region, profile, workgroup)
+	client := testAccRolesClient(t, region, workgroup)
 
 	const (
 		idColumn = `
@@ -68,7 +68,6 @@ func TestAccTableLifecycle(t *testing.T) {
 		return fmt.Sprintf(`
 provider "redshift" {
   region         = %q
-  profile        = %q
   workgroup_name = %q
   database       = %q
 }
@@ -104,7 +103,7 @@ data "redshift_table" "events" {
   schema   = redshift_table.events.schema
   name     = redshift_table.events.name
 }
-`, region, profile, workgroup, database, name, columns, attributes)
+`, region, workgroup, database, name, columns, attributes)
 	}
 	inPlace := func(columns, attributes string) resource.TestStep {
 		return resource.TestStep{Config: configuration(columns, attributes), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{

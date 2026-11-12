@@ -14,17 +14,38 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
 }
-mock_provider "redshift" { alias = "producer_data_api_iam" }
-mock_provider "redshift" { alias = "consumer_data_api_iam" }
-mock_provider "redshift" { alias = "producer_direct_iam" }
-mock_provider "redshift" { alias = "consumer_direct_iam" }
-mock_provider "redshift" { alias = "producer_direct_password" }
-mock_provider "redshift" { alias = "consumer_direct_password" }
+mock_provider "redshift" {
+  alias  = "producer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
 
 run "models_default_off" {
   command = apply
@@ -76,21 +97,25 @@ run "models_bedrock" {
   override_data {
     target = data.redshift_external_model.summarizer[0]
     values = {
-      id       = "external-model-lookup-identity"
-      function = "f_example_summarize"
-      model_id = "amazon.nova-lite-v1:0"
-      owner    = "observed_model_owner"
+      id            = "external-model-lookup-identity"
+      function      = "f_example_summarize"
+      model_id      = "amazon.nova-lite-v1:0"
+      owner         = "observed_model_owner"
+      iam_role      = "DEFAULT"
+      prompt        = "Summarize the following text in one sentence:"
+      request_type  = "UNIFIED"
+      response_type = "VARCHAR"
     }
   }
 
   override_data {
     target = data.redshift_object_grant.readers_summarizer[0]
-    values = { privileges = ["EXECUTE"] }
+    values = { privileges = ["EXECUTE"], grant_option_privileges = [] }
   }
 
   override_data {
     target = data.redshift_object_grant.model_delegate_schema[0]
-    values = { privileges = ["USAGE"] }
+    values = { privileges = ["USAGE"], grant_option_privileges = [] }
   }
 
   override_data {
@@ -103,12 +128,12 @@ run "models_bedrock" {
 
   override_data {
     target = data.redshift_object_grant.group_summarizer[0]
-    values = { privileges = ["EXECUTE"] }
+    values = { privileges = ["EXECUTE"], grant_option_privileges = [] }
   }
 
   override_data {
     target = data.redshift_object_grant.public_summarizer[0]
-    values = { privileges = [] }
+    values = { privileges = [], grant_option_privileges = [] }
   }
 
   assert {
@@ -192,4 +217,100 @@ run "models_bedrock" {
     )
     error_message = "The group receives only EXECUTE, while the PUBLIC tuple remains explicitly empty without widening access."
   }
+}
+
+run "models_wrong_bedrock_model_blocks" {
+  command = apply
+
+  variables {
+    bedrock_model_id = "amazon.nova-lite-v1:0"
+  }
+
+  override_data {
+    target = data.redshift_external_model.summarizer[0]
+    values = {
+      function      = "f_example_summarize"
+      iam_role      = "DEFAULT"
+      model_id      = "unexpected-model"
+      prompt        = "Summarize the following text in one sentence:"
+      request_type  = "UNIFIED"
+      response_type = "VARCHAR"
+    }
+  }
+
+  expect_failures = [data.redshift_external_model.summarizer[0]]
+}
+
+run "models_public_execute_blocks" {
+  command = apply
+
+  variables {
+    bedrock_model_id = "amazon.nova-lite-v1:0"
+  }
+
+  override_data {
+    target = data.redshift_object_grant.public_summarizer[0]
+    values = { privileges = ["EXECUTE"], grant_option_privileges = [] }
+  }
+
+  expect_failures = [data.redshift_object_grant.public_summarizer[0]]
+}
+
+run "models_missing_delegate_grant_option_blocks" {
+  command = apply
+
+  variables {
+    bedrock_model_id = "amazon.nova-lite-v1:0"
+  }
+
+  override_data {
+    target = data.redshift_object_grant.delegate_summarizer[0]
+    values = { privileges = ["EXECUTE"], grant_option_privileges = [] }
+  }
+
+  expect_failures = [data.redshift_object_grant.delegate_summarizer[0]]
+}
+
+run "models_missing_role_group_schema_grants_block" {
+  command = apply
+
+  variables {
+    bedrock_model_id = "amazon.nova-lite-v1:0"
+  }
+
+  override_data {
+    target = data.redshift_object_grant.readers_summarizer[0]
+    values = { privileges = [], grant_option_privileges = [] }
+  }
+
+  override_data {
+    target = data.redshift_object_grant.group_summarizer[0]
+    values = { privileges = [], grant_option_privileges = [] }
+  }
+
+  override_data {
+    target = data.redshift_object_grant.model_delegate_schema[0]
+    values = { privileges = [], grant_option_privileges = [] }
+  }
+
+  expect_failures = [
+    data.redshift_object_grant.readers_summarizer[0],
+    data.redshift_object_grant.group_summarizer[0],
+    data.redshift_object_grant.model_delegate_schema[0],
+  ]
+}
+
+run "models_privileged_delegate_blocks" {
+  command = apply
+
+  variables {
+    bedrock_model_id = "amazon.nova-lite-v1:0"
+  }
+
+  override_data {
+    target = data.redshift_user.model_delegate[0]
+    values = { superuser = true, create_database = false }
+  }
+
+  expect_failures = [data.redshift_user.model_delegate[0]]
 }

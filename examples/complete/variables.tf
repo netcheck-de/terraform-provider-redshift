@@ -168,9 +168,9 @@ variable "public_sql_cidrs" {
 }
 
 variable "connection_checks" {
-  description = "Optional read-only connection probes; direct modes require endpoint connectivity and password probes require ephemeral inputs."
+  description = "Read-only connection probes; defaults to Data API IAM checks on both warehouses. Direct modes require endpoint connectivity and password probes require ephemeral inputs. Set an empty set to skip all probes."
   type        = set(string)
-  default     = []
+  default     = ["producer_data_api_iam", "consumer_data_api_iam"]
 
   validation {
     condition = length(setsubtract(var.connection_checks, toset([

@@ -14,22 +14,92 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
 }
-mock_provider "redshift" { alias = "producer_data_api_iam" }
-mock_provider "redshift" { alias = "consumer_data_api_iam" }
-mock_provider "redshift" { alias = "producer_direct_iam" }
-mock_provider "redshift" { alias = "consumer_direct_iam" }
-mock_provider "redshift" { alias = "producer_direct_password" }
-mock_provider "redshift" { alias = "consumer_direct_password" }
+mock_provider "redshift" {
+  alias  = "producer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
 
 # Observed catalog values deliberately differ from the configuration where Redshift renders its own text.
 override_data {
   target = data.redshift_masking_policy.email
-  values = { expression = "CASE WHEN (\"masked_table\".\"email\" IN (SELECT ...)) THEN ... END" }
+  values = {
+    expression             = "CASE WHEN (\"masked_table\".\"email\" IN (SELECT ...)) THEN ... END"
+    definition_fingerprint = "observed-mask-fingerprint"
+  }
+}
+
+run "masking_missing_attachment_blocks" {
+  command = apply
+
+  override_data {
+    target = data.redshift_masking_policy_attachment.email_readers
+    values = { exists = false, priority = 10, input_columns = ["email"] }
+  }
+
+  expect_failures = [data.redshift_masking_policy_attachment.email_readers]
+}
+
+run "masking_wrong_priority_blocks" {
+  command = apply
+
+  override_data {
+    target = data.redshift_masking_policy_attachment.email_readers
+    values = { exists = true, priority = 1, input_columns = ["email"] }
+  }
+
+  expect_failures = [data.redshift_masking_policy_attachment.email_readers]
+}
+
+run "masking_changed_expression_blocks" {
+  command = apply
+
+  override_data {
+    target = data.redshift_masking_policy.email
+    values = {
+      definition_fingerprint = "different-catalog-expression"
+    }
+  }
+
+  expect_failures = [data.redshift_masking_policy.email]
+}
+
+run "masking_wrong_table_owner_blocks" {
+  command = apply
+
+  override_data {
+    target = data.redshift_table.customers
+    values = { owner = "unexpected_owner" }
+  }
+
+  expect_failures = [data.redshift_table.customers]
 }
 override_data {
   target = data.redshift_masking_policy_attachment.email_readers

@@ -124,6 +124,8 @@ output "verification" {
   value = {
     shared_statement_id   = aws_redshiftdata_statement.verify_shared.id
     spectrum_statement_id = aws_redshiftdata_statement.verify_spectrum.id
+    rls_statement_id      = aws_redshiftdata_statement.verify_rls.id
+    masking_statement_id  = aws_redshiftdata_statement.verify_masking.id
   }
 }
 

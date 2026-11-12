@@ -16,12 +16,22 @@ mock_resource "aws_redshiftserverless_namespace" {
 }
 mock_resource "aws_redshiftserverless_workgroup" {
   defaults = {
+    arn      = "arn:aws:redshift-serverless:eu-central-1:111111111111:workgroup/bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
     port     = 5439
     endpoint = [{ address = "consumer.example.test", port = 5439 }]
   }
 }
 mock_resource "aws_iam_role" {
-  defaults = { arn = "arn:aws:iam::111111111111:role/consumer-fixture" }
+  defaults = { id = "redshift-oss-e2e-deadbeef-consumer", arn = "arn:aws:iam::111111111111:role/consumer-fixture" }
+}
+mock_resource "aws_dynamodb_table" {
+  defaults = { arn = "arn:aws:dynamodb:eu-central-1:111111111111:table/example-zero-etl-source" }
+}
+mock_resource "aws_redshift_integration" {
+  defaults = { arn = "arn:aws:redshift:eu-central-1:111111111111:integration:a1b2c3d4-5678-90ab-cdef-example11111" }
+}
+mock_resource "aws_rds_integration" {
+  defaults = { arn = "arn:aws:rds:eu-central-1:111111111111:integration:a1b2c3d4-5678-90ab-cdef-example11111" }
 }
 mock_resource "aws_secretsmanager_secret" {
   defaults = { arn = "arn:aws:secretsmanager:eu-central-1:111111111111:secret:reader-ABC123" }

@@ -58,9 +58,9 @@ func (a *integrationSessionAPI) ExecuteStatement(ctx context.Context, input *red
 // TestAccDatabaseLookupNonSuperuser verifies the permission-denied behavior of SVV_INTEGRATION without allowing
 // optional integration metadata to break an ordinary local database lookup. Only its disposable SQL user is created.
 func TestAccDatabaseLookupNonSuperuser(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DYNAMODB_DATABASE", "REDSHIFT_ACC_SECRET_ARN")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SECRET_ARN")
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	api := redshiftdata.NewFromConfig(cfg)
@@ -104,14 +104,13 @@ func TestAccDatabaseLookupNonSuperuser(t *testing.T) {
 			Config: fmt.Sprintf(`
 provider "redshift" {
   region         = %q
-  profile        = %q
   workgroup_name = %q
   database       = %q
 }
 data "redshift_database" "local" {
   name = %q
 }
-`, region, profile, workgroup, database, database),
+`, region, workgroup, database, database),
 			Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("data.redshift_database.local", "name", database),
 				resource.TestCheckNoResourceAttr("data.redshift_database.local", "integration.integration_id"),
@@ -123,11 +122,10 @@ data "redshift_database" "local" {
 // TestAccDatabaseIntegrationDynamoDBLookup only observes an explicitly supplied destination: Terraform must not
 // manage or destroy the active integration fixture. Use the SQL probe log to verify mutations and their restoration.
 func TestAccDatabaseIntegrationDynamoDBLookup(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DYNAMODB_DATABASE", "REDSHIFT_ACC_DYNAMODB_INTEGRATION_ID", "REDSHIFT_ACC_SECRET_ARN")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DYNAMODB_DATABASE", "REDSHIFT_ACC_DYNAMODB_INTEGRATION_ID", "REDSHIFT_ACC_SECRET_ARN")
 	configuration := fmt.Sprintf(`
 provider "redshift" {
   region         = %q
-  profile        = %q
   workgroup_name = %q
   database       = %q
   secret_arn     = %q
@@ -135,7 +133,7 @@ provider "redshift" {
 data "redshift_database" "destination" {
   name = %q
 }
-`, region, profile, workgroup, database, os.Getenv("REDSHIFT_ACC_SECRET_ARN"), os.Getenv("REDSHIFT_ACC_DYNAMODB_DATABASE"))
+`, region, workgroup, database, os.Getenv("REDSHIFT_ACC_SECRET_ARN"), os.Getenv("REDSHIFT_ACC_DYNAMODB_DATABASE"))
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
 			"redshift": providerserver.NewProtocol6WithError(New("test")()),
@@ -154,9 +152,9 @@ data "redshift_database" "destination" {
 // TestAccDatabaseIntegrationExistingUpdate exercises framework Update without importing or taking Terraform
 // ownership of the active fixture. It never calls Create/Delete; cleanup restores the two settings it changes.
 func TestAccDatabaseIntegrationExistingUpdate(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DYNAMODB_DATABASE", "REDSHIFT_ACC_DYNAMODB_INTEGRATION_ID", "REDSHIFT_ACC_SECRET_ARN", "REDSHIFT_ACC_INTEGRATION_MUTATIONS")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DYNAMODB_DATABASE", "REDSHIFT_ACC_DYNAMODB_INTEGRATION_ID", "REDSHIFT_ACC_SECRET_ARN", "REDSHIFT_ACC_INTEGRATION_MUTATIONS")
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, SecretARN: os.Getenv("REDSHIFT_ACC_SECRET_ARN"), Timeout: time.Minute, Poll: time.Second}

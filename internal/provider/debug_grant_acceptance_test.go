@@ -23,10 +23,10 @@ import (
 // TestAccDebugGrantFederated needs a dedicated federated database and recipients without an existing DEBUG grant.
 // The warehouse and catalog registration stay with the fixture owner; the test owns only the explicit grants.
 func TestAccDebugGrantFederated(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_FEDERATED_DATABASE")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_FEDERATED_DATABASE")
 	target := os.Getenv("REDSHIFT_ACC_FEDERATED_DATABASE")
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
@@ -68,7 +68,6 @@ func TestAccDebugGrantFederated(t *testing.T) {
 			configuration := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
@@ -81,7 +80,7 @@ data "redshift_debug_grant" "test" {
   database = redshift_debug_grant.test.database
   grantee = redshift_debug_grant.test.grantee
   grantee_type = redshift_debug_grant.test.grantee_type
-}`, region, profile, workgroup, database, target, grantee, test.kind)
+}`, region, workgroup, database, target, grantee, test.kind)
 			checks := []resource.TestCheckFunc{resource.TestCheckResourceAttr("data.redshift_debug_grant.test", "exists", "true")}
 			// The listing reads only producer-local databases; global identity names compare without case.
 			if !strings.Contains(target, "@") {

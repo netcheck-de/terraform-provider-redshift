@@ -20,7 +20,7 @@ import (
 
 // TestAccLocalSQLLifecycle creates only uniquely named objects on an existing test workgroup.
 func TestAccLocalSQLLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	dbName, schemaName, roleName := "acc_db_"+suffix, "acc_schema_"+suffix, "acc_role_"+suffix
@@ -29,7 +29,6 @@ func TestAccLocalSQLLifecycle(t *testing.T) {
 		return fmt.Sprintf(`
 provider "redshift" {
   region         = %q
-  profile        = %q
   workgroup_name = %q
   database       = %q
 }
@@ -119,10 +118,10 @@ data "redshift_grant" "schema" {
   role = redshift_grant.schema.role
   scope = redshift_grant.schema.scope
 }
-`, region, profile, workgroup, database, dbName, schemaName, roleName, groupName, userName, "AccPass1"+suffix, privileges)
+`, region, workgroup, database, dbName, schemaName, roleName, groupName, userName, "AccPass1"+suffix, privileges)
 	}
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}

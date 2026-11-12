@@ -35,13 +35,13 @@ func TestAccSpectrumExternalTableLifecycle(t *testing.T) {
 // tables from the shared Glue database afterwards.
 func testAccSpectrumExternalTableLifecycle(t *testing.T, format string) {
 	t.Helper()
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SPECTRUM_ROLE_ARN", "REDSHIFT_ACC_SPECTRUM_GLUE_DATABASE", "REDSHIFT_ACC_SPECTRUM_LOCATION")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SPECTRUM_ROLE_ARN", "REDSHIFT_ACC_SPECTRUM_GLUE_DATABASE", "REDSHIFT_ACC_SPECTRUM_LOCATION")
 	role, glue := os.Getenv("REDSHIFT_ACC_SPECTRUM_ROLE_ARN"), os.Getenv("REDSHIFT_ACC_SPECTRUM_GLUE_DATABASE")
 	location := strings.TrimSuffix(os.Getenv("REDSHIFT_ACC_SPECTRUM_LOCATION"), "/") + "/"
 	metrics := strings.TrimSuffix(location, "/") + "_metrics/"
 	schema := "acc_spectrum_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
@@ -60,15 +60,19 @@ func testAccSpectrumExternalTableLifecycle(t *testing.T, format string) {
 		return fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
 resource "redshift_external_schema" "lake" {
-  database = %[4]q
-  name = %[5]q
-  glue_database = %[6]q
-  iam_role_arn = %[7]q
+  database = %[3]q
+  name = %[4]q
+  glue_database = %[5]q
+  iam_role_arn = %[6]q
+  region = %[1]q
+}
+data "redshift_external_schema" "lake" {
+  database = redshift_external_schema.lake.database
+  name = redshift_external_schema.lake.name
 }
 resource "redshift_external_table" "events" {
   database = redshift_external_schema.lake.database
@@ -78,7 +82,7 @@ resource "redshift_external_table" "events" {
     for_each = concat([
       { name = "id", type = "int4" },
       { name = "label", type = "VARCHAR(64)" },
-    ], %[8]s)
+    ], %[7]s)
     content {
       name = column.value.name
       type = column.value.type
@@ -90,22 +94,22 @@ resource "redshift_external_table" "events" {
   }
   field_delimiter = "\t"
   stored_as = "TEXTFILE"
-  location = %[9]q
-  table_properties = { "skip.header.line.count" = "1", "numRows" = %[10]q }
+  location = %[8]q
+  table_properties = { "skip.header.line.count" = "1", "numRows" = %[9]q }
 }
 resource "redshift_external_table" "metrics" {
   database = redshift_external_schema.lake.database
   schema = redshift_external_schema.lake.name
   name = "metrics"
   dynamic "column" {
-    for_each = %[12]s
+    for_each = %[11]s
     content {
       name = column.value.name
       type = column.value.type
     }
   }
-  stored_as = %[14]q
-  location = %[13]q
+  stored_as = %[13]q
+  location = %[12]q
 }
 data "redshift_external_table" "metrics" {
   database = redshift_external_table.metrics.database
@@ -117,7 +121,7 @@ resource "redshift_external_partition" "first" {
   schema = redshift_external_table.events.schema
   table = redshift_external_table.events.name
   values = { event_date = "2024-01-01" }
-  location = %[11]q
+  location = %[10]q
 }
 data "redshift_external_table" "events" {
   database = redshift_external_table.events.database
@@ -140,7 +144,7 @@ data "redshift_external_partitions" "events" {
   schema = redshift_external_partition.first.schema
   table = redshift_external_partition.first.table
   depends_on = [redshift_external_partition.first]
-}`, region, profile, workgroup, database, schema, glue, role, extraColumn, tableLocation, numRows, partitionLocation, mappedColumns, metrics, format)
+}`, region, workgroup, database, schema, glue, role, extraColumn, tableLocation, numRows, partitionLocation, mappedColumns, metrics, format)
 	}
 	moved := location + "v2/"
 	initial := configuration(location, location+"event_date=2024-01-01/", "[]", "10", `[{ name = "id", type = "bigint" }, { name = "label", type = "varchar(64)" }]`)
@@ -155,6 +159,16 @@ data "redshift_external_partitions" "events" {
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
 			{Config: initial, Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttrPair("data.redshift_external_schema.lake", "id", "redshift_external_schema.lake", "id"),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.lake", "database", database),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.lake", "name", schema),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.lake", "source_type", "DATA_CATALOG"),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.lake", "glue_database", glue),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.lake", "iam_role_arn", role),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.lake", "region", region),
+				resource.TestCheckResourceAttrSet("data.redshift_external_schema.lake", "owner"),
+				resource.TestCheckResourceAttrPair("data.redshift_external_schema.lake", "owner", "redshift_external_schema.lake", "owner"),
+				resource.TestCheckNoResourceAttr("data.redshift_external_schema.lake", "source_database"),
 				resource.TestCheckResourceAttr("data.redshift_external_table.events", "column.0.type", "INTEGER"),
 				resource.TestCheckResourceAttr("data.redshift_external_table.events", "stored_as", "TEXTFILE"),
 				resource.TestCheckResourceAttr("data.redshift_external_table.events", "field_delimiter", "\t"),

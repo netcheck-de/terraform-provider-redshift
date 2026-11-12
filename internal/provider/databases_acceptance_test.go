@@ -20,47 +20,56 @@ import (
 )
 
 // externalSchemasCheck verifies the listed cross-database external schema when the test creates one.
-func externalSchemasCheck(shared, owner string) resource.TestCheckFunc {
+func externalSchemasCheck(shared, sourceSchema, owner string) resource.TestCheckFunc {
 	if shared == "" {
 		return func(*terraform.State) error { return nil }
 	}
 
 	return resource.TestCheckTypeSetElemNestedAttrs("data.redshift_external_schemas.local", "external_schemas.*", map[string]string{
-		"name": "shared_sales", "source_type": "REDSHIFT", "source_database": shared, "source_schema": "public", "owner": owner,
+		"name": "shared_sales", "source_type": "REDSHIFT", "source_database": shared, "source_schema": sourceSchema, "owner": owner,
 	})
 }
 
 // TestAccDatabaseOptionsLifecycle creates a local database and schema with every option, changes the in-place
-// options, imports both, and checks that no drift remains. REDSHIFT_ACC_SHARED_DATABASE optionally names an existing
-// consumer database for a cross-database external schema.
+// options, imports both, and checks that no drift remains. An external schema maps the connection database's public
+// schema by default; REDSHIFT_ACC_SHARED_DATABASE optionally selects an existing datashare consumer database instead.
 func TestAccDatabaseOptionsLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	name, owner, successor := "acc_db_"+suffix, "acc_owner_"+suffix, "acc_successor_"+suffix
+
 	shared := os.Getenv("REDSHIFT_ACC_SHARED_DATABASE")
+	sourceSchema := "public"
+
+	if shared == "" {
+		shared = database
+	} else if schema := os.Getenv("REDSHIFT_ACC_SHARED_SCHEMA"); schema != "" {
+		sourceSchema = schema
+	}
+
 	// Owners switch between two users created here, because the acceptance identity's own name is not configured.
 	configuration := func(limit int, isolation string, quota int, schemaOwner string) string {
-		external := ""
-		if shared != "" {
-			external = fmt.Sprintf(`
+		external := fmt.Sprintf(`
 resource "redshift_external_schema" "shared" {
   database        = redshift_database.local.name
   name            = "shared_sales"
   source_type     = "REDSHIFT"
   source_database = %q
-  source_schema   = "public"
+  source_schema   = %q
   owner           = %s
 }
 data "redshift_external_schemas" "local" {
   database   = redshift_database.local.name
   depends_on = [redshift_external_schema.shared]
-}`, shared, schemaOwner)
-		}
+}
+data "redshift_external_schema" "shared" {
+  database = redshift_external_schema.shared.database
+  name     = redshift_external_schema.shared.name
+}`, shared, sourceSchema, schemaOwner)
 
 		return fmt.Sprintf(`
 provider "redshift" {
   region         = %q
-  profile        = %q
   workgroup_name = %q
   database       = %q
 }
@@ -102,10 +111,10 @@ data "redshift_schemas" "local" {
   database   = redshift_schema.local.database
   depends_on = [redshift_schema.local]
 }%s
-`, region, profile, workgroup, database, owner, successor, name, limit, isolation, schemaOwner, quota, external)
+`, region, workgroup, database, owner, successor, name, limit, isolation, schemaOwner, quota, external)
 	}
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
@@ -134,7 +143,16 @@ data "redshift_schemas" "local" {
 				resource.TestCheckResourceAttr("data.redshift_databases.local", "databases.0.owner", owner),
 				resource.TestCheckResourceAttr("data.redshift_databases.local", "databases.0.isolation_level", "SNAPSHOT"),
 				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_schemas.local", "schemas.*", map[string]string{"name": "serving", "owner": owner, "quota": "2048"}),
-				externalSchemasCheck(shared, owner),
+				externalSchemasCheck(shared, sourceSchema, owner),
+				resource.TestCheckResourceAttrPair("data.redshift_external_schema.shared", "id", "redshift_external_schema.shared", "id"),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.shared", "database", name),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.shared", "name", "shared_sales"),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.shared", "source_type", "REDSHIFT"),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.shared", "source_database", shared),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.shared", "source_schema", sourceSchema),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.shared", "owner", owner),
+				resource.TestCheckNoResourceAttr("data.redshift_external_schema.shared", "glue_database"),
+				resource.TestCheckNoResourceAttr("data.redshift_external_schema.shared", "iam_role_arn"),
 			)},
 			{Config: configuration(10, "SNAPSHOT", 2048, "redshift_user.owner.name"), PlanOnly: true},
 			{Config: configuration(-1, "SERIALIZABLE", -1, "redshift_user.successor.name"), Check: resource.ComposeTestCheckFunc(
@@ -142,6 +160,10 @@ data "redshift_schemas" "local" {
 				resource.TestCheckResourceAttr("redshift_database.local", "isolation_level", "SERIALIZABLE"),
 				resource.TestCheckResourceAttr("redshift_schema.local", "quota", "-1"),
 				resource.TestCheckResourceAttr("redshift_schema.local", "owner", successor),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.shared", "source_type", "REDSHIFT"),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.shared", "source_database", shared),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.shared", "source_schema", sourceSchema),
+				resource.TestCheckResourceAttr("data.redshift_external_schema.shared", "owner", successor),
 			)},
 			{ResourceName: "redshift_database.local", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"with_permissions"}},
 			{ResourceName: "redshift_schema.local", ImportState: true, ImportStateVerify: true},

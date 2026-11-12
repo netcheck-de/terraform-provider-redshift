@@ -26,9 +26,9 @@ import (
 // Same-account writes require producer object grants to the datashare, not cross-account AllowWrites API calls:
 // https://docs.aws.amazon.com/redshift/latest/dg/writes-adding-datashare.html
 func TestAccObjectGrantSharedWrite(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SHARED_WRITE", "REDSHIFT_ACC_DIRECT", "REDSHIFT_ACC_SHARED_PRODUCER_CLUSTER", "REDSHIFT_ACC_SHARED_PRODUCER_SECRET_ARN", "REDSHIFT_ACC_SHARED_PRODUCER_NAMESPACE", "REDSHIFT_ACC_SHARED_CONSUMER_NAMESPACE")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SHARED_WRITE", "REDSHIFT_ACC_DIRECT", "REDSHIFT_ACC_SHARED_PRODUCER_CLUSTER", "REDSHIFT_ACC_SHARED_PRODUCER_SECRET_ARN", "REDSHIFT_ACC_SHARED_PRODUCER_NAMESPACE", "REDSHIFT_ACC_SHARED_CONSUMER_NAMESPACE")
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	producer := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Cluster: os.Getenv("REDSHIFT_ACC_SHARED_PRODUCER_CLUSTER"), SecretARN: os.Getenv("REDSHIFT_ACC_SHARED_PRODUCER_SECRET_ARN"), Timeout: 5 * time.Minute, Poll: time.Second}
@@ -75,7 +75,7 @@ func TestAccObjectGrantSharedWrite(t *testing.T) {
 			grantOptions = `["INSERT", "SELECT"]`
 		}
 
-		return grantAcceptanceProvider(region, profile, workgroup, database) + fmt.Sprintf(`
+		return grantAcceptanceProvider(region, workgroup, database) + fmt.Sprintf(`
 resource "redshift_user" "writer" {
   name = %[1]q
   password_wo = %[2]q

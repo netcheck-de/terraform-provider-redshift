@@ -20,9 +20,9 @@ import (
 
 // TestAccDirectPasswordPrivileges verifies strict TLS and actual non-superuser read/write permissions on isolated data.
 func TestAccDirectPasswordPrivileges(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	sdk := redshiftserverless.NewFromConfig(cfg)

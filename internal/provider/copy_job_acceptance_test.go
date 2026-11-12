@@ -25,9 +25,9 @@ import (
 
 // copyJobAcceptanceClient returns the acceptance Data API client, authenticated with REDSHIFT_ACC_SECRET_ARN when it is
 // set.
-func copyJobAcceptanceClient(t *testing.T, region, profile, workgroup string) sqlclient.Client {
+func copyJobAcceptanceClient(t *testing.T, region, workgroup string) sqlclient.Client {
 	t.Helper()
-	client := testAccRolesClient(t, region, profile, workgroup).(*dataapi.Client)
+	client := testAccRolesClient(t, region, workgroup).(*dataapi.Client)
 	client.SecretARN = os.Getenv("REDSHIFT_ACC_SECRET_ARN")
 
 	return client
@@ -36,8 +36,8 @@ func copyJobAcceptanceClient(t *testing.T, region, profile, workgroup string) sq
 // TestAccCopyJobDatabaseScope confirms that SYS_COPY_JOB lists a job only in its own database, so the read query needs
 // no database filter.
 func TestAccCopyJobDatabaseScope(t *testing.T) {
-	region, profile, workgroup, _ := testAccWorkgroup(t, "REDSHIFT_ACC_COPY_JOB_NAME", "REDSHIFT_ACC_COPY_JOB_DATABASE", "REDSHIFT_ACC_COPY_JOB_OTHER_DATABASE")
-	client := copyJobAcceptanceClient(t, region, profile, workgroup)
+	region, workgroup, _ := testAccWorkgroup(t, "REDSHIFT_ACC_COPY_JOB_NAME", "REDSHIFT_ACC_COPY_JOB_DATABASE", "REDSHIFT_ACC_COPY_JOB_OTHER_DATABASE")
+	client := copyJobAcceptanceClient(t, region, workgroup)
 	job, database, other := os.Getenv("REDSHIFT_ACC_COPY_JOB_NAME"), os.Getenv("REDSHIFT_ACC_COPY_JOB_DATABASE"), os.Getenv("REDSHIFT_ACC_COPY_JOB_OTHER_DATABASE")
 	require.NotEqual(t, database, other)
 
@@ -59,9 +59,9 @@ func TestAccCopyJobDatabaseScope(t *testing.T) {
 
 // TestAccCopyJobNonOwnerVisibility uses an isolated SQL identity and a short-lived Data API session, not AWS fixtures.
 func TestAccCopyJobNonOwnerVisibility(t *testing.T) {
-	region, profile, workgroup, _ := testAccWorkgroup(t, "REDSHIFT_ACC_COPY_JOB_DATABASE", "REDSHIFT_ACC_SECRET_ARN")
+	region, workgroup, _ := testAccWorkgroup(t, "REDSHIFT_ACC_COPY_JOB_DATABASE", "REDSHIFT_ACC_SECRET_ARN")
 	database := os.Getenv("REDSHIFT_ACC_COPY_JOB_DATABASE")
-	client := copyJobAcceptanceClient(t, region, profile, workgroup).(*dataapi.Client)
+	client := copyJobAcceptanceClient(t, region, workgroup).(*dataapi.Client)
 	name := "acc_copy_reader_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
@@ -119,8 +119,8 @@ func TestAccCopyJobNonOwnerVisibility(t *testing.T) {
 
 // TestAccCopyCatalogDefinitionAvailability probes engine support even before an integrated COPY job exists.
 func TestAccCopyCatalogDefinitionAvailability(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
-	client := copyJobAcceptanceClient(t, region, profile, workgroup)
+	region, workgroup, database := testAccWorkgroup(t)
+	client := copyJobAcceptanceClient(t, region, workgroup)
 	query := sqlclient.Select("copy_query", "data_source", "table_id", "job_owner").From("sys_copy_job").Where("1 = 0")
 	text, args, err := query.Build()
 	require.NoError(t, err)
@@ -131,7 +131,7 @@ func TestAccCopyCatalogDefinitionAvailability(t *testing.T) {
 
 // TestAccCopyJobDefinition uses an already integrated bucket and attached IAM role; it provisions no AWS fixtures.
 func TestAccCopyJobDefinition(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_COPY_SOURCE", "REDSHIFT_ACC_COPY_ROLE")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_COPY_SOURCE", "REDSHIFT_ACC_COPY_ROLE")
 	name := "acc_copy_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	source := strings.TrimRight(os.Getenv("REDSHIFT_ACC_COPY_SOURCE"), "/") + "/" + name + "/"
 	configuration := func(source string, csv, auto bool) string {
@@ -150,7 +150,6 @@ func TestAccCopyJobDefinition(t *testing.T) {
 		return fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
   %s
@@ -185,7 +184,11 @@ data "redshift_copy_job" "copy" {
   database = redshift_copy_job.copy.database
   name = redshift_copy_job.copy.name
 }
-`, region, profile, workgroup, database, secret, database, name, name, columns, source, os.Getenv("REDSHIFT_ACC_COPY_ROLE"), options, auto)
+data "redshift_copy_jobs" "copy" {
+  database = redshift_copy_job.copy.database
+  depends_on = [redshift_copy_job.copy]
+}
+`, region, workgroup, database, secret, database, name, name, columns, source, os.Getenv("REDSHIFT_ACC_COPY_ROLE"), options, auto)
 	}
 	moved := strings.TrimRight(source, "/") + "/replacement/"
 	checkScope := func(*terraform.State) error {
@@ -194,7 +197,7 @@ data "redshift_copy_job" "copy" {
 			return nil
 		}
 
-		client := copyJobAcceptanceClient(t, region, profile, workgroup)
+		client := copyJobAcceptanceClient(t, region, workgroup)
 
 		query, args, err := readCopyJobQuery(name).Build()
 		if err != nil {
@@ -223,6 +226,35 @@ data "redshift_copy_job" "copy" {
 
 		return nil
 	}
+	// The shared database can contain unrelated jobs; locate our concrete fixture rather than asserting a total count.
+	checkListing := func(auto bool) resource.TestCheckFunc {
+		return func(state *terraform.State) error {
+			const address = "data.redshift_copy_jobs.copy"
+
+			listing := state.RootModule().Resources[address]
+			if listing == nil || listing.Primary == nil {
+				return fmt.Errorf("missing COPY job listing state")
+			}
+
+			count, err := strconv.Atoi(listing.Primary.Attributes["copy_jobs.#"])
+			if err != nil {
+				return err
+			}
+
+			for i := range count {
+				prefix := fmt.Sprintf("copy_jobs.%d.", i)
+				if listing.Primary.Attributes[prefix+"name"] == name {
+					return resource.ComposeAggregateTestCheckFunc(
+						resource.TestCheckResourceAttr(address, prefix+"database", database),
+						resource.TestCheckResourceAttr(address, prefix+"iam_role", os.Getenv("REDSHIFT_ACC_COPY_ROLE")),
+						resource.TestCheckResourceAttr(address, prefix+"auto", strconv.FormatBool(auto)),
+					)(state)
+				}
+			}
+
+			return fmt.Errorf("COPY job listing did not contain fixture %q", name)
+		}
+	}
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
@@ -232,6 +264,7 @@ data "redshift_copy_job" "copy" {
 				resource.TestCheckResourceAttr("data.redshift_copy_job.copy", "parameters.IGNOREHEADER", "1"),
 				resource.TestCheckResourceAttr("data.redshift_copy_job.copy", "table.columns.0", "id"),
 				checkScope,
+				checkListing(false),
 			)},
 			{ResourceName: "redshift_copy_job.copy", ImportState: true, ImportStateVerify: true},
 			{Config: configuration(source, true, false), PlanOnly: true},
@@ -244,8 +277,8 @@ data "redshift_copy_job" "copy" {
 			{Config: configuration(moved, false, false), PlanOnly: true},
 			{Config: configuration(moved, false, true), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
 				plancheck.ExpectResourceAction("redshift_copy_job.copy", plancheck.ResourceActionUpdate),
-			}}, Check: resource.TestCheckResourceAttr("data.redshift_copy_job.copy", "auto", "true")},
-			{Config: configuration(moved, false, false), Check: resource.TestCheckResourceAttr("data.redshift_copy_job.copy", "auto", "false")},
+			}}, Check: resource.ComposeAggregateTestCheckFunc(resource.TestCheckResourceAttr("data.redshift_copy_job.copy", "auto", "true"), checkListing(true))},
+			{Config: configuration(moved, false, false), Check: resource.ComposeAggregateTestCheckFunc(resource.TestCheckResourceAttr("data.redshift_copy_job.copy", "auto", "false"), checkListing(false))},
 			{Config: configuration(moved, false, false), PlanOnly: true},
 		},
 	})

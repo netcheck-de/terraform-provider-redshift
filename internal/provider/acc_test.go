@@ -24,19 +24,45 @@ func testAccPreCheck(t *testing.T, flags ...string) {
 	}
 }
 
-// testAccWorkgroup returns the region, profile, workgroup, and admin database of the shared Serverless fixture.
-func testAccWorkgroup(t *testing.T, flags ...string) (region, profile, workgroup, database string) {
+// testAccWorkgroup returns the region, workgroup, and admin database of the shared Serverless fixture.
+func testAccWorkgroup(t *testing.T, flags ...string) (region, workgroup, database string) {
 	t.Helper()
 	testAccPreCheck(t, flags...)
 
-	region, profile = os.Getenv("REDSHIFT_ACC_REGION"), os.Getenv("REDSHIFT_ACC_PROFILE")
+	region = os.Getenv("REDSHIFT_ACC_REGION")
 
 	workgroup, database = os.Getenv("REDSHIFT_ACC_WORKGROUP"), os.Getenv("REDSHIFT_ACC_DATABASE")
-	for name, value := range map[string]string{"REDSHIFT_ACC_REGION": region, "REDSHIFT_ACC_PROFILE": profile, "REDSHIFT_ACC_WORKGROUP": workgroup, "REDSHIFT_ACC_DATABASE": database} {
+	for name, value := range map[string]string{"REDSHIFT_ACC_REGION": region, "REDSHIFT_ACC_WORKGROUP": workgroup, "REDSHIFT_ACC_DATABASE": database} {
 		require.NotEmpty(t, value, name)
 	}
 
-	return region, profile, workgroup, database
+	return region, workgroup, database
+}
+
+// testAccSecretARN selects the warehouse's own secret, never falling back to another warehouse's credentials.
+func testAccSecretARN(cluster bool) string {
+	if cluster {
+		return os.Getenv("REDSHIFT_ACC_CLUSTER_SECRET_ARN")
+	}
+
+	return os.Getenv("REDSHIFT_ACC_SECRET_ARN")
+}
+
+// TestAcceptanceSecretSelection keeps both warehouse secrets independent in one acceptance process.
+func TestAcceptanceSecretSelection(t *testing.T) {
+	t.Setenv("REDSHIFT_ACC_SECRET_ARN", "serverless-secret")
+	t.Setenv("REDSHIFT_ACC_CLUSTER_SECRET_ARN", "cluster-secret")
+	require.Equal(t, "serverless-secret", testAccSecretARN(false))
+	require.Equal(t, "cluster-secret", testAccSecretARN(true))
+
+	t.Setenv("REDSHIFT_ACC_CLUSTER_SECRET_ARN", "")
+	require.Empty(t, testAccSecretARN(true), "a cluster must not use the Serverless secret")
+	require.Equal(t, "serverless-secret", testAccSecretARN(false))
+
+	t.Setenv("REDSHIFT_ACC_CLUSTER_SECRET_ARN", "cluster-secret")
+	t.Setenv("REDSHIFT_ACC_SECRET_ARN", "")
+	require.Empty(t, testAccSecretARN(false), "Serverless must not use the cluster secret")
+	require.Equal(t, "cluster-secret", testAccSecretARN(true))
 }
 
 // testAccSSLMode returns REDSHIFT_ACC_SSLMODE for direct tests; empty keeps the provider default verify-full.

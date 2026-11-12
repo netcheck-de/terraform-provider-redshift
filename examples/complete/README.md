@@ -2,15 +2,17 @@
 
 Create a disposable provisioned RA3 producer and Redshift Serverless consumer, their networks and IAM roles, native SQL
 and S3/Glue sample data, datasharing, users, groups, roles, grants, tables, views, routines, Spectrum external tables,
-row-level security, masking, comments, and matching read-only lookups and listings. The default uses one AWS account,
+row-level security, masking, comments, a COPY JOB, DynamoDB zero-ETL, and matching read-only lookups and listings.
+The default uses one AWS account,
 private endpoints, and managed administrator secrets with the Data API. No existing warehouse, VPC, source table, or
 Glue catalog is needed.
 
-All 41 provider resource types and 58 data source types are represented, and every data source is
-exposed through an output; `redshift_identity_provider` and its lookup are created only when Identity Center is enabled.
+All 41 provider resource types and 58 data source types are represented, with catalog observations exposed through
+outputs. Verification-only lookups enforce postconditions without exporting duplicate observations.
+`redshift_identity_provider` and its lookup are created only when Identity Center is enabled.
 Identity Center is optional: omitting its instance ARN skips the managed SSO application, directory groups/assignments,
-and SQL identity provider. The connection configurations are in `providers.tf`, with optional read-only probes in
-`connections.tf`.
+and SQL identity provider. The connection configurations are in `providers.tf`; `connections.tf` runs Data API IAM
+probes on both warehouses by default. Direct probes remain opt-in because they require SQL endpoint connectivity.
 
 ## Architecture
 
@@ -81,7 +83,9 @@ Account quotas and regional availability apply.
 Deployment credentials need AWS provisioning and `iam:PassRole` permissions, Data API execute/describe/result access,
 and Secrets Manager access to the two managed administrator secrets and the created reader secret. IAM permission and
 SQL permission are separate: bootstrap uses the administrator secrets, rather than assuming the caller's IAM-derived
-SQL user is a superuser. Shared database lookups also need `redshift:DescribeDataShares`.
+SQL user is a superuser. Shared database lookups also need `redshift:DescribeDataShares`. Default IAM probes need
+warehouse credential permissions, and the owned COPY and zero-ETL fixtures require Redshift integration and
+resource-policy permissions plus DynamoDB table, PITR, and resource-policy provisioning permissions.
 
 For a published provider, from this directory:
 
@@ -92,32 +96,49 @@ terraform output -json warehouses
 terraform output -json verification
 ```
 
-For a provider built from this repository, from the provider root:
-
-```sh
-task terraform -- init -backend=false
-task terraform -- apply
-task terraform -- output -json warehouses
-task terraform -- output -json verification
-```
+For a provider built from this repository, see the
+[development instructions](../../DEVELOPMENT.md#run-the-complete-example-with-a-local-provider).
 
 No variable file is required for the default. Use the normal AWS credential chain or copy `terraform.tfvars.example`
 to `terraform.tfvars` and set `profile`, `region`, or other inputs. The random name suffix isolates AWS resource names.
 
-Apply executes two live checks: a non-superuser reader must see the expected two rows through the shared database,
-and the producer must read the two CSV rows through Spectrum. The verification SQL deliberately fails on incorrect
-row contents/counts. Each successful query returns `verified = 1`; statement IDs in `verification` can be passed to
-`aws redshift-data get-statement-result` using the corresponding account's credentials and region.
+Fresh apply executes four live checks: a non-superuser reader must see the expected two rows through the shared
+database, the producer must read the two CSV rows through Spectrum, RLS must hide the reader's unauthorized region,
+and masking must obscure one email while preserving an explicitly exempt email. The policy checks also exercise the
+policies' SELECT grants on their lookup tables, which have no catalog readback. The verification SQL deliberately fails
+on incorrect row contents/counts. Each successful query returns `verified = 1`; statement IDs in `verification` can be
+passed to `aws redshift-data get-statement-result` using the corresponding account's credentials and region.
 
 This environment incurs charges: the provisioned cluster runs until deleted; Serverless compute/storage, interface
-endpoints, S3/Glue storage, and Secrets Manager have their own pricing. Delete it after testing. The example skips final
-warehouse snapshots and allows deletion of the owned fixture bucket's contents.
+endpoints, S3/Glue storage, Secrets Manager, and the default DynamoDB table, PITR backups, and zero-ETL exports have
+their own pricing. COPY ingestion can incur charges if enabled. Delete it after testing, first deleting the active
+zero-ETL integration as described under [cleanup](#cleanup-and-bootstrap-semantics). The example skips final warehouse
+snapshots and allows deletion of the owned fixture bucket's contents.
 
 The example has scoped Trivy exceptions for its disposable fixtures: AWS-managed encryption keys (`AWS-0084`,
 `AWS-0098`, `AWS-0132`), no VPC flow-log infrastructure (`AWS-0178`), and no S3 access-log bucket or retained versions
 (`AWS-0089`, `AWS-0090`). The resources remain encrypted, the bucket blocks public access, SQL uses verified TLS by
 default (`direct_sslmode`), and public SQL access requires the explicit restricted-CIDR opt-in. These exceptions are
 documented beside the resources; they are not a production security baseline.
+
+## Readback assertions
+
+Normal `terraform apply` runs blocking lifecycle postconditions on the example's SQL catalog and AWS service lookups.
+An incorrect observed value fails the apply; these are not warning-only `check` blocks and there is no separate
+verification switch.
+
+Assertions verify readable object properties, permission options, memberships, sharing and integration bindings, and
+infrastructure relationships. Missing-object lookup errors also fail verification. They do not compare IDs or selectors
+that merely echo configuration and call that independent evidence. Where there is no independent service lookup,
+provider refresh and behavioral checks provide the evidence instead.
+
+Write-only passwords cannot be read back, policy grants require the live policy queries above, and optional SSO/model
+features are checked only when their prerequisites are supplied. Metadata checks do not prove interactive SSO login,
+COPY ingestion, or replicated DynamoDB row contents. AWS policy metadata does not prove every effective authorization.
+
+Keep the same variable values for apply, plan, and cleanup. Optional migration flags below demonstrate changes that
+can be enabled on a later local apply. For offline tests and release-validation details, see
+[DEVELOPMENT.md](../../DEVELOPMENT.md#terraform-example-tests).
 
 ## What is managed
 
@@ -141,7 +162,7 @@ documented beside the resources; they are not a production security baseline.
 | `permissions.tf`           | Column and language grants, including column grants on a managed table, and grant listings.          |
 | `rls.tf`                   | Row-level security policy on managed tables, its lookup-table grant, attachment, and table security. |
 | `masking.tf`               | Masking policy on managed tables, its lookup-table grant, attachment, and listings.                  |
-| `copy.tf`                  | COPY templates, a template grant, an optional COPY JOB with its S3 event integration, and lookups.   |
+| `copy.tf`                  | COPY templates, a template grant, a non-AUTO COPY JOB with its S3 event integration, and lookups.    |
 | `diagnostics.tf`           | Configuration parameter lookups, an optional reader lockout listing, and an optional DEBUG grant.    |
 | `discovery.tf`             | Catalog listings of databases, schemas, tables, columns, and constraints, and a constraint comment.  |
 | `models.tf`                | Optional Bedrock model, role/group/delegated-user grants, PUBLIC lockdown, and lookups.              |
@@ -151,12 +172,12 @@ documented beside the resources; they are not a production security baseline.
 | `bootstrap.tf`             | Idempotent fixture tables/view and optional PUBLIC ASSUMEROLE policy setup.                          |
 | `verification.tf`          | Live shared-data and Spectrum queries.                                                               |
 | `identity_center.tf`       | Optional SSO application, directory groups/assignments, SQL identity provider and roles.             |
-| `connections.tf`           | Optional IAM/password connection probes for both warehouse types.                                    |
-| `zero_etl.tf`              | Optional zero-ETL integration, destination database, and lookup.                                     |
+| `connections.tf`           | Default Data API IAM probes and optional direct probes for both warehouse types.                     |
+| `zero_etl.tf`              | Zero-ETL destination database and lookup, plus alternative Aurora/RDS integrations.                  |
 | `zero_etl_dynamodb.tf`     | Existing or disposable DynamoDB source, export permissions, and Redshift integration.                |
 | `variables.tf`             | Deployment inputs and validation.                                                                    |
 | `outputs*.tf`              | Warehouse/fixture metadata, catalog observations, connection checks, query identities.               |
-| `tests/`                   | Mocked `terraform test` suites per feature area and their shared mocks (no AWS access).              |
+| `tests/`                   | Composition suites and shared provider fixtures.                                                     |
 | `terraform.tfvars.example` | Inputs with defaults and opt-in examples; copy to `terraform.tfvars` and adjust.                     |
 
 The example covers every resource and data-source type, with representative variants rather than every option:
@@ -166,7 +187,7 @@ user capability flags, and every provider connection mode. Resources also build 
 a view, a column grant, and a constraint comment on a managed table; RLS and masking policies on managed tables that read
 managed lookup tables through policy grants; and an object grant on a managed function overload. Not covered by a live
 apply: `with_permissions = false` on a second consumer database, a direct-connection `ca_cert_file`, real cross-account
-sharing (mocked in `tests/`), and Identity Center without an existing instance.
+sharing, and Identity Center without an existing instance.
 
 Administrator passwords are managed by AWS; only their secret ARNs are passed to the SQL provider and exported. The
 sample reader's and loader's `random_password` values and the reader secret version **retain the passwords in Terraform
@@ -207,9 +228,9 @@ Set `database_collation_insensitive = true` on a later apply to change the delib
 exist. A rejected change does not fall back to dropping the database; replacing a populated database requires an
 explicit user decision.
 
-Set `copy_job = { auto = false }` to include the S3 integration, target table, job definition readback, and lookups.
-Once the integration is active, changing `auto` to `true` exercises the in-place job update. COPY JOB can load data and
-incur ingestion charges.
+The default `copy_job = { auto = false }` includes the S3 integration, target table, job definition readback, and
+lookups without automatically loading files. Once the integration is active, changing `auto` to `true` exercises the
+in-place job update and can incur ingestion charges. Set `copy_job = null` to omit this fixture.
 
 ## Optional Identity Center
 
@@ -235,22 +256,36 @@ Use an assigned real user and a supported JDBC/browser client to verify SSO, wit
 application/groups is configuration coverage, not proof of interactive login. If login creates federated SQL users,
 remove those users before teardown; the identity-provider resource refuses to drop an integration with remaining users.
 
-## Optional zero-ETL integration
+## Zero-ETL integration
+
+By default, the example creates a disposable on-demand DynamoDB table with PITR and scoped export permissions, a
+zero-ETL integration, and its destination database. No source input or CI-only enable flag is needed. The empty source
+checks lifecycle and configuration, not replicated row contents. Set `zero_etl_create_dynamodb_source = false` to
+omit zero-ETL, or to select one of the alternative sources below.
+
+To use an existing Aurora/RDS source:
 
 ```hcl
-zero_etl_source_arn = "arn:aws:rds:eu-central-1:123456789012:cluster:orders"
+zero_etl_create_dynamodb_source = false
+zero_etl_source_arn             = "arn:aws:rds:eu-central-1:123456789012:cluster:orders"
 # Required for Aurora PostgreSQL, RDS for PostgreSQL, and RDS for Oracle sources:
 # zero_etl_source_database = "orders"
 ```
 
 The source cluster or instance must already exist in the consumer account and region with the engine settings AWS
-requires for zero-ETL. Instead, `zero_etl_create_source = true` creates a disposable Aurora PostgreSQL Serverless v2
+requires for zero-ETL. Instead, with the default DynamoDB source disabled, `zero_etl_create_source = true` creates a
+disposable Aurora PostgreSQL Serverless v2
 cluster with those settings and an `orders` database in the consumer VPC; it adds about 20 minutes to apply and Aurora
 charges while it exists.
 
-For DynamoDB, set `zero_etl_create_dynamodb_source = true` to create a disposable on-demand table with PITR and scoped
-export permissions, or supply an existing DynamoDB table ARN in `zero_etl_source_arn`. Existing tables need those
-prerequisites already configured. Leave `zero_etl_source_database` null. Choose only 1 existing or created source.
+To use an existing DynamoDB table, disable the default owned source and supply its ARN in `zero_etl_source_arn`.
+Existing tables need PITR and scoped export permissions already configured. Leave `zero_etl_source_database` null.
+Choose only one existing or created source.
+
+The default DynamoDB destination uses a 900-second refresh and disabled auto-remediation. Terraform postconditions
+verify the observed binding and settings. The source is empty, so this checks lifecycle and configuration convergence,
+not replicated row contents. On a later apply, `zero_etl_reconcile_settings = true` changes refresh to 1800 seconds and
+enables auto-remediation.
 
 In each case, the consumer workgroup turns on `enable_case_sensitive_identifier`, a namespace resource policy authorizes
 the source, and an `aws_rds_integration` (Aurora/RDS) or `aws_redshift_integration` (DynamoDB) replicates it.
@@ -291,8 +326,9 @@ persist into those sessions.
 
 ## Connection methods
 
-The default lifecycle uses managed-secret Data API authentication for both warehouse types. Additional probes read the
-existing administration database without taking ownership or promoting an IAM-derived SQL identity:
+The default lifecycle uses managed-secret Data API authentication for both warehouse types. Data API IAM probes also
+run by default, reading the existing administration database without taking ownership or promoting an IAM-derived SQL
+identity. Direct probes remain opt-in:
 
 | Probe                      | Warehouse   | Authentication                                              | Network requirement   |
 |----------------------------|-------------|-------------------------------------------------------------|-----------------------|
@@ -303,9 +339,13 @@ existing administration database without taking ownership or promoting an IAM-de
 | `producer_direct_password` | Provisioned | Ephemeral administrator password                            | SQL endpoint TCP 5439 |
 | `consumer_direct_password` | Serverless  | Ephemeral administrator password                            | SQL endpoint TCP 5439 |
 
+The default probe selection is:
+
 ```hcl
 connection_checks = ["producer_data_api_iam", "consumer_data_api_iam"]
 ```
+
+Set `connection_checks = []` to skip all probes.
 
 IAM probes need the respective `GetClusterCredentials`, `GetWorkgroup`, and `GetCredentials` permissions, plus Data API
 permissions for the API modes. Direct connections verify TLS certificates and hostnames. Run them from a client with
@@ -355,11 +395,16 @@ through Lake Formation.
 
 ## Cleanup and bootstrap semantics
 
+The default includes a DynamoDB zero-ETL integration. Delete it and wait for completion before destroying the example.
+From this directory, the helper performs both operations using the ambient consumer-account AWS credentials:
+
 ```sh
+bash delete-zero-etl.sh .
 terraform destroy
-# Or, from the provider root:
-task terraform -- destroy
 ```
+
+For alternative Aurora/RDS sources, use the deletion command in the [zero-ETL section](#zero-etl-integration) instead
+of the DynamoDB helper. The helper is a no-op when no managed DynamoDB integration exists in state.
 
 Keep the deployment's profiles, optional instance ARN, and required ephemeral password inputs available during destroy.
 Relationships/grants are removed before their parents, Glue removes its table before restrictive external-schema
@@ -390,23 +435,7 @@ The model must already be enabled in Amazon Bedrock for the consumer account and
 model access. Creation does not call Amazon Bedrock, but the first call of the inference function does. Without the
 variable, only the model listing of the local schema runs.
 
-## Configuration tests
+## Development
 
-The [composition suite](tests/composition.tftest.hcl) uses mocked apply runs for private defaults, ASSUMEROLE disabled,
-optional SSO, cross-account sharing, and all connection probes. Each feature area has its own suite next to it, such as
-[grants](tests/grants.tftest.hcl), and all suites share the mock values in [tests/mocks](tests/mocks). AWS, Redshift,
-and the root Random provider are mocked; these tests require no AWS credentials and create no infrastructure or SQL
-objects. The secret module uses a separate
-Random alias because Terraform cannot mock ephemeral resource types; its password generation is disabled, so this
-alias creates no resources. The bucket module's policy-document merge is mocked with valid JSON, while assertions
-check the configured TLS and cross-account policy. Scenario-specific states keep different account and networking
-deployments separate.
-
-Run from the provider root:
-
-```sh
-task terraform-test
-```
-
-CI runs this task and schema validation. Go tests exercise provider implementation; the opt-in acceptance suites and a
-real apply exercise Redshift. See [development checks](../../DEVELOPMENT.md#terraform-example-tests).
+For local provider builds, offline tests, mock fixtures, and CI/release validation, see
+[DEVELOPMENT.md](../../DEVELOPMENT.md).

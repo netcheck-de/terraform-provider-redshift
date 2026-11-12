@@ -91,13 +91,12 @@ func TestAccCopyTemplateVisibleListing(t *testing.T) {
 
 // TestAccCopyTemplateSimplify exercises the server-printed spatial clause and documented catalog listing.
 func TestAccCopyTemplateSimplify(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_copy_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(argument string) string {
 		return fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
@@ -121,7 +120,7 @@ data "redshift_templates" "database" {
   database = redshift_schema.copy.database
   depends_on = [redshift_template.spatial]
 }
-`, region, profile, workgroup, database, database, name, argument)
+`, region, workgroup, database, database, name, argument)
 	}
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},

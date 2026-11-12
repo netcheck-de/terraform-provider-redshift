@@ -15,6 +15,17 @@ data "redshift_view" "event_labels" {
   database = redshift_view.event_labels.database
   schema   = redshift_view.event_labels.schema
   name     = redshift_view.event_labels.name
+
+  lifecycle {
+    postcondition {
+      # Compare catalog fingerprints, not configured SQL: Redshift qualifies names and rewrites expressions.
+      condition = (
+        self.late_binding == redshift_view.event_labels.late_binding &&
+        length(self.definition_fingerprint) == 64 && self.definition_fingerprint == redshift_view.event_labels.definition_fingerprint
+      )
+      error_message = "The bound event-label view must retain its binding mode and catalog definition."
+    }
+  }
 }
 
 # A late-binding view is not bound to the table, so the table can be dropped or altered independently.
@@ -51,6 +62,17 @@ data "redshift_materialized_view" "label_counts" {
   database = redshift_materialized_view.label_counts.database
   schema   = redshift_materialized_view.label_counts.schema
   name     = redshift_materialized_view.label_counts.name
+
+  lifecycle {
+    postcondition {
+      # Storage options are deliberately not checked: this lookup cannot observe distribution/sort keys.
+      condition = (
+        self.auto_refresh == redshift_materialized_view.label_counts.auto_refresh &&
+        length(self.definition_fingerprint) == 64 && self.definition_fingerprint == redshift_materialized_view.label_counts.definition_fingerprint
+      )
+      error_message = "The label-count materialized view must retain its canonical catalog definition and configured automatic-refresh flag."
+    }
+  }
 }
 
 # A view over a Terraform-managed table. Late binding keeps the table's own changes possible: Redshift refuses DROP
@@ -72,6 +94,20 @@ data "redshift_views" "example" {
   schema   = redshift_schema.local.name
 
   depends_on = [redshift_view.event_labels, redshift_view.event_labels_late, redshift_view.order_totals]
+
+  lifecycle {
+    postcondition {
+      condition = alltrue([
+        for expected in [redshift_view.event_labels, redshift_view.event_labels_late, redshift_view.order_totals] :
+        anytrue([for observed in self.views :
+          observed.name == expected.name && observed.schema == expected.schema &&
+          observed.late_binding == expected.late_binding && length(observed.definition_fingerprint) == 64 &&
+          observed.definition_fingerprint == expected.definition_fingerprint
+        ])
+      ])
+      error_message = "The view catalog must contain all three managed views with their bound/late-binding flags and canonical definitions."
+    }
+  }
 }
 
 data "redshift_materialized_views" "example" {

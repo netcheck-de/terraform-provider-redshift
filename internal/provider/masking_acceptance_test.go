@@ -22,22 +22,21 @@ import (
 // and teardown in dependency order. The policy reads its lookup table, so masking succeeds only once the grant
 // applied, even though no catalog reports the grant.
 func TestAccMaskingLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_masking_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(expression string, priority int) string {
 		return fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
 resource "redshift_database" "local" { name = %q }
-resource "redshift_role" "readers" { name = "%[5]s_readers" }
+resource "redshift_role" "readers" { name = "%[4]s_readers" }
 resource "redshift_masking_policy" "email" {
   database = redshift_database.local.name
-  name = "%[5]s_email"
-  expression = %[6]q
+  name = "%[4]s_email"
+  expression = %[5]q
   input_column {
     name = "email"
     type = "VARCHAR(256)"
@@ -59,7 +58,7 @@ resource "redshift_masking_policy_attachment" "email" {
   columns = ["email"]
   grantee = redshift_role.readers.name
   grantee_type = "ROLE"
-  priority = %[7]d
+  priority = %[6]d
   depends_on = [redshift_policy_grant.lookup]
 }
 data "redshift_masking_policy" "email" {
@@ -83,10 +82,10 @@ data "redshift_masking_policy_attachments" "customers" {
   schema = redshift_masking_policy_attachment.email.schema
   relation = redshift_masking_policy_attachment.email.relation
 }
-`, region, profile, workgroup, database, name, expression, priority)
+`, region, workgroup, database, name, expression, priority)
 	}
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
@@ -110,12 +109,11 @@ data "redshift_masking_policy_attachments" "customers" {
 			{Config: fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
 resource "redshift_database" "local" { name = %q }
-`, region, profile, workgroup, database, name)},
+`, region, workgroup, database, name)},
 			{Config: initial, PreConfig: func() {
 				_, err := client.Query(ctx, target, `CREATE TABLE public.fixture_customers (id INTEGER, email VARCHAR(256))`, nil)
 				require.NoError(t, err)

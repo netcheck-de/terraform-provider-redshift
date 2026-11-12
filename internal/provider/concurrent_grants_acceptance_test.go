@@ -19,11 +19,11 @@ import (
 func TestAccConcurrentSharedGrants(t *testing.T) {
 	testAccPreCheck(t, "REDSHIFT_ACC_SHARED_DATABASE")
 
-	region, profile := os.Getenv("REDSHIFT_ACC_REGION"), os.Getenv("REDSHIFT_ACC_PROFILE")
+	region := os.Getenv("REDSHIFT_ACC_REGION")
 	workgroup, database := os.Getenv("REDSHIFT_ACC_WORKGROUP"), os.Getenv("REDSHIFT_ACC_DATABASE")
 
 	shared, secret := os.Getenv("REDSHIFT_ACC_SHARED_DATABASE"), os.Getenv("REDSHIFT_ACC_SECRET_ARN")
-	for _, value := range []string{region, profile, workgroup, database, secret} {
+	for _, value := range []string{region, workgroup, database, secret} {
 		require.NotEmpty(t, value)
 	}
 
@@ -31,7 +31,6 @@ func TestAccConcurrentSharedGrants(t *testing.T) {
 	configuration := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
   secret_arn = %q
@@ -47,7 +46,7 @@ resource "redshift_grant" "fixture" {
   scope = ["DATABASE", "SCHEMAS", "TABLES"][count.index %% 3]
   privileges = count.index %% 3 == 2 ? ["SELECT"] : ["USAGE"]
 }
-`, region, profile, workgroup, database, secret, prefix, shared)
+`, region, workgroup, database, secret, prefix, shared)
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
 			"redshift": providerserver.NewProtocol6WithError(New("test")()),

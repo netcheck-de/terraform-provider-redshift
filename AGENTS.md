@@ -12,7 +12,7 @@ Read and follow [DEVELOPMENT.md](DEVELOPMENT.md) as the project's instruction se
 
 ## Commands
 
-- Run `task check` before finishing; also run `task terraform-check` and `task terraform-test` when examples change.
+- Run `task check` before finishing; also run `task terraform-check` when Terraform configurations change.
 - Run `task docs` after changing documentation sources.
 
 ## Guardrails

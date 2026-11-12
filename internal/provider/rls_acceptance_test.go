@@ -25,14 +25,13 @@ import (
 // changes, imports, predicate drift, a WITH change that replaces the attached policy, and that destroying table
 // security turns row-level security off.
 func TestAccRlsLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	name, role := "acc_rls_"+suffix, "acc_rls_reader_"+suffix
 	configuration := func(predicate, conjunction string, protected bool) string {
 		base := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
@@ -60,7 +59,7 @@ resource "redshift_rls_policy_attachment" "reader" {
   }
 }
 data "redshift_rls_policies" "local" { database = redshift_database.local.name }
-`, region, profile, workgroup, database, name, role, predicate)
+`, region, workgroup, database, name, role, predicate)
 		if !protected {
 			return base
 		}
@@ -115,7 +114,7 @@ data "redshift_table_securities" "local" {
   }`, 1)
 	}
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
@@ -145,7 +144,6 @@ data "redshift_table_securities" "local" {
 			{Config: `
 provider "redshift" {
   region = "` + region + `"
-  profile = "` + profile + `"
   workgroup_name = "` + workgroup + `"
   database = "` + database + `"
 }

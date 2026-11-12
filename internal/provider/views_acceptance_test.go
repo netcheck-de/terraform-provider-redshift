@@ -22,13 +22,12 @@ import (
 // TestAccViewLifecycle verifies ordinary, late-binding, and materialized views: creation, lookups, import, in-place
 // query, storage, and refresh changes, definition drift detection and repair, and restrictive deletion.
 func TestAccViewLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_views_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(label string, autoRefresh, enabled bool) string {
 		base := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
@@ -37,7 +36,7 @@ resource "redshift_schema" "local" {
   database = redshift_database.local.name
   name = "serving"
 }
-`, region, profile, workgroup, database, name)
+`, region, workgroup, database, name)
 		if !enabled {
 			return base
 		}
@@ -90,7 +89,7 @@ data "redshift_materialized_view" "counts" {
 `, label, autoRefresh, storage)
 	}
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}

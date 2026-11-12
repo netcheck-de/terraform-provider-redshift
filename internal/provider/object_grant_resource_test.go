@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleExemption("redshift_object_grant", "TestObjectGrantLifecycle uses exercisePrivilege and privilegeCatalog.")
+
 var _ = registerReplacementPolicy("redshift_object_grant", map[string]replaceRule{
 	"database_type":           replaceAlways,
 	"database_name":           replaceAlways,

@@ -20,10 +20,10 @@ import (
 
 // TestAccDatashareScopedGrants checks current/future objects, replacement, imports, drift, and cleanup in isolated state.
 func TestAccDatashareScopedGrants(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_scoped_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
@@ -52,7 +52,6 @@ func TestAccDatashareScopedGrants(t *testing.T) {
 	base := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
@@ -64,7 +63,7 @@ resource "redshift_schema" "local" {
 resource "redshift_datashare" "local" {
   database = redshift_database.local.name
   name = %q
-}`, region, profile, workgroup, database, name, name)
+}`, region, workgroup, database, name, name)
 	grants := `
 resource "redshift_grant" "schema" {
   database_name = redshift_schema.local.database
@@ -86,6 +85,11 @@ data "redshift_grant" "tables" {
   schema_name = redshift_grant.tables.schema_name
   datashare = redshift_grant.tables.datashare
   scope = "TABLES"
+}
+data "redshift_grants" "share" {
+  database_name = redshift_grant.tables.database_name
+  schema_name = redshift_grant.tables.schema_name
+  depends_on = [redshift_grant.tables]
 }`
 	execute := func(sql string) {
 		_, err := client.Query(ctx, connection, sql, nil)
@@ -114,6 +118,9 @@ data "redshift_grant" "tables" {
 			{ResourceName: "redshift_grant.schema", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_grant.tables", ImportState: true, ImportStateVerify: true},
 			{Config: base + grants, PlanOnly: true},
+			{Config: base + grants, Check: resource.TestCheckTypeSetElemNestedAttrs("data.redshift_grants.share", "grants.*", map[string]string{
+				"datashare": name, "scope": "TABLES", "privileges.#": "1",
+			})},
 			{Config: base + grants, PreConfig: func() {
 				execute(sqlclient.Stmt("REVOKE SELECT FOR TABLES IN SCHEMA serving FROM DATASHARE").Ident(name).String())
 			}, Check: resource.TestCheckResourceAttr("data.redshift_grant.tables", "privileges.#", "1")},

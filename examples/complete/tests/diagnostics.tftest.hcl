@@ -15,17 +15,53 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
 }
-mock_provider "redshift" { alias = "producer_data_api_iam" }
-mock_provider "redshift" { alias = "consumer_data_api_iam" }
-mock_provider "redshift" { alias = "producer_direct_iam" }
-mock_provider "redshift" { alias = "consumer_direct_iam" }
-mock_provider "redshift" { alias = "producer_direct_password" }
-mock_provider "redshift" { alias = "consumer_direct_password" }
+
+run "diagnostics_missing_debug_grant_blocks" {
+  command = apply
+
+  variables {
+    federated_debug_database = "sales_db"
+  }
+
+  override_data {
+    target = data.redshift_debug_grant.account_admins[0]
+    values = { exists = false }
+  }
+
+  expect_failures = [data.redshift_debug_grant.account_admins[0]]
+}
+mock_provider "redshift" {
+  alias  = "producer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
 
 override_data {
   target = data.redshift_configuration.case_sensitive_identifiers

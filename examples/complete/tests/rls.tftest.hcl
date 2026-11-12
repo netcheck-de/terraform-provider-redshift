@@ -14,27 +14,95 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
 }
-mock_provider "redshift" { alias = "producer_data_api_iam" }
-mock_provider "redshift" { alias = "consumer_data_api_iam" }
-mock_provider "redshift" { alias = "producer_direct_iam" }
-mock_provider "redshift" { alias = "consumer_direct_iam" }
-mock_provider "redshift" { alias = "producer_direct_password" }
-mock_provider "redshift" { alias = "consumer_direct_password" }
+mock_provider "redshift" {
+  alias  = "producer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
 
-# Observed catalog values deliberately differ from configuration where Redshift rewrites them. Terraform cannot
-# override computed lists of nested objects (column, rls_policies), so those keep their mocked values.
+# Observed catalog values deliberately differ from configuration where Redshift rewrites SQL.
 override_data {
   target = data.redshift_rls_policy.own_region
   values = {
     id                     = "rls-policy-lookup-identity"
     predicate              = "\"region\" IN (SELECT \"region\" FROM example_schema.example_rls_regions WHERE \"reader\" = CAST(current_user AS TEXT))"
     definition_fingerprint = "observed-fingerprint"
+    alias                  = null
   }
+}
+
+run "rls_missing_attachment_blocks" {
+  command = apply
+
+  override_data {
+    target = data.redshift_rls_policy_attachment.readers
+    values = { exists = false }
+  }
+
+  expect_failures = [data.redshift_rls_policy_attachment.readers]
+}
+
+run "rls_disabled_security_blocks" {
+  command = apply
+
+  override_data {
+    target = data.redshift_table_security.rls_events
+    values = { row_level_security = false, conjunction_type = "AND", datashare_row_level_security = true }
+  }
+
+  expect_failures = [data.redshift_table_security.rls_events]
+}
+
+run "rls_changed_predicate_blocks" {
+  command = apply
+
+  override_data {
+    target = data.redshift_rls_policy.own_region
+    values = {
+      alias                  = null
+      definition_fingerprint = "different-catalog-predicate"
+    }
+  }
+
+  expect_failures = [data.redshift_rls_policy.own_region]
+}
+
+run "rls_wrong_table_owner_blocks" {
+  command = apply
+
+  override_data {
+    target = data.redshift_table.rls_regions
+    values = { owner = "unexpected_owner" }
+  }
+
+  expect_failures = [data.redshift_table.rls_regions]
 }
 override_data {
   target = data.redshift_rls_policy_attachment.readers

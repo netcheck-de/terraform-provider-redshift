@@ -19,7 +19,7 @@ import (
 
 // These models never invoke Bedrock. They exercise Terraform's import, adoption apply, refresh and subsequent plan.
 func TestAccExternalModelImportAdoption(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_MODEL_ROLE")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_MODEL_ROLE")
 	for _, scenario := range []struct {
 		name, response string
 		nonowner       bool
@@ -40,7 +40,7 @@ func TestAccExternalModelImportAdoption(t *testing.T) {
 				assert.NoError(t, err, "clean up imported model")
 			})
 
-			provider := fmt.Sprintf("provider \"redshift\" {\n region = %q\n profile = %q\n workgroup_name = %q\n database = %q\n}\n", region, profile, workgroup, database)
+			provider := fmt.Sprintf("provider \"redshift\" {\n region = %q\n workgroup_name = %q\n database = %q\n}\n", region, workgroup, database)
 			importID := identity(map[string]string{"database": database, "schema": f.schema, "name": "imported_model"}).ValueString()
 			observer := f
 			grantee := ""

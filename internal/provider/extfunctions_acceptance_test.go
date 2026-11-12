@@ -16,7 +16,7 @@ import (
 // the routine listings, imports it, and drops it with the database. REDSHIFT_ACC_LAMBDA_FUNCTION names an existing
 // Lambda function; REDSHIFT_ACC_LAMBDA_ROLE optionally names an associated role ARN instead of the default role.
 func TestAccExternalFunctionLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_LAMBDA_FUNCTION")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_LAMBDA_FUNCTION")
 
 	role := os.Getenv("REDSHIFT_ACC_LAMBDA_ROLE")
 	if role == "" {
@@ -28,7 +28,6 @@ func TestAccExternalFunctionLifecycle(t *testing.T) {
 		return fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
@@ -54,7 +53,7 @@ data "redshift_routine_parameters" "upper" {
   schema       = redshift_external_function.upper.schema
   routine_name = redshift_external_function.upper.name
 }
-`, region, profile, workgroup, database, name, volatility, os.Getenv("REDSHIFT_ACC_LAMBDA_FUNCTION"), role, retryTimeout)
+`, region, workgroup, database, name, volatility, os.Getenv("REDSHIFT_ACC_LAMBDA_FUNCTION"), role, retryTimeout)
 	}
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},

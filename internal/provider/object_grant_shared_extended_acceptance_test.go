@@ -25,9 +25,9 @@ import (
 // TestAccObjectGrantSharedExtended creates SQL-only routine fixtures inside an already-shared producer schema. It
 // verifies name-wide functions (including shared procedures), snapshot options, shared INSERT grants, and teardown.
 func TestAccObjectGrantSharedExtended(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SHARED_DATABASE", "REDSHIFT_ACC_SHARED_SCHEMA", "REDSHIFT_ACC_SHARED_PRODUCER_CLUSTER", "REDSHIFT_ACC_SHARED_PRODUCER_SECRET_ARN", "REDSHIFT_ACC_SHARED_DATASHARE")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SHARED_DATABASE", "REDSHIFT_ACC_SHARED_SCHEMA", "REDSHIFT_ACC_SHARED_PRODUCER_CLUSTER", "REDSHIFT_ACC_SHARED_PRODUCER_SECRET_ARN", "REDSHIFT_ACC_SHARED_DATASHARE")
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	producer := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Cluster: os.Getenv("REDSHIFT_ACC_SHARED_PRODUCER_CLUSTER"), SecretARN: os.Getenv("REDSHIFT_ACC_SHARED_PRODUCER_SECRET_ARN"), Timeout: 5 * time.Minute, Poll: time.Second}
@@ -72,7 +72,7 @@ func TestAccObjectGrantSharedExtended(t *testing.T) {
 			privileges, grantOptions, execute, executeOptions = `[]`, `[]`, `[]`, `[]`
 		}
 
-		return grantAcceptanceProvider(region, profile, workgroup, database) + fmt.Sprintf(`
+		return grantAcceptanceProvider(region, workgroup, database) + fmt.Sprintf(`
 resource "redshift_user" "single" {
   name = "acc_shared_single_%[1]s"
   password_wo = "Acc1Shared%[1]s!"

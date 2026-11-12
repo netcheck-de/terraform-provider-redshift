@@ -177,20 +177,33 @@ func exercisePrivilege(t *testing.T, factory func() resource.Resource, fields ma
 				r := factory().(*privilegeResource)
 				r.resourceClient = testResourceClient(client)
 
-				diagnostics := invoke(t, r, operation, data)
+				state, diagnostics := invokeWithState(t, r, operation, data)
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
 
 					queries = calls
 				} else {
 					require.True(t, diagnostics.HasError(), "failure %d: %v", failAt, diagnostics)
+
+					if operation == "read" || operation == "delete" {
+						assert.True(t, state.Raw.Equal(testState(t, r, data).Raw), "query failure must preserve prior state")
+					}
+
+					if operation == "create" && len(c.writes) > 0 {
+						assert.False(t, state.Raw.IsNull(), "successful permission mutations must remain tracked")
+						assert.True(t, state.Raw.IsFullyKnown())
+					}
 				}
 			}
 
 			r := factory().(*privilegeResource)
 			r.resourceClient = testResourceClient(&privilegeCatalog{missing: true})
-			diagnostics := invoke(t, r, operation, data)
+			state, diagnostics := invokeWithState(t, r, operation, data)
 			assert.Equal(t, operation == "create" || operation == "update", diagnostics.HasError(), "%v", diagnostics)
+
+			if operation == "read" {
+				assert.True(t, state.Raw.IsNull(), "a missing permission parent must remove the resource from state")
+			}
 		})
 	}
 
