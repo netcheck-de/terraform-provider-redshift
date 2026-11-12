@@ -11,7 +11,7 @@ through the Data API or direct TLS. Use the AWS
 |-- docs/               # Generated documentation
 |-- examples/
 |   |-- complete/       # Integrated usage
-|   |   `-- tests/      # Mocked composition tests
+|   |   `-- tests/      # Composition suites and fixtures
 |   |       `-- mocks/  # Shared provider mocks
 |   |-- data-sources/   # Data-source examples
 |   |-- provider/       # Provider configuration examples
@@ -21,6 +21,10 @@ through the Data API or direct TLS. Use the AWS
 |   |-- redshiftconn/   # Direct pgx transport
 |   |-- redshiftdata/   # Data API transport
 |   `-- sqlclient/      # Client interface, SQL builders, mutation serialization
+|-- tests/
+|   `-- acceptance/     # Live acceptance fixtures and CI/recovery guide
+|       |-- infra/      # Independent live fixtures using the pinned released provider
+|           `-- tests/  # Offline mocked fixture tests
 `-- templates/          # Documentation templates
 ```
 
@@ -29,21 +33,25 @@ through the Data API or direct TLS. Use the AWS
 Install Go matching `go.mod`, Terraform 1.16+, Task v3, `curl`, yamllint, and markdownlint-cli
 (`brew install yamllint markdownlint-cli`). Run commands from the repository root.
 
-| Command                                        | Purpose                                                  |
-|------------------------------------------------|----------------------------------------------------------|
-| `task check`                                   | Lint, formatting, offline race tests, coverage, and docs |
-| `task test`                                    | Offline tests with race detection and coverage           |
-| `task fmt` / `task markdown-fmt`               | Format Go / Markdown                                     |
-| `task lint` / `task lint-fix`                  | Go lint / autofix                                        |
-| `task golden`                                  | Regenerate SQL goldens                                   |
-| `task docs` / `task docs-check`                | Generate / validate documentation                        |
-| `task terraform-check` / `task terraform-test` | Validate / test examples                                 |
-| `task terraform -- <args>`                     | Local provider CLI; `TF_DIR` selects the configuration   |
+| Command                          | Purpose                                                  |
+|----------------------------------|----------------------------------------------------------|
+| `task check`                     | Lint, formatting, offline race tests, coverage, and docs |
+| `task test`                      | Offline tests with race detection and coverage           |
+| `task fmt` / `task markdown-fmt` | Format Go / Markdown                                     |
+| `task lint` / `task lint-fix`    | Go lint / autofix                                        |
+| `task golden`                    | Regenerate SQL goldens                                   |
+| `task docs` / `task docs-check`  | Generate / validate documentation                        |
+| `task terraform-check`           | Terraform formatting, validation, and offline examples   |
+| `task terraform -- <args>`       | Local provider CLI; `TF_DIR` selects the configuration   |
 
 Builds and caches live in `.cache/`. Task installs the golangci-lint version in `.golangci-lint-version`; other pinned
 tools are `tool` directives in `go.mod`, invoked with `go tool <name>`.
 
-Run `task check` before submitting changes; also run `task terraform-check` and `task terraform-test` when examples change.
+CI tests Terraform 1.16 and the latest release. Terraform 1.11–1.15 are untested because their `terraform test` passes
+unset optional ephemeral inputs to apply and rejects the run
+([hashicorp/terraform#38974](https://github.com/hashicorp/terraform/issues/38974), fixed in 1.16.0).
+
+Run `task check` before submitting changes; also run `task terraform-check` when Terraform configurations change.
 
 ## Architecture and lifecycle
 
@@ -53,6 +61,29 @@ Run `task check` before submitting changes; also run `task terraform-check` and 
   is gone; genuine query failures remain errors.
 - Synchronous DROP needs no post-delete refresh. Use only checks needed for safe deletion; retain convergence checks
   for permission reconciliation and asynchronous operations.
+
+## Required test coverage
+
+Add or update tests alongside behavior changes; extend existing suites rather than duplicating their coverage.
+
+| Change                   | Required coverage                                                                     |
+|--------------------------|---------------------------------------------------------------------------------------|
+| SQL rendering/validation | Unit tests and SQL goldens where applicable                                           |
+| Resource behavior        | Offline Terraform lifecycle/contracts and live acceptance coverage                    |
+| Data source              | Offline read/filter/error tests and live assertions against concrete fixtures         |
+| New resource/data source | Complete-example configuration, outputs, and mocked composition tests, plus the above |
+| Bug fix                  | Regression test reproducing the failure                                               |
+| Optional feature         | Explicit acceptance prerequisites and example CI flags where fixtures are available   |
+
+- Resource acceptance tests should cover create, meaningful updates, import, no-change plans, and deletion where supported.
+  Add drift and failure-recovery cases when relevant to the behavior being changed.
+- Data-source acceptance tests must check actual returned fields from known fixtures, not just successful reads or empty
+  results. Include filters and missing-object behavior where supported.
+- Mocked example tests check composition, not live SQL behavior; they do not replace acceptance tests.
+- A skipped acceptance test is not executed coverage. Keep fixture requirements explicit and enable self-contained
+  optional example features in CI; do not assume externally managed identities or account settings exist.
+- Adding acceptance coverage is required; running AWS tests locally is not. Report which checks ran and which tests
+  skipped or still need live CI fixtures. Never deploy resources without authorization.
 
 ## Go test conventions
 
@@ -77,12 +108,13 @@ open work.
 2. Put pure renderers in `<type>_sql.go`, using `alterStep` for alterations. Reuse `privilegeResource` / `grantSpec` for
    permission resources where applicable. Pin SQL with `checkSQL`; use `runTranscripts` for ordering-sensitive flows.
 3. Register `registerReplacementPolicy`, `registerParity` (or an exemption), `registerLifecycleCase`, and the catalog
-   fake's `registerFakeFamily` in the type's tests. Cover every configurable input in the replacement policy.
+   fake's `registerFakeFamily` in the type's tests. Cover every configurable input in the replacement policy and meet
+   the [required test coverage](#required-test-coverage) for the new type.
 4. Add `templates/<kind>/<name>.md.tmpl` and per-type examples. Resource examples include `resource.tf`, `import.tf`, and
    `import.sh`; data sources use `data-source.tf`. Follow the [documentation format](#documentation).
 5. Extend `examples/complete/<block>.tf`, `outputs_<block>.tf`, and `tests/<block>.tftest.hcl`, using shared mocks.
-   Update the type tables and ownership matrix in `templates/index.md.tmpl`, then run `task check`,
-   `task terraform-check`, and `task terraform-test`.
+   Update the type tables and ownership matrix in `templates/index.md.tmpl`, then run `task check` and
+   `task terraform-check`.
 
 ### Schema conventions
 
@@ -127,27 +159,105 @@ have exactly one owning renderer or transcript test.
 
 ## Terraform example tests
 
-`task terraform-test` builds the local provider and runs mocked applies in `examples/complete`, without cloud credentials.
-Each suite must declare its mocks from `tests/mocks/`; Terraform does not share declarations between test files.
+### Run the complete example with a local provider
+
+From the repository root, the `terraform` task builds the provider and selects its isolated CLI configuration:
 
 ```sh
-task terraform-test -- -filter=tests/composition.tftest.hcl -verbose
+task terraform -- init -backend=false
+task terraform -- apply
+task terraform -- output -json warehouses
+task terraform -- output -json verification
 ```
 
-Override `TF_DIR` to use another configuration. These tests check composition, not SQL behavior.
+Unlike offline tests, these commands deploy real AWS resources. Follow the complete example's prerequisites, costs,
+and ordered cleanup instructions. Do not deploy without authorization.
 
-## Connection acceptance tests
+For the default DynamoDB integration, clean up the local-build deployment from the repository root with:
 
-Start with the [acceptance instructions](README.md#acceptance-test) and the
-[complete example](examples/complete/README.md); fixture prechecks live in `internal/provider/acc_test.go`.
+```sh
+bash examples/complete/delete-zero-etl.sh examples/complete
+task terraform -- destroy
+```
+
+### Offline verification
+
+`task terraform-check` checks formatting of all repository Terraform sources and initializes/validates
+`examples/complete` and `tests/acceptance/infra`, without cloud credentials. Individual resource/data-source snippets
+receive formatting checks but are not standalone configurations. The complete example uses the local provider build;
+acceptance fixtures use their pinned Registry release with development overrides disabled.
+
+Acceptance fixture tests run native `terraform test` using `TF_CLI_CONFIG_FILE=/dev/null`, as described in the
+[fixture guide](tests/acceptance/README.md). Existing provider Go contracts, including real resource lifecycles against
+focused fake SQL catalogs and static example type/output coverage, run through `task check`. None of these checks deploys
+AWS resources. The `terraform` task remains available for normal local development-provider CLI commands.
+
+The complete example uses blocking lifecycle postconditions on catalog and AWS readbacks. They remain enabled during
+normal local and CI applies; `check` blocks are not used for release gates because their failures only warn.
+
+Release example CI performs one apply, requires an empty plan, then runs the zero-ETL deletion helper and destroy.
+It does not perform a second apply: optional update examples remain available locally, but are not live release-update
+coverage. Terraform postconditions verify observed state, not row replication or every AWS policy's
+effective authorization. Keep behavioral SQL queries for checks that require exercising access rather than metadata.
+
+## Acceptance tests
+
+Use the [live-test workflow guide](tests/acceptance/README.md) and the [complete example](examples/complete/README.md);
+fixture prechecks live in `internal/provider/acc_test.go`. Live fixtures are independent of the complete example and
+live in `tests/acceptance/infra`; their offline composition tests run via `task terraform-check`.
+
+The [live-test workflow guide](tests/acceptance/README.md) describes the AWS fixture in the organization-managed `dev` environment,
+the same Serverless/cluster acceptance suite on main and release, release-example validation and failed-cleanup recovery.
+Pull requests never deploy it.
+
+Acceptance fixture SQL is managed by an exactly pinned released provider, with development overrides disabled;
+the Go harness supplies the development provider separately. Zero-ETL runs end-to-end only in the complete example.
+Acceptance tests inherit the standard AWS credential chain: use `AWS_PROFILE` locally if needed, or environment
+credentials as CI does. No acceptance-specific AWS profile setting or generated profile file is required.
 
 - Direct Serverless tests additionally use `REDSHIFT_ACC_DIRECT=1`; provisioned tests need `REDSHIFT_ACC_CLUSTER` and
-  `REDSHIFT_ACC_DB_USER`. Secret-mode tests use `REDSHIFT_ACC_SECRET_ARN`.
+  `REDSHIFT_ACC_DB_USER`. Secret-mode tests use `REDSHIFT_ACC_SECRET_ARN` for Serverless and
+  `REDSHIFT_ACC_CLUSTER_SECRET_ARN` for the provisioned cluster, so both suites can run in one process.
+- Live Terraform assertions now cover every registered resource and data source. Feature-specific tests still require
+  their own fixtures: COPY listings need a COPY source/role, and user-lockout listings require
+  `REDSHIFT_ACC_USER_LOCKOUTS=1` plus a provisioned cluster with lockout security enabled.
 - Prefer `verify-full`, with `REDSHIFT_ACC_CA_CERT_FILE` if needed; `REDSHIFT_ACC_SSLMODE=require` is for disposable fixtures.
 - Use isolated, disposable warehouses/accounts and state. Register cleanup before mutations and verify restoration;
   never use production warehouses or existing directory memberships as fixtures.
 - Remove zero-ETL integrations before destination databases, and consumer associations before producer shares/warehouses.
   Large-table tests can load about 1 GiB; model metadata tests do not invoke Bedrock or train models.
+
+### Run individual live tests
+
+`TestAccLocalSQLLifecycle` needs credentials with privileges to create/drop databases and roles, create schemas, and
+grant schema privileges. It creates uniquely named databases, schemas, roles, users, groups, memberships, and
+object/system/default grants; checks no-change plans and imports; updates a grant; repairs drift; and verifies cleanup:
+
+```sh
+TF_ACC=1 \
+REDSHIFT_ACC_REGION=eu-central-1 \
+REDSHIFT_ACC_WORKGROUP=test-workgroup \
+REDSHIFT_ACC_DATABASE=master \
+go test ./internal/provider -run '^TestAccLocalSQLLifecycle$' -count=1 -v -timeout=0
+```
+
+Run from the module directory with disposable test-account credentials. Without `TF_ACC=1`, live tests skip.
+`AWS_PROFILE` is optional; the standard AWS credential chain also supports CI environment credentials.
+
+Other useful tests:
+
+- `TestAccAssumeroleGrantLifecycle` additionally needs `REDSHIFT_ACC_ASSUMEROLE=1`, an attached default IAM role, and
+  a warehouse configured for identity-specific ASSUMEROLE control. It does not change warehouse-wide PUBLIC permissions.
+- `TestAccCommentLifecycle` verifies database/schema/table/view/column annotations, imports, updates, drift repair,
+  and comment-only deletion in a disposable database.
+- `TestAccDirectIAMQueries`, `TestAccTransportSwitchLifecycle`, and `TestAccDirectPasswordPrivileges` cover direct TLS,
+  transport changes, imports, and restricted password identities. Set `REDSHIFT_ACC_DIRECT=1` and ensure endpoint access.
+
+Select one with `go test ./internal/provider -run '^<test-name>$' -count=1 -v -timeout=0`. Cross-account sharing and
+Identity Center need external prerequisites. Set `REDSHIFT_ACC_CA_CERT_FILE` to an Amazon Trust Services PEM bundle if
+the platform rejects the Serverless certificate; certificate-chain and hostname verification remain enabled.
+
+Open enhancements, test limitations, and external acceptance prerequisites are tracked in [TODO.md](TODO.md).
 
 ## Documentation
 
@@ -175,7 +285,8 @@ Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) for c
 changes). Subjects become release notes, so describe user-visible effects. `.goreleaser.yml` defines release assets and
 note grouping; `task snapshot` builds unsigned archives without publishing.
 
-1. Confirm `main` CI is green and run live acceptance tests when warranted.
+1. Confirm `main` CI and post-merge acceptance tests are green. The release workflow requires full acceptance coverage
+   and the complete example's apply and no-change plan before publishing.
 2. For a new series, update constraints in `README.md`, `examples/provider/provider.tf`, and
    `examples/complete/versions.tf`; regenerate docs and run project and Terraform checks.
 3. Only when authorized, create and push an annotated `vX.Y.Z` tag on the intended `main` commit.
