@@ -25,6 +25,7 @@ terraform.rc
 .terraformrc
 # Example dependency locks are local; go.sum remains versioned.
 examples/**/.terraform.lock.hcl
+tests/acceptance/infra/.terraform.lock.hcl
 
 # Local configuration and tools
 .env
