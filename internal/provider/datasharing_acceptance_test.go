@@ -23,10 +23,10 @@ import (
 // Formation account, a VIA DATA CATALOG grant. Everything lives in an isolated database that the cleanup removes
 // without cascading.
 func TestAccDatasharing(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_sharing_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
@@ -56,6 +56,12 @@ resource "redshift_datashare_grant" "lake_formation" {
   datashare = redshift_datashare.local.name
   account_id = %q
   via_data_catalog = true
+}
+data "redshift_datashare_grant" "lake_formation" {
+  database = redshift_datashare_grant.lake_formation.database
+  datashare = redshift_datashare_grant.lake_formation.datashare
+  account_id = redshift_datashare_grant.lake_formation.account_id
+  via_data_catalog = true
 }`, account)
 		grantDependency, grantCount = "redshift_datashare_grant.lake_formation", "1"
 	}
@@ -63,7 +69,6 @@ resource "redshift_datashare_grant" "lake_formation" {
 	configuration := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
@@ -73,6 +78,16 @@ resource "redshift_datashare" "local" {
   name = %q
 }
 resource "redshift_role" "operators" { name = %q }
+data "redshift_datashare" "local" {
+  database = redshift_datashare.local.database
+  name = redshift_datashare.local.name
+}
+// No usage is granted to the producer itself; this lookup must not invent a consumer grant.
+data "redshift_datashare_grant" "ungranted" {
+  database = redshift_datashare.local.database
+  datashare = redshift_datashare.local.name
+  namespace_id = redshift_datashare.local.producer_namespace
+}
 resource "redshift_datashare_privilege" "operators" {
   database_name = redshift_datashare.local.database
   datashare_name = redshift_datashare.local.name
@@ -96,15 +111,38 @@ data "redshift_inbound_datashares" "named" {
 data "redshift_datashare_privileges" "share" {
   datashare_name = redshift_datashare_privilege.operators.datashare_name
   grantee = redshift_datashare_privilege.operators.grantee
+  grantee_type = "ROLE"
+}
+data "redshift_datashare_privileges" "wrong_type" {
+  datashare_name = redshift_datashare_privilege.operators.datashare_name
+  grantee = redshift_datashare_privilege.operators.grantee
+  grantee_type = "USER"
 }
 data "redshift_datashare_grants" "share" {
   datashare = redshift_datashare.local.name
   depends_on = [%s]
-}%s`, region, profile, workgroup, database, name, name, name, grantDependency, lakeFormation)
+}%s`, region, workgroup, database, name, name, name, grantDependency, lakeFormation)
+	checks := []resource.TestCheckFunc{
+		resource.TestCheckResourceAttr("data.redshift_datashare_grant.ungranted", "exists", "false"),
+	}
+
+	for _, attribute := range []string{"id", "database", "name", "publicly_accessible", "owner", "share_id", "producer_account", "producer_namespace", "created_at"} {
+		checks = append(checks, resource.TestCheckResourceAttrPair("data.redshift_datashare.local", attribute, "redshift_datashare.local", attribute))
+	}
+
+	if lakeFormation != "" {
+		checks = append(checks,
+			resource.TestCheckResourceAttr("data.redshift_datashare_grant.lake_formation", "exists", "true"),
+			resource.TestCheckResourceAttr("data.redshift_datashare_grant.lake_formation", "via_data_catalog", "true"),
+			resource.TestCheckResourceAttrPair("data.redshift_datashare_grant.lake_formation", "account_id", "redshift_datashare_grant.lake_formation", "account_id"),
+		)
+	}
+
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
 			{Config: configuration, Check: resource.ComposeAggregateTestCheckFunc(
+				resource.ComposeAggregateTestCheckFunc(checks...),
 				resource.TestCheckResourceAttrSet("redshift_datashare.local", "owner"),
 				resource.TestCheckResourceAttrSet("redshift_datashare.local", "share_id"),
 				resource.TestCheckResourceAttrSet("redshift_datashare.local", "producer_namespace"),
@@ -116,6 +154,7 @@ data "redshift_datashare_grants" "share" {
 				resource.TestCheckResourceAttrPair("data.redshift_datashares.named", "datashares.0.database", "redshift_datashare.local", "database"),
 				resource.TestCheckResourceAttr("data.redshift_inbound_datashares.named", "inbound_datashares.#", "0"),
 				resource.TestCheckResourceAttr("data.redshift_datashare_privileges.share", "datashare_privileges.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_datashare_privileges.wrong_type", "datashare_privileges.#", "0"),
 				resource.TestCheckResourceAttrPair("data.redshift_datashare_privileges.share", "datashare_privileges.0.database_name", "redshift_datashare.local", "database"),
 				resource.TestCheckResourceAttr("data.redshift_datashare_privileges.share", "datashare_privileges.0.grantee_type", "ROLE"),
 				resource.TestCheckResourceAttr("data.redshift_datashare_privileges.share", "datashare_privileges.0.privileges.#", "2"),

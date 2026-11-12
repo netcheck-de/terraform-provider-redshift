@@ -19,7 +19,7 @@ import (
 
 // The generated inference function is never called: visibility and explicit privilege rows prove the grant matrix.
 func TestAccExternalModelGrantMatrix(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_MODEL_ROLE", "REDSHIFT_ACC_DIRECT")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_MODEL_ROLE", "REDSHIFT_ACC_DIRECT")
 	f := newLiveValidationFixture(t)
 	t.Logf("isolated model grant fixture: schema=%s", f.schema)
 	user, password := f.user(t)
@@ -90,7 +90,6 @@ func TestAccExternalModelGrantMatrix(t *testing.T) {
 				return fmt.Sprintf(`
 provider "redshift" {
  region = %q
- profile = %q
  workgroup_name = %q
  database = %q
 }
@@ -112,7 +111,7 @@ data "redshift_object_grant" "model" {
  grantee = redshift_object_grant.model.grantee
  grantee_type = redshift_object_grant.model.grantee_type
 }
-`, region, profile, workgroup, database, database, f.schema, recipient.name, recipient.kind, privileges, options)
+`, region, workgroup, database, database, f.schema, recipient.name, recipient.kind, privileges, options)
 			}
 			check := func(execute, option bool) resource.TestCheckFunc {
 				return func(*terraform.State) error {

@@ -38,8 +38,8 @@ type regressionFixture struct {
 // newRegressionFixture prepares a uniquely named database and registers its cleanup before any mutation.
 func newRegressionFixture(t *testing.T, prefix string, flags ...string) regressionFixture {
 	t.Helper()
-	region, profile, workgroup, database := testAccWorkgroup(t, flags...)
-	cfg, err := config.LoadDefaultConfig(t.Context(), config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	region, workgroup, database := testAccWorkgroup(t, flags...)
+	cfg, err := config.LoadDefaultConfig(t.Context(), config.WithRegion(region))
 	require.NoError(t, err)
 
 	name := prefix + strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -49,11 +49,10 @@ func newRegressionFixture(t *testing.T, prefix string, flags ...string) regressi
 		provider: fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
-`, region, profile, workgroup, database),
+`, region, workgroup, database),
 	}
 
 	t.Cleanup(func() {
@@ -330,11 +329,10 @@ const settleWait = 40 * time.Second
 // table's primary key must converge and plan no change, which they did not when pgx returned the codes as numbers.
 func TestAccDirectCatalogCodes(t *testing.T) {
 	f := newRegressionFixture(t, "acc_direct_codes_", "REDSHIFT_ACC_DIRECT")
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
 	configuration := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   database = %q
   direct_connection {
     %s iam { workgroup_name = %q }
@@ -365,7 +363,7 @@ resource "redshift_table" "keyed" {
   }
   primary_key { columns = ["id"] }
 }
-`, region, profile, database, testAccSSLModeHCL(), workgroup, f.name)
+`, region, database, testAccSSLModeHCL(), workgroup, f.name)
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: regressionFactories,
 		Steps: []resource.TestStep{

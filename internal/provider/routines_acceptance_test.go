@@ -23,13 +23,12 @@ import (
 // TestAccRoutinesLifecycle verifies function and procedure creation, overload lookups and listings, in-place
 // redefinition, drift repair, import followed by an in-place plan, and restrictive deletion in an isolated database.
 func TestAccRoutinesLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_routines_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(functionBody, volatility, security string) string {
 		return fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
@@ -106,15 +105,46 @@ data "redshift_functions" "label" {
   name = "f_acc_label"
   depends_on = [redshift_function.label, redshift_function.label_overload]
 }
-data "redshift_procedures" "local" {
+data "redshift_procedures" "schema" {
   database = redshift_schema.local.database
   schema = redshift_schema.local.name
   depends_on = [redshift_procedure.scale, redshift_procedure.nonatomic]
 }
-`, region, profile, workgroup, database, name, volatility, functionBody, security)
+data "redshift_procedures" "scale" {
+  database = redshift_procedure.scale.database
+  schema = redshift_procedure.scale.schema
+  name = redshift_procedure.scale.name
+}
+provider "redshift" {
+  alias = "routines"
+  region = %q
+  workgroup_name = %q
+  database = redshift_database.local.name
+}
+data "redshift_routine_parameters" "default" {
+  provider = redshift.routines
+  schema = "serving"
+  routine_name = "sp_acc_scale"
+  routine_type = "PROCEDURE"
+  depends_on = [redshift_procedure.scale]
+}
+data "redshift_routine_parameters" "explicit" {
+  database = redshift_procedure.scale.database
+  schema = "serving"
+  routine_name = "sp_acc_scale"
+  routine_type = "PROCEDURE"
+}
+data "redshift_routine_parameters" "functions" {
+  database = redshift_schema.local.database
+  schema = "serving"
+  routine_name = "f_acc_label"
+  routine_type = "FUNCTION"
+  depends_on = [redshift_function.label, redshift_function.label_overload]
+}
+`, region, workgroup, database, name, volatility, functionBody, security, region, workgroup)
 	}
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
@@ -162,12 +192,30 @@ data "redshift_procedures" "local" {
 				resource.TestCheckResourceAttr("data.redshift_functions.label", "functions.1.volatility", "IMMUTABLE"),
 				resource.TestCheckResourceAttr("data.redshift_functions.label", "functions.1.language", "SQL"),
 				resource.TestCheckResourceAttrPair("data.redshift_functions.label", "functions.1.owner", "redshift_function.label", "owner"),
-				resource.TestCheckResourceAttr("data.redshift_procedures.local", "procedures.#", "2"),
-				resource.TestCheckResourceAttr("data.redshift_procedures.local", "procedures.0.name", "sp_acc_nonatomic"),
-				resource.TestCheckResourceAttr("data.redshift_procedures.local", "procedures.0.signature", ""),
-				resource.TestCheckResourceAttr("data.redshift_procedures.local", "procedures.1.name", "sp_acc_scale"),
-				resource.TestCheckResourceAttr("data.redshift_procedures.local", "procedures.1.signature", "INTEGER, BIGINT"),
-				resource.TestCheckResourceAttr("data.redshift_procedures.local", "procedures.1.security", "INVOKER"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.schema", "procedures.#", "2"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.schema", "procedures.0.name", "sp_acc_nonatomic"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.schema", "procedures.1.name", "sp_acc_scale"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.scale", "procedures.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.scale", "procedures.0.database", name),
+				resource.TestCheckResourceAttr("data.redshift_procedures.scale", "procedures.0.schema", "serving"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.scale", "procedures.0.name", "sp_acc_scale"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.scale", "procedures.0.signature", "INTEGER, BIGINT"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.schema", "procedures.0.signature", ""),
+				resource.TestCheckResourceAttr("data.redshift_procedures.schema", "procedures.1.signature", "INTEGER, BIGINT"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.scale", "procedures.0.security", "INVOKER"),
+				resource.TestCheckResourceAttr("data.redshift_routine_parameters.default", "routine_parameters.#", "3"),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_routine_parameters.default", "routine_parameters.*", map[string]string{
+					"parameter_name": "amount", "mode": "INOUT", "data_type": "BIGINT", "database": name,
+				}),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_routine_parameters.explicit", "routine_parameters.*", map[string]string{
+					"parameter_name": "label", "mode": "OUT", "data_type": "CHARACTER VARYING", "database": name,
+				}),
+				resource.TestCheckResourceAttr("data.redshift_routine_parameters.default", "id", fmt.Sprintf(`{"database":%q,"routine_name":"sp_acc_scale","routine_type":"PROCEDURE","schema":"serving"}`, name)),
+				resource.TestCheckResourceAttrPair("data.redshift_routine_parameters.explicit", "id", "data.redshift_routine_parameters.default", "id"),
+				resource.TestCheckResourceAttr("data.redshift_routine_parameters.functions", "routine_parameters.#", "5"),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_routine_parameters.functions", "routine_parameters.*", map[string]string{
+					"mode": "RETURN", "data_type": "CHARACTER VARYING", "ordinal_position": "0",
+				}),
 			)},
 			{Config: configuration("SELECT $2 || '-' || $1::varchar", "IMMUTABLE", "INVOKER"), PlanOnly: true},
 			// Imports report canonical catalog spellings and the catalog body, and cannot observe nonatomic or SET.
@@ -187,6 +235,8 @@ data "redshift_procedures" "local" {
 			{Config: configuration("SELECT $1::varchar || ':' || $2", "STABLE", "DEFINER"), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_function.label", "volatility", "STABLE"),
 				resource.TestCheckResourceAttr("redshift_procedure.scale", "security", "DEFINER"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.scale", "procedures.0.security", "DEFINER"),
+				resource.TestCheckResourceAttr("data.redshift_procedures.schema", "procedures.1.security", "DEFINER"),
 			)},
 			{Config: configuration("SELECT $1::varchar || ':' || $2", "STABLE", "DEFINER"), PlanOnly: true, ExpectNonEmptyPlan: true, PreConfig: func() {
 				_, err := client.Query(ctx, target, `CREATE OR REPLACE FUNCTION serving.f_acc_label(integer, varchar) RETURNS varchar STABLE AS $$ SELECT 'drift' $$ LANGUAGE sql`, nil)
@@ -203,6 +253,10 @@ func forgetRoutines(configuration string) string {
 	forgotten := map[string]bool{
 		`resource "redshift_function" "label" {`: true, `resource "redshift_procedure" "scale" {`: true,
 		`data "redshift_function" "label" {`: true, `data "redshift_procedure" "scale" {`: true,
+		`data "redshift_procedures" "schema" {`: true, `data "redshift_procedures" "scale" {`: true,
+		`data "redshift_functions" "label" {`:            true,
+		`data "redshift_routine_parameters" "default" {`: true, `data "redshift_routine_parameters" "explicit" {`: true,
+		`data "redshift_routine_parameters" "functions" {`: true,
 	}
 
 	var kept []string

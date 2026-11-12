@@ -25,14 +25,13 @@ import (
 // TestAccPermissionsLifecycle verifies column, language, and system grants, their lookups and listings, imports, drift
 // repair, and revocation on destroy against a disposable database.
 func TestAccPermissionsLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	name := "acc_permissions_" + suffix
 	configuration := func(enabled bool) string {
 		base := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
@@ -41,9 +40,9 @@ resource "redshift_schema" "local" {
   database = redshift_database.local.name
   name = "serving"
 }
-resource "redshift_role" "readers" { name = "acc_readers_%[6]s" }
-resource "redshift_group" "readers" { name = "acc_reader_group_%[6]s" }
-`, region, profile, workgroup, database, name, suffix)
+resource "redshift_role" "readers" { name = "acc_readers_%[5]s" }
+resource "redshift_group" "readers" { name = "acc_reader_group_%[5]s" }
+`, region, workgroup, database, name, suffix)
 		if !enabled {
 			return base
 		}
@@ -106,6 +105,13 @@ data "redshift_object_grants" "table" {
 data "redshift_language_grants" "role" {
   database_name = redshift_database.local.name
   grantee = redshift_role.readers.name
+  grantee_type = "ROLE"
+  depends_on = [redshift_language_grant.role]
+}
+data "redshift_language_grants" "wrong_type" {
+  database_name = redshift_database.local.name
+  grantee = redshift_role.readers.name
+  grantee_type = "USER"
   depends_on = [redshift_language_grant.role]
 }
 resource "redshift_system_grant" "role" {
@@ -117,7 +123,7 @@ data "redshift_system_grants" "role" {
 }`
 	}
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
@@ -153,6 +159,7 @@ data "redshift_system_grants" "role" {
 				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_column_grants.serving", "column_grants.*", map[string]string{"object_name": "fixture_table", "grantee_type": "ROLE", "privileges.SELECT.#": "2", "privileges.UPDATE.#": "1"}),
 				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_column_grants.serving", "column_grants.*", map[string]string{"object_name": "fixture_view", "grantee_type": "GROUP", "privileges.SELECT.#": "1"}),
 				resource.TestCheckResourceAttr("data.redshift_language_grants.role", "language_grants.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_language_grants.wrong_type", "language_grants.#", "0"),
 				resource.TestCheckResourceAttr("data.redshift_language_grants.role", "language_grants.0.language_name", "PLPGSQL"),
 				resource.TestCheckResourceAttr("data.redshift_language_grants.role", "language_grants.0.grantee_type", "ROLE"),
 				resource.TestCheckResourceAttr("data.redshift_system_grants.role", "system_grants.#", "1"),
@@ -189,9 +196,9 @@ data "redshift_system_grants" "role" {
 // which SVV_LANGUAGE_PRIVILEGES may not list, by creating procedures as a disposable non-superuser over a direct
 // connection before the revoke, after it, and after destroy.
 func TestAccLanguageGrantPublicDefault(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 	routing, err := (&redshiftconn.IAM{Workgroup: workgroup, Serverless: redshiftserverless.NewFromConfig(cfg)}).Resolve(ctx, database)
 	require.NoError(t, err)
@@ -238,12 +245,11 @@ func TestAccLanguageGrantPublicDefault(t *testing.T) {
 		base := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
 resource "redshift_database" "local" { name = %q }
-`, region, profile, workgroup, database, name)
+`, region, workgroup, database, name)
 		if !restricted {
 			return base
 		}

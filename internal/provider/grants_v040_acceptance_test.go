@@ -14,7 +14,7 @@ import (
 
 // grantAcceptanceProvider renders the provider block for grant acceptance tests, adding secret_arn only when one is
 // configured.
-func grantAcceptanceProvider(region, profile, workgroup, database string) string {
+func grantAcceptanceProvider(region, workgroup, database string) string {
 	secret := ""
 	if arn := os.Getenv("REDSHIFT_ACC_SECRET_ARN"); arn != "" {
 		secret = fmt.Sprintf("secret_arn = %q", arn)
@@ -22,20 +22,19 @@ func grantAcceptanceProvider(region, profile, workgroup, database string) string
 
 	return fmt.Sprintf(`provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
   %s
 }
-`, region, profile, workgroup, database, secret)
+`, region, workgroup, database, secret)
 }
 
 // TestAccGrantRestoreDefaults checks that removing lockdown resources grants the documented defaults back while the
 // isolated SQL database stays alive. Both languages and the connecting user's function defaults are observed afterward.
 func TestAccGrantRestoreDefaults(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_restore_" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	base := grantAcceptanceProvider(region, profile, workgroup, database) + fmt.Sprintf(`
+	base := grantAcceptanceProvider(region, workgroup, database) + fmt.Sprintf(`
 resource "redshift_database" "local" { name = %q }
 `, name)
 	restricted := base + `
@@ -106,10 +105,10 @@ data "redshift_default_privilege" "public" {
 // TestAccObjectGrantSharedDatabase consumes an existing WITH PERMISSIONS fixture without owning the datashare or
 // database. Only its uniquely named SQL role and explicit grants are created and removed by the test.
 func TestAccObjectGrantSharedDatabase(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SHARED_DATABASE", "REDSHIFT_ACC_SHARED_SCHEMA", "REDSHIFT_ACC_SHARED_TABLE")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SHARED_DATABASE", "REDSHIFT_ACC_SHARED_SCHEMA", "REDSHIFT_ACC_SHARED_TABLE")
 	name := "acc_shared_grant_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(privileges string) string {
-		return grantAcceptanceProvider(region, profile, workgroup, database) + fmt.Sprintf(`
+		return grantAcceptanceProvider(region, workgroup, database) + fmt.Sprintf(`
 resource "redshift_role" "reader" { name = %[1]q }
 resource "redshift_object_grant" "database" {
   database_name = %[2]q
@@ -148,6 +147,15 @@ data "redshift_object_grant" "table" {
   grantee_type = "ROLE"
   depends_on = [redshift_object_grant.table]
 }
+data "redshift_object_grants" "table" {
+  database_name = redshift_object_grant.table.database_name
+  schema_name = redshift_object_grant.table.schema_name
+  object_name = redshift_object_grant.table.object_name
+  object_type = "TABLE"
+  grantee = redshift_role.reader.name
+  grantee_type = "ROLE"
+  depends_on = [redshift_object_grant.table]
+}
 `, name, os.Getenv("REDSHIFT_ACC_SHARED_DATABASE"), os.Getenv("REDSHIFT_ACC_SHARED_SCHEMA"), os.Getenv("REDSHIFT_ACC_SHARED_TABLE"), privileges)
 	}
 	resource.Test(t, resource.TestCase{
@@ -157,10 +165,16 @@ data "redshift_object_grant" "table" {
 				resource.TestCheckResourceAttr("redshift_object_grant.database", "privileges.#", "1"),
 				resource.TestCheckResourceAttr("redshift_object_grant.schema", "privileges.#", "1"),
 				resource.TestCheckResourceAttr("data.redshift_object_grant.table", "privileges.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_object_grants.table", "object_grants.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_object_grants.table", "object_grants.0.grantee", name),
+				resource.TestCheckTypeSetElemAttr("data.redshift_object_grants.table", "object_grants.0.privileges.*", "SELECT"),
 			)},
 			{Config: configuration(`"SELECT"`), PlanOnly: true},
 			{ResourceName: "redshift_object_grant.table", ImportState: true, ImportStateVerify: true},
-			{Config: configuration(``), Check: resource.TestCheckResourceAttr("data.redshift_object_grant.table", "privileges.#", "0")},
+			{Config: configuration(``), Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttr("data.redshift_object_grant.table", "privileges.#", "0"),
+				resource.TestCheckResourceAttr("data.redshift_object_grants.table", "object_grants.#", "0"),
+			)},
 		},
 	})
 }

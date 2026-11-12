@@ -30,8 +30,8 @@ type liveValidationFixture struct {
 // the test.
 func newLiveValidationFixture(t *testing.T, flags ...string) liveValidationFixture {
 	t.Helper()
-	region, profile, workgroup, database := testAccWorkgroup(t, flags...)
-	f := liveValidationFixture{client: testAccRolesClient(t, region, profile, workgroup), conn: sqlclient.Connection{Database: database}, schema: "acc_live_" + strconv.FormatInt(time.Now().UnixNano(), 36)}
+	region, workgroup, database := testAccWorkgroup(t, flags...)
+	f := liveValidationFixture{client: testAccRolesClient(t, region, workgroup), conn: sqlclient.Connection{Database: database}, schema: "acc_live_" + strconv.FormatInt(time.Now().UnixNano(), 36)}
 	f.exec(t, sqlclient.Stmt("CREATE SCHEMA").Ident(f.schema))
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -84,8 +84,8 @@ func (f liveValidationFixture) user(t *testing.T) (string, string) {
 // directUser resolves only endpoint routing through IAM; authentication is with the isolated password user.
 func (f liveValidationFixture) directUser(t *testing.T, name, password string) liveValidationFixture {
 	t.Helper()
-	region, profile, workgroup, _ := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
-	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	region, workgroup, _ := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
 	require.NoError(t, err)
 
 	iam := &redshiftconn.IAM{Workgroup: workgroup, Serverless: redshiftserverless.NewFromConfig(cfg)}
@@ -443,7 +443,7 @@ func TestAccLiveValidationShowUserDefaults(t *testing.T) {
 // TestAccLiveValidationUserLockoutRollout checks that a new password user appears unlocked with no failed attempts in
 // SHOW USER LOCKOUT, and skips where the feature has not rolled out.
 func TestAccLiveValidationUserLockoutRollout(t *testing.T) {
-	f := newLiveValidationFixture(t)
+	f := newLiveValidationFixture(t, "REDSHIFT_ACC_USER_LOCKOUTS")
 
 	_, err := f.client.Query(context.Background(), f.conn, readUserLockoutsStatement(), nil)
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "account lockout security is not supported") {

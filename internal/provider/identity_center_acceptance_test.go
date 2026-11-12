@@ -21,11 +21,11 @@ import (
 // interactive login or token exchange is involved. Optional existing directory group/user names enable namespaced
 // SQL roles and a temporary password-disabled SQL user; directory objects and memberships are never changed.
 func TestAccIdentityCenterLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_IDC_APPLICATION_ARN", "REDSHIFT_ACC_IDC_ROLE_ARN")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_IDC_APPLICATION_ARN", "REDSHIFT_ACC_IDC_ROLE_ARN")
 	f := newLiveValidationFixture(t, "REDSHIFT_ACC_IDC_APPLICATION_ARN", "REDSHIFT_ACC_IDC_ROLE_ARN")
 	name, namespace := f.schema+"_idp", f.schema
 	group := os.Getenv("REDSHIFT_ACC_IDC_GROUP_NAME")
-	provider := fmt.Sprintf("provider \"redshift\" {\n region = %q\n profile = %q\n workgroup_name = %q\n database = %q\n}\n", region, profile, workgroup, database)
+	provider := fmt.Sprintf("provider \"redshift\" {\n region = %q\n workgroup_name = %q\n database = %q\n}\n", region, workgroup, database)
 	configuration := func(name, namespace string, enabled bool) string {
 		text := provider + fmt.Sprintf(`
 resource "redshift_identity_provider" "test" {

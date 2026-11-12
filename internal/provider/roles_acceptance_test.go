@@ -20,10 +20,10 @@ import (
 )
 
 // testAccRolesClient returns a Data API client for drift injection and destroy checks on the shared workgroup.
-func testAccRolesClient(t *testing.T, region, profile, workgroup string) sqlclient.Client {
+func testAccRolesClient(t *testing.T, region, workgroup string) sqlclient.Client {
 	t.Helper()
 
-	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
 	require.NoError(t, err)
 
 	return &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
@@ -32,14 +32,13 @@ func testAccRolesClient(t *testing.T, region, profile, workgroup string) sqlclie
 // TestAccRoleOwnerAndAdminOption changes a role's owner and a user's admin option in place, repairs admin option
 // drift, and imports both resources with the observed values.
 func TestAccRoleOwnerAndAdminOption(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	roleName, first, second := "acc_role_"+suffix, "acc_owner_a_"+suffix, "acc_owner_b_"+suffix
 	configuration := func(owner string, admin bool) string {
 		return fmt.Sprintf(`
 provider "redshift" {
   region         = %q
-  profile        = %q
   workgroup_name = %q
   database       = %q
 }
@@ -73,9 +72,9 @@ data "redshift_roles" "all" {
 data "redshift_role_grants" "this" {
   role = redshift_role_grant.this.role
 }
-`, region, profile, workgroup, database, first, "AccPass1"+suffix, second, "AccPass2"+suffix, roleName, owner, admin)
+`, region, workgroup, database, first, "AccPass1"+suffix, second, "AccPass2"+suffix, roleName, owner, admin)
 	}
-	ctx, client := context.Background(), testAccRolesClient(t, region, profile, workgroup)
+	ctx, client := context.Background(), testAccRolesClient(t, region, workgroup)
 	admin := sqlclient.Connection{Database: database}
 
 	resource.Test(t, resource.TestCase{
@@ -128,7 +127,7 @@ data "redshift_role_grants" "this" {
 // REDSHIFT_ACC_AZURE_CLIENT_ID name a real test application. The provider is a warehouse-wide object that only a
 // superuser may manage: REDSHIFT_ACC_IDENTITY_PROVIDER opts in.
 func TestAccAzureIdentityProvider(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_IDENTITY_PROVIDER", "REDSHIFT_ACC_AZURE_TENANT_ID", "REDSHIFT_ACC_AZURE_CLIENT_ID")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_IDENTITY_PROVIDER", "REDSHIFT_ACC_AZURE_TENANT_ID", "REDSHIFT_ACC_AZURE_CLIENT_ID")
 	tenant, clientID := os.Getenv("REDSHIFT_ACC_AZURE_TENANT_ID"), os.Getenv("REDSHIFT_ACC_AZURE_CLIENT_ID")
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	name := "acc_idp_" + suffix
@@ -136,7 +135,6 @@ func TestAccAzureIdentityProvider(t *testing.T) {
 		return fmt.Sprintf(`
 provider "redshift" {
   region         = %q
-  profile        = %q
   workgroup_name = %q
   database       = %q
 }
@@ -155,9 +153,9 @@ data "redshift_identity_provider" "this" { name = redshift_identity_provider.thi
 data "redshift_identity_providers" "all" {
   depends_on = [redshift_identity_provider.this]
 }
-`, region, profile, workgroup, database, name, namespace, issuer, clientID, version, version, autoCreate)
+`, region, workgroup, database, name, namespace, issuer, clientID, version, version, autoCreate)
 	}
-	ctx, client := context.Background(), testAccRolesClient(t, region, profile, workgroup)
+	ctx, client := context.Background(), testAccRolesClient(t, region, workgroup)
 	issuer, legacyIssuer := "https://login.microsoftonline.com/"+tenant+"/v2.0", "https://sts.windows.net/"+tenant+"/"
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},

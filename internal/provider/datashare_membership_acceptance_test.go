@@ -21,10 +21,10 @@ import (
 // TestAccDatashareMembership exercises both exclusive kinds against real catalog rows, including indistinguishable
 // overload names. All SQL objects belong to this test's unique database; the shared warehouse is never removed.
 func TestAccDatashareMembership(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_bulk_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
@@ -72,7 +72,6 @@ func TestAccDatashareMembership(t *testing.T) {
 	base := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
@@ -126,7 +125,7 @@ resource "redshift_datashare_schema" "local" {
   datashare = redshift_datashare.local.name
   schema = redshift_schema.local.name
   include_new = false
-}`, region, profile, workgroup, database, name, name, name)
+}`, region, workgroup, database, name, name, name)
 	memberships := `
 resource "redshift_datashare_membership" "tables" {
   database = redshift_datashare_schema.local.database

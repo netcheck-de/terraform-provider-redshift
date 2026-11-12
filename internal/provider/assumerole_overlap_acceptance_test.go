@@ -19,9 +19,9 @@ import (
 // TestAccAssumeroleGrantARNOverlap probes only a disposable SQL role on an already-enabled ASSUMEROLE fixture.
 // Catalog snapshots distinguish the ON ALL marker from implied per-ARN rows without changing PUBLIC's policy.
 func TestAccAssumeroleGrantARNOverlap(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_ASSUMEROLE", "REDSHIFT_ACC_SPECTRUM_ROLE_ARN")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_ASSUMEROLE", "REDSHIFT_ACC_SPECTRUM_ROLE_ARN")
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
 	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, SecretARN: os.Getenv("REDSHIFT_ACC_SECRET_ARN"), Timeout: 5 * time.Minute, Poll: time.Second}

@@ -19,9 +19,9 @@ import (
 
 // TestAccTableColumnRename verifies actual row preservation and automatic catalog reference updates, not just SQL.
 func TestAccTableColumnRename(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	schemaName := "acc_rename_" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	client := testAccRolesClient(t, region, profile, workgroup)
+	client := testAccRolesClient(t, region, workgroup)
 	recorded := &recordingClient{client: client}
 	connection := sqlclient.Connection{Database: database}
 	configuration := func(renamed, hint bool) string {
@@ -37,7 +37,6 @@ func TestAccTableColumnRename(t *testing.T) {
 		return fmt.Sprintf(`
 provider "redshift" {
   region         = %q
-  profile        = %q
   workgroup_name = %q
   database       = %q
 }
@@ -80,7 +79,7 @@ resource "redshift_table" "events" {
   distribution { key = %q }
   sort_key { columns = [%q] }
 }
-`, region, profile, workgroup, database, database, schemaName, id, idHint, label, labelHint, id, id, label, id, id, id)
+`, region, workgroup, database, database, schemaName, id, idHint, label, labelHint, id, id, label, id, id, id)
 	}
 	checkRows := func(id, label string) resource.TestCheckFunc {
 		return func(*terraform.State) error {

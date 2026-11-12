@@ -14,10 +14,10 @@ import (
 
 // TestAccAssumeroleResultOffload verifies independent ARN/ALL grants and exact-set removal without changing PUBLIC.
 func TestAccAssumeroleResultOffload(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_ASSUMEROLE", "REDSHIFT_ACC_SPECTRUM_ROLE_ARN")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_ASSUMEROLE", "REDSHIFT_ACC_SPECTRUM_ROLE_ARN")
 	name := "acc_offload_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(selector, privileges string) string {
-		return grantAcceptanceProvider(region, profile, workgroup, database) + fmt.Sprintf(`
+		return grantAcceptanceProvider(region, workgroup, database) + fmt.Sprintf(`
 resource "redshift_role" "reader" { name = %q }
 resource "redshift_assumerole_grant" "offload" {
   iam_role_arn = %q

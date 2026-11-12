@@ -21,14 +21,14 @@ func TestAccDatabaseCollationLifecycle(t *testing.T) {
 // TestAccClusterDatabaseCollationLifecycle runs the collation lifecycle on a provisioned cluster through a Secrets
 // Manager secret.
 func TestAccClusterDatabaseCollationLifecycle(t *testing.T) {
-	testAccPreCheck(t, "REDSHIFT_ACC_CLUSTER", "REDSHIFT_ACC_SECRET_ARN")
+	testAccPreCheck(t, "REDSHIFT_ACC_CLUSTER", "REDSHIFT_ACC_CLUSTER_SECRET_ARN")
 	testAccDatabaseCollation(t, true)
 }
 
 // An empty, independently owned database can switch collation both ways; resource.Test owns and removes only it.
 func testAccDatabaseCollation(t *testing.T, cluster bool) {
 	t.Helper()
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 
 	target := fmt.Sprintf("workgroup_name = %q", workgroup)
 	if cluster {
@@ -40,7 +40,6 @@ func testAccDatabaseCollation(t *testing.T, cluster bool) {
 		return fmt.Sprintf(`
 provider "redshift" {
   region     = %q
-  profile    = %q
   database   = %q
   secret_arn = %q
   %s
@@ -52,7 +51,7 @@ resource "redshift_database" "probe" {
 data "redshift_database" "probe" {
   name = redshift_database.probe.name
 }
-`, region, profile, database, os.Getenv("REDSHIFT_ACC_SECRET_ARN"), target, name, collation)
+`, region, database, testAccSecretARN(cluster), target, name, collation)
 	}
 	step := func(collation string, update bool) resource.TestStep {
 		result := resource.TestStep{

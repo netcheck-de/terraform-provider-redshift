@@ -2,7 +2,6 @@ package provider
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -18,30 +17,29 @@ import (
 // reported until revoked. The scoped grant and default privilege listings report the same tuples. Every object is
 // uniquely named and dropped afterwards.
 func TestAccGrantsUserOptionsAndScopes(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(options string, publicExecute string) string {
 		return fmt.Sprintf(`
 provider "redshift" {
   region         = %q
-  profile        = %q
   workgroup_name = %q
   database       = %q
 }
 # The revoked PUBLIC default stays in the database and depends on its owner, so the database is dropped before the
 # user: DROP USER fails while the entry exists.
 resource "redshift_database" "local" {
-  name       = "acc_grants_%[5]s"
+  name       = "acc_grants_%[4]s"
   depends_on = [redshift_user.analyst]
 }
 resource "redshift_schema" "local" {
   database = redshift_database.local.name
-  name     = "acc_grants_%[5]s"
+  name     = "acc_grants_%[4]s"
 }
-resource "redshift_role" "reader" { name = "acc_grants_role_%[5]s" }
+resource "redshift_role" "reader" { name = "acc_grants_role_%[4]s" }
 resource "redshift_user" "analyst" {
-  name        = "acc_grants_user_%[5]s"
-  password_wo = "Acc1Grants%[5]s"
+  name        = "acc_grants_user_%[4]s"
+  password_wo = "Acc1Grants%[4]s"
 }
 resource "redshift_grant" "analyst_tables" {
   database_name           = redshift_schema.local.database
@@ -49,7 +47,7 @@ resource "redshift_grant" "analyst_tables" {
   user                    = redshift_user.analyst.name
   scope                   = "TABLES"
   privileges              = ["INSERT", "SELECT"]
-  grant_option_privileges = [%[6]s]
+  grant_option_privileges = [%[5]s]
 }
 resource "redshift_grant" "languages" {
   database_name = redshift_database.local.name
@@ -76,7 +74,7 @@ resource "redshift_default_privilege" "public_functions" {
   object_type   = "FUNCTIONS"
   grantee       = "public"
   grantee_type  = "PUBLIC"
-  privileges    = [%[7]s]
+  privileges    = [%[6]s]
 }
 data "redshift_grants" "database" {
   database_name = redshift_database.local.name
@@ -91,9 +89,11 @@ data "redshift_grants" "analyst_schema" {
 data "redshift_default_privileges" "analyst" {
   database_name = redshift_database.local.name
   owner         = redshift_user.analyst.name
+  object_type   = "FUNCTIONS"
+  grantee_type  = "PUBLIC"
   depends_on    = [redshift_default_privilege.public_functions]
 }
-`, region, profile, workgroup, database, suffix, options, publicExecute)
+`, region, workgroup, database, suffix, options, publicExecute)
 	}
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
@@ -124,27 +124,45 @@ data "redshift_default_privileges" "analyst" {
 }
 
 // TestAccObjectGrantRoutinesAndSnapshots grants EXECUTE on one function overload and SELECT on all tables of a
-// schema. REDSHIFT_ACC_ROUTINE_SCHEMA names an existing schema of the admin database holding the function
-// f_acc_grant(integer) and at least one table.
+// schema. The routines and source table belong to this test, not an externally provisioned SQL fixture.
 func TestAccObjectGrantRoutinesAndSnapshots(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_ROUTINE_SCHEMA")
-	schema := os.Getenv("REDSHIFT_ACC_ROUTINE_SCHEMA")
+	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := fmt.Sprintf(`
 provider "redshift" {
   region         = %q
-  profile        = %q
   workgroup_name = %q
   database       = %q
 }
 resource "redshift_user" "analyst" {
-  name        = "acc_routine_user_%[5]s"
-  password_wo = "Acc1Routine%[5]s"
+  name        = "acc_routine_user_%[4]s"
+  password_wo = "Acc1Routine%[4]s"
+}
+resource "redshift_schema" "fixture" {
+  database = %[3]q
+  name = "acc_routine_schema_%[4]s"
+}
+resource "redshift_function" "fixture" {
+  database = redshift_schema.fixture.database
+  schema = redshift_schema.fixture.name
+  name = "f_acc_grant"
+  arguments = ["INTEGER"]
+  return_type = "INTEGER"
+  body = "SELECT $1"
+}
+resource "redshift_table" "fixture" {
+  database = redshift_schema.fixture.database
+  schema = redshift_schema.fixture.name
+  name = "events"
+  column {
+    name = "id"
+    type = "INTEGER"
+  }
 }
 resource "redshift_object_grant" "function" {
-  database_name           = %[4]q
-  schema_name             = %[6]q
-  object_name             = "f_acc_grant"
+  database_name           = redshift_function.fixture.database
+  schema_name             = redshift_function.fixture.schema
+  object_name             = redshift_function.fixture.name
   object_type             = "FUNCTION"
   arguments               = "int4"
   grantee                 = redshift_user.analyst.name
@@ -153,14 +171,14 @@ resource "redshift_object_grant" "function" {
   grant_option_privileges = ["EXECUTE"]
 }
 resource "redshift_object_grant" "tables" {
-  database_name = %[4]q
-  schema_name   = %[6]q
+  database_name = redshift_table.fixture.database
+  schema_name   = redshift_table.fixture.schema
   object_type   = "ALL TABLES"
   grantee       = redshift_user.analyst.name
   grantee_type  = "USER"
   privileges    = ["SELECT"]
 }
-`, region, profile, workgroup, database, suffix, schema)
+`, region, workgroup, database, suffix)
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
@@ -174,12 +192,11 @@ resource "redshift_object_grant" "tables" {
 // TestAccAssumeroleGrantAllRoles checks that ON ALL grants read back through the default role's catalog entry, which
 // the listing reports as ALL. It requires a warehouse whose PUBLIC ASSUMEROLE default is already revoked.
 func TestAccAssumeroleGrantAllRoles(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_ASSUMEROLE")
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_ASSUMEROLE")
 	name := "acc_iam_all_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := fmt.Sprintf(`
 provider "redshift" {
   region         = %q
-  profile        = %q
   workgroup_name = %q
   database       = %q
 }
@@ -193,14 +210,20 @@ resource "redshift_assumerole_grant" "all" {
 data "redshift_assumerole_grants" "all" {
   iam_role_arn = "all"
   grantee      = redshift_assumerole_grant.all.grantee
+  grantee_type = "ROLE"
 }
-`, region, profile, workgroup, database, name)
+data "redshift_assumerole_grants" "wrong_type" {
+  grantee = redshift_assumerole_grant.all.grantee
+  grantee_type = "USER"
+}
+`, region, workgroup, database, name)
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
 		Steps: []resource.TestStep{
 			{Config: configuration, Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_assumerole_grant.all", "privileges.#", "2"),
 				resource.TestCheckResourceAttr("data.redshift_assumerole_grants.all", "assumerole_grants.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_assumerole_grants.wrong_type", "assumerole_grants.#", "0"),
 				resource.TestCheckResourceAttr("data.redshift_assumerole_grants.all", "assumerole_grants.0.iam_role_arn", "ALL"),
 				resource.TestCheckResourceAttr("data.redshift_assumerole_grants.all", "assumerole_grants.0.grantee_type", "ROLE"),
 				resource.TestCheckResourceAttr("data.redshift_assumerole_grants.all", "assumerole_grants.0.privileges.#", "2"),
