@@ -274,6 +274,11 @@ hand-aligned tables and prose within 120 columns; `task markdown-fmt` does not f
 
 Templates must contain:
 
+- Resource introductions follow this order: a description, a separate "For concepts and limitations, see AWS" paragraph
+  linking relevant feature guides, and a separate "For SQL syntax, see AWS" paragraph linking statement references.
+  Use a directly relevant broader guide when no dedicated feature guide exists; omit the concepts paragraph only when
+  neither exists. Normalize existing feature links to this structure. Keep catalog references with the behavior they
+  explain, not in the SQL syntax paragraph.
 - Immediately after the schema, `## SQL Statements` with simplified SQL: one line per statement kind, identifying names,
   `...` for options. Add a short SQL comment before each statement explaining its purpose.
   Data sources name the catalog source.

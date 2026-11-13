@@ -8,7 +8,12 @@ description: Manages ALTER and SHARE on a producer datashare for one user, role,
 
 Owns the exact explicit `ALTER` and `SHARE` permissions that **one SQL identity** holds on a producer datashare.
 `ALTER` lets the grantee add or remove objects and set `PUBLICACCESSIBLE`; `SHARE` lets it grant consumers usage. These
-are the only datashare permissions Redshift grants to users, roles, and groups. See AWS
+are the only datashare permissions Redshift grants to users, roles, and groups.
+
+For concepts and limitations, see AWS
+[Data sharing](https://docs.aws.amazon.com/redshift/latest/dg/datashare-overview.html).
+
+For SQL syntax, see AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-datashare-permissions).
 

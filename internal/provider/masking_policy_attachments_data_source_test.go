@@ -79,18 +79,29 @@ func TestMaskingPolicyAttachmentsListing(t *testing.T) {
 	assert.Equal(t, types.Int64Value(100), items[0]["priority"])
 
 	source := newMaskingPolicyAttachmentsDataSource()
-	for _, failure := range []queryFunc{
-		func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+
+	for name, test := range map[string]struct {
+		client queryFunc
+		want   string
+	}{
+		"catalog error": {func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return nil, errors.New("catalog unavailable")
-		},
-		func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+		}, "catalog unavailable"},
+		"malformed input columns": {func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return []sqlclient.Row{{"priority": "0", "input_columns": "[", "output_columns": `["email"]`}}, nil
-		},
-		func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+		}, "unexpected attached masking policy columns"},
+		"malformed output columns": {func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+			return []sqlclient.Row{{"priority": "0", "input_columns": `["email"]`, "output_columns": "["}}, nil
+		}, "unexpected attached masking policy columns"},
+		"malformed priority": {func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return []sqlclient.Row{{"priority": "high", "input_columns": `["email"]`, "output_columns": `["email"]`}}, nil
-		},
+		}, "priority"},
 	} {
-		_, diagnostics := readSource(t, source, collectionConfig(t, source, nil), failure)
-		assert.True(t, diagnostics.HasError())
+		t.Run(name, func(t *testing.T) {
+			state, diagnostics := readSource(t, source, collectionConfig(t, source, nil), test.client)
+			require.True(t, diagnostics.HasError())
+			assert.Contains(t, diagnostics.Errors()[0].Detail(), test.want)
+			assert.True(t, state.Raw.IsNull(), "malformed metadata must not publish a partial listing")
+		})
 	}
 }

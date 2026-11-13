@@ -7,7 +7,12 @@ description: Manages explicit SQL system capabilities for one role.
 # redshift_system_grant (Resource)
 
 Owns the exact explicit system privilege set for one SQL role. This permits granular capabilities instead of assigning a
-complete system role. See AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
+complete system role.
+
+For concepts and limitations, see AWS
+[Role-based access control](https://docs.aws.amazon.com/redshift/latest/dg/t_Roles.html).
+
+For SQL syntax, see AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles).
 
 ## Example Usage
 

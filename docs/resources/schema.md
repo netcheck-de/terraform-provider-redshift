@@ -7,7 +7,12 @@ description: Manages a local Redshift database schema, its owner, and its quota.
 # redshift_schema (Resource)
 
 Manages a local schema in a Redshift database, with its owner and disk quota. External schemas and SQLMesh-managed
-objects have separate ownership. See AWS
+objects have separate ownership.
+
+For concepts and limitations, see AWS
+[Schemas](https://docs.aws.amazon.com/redshift/latest/dg/r_Schemas_and_tables.html).
+
+For SQL syntax, see AWS
 [CREATE SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_SCHEMA.html) and
 [ALTER SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_SCHEMA.html).
 

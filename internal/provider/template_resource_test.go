@@ -73,35 +73,67 @@ func TestTemplateTranscripts(t *testing.T) {
 	})
 }
 
-// TestTemplateRenameRecordedWhenLaterStepFails keeps the new name in state when a statement after the rename fails, so
-// the next refresh finds the renamed template instead of dropping it from state.
-func TestTemplateRenameRecordedWhenLaterStepFails(t *testing.T) {
-	prior := templateLifecycleModel
-	prior.Owner = types.StringValue("admin")
-	planned := prior
-	planned.Name, planned.Owner = types.StringValue("csv_import"), types.StringValue("loader")
-	c := catalogWith()()
-	r := newTemplateResource().(*templateResource)
-	configureTestResource(t, r, queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
-		if strings.Contains(sql, " OWNER TO ") {
-			return nil, errors.New("user loader does not exist")
-		}
+// TestTemplateRenameFailurePreservesOwnership records a successful rename even when the owner change fails, but
+// retains the original identity when the rename itself is refused. Either state must survive a fresh refresh.
+func TestTemplateRenameFailurePreservesOwnership(t *testing.T) {
+	for _, test := range []struct {
+		name, clause, recordedName string
+		mutations                  int
+	}{
+		{"rename refused", " RENAME TO ", "csv_load", 1},
+		{"owner change refused", " OWNER TO ", "csv_import", 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			prior := templateLifecycleModel
+			prior.Owner = types.StringValue("admin")
+			prior.ID = identity(map[string]string{"database": "admin", "schema": prior.Schema.ValueString(), "name": prior.Name.ValueString()})
+			planned := prior
+			planned.Name, planned.Owner = types.StringValue("csv_import"), types.StringValue("loader")
+			c := fullCatalog()
+			r := newTemplateResource()
+			mutations := 0
 
-		return c.Query(ctx, target, sql, parameters)
-	}))
+			configureTestResource(t, r, queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+				if !fakeRead(sql) {
+					mutations++
+				}
 
-	prior.ID = identity(map[string]string{"database": "admin", "schema": prior.Schema.ValueString(), "name": prior.Name.ValueString()})
-	state, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
-	require.True(t, diagnostics.HasError())
+				if strings.Contains(sql, test.clause) {
+					return nil, errors.New(test.name)
+				}
 
-	var recorded templateModel
-	require.False(t, state.Get(context.Background(), &recorded).HasError())
-	assert.Equal(t, "csv_import", recorded.Name.ValueString())
-	assert.Equal(t, identity(map[string]string{"database": "admin", "schema": prior.Schema.ValueString(), "name": "csv_import"}), recorded.ID)
-	assert.Equal(t, "admin", recorded.Owner.ValueString(), "the failed owner change is not recorded")
-	refreshed, diagnostics := applyOperation(t, r, "read", recorded, nil, nil)
-	require.False(t, diagnostics.HasError(), "%v", diagnostics)
-	assert.False(t, refreshed.Raw.IsNull(), "refresh finds the renamed template")
+				return c.Query(ctx, target, sql, parameters)
+			}))
+			state, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
+			require.True(t, diagnostics.HasError())
+			assert.Contains(t, diagnostics.Errors()[0].Detail(), test.name)
+			assert.Equal(t, test.mutations, mutations, "failure must prevent subsequent mutations")
+
+			var recorded templateModel
+			require.False(t, state.Get(context.Background(), &recorded).HasError())
+			assert.Equal(t, test.recordedName, recorded.Name.ValueString())
+			assert.Equal(t, identity(map[string]string{"database": "admin", "schema": prior.Schema.ValueString(), "name": test.recordedName}), recorded.ID)
+			assert.Equal(t, "admin", recorded.Owner.ValueString(), "the failed owner change is not recorded")
+
+			if test.recordedName == prior.Name.ValueString() {
+				assert.True(t, state.Raw.Equal(testState(t, r, prior).Raw), "a refused rename must preserve all prior state")
+			}
+
+			r = newTemplateResource()
+			configureTestResource(t, r, c)
+			writes := len(c.writes)
+			refreshed := resource.ReadResponse{State: state}
+			r.Read(context.Background(), resource.ReadRequest{State: state}, &refreshed)
+			require.False(t, refreshed.Diagnostics.HasError(), "%v", refreshed.Diagnostics)
+			require.False(t, refreshed.State.Raw.IsNull(), "refresh must find the owned template")
+
+			var observed templateModel
+			require.False(t, refreshed.State.Get(context.Background(), &observed).HasError())
+			assert.Equal(t, recorded.ID, observed.ID)
+			assert.Equal(t, recorded.Name, observed.Name)
+			assert.Len(t, c.writes, writes, "refresh must not retry mutations")
+		})
+	}
 }
 
 // TestTemplateReadReconciles keeps configured spellings the catalog reports canonically, surfaces outside changes,

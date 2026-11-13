@@ -7,7 +7,9 @@ description: Manages existing local object annotations independently of object d
 # redshift_comment (Resource)
 
 Manages a comment on an existing local database, schema, table, view, column, or table constraint without owning the
-object's definition. See AWS [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
+object's definition.
+
+For SQL syntax, see AWS [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
 
 ## Example Usage
 

@@ -8,8 +8,11 @@ description: Manages one partition of a Redshift Spectrum external table.
 
 Manages one partition of a partitioned
 [external table](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/external_table).
-See AWS [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html) and
+
+For concepts and limitations, see AWS
 [Partitioning Redshift Spectrum external tables](https://docs.aws.amazon.com/redshift/latest/dg/c-spectrum-external-tables.html#c-spectrum-external-tables-partitioning).
+
+For SQL syntax, see AWS [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html).
 
 ## Example Usage
 

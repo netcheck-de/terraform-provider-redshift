@@ -9,9 +9,12 @@ description: Manages a COPY JOB that automatically loads new Amazon S3 files int
 Manages a `COPY JOB`: a stored `COPY` command that Redshift runs for files newly created under an Amazon S3 prefix.
 Creating a job needs an S3 event integration between the source bucket and the warehouse, also with `auto = false`;
 otherwise Redshift fails with "Cannot find integration for bucket". The AWS provider manages it as
-`aws_redshift_integration`. See AWS [COPY JOB](https://docs.aws.amazon.com/redshift/latest/dg/r_COPY-JOB.html),
-[auto-copy](https://docs.aws.amazon.com/redshift/latest/dg/loading-data-copy-job.html), and
-[SYS_COPY_JOB](https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html).
+`aws_redshift_integration`.
+
+For concepts and limitations, see AWS
+[Automatic file loading](https://docs.aws.amazon.com/redshift/latest/dg/loading-data-copy-job.html).
+
+For SQL syntax, see AWS [COPY JOB](https://docs.aws.amazon.com/redshift/latest/dg/r_COPY-JOB.html).
 
 ## Example Usage
 
@@ -53,7 +56,8 @@ option surfaces in `SYS_COPY_JOB_INFO` and `STL_LOAD_ERRORS` rather than in the 
 it loaded. The job name must be lowercase letters, digits, and underscores: COPY JOB documents no quoted names and
 forbids hyphens.
 
-`SYS_COPY_JOB` shows superusers every job and other users only their own, so the provider's SQL identity must own the
+[SYS_COPY_JOB](https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html) shows superusers every job and other
+users only their own, so the provider's SQL identity must own the
 job or be a superuser for refresh to find it.
 
 ## Reconciliation

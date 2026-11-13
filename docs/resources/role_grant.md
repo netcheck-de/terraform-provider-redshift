@@ -8,7 +8,11 @@ description: Manages a SQL role grant to a user or another role, optionally with
 
 Grants one role to a receiving role or database user. For example, a group role can inherit `sys:dba`, while Grafana's
 database user can inherit `sys:monitor`. A user can also receive the role `WITH ADMIN OPTION` to grant it to others.
-See AWS [GRANT ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles) and
+
+For concepts and limitations, see AWS
+[Role-based access control](https://docs.aws.amazon.com/redshift/latest/dg/t_Roles.html).
+
+For SQL syntax, see AWS [GRANT ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-roles) and
 [REVOKE ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-roles).
 
 ## Example Usage

@@ -1,5 +1,7 @@
 # Redshift SQL provider
 
+Available on the [Terraform Registry](https://registry.terraform.io/providers/netcheck-de/redshift/latest).
+
 This Terraform provider manages Redshift Serverless and provisioned SQL objects through the Data API or direct TLS
 connections.
 Use the AWS provider for workgroups, namespaces, IAM, Identity Center applications, and datashare

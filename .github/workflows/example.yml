@@ -29,7 +29,7 @@ jobs:
         working-directory: examples/complete
     env:
       TF_CLI_CONFIG_FILE: ${{ github.workspace }}/.cache/dev.tfrc
-      TF_VAR_name_prefix: redshift-ci-complete
+      TF_VAR_name_prefix: redshift-ci-complete-${{ github.run_id }}
     steps:
       - name: Configure deployment variables
         working-directory: ${{ github.workspace }}

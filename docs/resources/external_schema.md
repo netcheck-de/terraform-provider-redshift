@@ -10,7 +10,15 @@ Manages a Redshift external schema backed by an AWS Glue Data Catalog database, 
 or MySQL federated database, another Redshift database, a Kinesis data stream, or an Amazon MSK cluster. This is a
 distinct SQL object from a
 [local schema](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/schema).
-The namespace must already have the IAM role the source form needs. See AWS
+The namespace must already have the IAM role the source form needs.
+
+For concepts and limitations, see AWS
+[External schemas](https://docs.aws.amazon.com/redshift/latest/dg/c-spectrum-external-schemas.html),
+[Federated queries](https://docs.aws.amazon.com/redshift/latest/dg/federated-overview.html),
+[Cross-database queries](https://docs.aws.amazon.com/redshift/latest/dg/cross-database-overview.html), and
+[Streaming ingestion](https://docs.aws.amazon.com/redshift/latest/dg/materialized-view-streaming-ingestion.html).
+
+For SQL syntax, see AWS
 [CREATE EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_SCHEMA.html) and
 [ALTER EXTERNAL SCHEMA](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_EXTERNAL_SCHEMA.html).
 

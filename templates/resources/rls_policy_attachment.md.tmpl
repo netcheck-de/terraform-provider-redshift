@@ -6,7 +6,12 @@ description: Attaches a row-level security policy to a relation for a user, role
 
 # redshift_rls_policy_attachment (Resource)
 
-Attaches one row-level security policy to one table or view for one user, role, or `PUBLIC`. See AWS
+Attaches one row-level security policy to one table or view for one user, role, or `PUBLIC`.
+
+For concepts and limitations, see AWS
+[Row-level security](https://docs.aws.amazon.com/redshift/latest/dg/t_rls.html).
+
+For SQL syntax, see AWS
 [ATTACH RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_ATTACH_RLS_POLICY.html) and
 [DETACH RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_DETACH_RLS_POLICY.html).
 
