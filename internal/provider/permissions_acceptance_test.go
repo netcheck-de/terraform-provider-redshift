@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftserverless"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -22,17 +21,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAccPermissionsLifecycle verifies column and language grants, their lookups and listings, imports, drift repair,
-// and revocation on destroy against a disposable database.
+// TestAccPermissionsLifecycle verifies column, language, and system grants, their lookups and listings, imports, drift
+// repair, and revocation on destroy against a disposable database.
 func TestAccPermissionsLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	t.Parallel()
+
+	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	name := "acc_permissions_" + suffix
 	configuration := func(enabled bool) string {
 		base := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
@@ -41,12 +41,13 @@ resource "redshift_schema" "local" {
   database = redshift_database.local.name
   name = "serving"
 }
-resource "redshift_role" "readers" { name = "acc_readers_%[6]s" }
-resource "redshift_group" "readers" { name = "acc_reader_group_%[6]s" }
-`, region, profile, workgroup, database, name, suffix)
+resource "redshift_role" "readers" { name = "acc_readers_%[5]s" }
+resource "redshift_group" "readers" { name = "acc_reader_group_%[5]s" }
+`, region, workgroup, database, name, suffix)
 		if !enabled {
 			return base
 		}
+
 		return base + `
 resource "redshift_column_grant" "role" {
   database_name = redshift_database.local.name
@@ -89,40 +90,63 @@ data "redshift_column_grants" "serving" {
   schema_name = redshift_schema.local.name
   depends_on = [redshift_column_grant.role, redshift_column_grant.group_view]
 }
-data "redshift_grants" "role" {
+data "redshift_object_grants" "role" {
   database_name = redshift_database.local.name
   grantee = redshift_role.readers.name
   grantee_type = "ROLE"
   depends_on = [redshift_language_grant.role]
 }
-data "redshift_grants" "table" {
+data "redshift_object_grants" "table" {
   database_name = redshift_database.local.name
   object_type = "TABLE"
   schema_name = redshift_schema.local.name
   object_name = "fixture_table"
   depends_on = [redshift_column_grant.role]
+}
+data "redshift_language_grants" "role" {
+  database_name = redshift_database.local.name
+  grantee = redshift_role.readers.name
+  grantee_type = "ROLE"
+  depends_on = [redshift_language_grant.role]
+}
+data "redshift_language_grants" "wrong_type" {
+  database_name = redshift_database.local.name
+  grantee = redshift_role.readers.name
+  grantee_type = "USER"
+  depends_on = [redshift_language_grant.role]
+}
+resource "redshift_system_grant" "role" {
+  role = redshift_role.readers.name
+  privileges = ["EXPLAIN RLS"]
+}
+data "redshift_system_grants" "role" {
+  role = redshift_system_grant.role.role
 }`
 	}
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// A failed test may leave the fixture database behind; dropping it removes its tables and grants.
 	t.Cleanup(func() {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
-			_, err = client.Query(ctx, admin, "DROP DATABASE "+sqlclient.Identifier(name), nil)
+			_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)
 		}
 	})
+
 	exec := func(sql string) {
 		_, err := client.Query(ctx, target, sql, nil)
 		require.NoError(t, err)
 	}
+
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(false)},
 			{Config: configuration(true), PreConfig: func() {
@@ -132,18 +156,25 @@ data "redshift_grants" "table" {
 				resource.TestCheckTypeSetElemAttr("data.redshift_column_grant.role", "privileges.SELECT.*", "label"),
 				resource.TestCheckTypeSetElemAttr("data.redshift_column_grant.role", "privileges.UPDATE.*", "label"),
 				resource.TestCheckTypeSetElemAttr("data.redshift_language_grant.role", "privileges.*", "USAGE"),
-				resource.TestCheckResourceAttr("data.redshift_column_grants.serving", "column_grants.#", "4"),
+				resource.TestCheckResourceAttr("data.redshift_column_grants.serving", "column_grants.#", "2"),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_column_grants.serving", "column_grants.*", map[string]string{"object_name": "fixture_table", "grantee_type": "ROLE", "privileges.SELECT.#": "2", "privileges.UPDATE.#": "1"}),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_column_grants.serving", "column_grants.*", map[string]string{"object_name": "fixture_view", "grantee_type": "GROUP", "privileges.SELECT.#": "1"}),
+				resource.TestCheckResourceAttr("data.redshift_language_grants.role", "language_grants.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_language_grants.wrong_type", "language_grants.#", "0"),
+				resource.TestCheckResourceAttr("data.redshift_language_grants.role", "language_grants.0.language_name", "PLPGSQL"),
+				resource.TestCheckResourceAttr("data.redshift_language_grants.role", "language_grants.0.grantee_type", "ROLE"),
+				resource.TestCheckResourceAttr("data.redshift_system_grants.role", "system_grants.#", "1"),
+				resource.TestCheckTypeSetElemAttr("data.redshift_system_grants.role", "system_grants.0.privileges.*", "EXPLAIN RLS"),
 			)},
-			{Config: configuration(true), PlanOnly: true},
 			{ResourceName: "redshift_column_grant.role", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_column_grant.group_view", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_language_grant.role", ImportState: true, ImportStateVerify: true},
+			{ResourceName: "redshift_system_grant.role", ImportState: true, ImportStateVerify: true},
 			{Config: configuration(true), PlanOnly: true, ExpectNonEmptyPlan: true, PreConfig: func() {
 				exec(fmt.Sprintf(`REVOKE SELECT (label) ON TABLE serving.fixture_table FROM ROLE %s`, sqlclient.Identifier("acc_readers_"+suffix)))
 				exec(fmt.Sprintf(`GRANT SELECT (secret) ON TABLE serving.fixture_table TO ROLE %s`, sqlclient.Identifier("acc_readers_"+suffix)))
 			}},
 			{Config: configuration(true)},
-			{Config: configuration(true), PlanOnly: true},
 			{Config: configuration(false), Check: func(*terraform.State) error {
 				rows, err := client.Query(ctx, target, "SELECT column_name FROM svv_column_privileges WHERE relation_name IN ('fixture_table', 'fixture_view')", nil)
 				require.NoError(t, err)
@@ -153,6 +184,7 @@ data "redshift_grants" "table" {
 				require.Empty(t, rows, "destroy revokes language usage")
 				exec(`DROP VIEW serving.fixture_view`)
 				exec(`DROP TABLE serving.fixture_table`)
+
 				return nil
 			}},
 		},
@@ -163,40 +195,48 @@ data "redshift_grants" "table" {
 // which SVV_LANGUAGE_PRIVILEGES may not list, by creating procedures as a disposable non-superuser over a direct
 // connection before the revoke, after it, and after destroy.
 func TestAccLanguageGrantPublicDefault(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
+	t.Parallel()
+
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 	routing, err := (&redshiftconn.IAM{Workgroup: workgroup, Serverless: redshiftserverless.NewFromConfig(cfg)}).Resolve(ctx, database)
 	require.NoError(t, err)
+
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	name, userName := "acc_language_"+suffix, "acc_language_user_"+suffix
 	secret := make([]byte, 16)
 	_, err = rand.Read(secret)
 	require.NoError(t, err)
+
 	password := "Aa1" + hex.EncodeToString(secret)
-	admin := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+	admin := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	adminDB, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// Cleanups run last in first out: the database, with the probe's procedures, goes before its owner.
 	t.Cleanup(func() {
 		rows, err := admin.Query(ctx, adminDB, "SELECT usename FROM pg_user WHERE usename = :name", map[string]string{"name": userName})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
-			_, err = admin.Query(ctx, adminDB, "DROP USER "+sqlclient.Identifier(userName), nil)
+			_, err = admin.Query(ctx, adminDB, sqlclient.Stmt("DROP USER").Ident(userName).String(), nil)
 			require.NoError(t, err)
 		}
 	})
 	t.Cleanup(func() {
 		rows, err := admin.Query(ctx, adminDB, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
-			_, err = admin.Query(ctx, adminDB, "DROP DATABASE "+sqlclient.Identifier(name), nil)
+			_, err = admin.Query(ctx, adminDB, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)
 		}
 	})
-	_, err = admin.Query(ctx, adminDB, "CREATE USER "+sqlclient.Identifier(userName)+" PASSWORD "+sqlclient.Literal(password)+" NOCREATEDB NOCREATEUSER", nil)
+
+	_, err = admin.Query(ctx, adminDB, sqlclient.Stmt("CREATE USER").Ident(userName).Kw("PASSWORD").Lit(password).Kw("NOCREATEDB NOCREATEUSER").String(), nil)
 	require.NoError(t, err)
-	probe := &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: routing.Host, Port: routing.Port, Username: userName, Password: password}, CACertFile: testAccCACertFile(), SSLMode: testAccSSLMode(), Timeout: 30 * time.Second}
+
+	probe := testAccCatalogClient("workgroup_name/"+workgroup, &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: routing.Host, Port: routing.Port, Username: userName, Password: password}, CACertFile: testAccCACertFile(), SSLMode: testAccSSLMode(), Timeout: 30 * time.Second})
 	// Every user may create in the public schema by default, so only language USAGE decides the outcome.
 	createProcedure := func(procedure string) error {
 		_, err := probe.Query(ctx, target, "CREATE PROCEDURE public."+procedure+"() AS $$ BEGIN RAISE INFO 'probe'; END; $$ LANGUAGE plpgsql", nil)
@@ -206,15 +246,15 @@ func TestAccLanguageGrantPublicDefault(t *testing.T) {
 		base := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
 resource "redshift_database" "local" { name = %q }
-`, region, profile, workgroup, database, name)
+`, region, workgroup, database, name)
 		if !restricted {
 			return base
 		}
+
 		return base + `
 resource "redshift_language_grant" "public_plpgsql" {
   database_name = redshift_database.local.name
@@ -232,20 +272,20 @@ resource "redshift_language_grant" "public_sql" {
 }`
 	}
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(false), Check: func(*terraform.State) error {
 				rows, err := admin.Query(ctx, target, "SELECT language_name FROM svv_language_privileges WHERE identity_type = 'public'", nil)
 				require.NoError(t, err)
 				t.Logf("SVV_LANGUAGE_PRIVILEGES rows for the PUBLIC default: %v", rows)
 				require.NoError(t, createProcedure("sp_acc_default"), "PUBLIC holds USAGE on plpgsql by default")
+
 				return nil
 			}},
 			{Config: configuration(true), Check: func(*terraform.State) error {
 				require.ErrorContains(t, createProcedure("sp_acc_restricted"), "permission denied", "the PUBLIC tuple revoked the default")
 				return nil
 			}},
-			{Config: configuration(true), PlanOnly: true},
 			{Config: configuration(false), Check: func(*terraform.State) error {
 				require.ErrorContains(t, createProcedure("sp_acc_destroyed"), "permission denied", "destroy does not restore the default")
 				return nil

@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
@@ -15,22 +14,23 @@ import (
 // group lookup's members against a live warehouse, including no-change plans that prove the catalog reads match
 // the configuration.
 func TestAccUserOptionsLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	t.Parallel()
+
+	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(options string) string {
 		return fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
 resource "redshift_user" "iam" {
-  name = "acc_iam_%[5]s"
+  name = "acc_iam_%[4]s"
   password_disabled = true
-  %[6]s
+  %[5]s
 }
-resource "redshift_group" "readers" { name = "acc_group_%[5]s" }
+resource "redshift_group" "readers" { name = "acc_group_%[4]s" }
 resource "redshift_group_membership" "iam" {
   group = redshift_group.readers.name
   user = redshift_user.iam.name
@@ -38,7 +38,16 @@ resource "redshift_group_membership" "iam" {
 data "redshift_user" "iam" { name = redshift_user.iam.name }
 data "redshift_group" "readers" {
   name = redshift_group_membership.iam.group
-}`, region, profile, workgroup, database, suffix, options)
+}
+data "redshift_users" "all" {
+  depends_on = [redshift_user.iam]
+}
+data "redshift_groups" "all" {
+  depends_on = [redshift_group_membership.iam]
+}
+data "redshift_group_memberships" "readers" {
+  group = redshift_group_membership.iam.group
+}`, region, workgroup, database, suffix, options)
 	}
 	options := `
   valid_until = "2037-12-31T00:00:00Z"
@@ -52,19 +61,26 @@ data "redshift_group" "readers" {
   session_timeout = 0
   syslog_access = "RESTRICTED"`
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(options), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("data.redshift_user.iam", "search_path.2", `Odd"Schema`),
 				resource.TestCheckResourceAttr("data.redshift_user.iam", "session_defaults.timezone", "Europe/Berlin"),
 				resource.TestCheckResourceAttr("data.redshift_user.iam", "session_timeout", "600"),
 				resource.TestCheckResourceAttr("data.redshift_group.readers", "members.#", "1"),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_users.all", "users.*", map[string]string{
+					"name": "acc_iam_" + suffix, "session_timeout": "600", "connection_limit": "5", "syslog_access": "UNRESTRICTED",
+					"search_path.2": `Odd"Schema`, "session_defaults.timezone": "Europe/Berlin", "valid_until": "2037-12-31T00:00:00Z",
+				}),
+				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_groups.all", "groups.*", map[string]string{
+					"name": "acc_group_" + suffix, "members.#": "1",
+				}),
+				resource.TestCheckResourceAttr("data.redshift_group_memberships.readers", "group_memberships.#", "1"),
+				resource.TestCheckResourceAttr("data.redshift_group_memberships.readers", "group_memberships.0.user", "acc_iam_"+suffix),
 			)},
-			{Config: configuration(options), PlanOnly: true},
 			// Import cannot observe a disabled password and records the default instead.
 			{ResourceName: "redshift_user.iam", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"password_disabled"}},
 			{Config: configuration(cleared), Check: resource.TestCheckNoResourceAttr("data.redshift_user.iam", "search_path.#")},
-			{Config: configuration(cleared), PlanOnly: true},
 		},
 	})
 }

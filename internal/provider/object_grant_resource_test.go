@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleExemption("redshift_object_grant", "TestObjectGrantLifecycle uses exercisePrivilege and privilegeCatalog.")
+
 var _ = registerReplacementPolicy("redshift_object_grant", map[string]replaceRule{
 	"database_type":           replaceAlways,
 	"database_name":           replaceAlways,
@@ -37,10 +39,12 @@ func TestObjectGrantScopeValidation(t *testing.T) {
 	} {
 		target, err := r.prepare(privilegeObject(t, r, map[string]string{"database_name": "warehouse", "schema_name": test.schema, "object_name": test.name, "object_type": test.kind, "grantee_type": "USER", "grantee": "reader"}))
 		assert.Equal(t, test.valid, err == nil)
+
 		if test.valid {
 			assert.False(t, target.filter(sqlclient.Row{"identity_name": "other"}))
 		}
 	}
+
 	_, err := r.prepare(privilegeObject(t, r, map[string]string{"grantee_type": "invalid"}))
 	require.Error(t, err)
 }

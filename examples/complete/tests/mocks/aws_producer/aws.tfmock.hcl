@@ -14,17 +14,22 @@ mock_data "aws_caller_identity" {
 }
 mock_resource "aws_redshift_cluster" {
   defaults = {
+    arn                        = "arn:aws:redshift:eu-central-1:111111111111:cluster:redshift-oss-e2e-deadbeef-producer"
     cluster_type               = "single-node"
     cluster_namespace_arn      = "arn:aws:redshift:eu-central-1:111111111111:namespace:11111111-2222-3333-4444-555555555555"
     master_password_secret_arn = "arn:aws:secretsmanager:eu-central-1:111111111111:secret:producer-admin-ABC123"
     dns_name                   = "producer.example.test"
+    port                       = 5439
   }
 }
 mock_resource "aws_iam_role" {
-  defaults = { arn = "arn:aws:iam::111111111111:role/producer-fixture" }
+  defaults = { id = "redshift-oss-e2e-deadbeef-producer", arn = "arn:aws:iam::111111111111:role/producer-fixture" }
+}
+mock_resource "aws_redshift_integration" {
+  defaults = { arn = "arn:aws:redshift:eu-central-1:111111111111:integration:a1b2c3d4-5678-90ab-cdef-example22222" }
 }
 mock_resource "aws_s3_bucket" {
-  defaults = { arn = "arn:aws:s3:::mock-fixture" }
+  defaults = { id = "mock-fixture", arn = "arn:aws:s3:::mock-fixture" }
 }
 mock_resource "aws_s3_object" {
   # Uploads inherit the fixture bucket's SSE-S3 encryption.

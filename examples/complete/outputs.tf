@@ -67,7 +67,7 @@ output "catalog_checks" {
     object_privileges  = data.redshift_object_grant.group_schema.privileges
     system_privileges  = data.redshift_system_grant.operators.privileges
     iam_commands       = data.redshift_assumerole_grant.reader.privileges
-    default_privileges = data.redshift_default_privileges.reader_tables.privileges
+    default_privileges = data.redshift_default_privilege.reader_tables.privileges
     schema_comment     = data.redshift_comment.local_schema.text
     share_grants       = data.redshift_grant.share_schema.privileges
   }
@@ -124,6 +124,8 @@ output "verification" {
   value = {
     shared_statement_id   = aws_redshiftdata_statement.verify_shared.id
     spectrum_statement_id = aws_redshiftdata_statement.verify_spectrum.id
+    rls_statement_id      = aws_redshiftdata_statement.verify_rls.id
+    masking_statement_id  = aws_redshiftdata_statement.verify_masking.id
   }
 }
 

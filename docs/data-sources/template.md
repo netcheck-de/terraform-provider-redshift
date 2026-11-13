@@ -10,13 +10,6 @@ Reads one COPY template's data format, parameters, and owner as Redshift reports
 [SHOW TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_TEMPLATE.html) and
 [SHOW TEMPLATES](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_TEMPLATES.html).
 
-## Catalog Query
-
-```sql
-SHOW TEMPLATES FROM SCHEMA schema LIKE '...';
-SHOW TEMPLATE schema.name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -49,6 +42,20 @@ output "csv_events_parameters" {
 - `owner` (String) SQL user owning the template.
 - `parameters` (Map of String) COPY parameters keyed by their UPPERCASE keyword, as `SHOW TEMPLATE` prints them, with `""` for keywords without an argument; null when the template has none.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Locate the template and read its owner.
+SHOW TEMPLATES FROM SCHEMA schema LIKE '...';
+
+-- Read the template's format and COPY parameters.
+SHOW TEMPLATE schema.name;
+```
+
+## Read Behavior
 
 `id` (String, computed) is the template's JSON identity, using the paired resource's warehouse, `database`, `schema`,
 and `name` keys. A missing database, schema, or template fails the lookup, and so does a parameter the provider does

@@ -15,6 +15,13 @@ resource "redshift_database" "collation_probe" {
 data "redshift_database" "collation_probe" {
   provider = redshift.consumer
   name     = redshift_database.collation_probe.name
+
+  lifecycle {
+    postcondition {
+      condition     = self.collation == redshift_database.collation_probe.collation
+      error_message = "The collation probe must report the requested collation after creation or update."
+    }
+  }
 }
 
 resource "redshift_database" "producer" {
@@ -25,6 +32,13 @@ resource "redshift_database" "producer" {
 data "redshift_database" "producer" {
   provider = redshift.producer
   name     = redshift_database.producer.name
+
+  lifecycle {
+    postcondition {
+      condition     = upper(self.database_type) == "LOCAL"
+      error_message = "The producer workspace must be a local database."
+    }
+  }
 }
 
 # The source table is initialized in the database's existing public schema.
@@ -47,6 +61,23 @@ resource "redshift_database" "local" {
   isolation_level  = "SNAPSHOT"
 
   depends_on = [redshift_user.loader, redshift_user.reader, redshift_role.operators, redshift_role.readers]
+}
+
+data "redshift_database" "local" {
+  provider = redshift.consumer
+  name     = redshift_database.local.name
+
+  lifecycle {
+    postcondition {
+      condition = (
+        upper(self.database_type) == "LOCAL" &&
+        self.connection_limit == redshift_database.local.connection_limit &&
+        self.collation == redshift_database.local.collation &&
+        self.isolation_level == redshift_database.local.isolation_level
+      )
+      error_message = "The local workspace database must report its configured connection limit, collation, and isolation level."
+    }
+  }
 }
 
 # Setting a schema quota requires a superuser, which the example's admin connection is. The quota is in megabytes.
@@ -73,12 +104,39 @@ data "redshift_external_schema" "shared" {
   provider = redshift.consumer
   database = redshift_external_schema.shared.database
   name     = redshift_external_schema.shared.name
+
+  lifecycle {
+    postcondition {
+      condition = (
+        self.source_type == redshift_external_schema.shared.source_type &&
+        self.source_database == redshift_external_schema.shared.source_database &&
+        self.source_schema == redshift_external_schema.shared.source_schema &&
+        self.owner == redshift_external_schema.shared.owner
+      )
+      error_message = "The shared external schema must expose the requested source database/schema and belong to the loader."
+    }
+  }
+}
+
+# Lists the local database's external schemas in the shape of redshift_external_schema.
+data "redshift_external_schemas" "local" {
+  provider = redshift.consumer
+  database = redshift_external_schema.shared.database
+
+  depends_on = [redshift_external_schema.shared]
 }
 
 data "redshift_schema" "local" {
   provider = redshift.consumer
   database = redshift_schema.local.database
   name     = redshift_schema.local.name
+
+  lifecycle {
+    postcondition {
+      condition     = self.quota == redshift_schema.local.quota
+      error_message = "The workspace schema must report its configured quota."
+    }
+  }
 }
 
 resource "redshift_comment" "local_schema" {
@@ -94,6 +152,13 @@ data "redshift_comment" "local_schema" {
   database_name = redshift_comment.local_schema.database_name
   object_type   = redshift_comment.local_schema.object_type
   object_name   = redshift_comment.local_schema.object_name
+
+  lifecycle {
+    postcondition {
+      condition     = self.text == redshift_comment.local_schema.text
+      error_message = "The workspace schema comment must be readable with its configured text."
+    }
+  }
 }
 
 resource "redshift_comment" "local_database" {
@@ -136,4 +201,33 @@ resource "redshift_comment" "local_view" {
   text          = "Labels projected from the example events table."
 
   depends_on = [aws_redshiftdata_statement.local_view]
+}
+
+# Lists every comment in the consumer-local database: the database, schema, table, column, and view comments above.
+data "redshift_comments" "local" {
+  provider      = redshift.consumer
+  database_name = redshift_database.local.name
+
+  depends_on = [
+    redshift_comment.local_database, redshift_comment.local_schema, redshift_comment.local_table,
+    redshift_comment.local_column, redshift_comment.local_view,
+  ]
+
+  lifecycle {
+    postcondition {
+      condition = alltrue([
+        for expected in [
+          redshift_comment.local_database, redshift_comment.local_schema, redshift_comment.local_table,
+          redshift_comment.local_column, redshift_comment.local_view,
+          ] : anytrue([
+            for observed in self.comments :
+            observed.database_name == expected.database_name && observed.object_type == expected.object_type &&
+            observed.schema_name == expected.schema_name && observed.object_name == expected.object_name &&
+            observed.column_name == expected.column_name && observed.constraint_name == expected.constraint_name &&
+            observed.text == expected.text
+        ])
+      ])
+      error_message = "The comment catalog must contain the configured database, schema, table, column, and view annotations on their exact object tuples."
+    }
+  }
 }

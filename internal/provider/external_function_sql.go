@@ -43,9 +43,11 @@ func externalFunctionType(value string) (sqlclient.Keyword, error) {
 	if err != nil {
 		return "", err
 	}
+
 	if !slices.Contains(externalFunctionTypes, externalFunctionBaseType(name)) {
 		return "", fmt.Errorf("data type %q is not supported by Lambda UDFs", value)
 	}
+
 	return name, nil
 }
 
@@ -62,12 +64,15 @@ func externalFunctionTypeList(value types.List) []string {
 	if value.IsNull() || value.IsUnknown() {
 		return nil
 	}
+
 	var names []string
+
 	for _, element := range value.Elements() {
 		if text, ok := element.(types.String); ok {
 			names = append(names, text.ValueString())
 		}
 	}
+
 	return names
 }
 
@@ -77,6 +82,7 @@ func externalFunctionTypeValues(names []string) types.List {
 	for i, name := range names {
 		elements[i] = types.StringValue(name)
 	}
+
 	return types.ListValueMust(types.StringType, elements)
 }
 
@@ -85,11 +91,13 @@ func externalFunctionDeclaredTypes(argumentTypes []string) (sqlclient.Keyword, e
 	if len(argumentTypes) > externalFunctionMaxArguments {
 		return "", fmt.Errorf("a function accepts at most %d arguments, got %d", externalFunctionMaxArguments, len(argumentTypes))
 	}
+
 	for i, argumentType := range argumentTypes {
 		if _, err := externalFunctionType(argumentType); err != nil {
 			return "", fmt.Errorf("argument %d: %w", i+1, err)
 		}
 	}
+
 	return sqlclient.Signature(argumentTypes...)
 }
 
@@ -99,11 +107,13 @@ func externalFunctionSignature(argumentTypes []string) (sqlclient.Keyword, error
 	if _, err := externalFunctionDeclaredTypes(argumentTypes); err != nil {
 		return "", err
 	}
+
 	bases := make([]string, len(argumentTypes))
 	for i, argumentType := range argumentTypes {
 		name, _ := sqlclient.TypeName(argumentType) // Validated by externalFunctionDeclaredTypes.
 		bases[i] = externalFunctionBaseType(name)
 	}
+
 	return sqlclient.Signature(bases...)
 }
 
@@ -113,6 +123,7 @@ func externalFunctionSignatureTypes(signature string) []string {
 	if signature == "" {
 		return []string{}
 	}
+
 	return strings.Split(signature, ", ")
 }
 
@@ -122,17 +133,20 @@ func externalFunctionIAMRole(role string) (sqlclient.Statement, error) {
 	if strings.EqualFold(role, "DEFAULT") {
 		return sqlclient.Kw("DEFAULT"), nil
 	}
+
 	for arn := range strings.SplitSeq(role, ",") {
 		if !externalFunctionRolePattern.MatchString(arn) {
 			return sqlclient.Statement{}, fmt.Errorf("iam_role must be DEFAULT or comma-separated IAM role ARNs without spaces, got %q", role)
 		}
 	}
+
 	return sqlclient.Lit(role), nil
 }
 
 // externalFunctionBatchSize renders MAX_BATCH_SIZE within the documented 1 KB to 5 MB range.
 func externalFunctionBatchSize(data externalFunctionModel) (sqlclient.Statement, error) {
 	size := knownInt64(data.MaxBatchSize)
+
 	unit, err := optOneOf(data.MaxBatchSizeUnit, externalFunctionBatchUnits...)
 	switch {
 	case err != nil:
@@ -142,13 +156,16 @@ func externalFunctionBatchSize(data externalFunctionModel) (sqlclient.Statement,
 	case size == nil:
 		return sqlclient.Fragment(), nil
 	}
+
 	limit, unitName := int64(externalFunctionMaxBatchSizeK), "KB"
 	if unit == "MB" {
 		limit, unitName = externalFunctionMaxBatchSizeM, "MB"
 	}
+
 	if *size < 1 || *size > limit {
 		return sqlclient.Statement{}, fmt.Errorf("max_batch_size must be between 1 KB and 5 MB, got %d %s", *size, unitName)
 	}
+
 	return sqlclient.Fragment().KwInt("MAX_BATCH_SIZE", *size).OptKw(unit), nil
 }
 
@@ -160,33 +177,41 @@ func externalFunctionDefinition(data externalFunctionModel, replace bool) (strin
 	if err != nil {
 		return "", err
 	}
+
 	returnType, err := externalFunctionType(data.ReturnType.ValueString())
 	if err != nil {
 		return "", fmt.Errorf("return_type: %w", err)
 	}
+
 	volatility := sqlclient.Keyword("VOLATILE")
 	if configured := knownString(data.Volatility); configured != "" {
 		if volatility, err = sqlclient.OneOf(configured, externalFunctionVolatilities...); err != nil {
 			return "", fmt.Errorf("volatility: %w", err)
 		}
 	}
+
 	if data.LambdaFunction.ValueString() == "" {
 		return "", fmt.Errorf("lambda_function must not be empty")
 	}
+
 	role, err := externalFunctionIAMRole(data.IAMRole.ValueString())
 	if err != nil {
 		return "", err
 	}
+
 	if timeout := knownInt64(data.RetryTimeout); timeout != nil && *timeout < 0 {
 		return "", fmt.Errorf("retry_timeout must be at least 0 milliseconds, got %d", *timeout)
 	}
+
 	if rows := knownInt64(data.MaxBatchRows); rows != nil && (*rows < 1 || *rows > externalFunctionMaxBatchRows) {
 		return "", fmt.Errorf("max_batch_rows must be between 1 and %d, got %d", externalFunctionMaxBatchRows, *rows)
 	}
+
 	batchSize, err := externalFunctionBatchSize(data)
 	if err != nil {
 		return "", err
 	}
+
 	statement := sqlclient.Stmt("CREATE").If(replace, "OR REPLACE").Kw("EXTERNAL FUNCTION").
 		Qualified(data.Schema.ValueString(), data.Name.ValueString()).Args(sqlclient.Kw(argumentTypes)).
 		Kw("RETURNS", returnType, volatility).
@@ -195,6 +220,7 @@ func externalFunctionDefinition(data externalFunctionModel, replace bool) (strin
 		OptInt("RETRY_TIMEOUT", knownInt64(data.RetryTimeout)).
 		OptInt("MAX_BATCH_ROWS", knownInt64(data.MaxBatchRows)).
 		Append(batchSize)
+
 	return statement.String(), statement.Err()
 }
 
@@ -210,6 +236,7 @@ func externalFunctionTarget(data externalFunctionModel) (sqlclient.Statement, er
 	if err != nil {
 		return sqlclient.Statement{}, err
 	}
+
 	return sqlclient.Fragment().Qualified(data.Schema.ValueString(), data.Name.ValueString()).Args(sqlclient.Kw(signature)), nil
 }
 
@@ -219,7 +246,9 @@ func externalFunctionOwnerStatement(data externalFunctionModel) (string, error) 
 	if err != nil {
 		return "", err
 	}
+
 	statement := sqlclient.Stmt("ALTER FUNCTION").Append(target).KwIdent("OWNER TO", data.Owner.ValueString())
+
 	return statement.String(), statement.Err()
 }
 
@@ -229,14 +258,18 @@ func createExternalFunctionStatements(data externalFunctionModel) ([]string, err
 	if err != nil {
 		return nil, err
 	}
+
 	statements := []string{create}
+
 	if knownString(data.Owner) != "" {
 		owner, err := externalFunctionOwnerStatement(data)
 		if err != nil {
 			return nil, err
 		}
+
 		statements = append(statements, owner)
 	}
+
 	return statements, nil
 }
 
@@ -252,10 +285,12 @@ func externalFunctionRestate(_, plan externalFunctionModel) []string {
 func externalFunctionRestateIfDeclared(declared func(externalFunctionModel) (sqlclient.Keyword, error)) func(prev, plan externalFunctionModel) []string {
 	return func(prev, plan externalFunctionModel) []string {
 		before, errBefore := declared(prev)
+
 		after, _ := declared(plan)
 		if errBefore == nil && before == after {
 			return nil
 		}
+
 		return externalFunctionRestate(prev, plan)
 	}
 }
@@ -288,7 +323,9 @@ var externalFunctionAlterSteps = []alterStep[externalFunctionModel]{
 		if knownString(plan.Owner) == "" {
 			return nil
 		}
+
 		statement, _ := externalFunctionOwnerStatement(plan) // Validated by alterExternalFunctionStatements.
+
 		return []string{statement}
 	}},
 }
@@ -300,6 +337,7 @@ func alterExternalFunctionStatements(prev, plan externalFunctionModel) ([]string
 	if _, err := externalFunctionDefinition(plan, true); err != nil {
 		return nil, err
 	}
+
 	return slices.Compact(alterStatements(prev, plan, externalFunctionAlterSteps)), nil
 }
 
@@ -309,7 +347,9 @@ func dropExternalFunctionStatement(data externalFunctionModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	statement := sqlclient.Stmt("DROP FUNCTION").Append(target)
+
 	return statement.String(), statement.Err()
 }
 
@@ -331,6 +371,7 @@ func readExternalFunctionQuery(data externalFunctionModel) (sqlclient.Query, err
 	if err != nil {
 		return sqlclient.Query{}, err
 	}
+
 	return sqlclient.Select(externalFunctionColumns...).From("pg_proc p JOIN "+externalFunctionSource).
 		Where("n.nspname = :schema", sqlclient.Bind("schema", data.Schema.ValueString())).
 		Where("p.proname = :name", sqlclient.Bind("name", data.Name.ValueString())).
@@ -347,5 +388,6 @@ func externalFunctionVolatility(code string) (string, error) {
 	case "i":
 		return "IMMUTABLE", nil
 	}
+
 	return "", fmt.Errorf("unknown routine volatility %q", code)
 }

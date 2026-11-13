@@ -177,6 +177,27 @@ data "redshift_identity_provider" "this" {
   provider = redshift.consumer
   count    = local.sso_enabled ? 1 : 0
   name     = redshift_identity_provider.this[0].name
+
+  lifecycle {
+    postcondition {
+      condition = try(
+        self.type == "AWSIDC" && self.enabled &&
+        self.namespace == aws_redshift_idc_application.this[0].identity_namespace &&
+        self.application_arn == aws_redshift_idc_application.this[0].idc_managed_application_arn &&
+        self.iam_role_arn == aws_iam_role.consumer.arn,
+        false,
+      )
+      error_message = "The SQL identity provider catalog must report an enabled AWSIDC provider for the managed namespace, application, and consumer IAM role. Automatic role creation is not catalog-observable."
+    }
+  }
+}
+
+# Lists every provider of the warehouse, which needs a superuser like the provider itself.
+data "redshift_identity_providers" "all" {
+  provider = redshift.consumer
+  count    = local.sso_enabled ? 1 : 0
+
+  depends_on = [redshift_identity_provider.this]
 }
 
 resource "redshift_role" "sso_readers" {
@@ -203,4 +224,58 @@ resource "redshift_role_grant" "sso_operators" {
   count    = local.sso_enabled ? 1 : 0
   role     = redshift_role.operators.name
   to_role  = redshift_role.sso_operators[0].name
+}
+
+data "redshift_role" "sso_readers" {
+  provider = redshift.consumer
+  count    = local.sso_enabled ? 1 : 0
+  name     = redshift_role.sso_readers[0].name
+
+  lifecycle {
+    postcondition {
+      condition     = try(self.role_id > 0 && length(self.owner) > 0, false)
+      error_message = "The namespaced Identity Center readers role must exist in the SQL catalog with a role ID and owner."
+    }
+  }
+}
+
+data "redshift_role" "sso_operators" {
+  provider = redshift.consumer
+  count    = local.sso_enabled ? 1 : 0
+  name     = redshift_role.sso_operators[0].name
+
+  lifecycle {
+    postcondition {
+      condition     = try(self.role_id > 0 && length(self.owner) > 0, false)
+      error_message = "The namespaced Identity Center operators role must exist in the SQL catalog with a role ID and owner."
+    }
+  }
+}
+
+data "redshift_role_grant" "sso_readers" {
+  provider = redshift.consumer
+  count    = local.sso_enabled ? 1 : 0
+  role     = redshift_role_grant.sso_readers[0].role
+  to_role  = redshift_role_grant.sso_readers[0].to_role
+
+  lifecycle {
+    postcondition {
+      condition     = try(self.exists && !self.admin_option, false)
+      error_message = "The Identity Center readers role must inherit the SQL readers role without admin option in the catalog."
+    }
+  }
+}
+
+data "redshift_role_grant" "sso_operators" {
+  provider = redshift.consumer
+  count    = local.sso_enabled ? 1 : 0
+  role     = redshift_role_grant.sso_operators[0].role
+  to_role  = redshift_role_grant.sso_operators[0].to_role
+
+  lifecycle {
+    postcondition {
+      condition     = try(self.exists && !self.admin_option, false)
+      error_message = "The Identity Center operators role must inherit the SQL operators role without admin option in the catalog."
+    }
+  }
 }

@@ -13,15 +13,6 @@ destination databases their integration. See AWS
 [PG_DATABASE_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_PG_DATABASE_INFO.html), and
 [SVV_INTEGRATION](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_INTEGRATION.html).
 
-## Catalog Query
-
-```sql
-SHOW DATABASES LIKE 'name';
-SELECT ... FROM pg_database_info WHERE datname = 'name';
-SELECT db_collation();
-SELECT ... FROM svv_integration WHERE target_database = 'name';
-```
-
 ## Example Usage
 
 {{ tffile "examples/data-sources/redshift_database/data-source.tf" }}
@@ -30,6 +21,26 @@ SELECT ... FROM svv_integration WHERE target_database = 'name';
 
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Look up database metadata and its local or shared type.
+SHOW DATABASES LIKE 'name';
+
+-- Read local database options and ownership.
+SELECT ... FROM pg_database_info WHERE datname = 'name';
+
+-- Read the database's collation.
+SELECT db_collation();
+
+-- Look up a zero-ETL integration targeting the database.
+SELECT ... FROM svv_integration WHERE target_database = 'name';
+```
+
+## Read Behavior
 
 Missing or ambiguous databases and shared databases without a complete producer binding are errors. The collation is
 read by running `DB_COLLATION()` in the looked-up database, so the caller must be able to connect to it.

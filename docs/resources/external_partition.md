@@ -11,14 +11,6 @@ Manages one partition of a partitioned
 See AWS [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html) and
 [Partitioning Redshift Spectrum external tables](https://docs.aws.amazon.com/redshift/latest/dg/c-spectrum-external-tables.html#c-spectrum-external-tables-partitioning).
 
-## SQL Statements
-
-```sql
-ALTER TABLE schema.table ADD PARTITION (values...) LOCATION ...;
-ALTER TABLE schema.table PARTITION (values...) SET LOCATION ...;
-ALTER TABLE schema.table DROP PARTITION (values...);
-```
-
 ## Example Usage
 
 ```terraform
@@ -45,8 +37,23 @@ resource "redshift_external_partition" "sales_2008_01" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Add the external table partition.
+ALTER TABLE schema.table ADD PARTITION (values...) LOCATION ...;
+
+-- Change the partition's data location.
+ALTER TABLE schema.table PARTITION (values...) SET LOCATION ...;
+
+-- Remove the external table partition.
+ALTER TABLE schema.table DROP PARTITION (values...);
+```
 
 ## Lifecycle and Ownership
 
@@ -76,31 +83,27 @@ update fails when the partition disappeared after the plan; refresh and plan aga
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity. The `values` field holds the partition values as
-a JSON-encoded string, because identity fields are strings:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_external_partition.sales_2008_01
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "warehouse"
-    schema         = "raw"
-    table          = "sales"
-    values         = jsonencode({ sale_date = "2008-01-01" })
+    database = "warehouse"
+    schema   = "raw"
+    table    = "sales"
+    values   = jsonencode({ sale_date = "2008-01-01" })
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_external_partition.sales_2008_01 \
-  '{"workgroup_name":"warehouse","database":"warehouse","schema":"raw","table":"sales","values":"{\"sale_date\":\"2008-01-01\"}"}'
+  '{"database":"warehouse","schema":"raw","table":"sales","values":"{\"sale_date\":\"2008-01-01\"}"}'
 ```
+
+The `values` field holds the partition values as a JSON-encoded string, because identity fields are strings.
 
 The location is read from the catalog on refresh.

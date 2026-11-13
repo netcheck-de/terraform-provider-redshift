@@ -10,12 +10,6 @@ Checks SQL account- or namespace-level datashare usage. Specify exactly one of `
 This does not verify AWS authorization or consumer association. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_datashare_consumers WHERE share_name = 'datashare' ...;
-```
-
 ## Example Usage
 
 ```terraform
@@ -52,6 +46,17 @@ data "redshift_datashare_grant" "namespace" {
 - `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Check whether the selected consumer has datashare usage.
+SELECT ... FROM svv_datashare_consumers WHERE share_name = 'datashare' ...;
+```
+
+## Read Behavior
 
 Exactly one consumer selector is required. A namespace UUID may be unknown during planning; the lookup is deferred
 until its value resolves.

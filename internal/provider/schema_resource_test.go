@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,8 +25,8 @@ var _ = registerReplacementPolicy("redshift_schema", map[string]replaceRule{
 
 // TestSchemaCatalogOwnership checks observed schema ownership.
 func TestSchemaCatalogOwnership(t *testing.T) {
-	r := &schemaResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
-		return []dataapi.Row{{"schema_name": "serving", "owner": "warehouse_admin"}}, nil
+	r := &schemaResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
+		return []sqlclient.Row{{"schema_name": "serving", "owner": "warehouse_admin"}}, nil
 	}))}
 	data := schemaModel{Database: types.StringValue("admin"), Name: types.StringValue("serving")}
 	found, err := r.read(context.Background(), &data)
@@ -37,11 +37,11 @@ func TestSchemaCatalogOwnership(t *testing.T) {
 
 // TestSchemaRejectsIncompleteMetadata rejects missing or ambiguous catalog fields.
 func TestSchemaRejectsIncompleteMetadata(t *testing.T) {
-	for _, rows := range [][]dataapi.Row{
+	for _, rows := range [][]sqlclient.Row{
 		{{"schema_name": "serving"}},
 		{{"schema_name": "serving", "owner": "admin"}, {"schema_name": "serving", "owner": "admin"}},
 	} {
-		r := &schemaResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		r := &schemaResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			return rows, nil
 		}))}
 		_, err := r.read(context.Background(), &schemaModel{Database: types.StringValue("admin"), Name: types.StringValue("serving")})
@@ -51,13 +51,15 @@ func TestSchemaRejectsIncompleteMetadata(t *testing.T) {
 
 // TestDroppedParentDatabaseIsNotFound removes database-local objects whose database was dropped outside Terraform.
 func TestDroppedParentDatabaseIsNotFound(t *testing.T) {
-	client := testResourceClient(queryFunc(func(_ context.Context, target dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+	client := testResourceClient(queryFunc(func(_ context.Context, target sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		if target.Database == "admin" && strings.HasPrefix(sql, "SELECT database_name FROM svv_redshift_databases") {
 			return nil, nil
 		}
+
 		return nil, fmt.Errorf("database %q does not exist", target.Database)
 	}))
 	database := types.StringValue("analytics")
+
 	reads := map[string]func() (bool, error){
 		"schema": func() (bool, error) {
 			return (&schemaResource{client}).read(context.Background(), &schemaModel{Database: database, Name: types.StringValue("serving")})
@@ -89,10 +91,11 @@ func TestDroppedParentDatabaseIsNotFound(t *testing.T) {
 
 // creationOnlyClient accepts CREATE statements and then fails or misses every catalog readback.
 func creationOnlyClient(unavailable bool) resourceClient {
-	return testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+	return testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		if unavailable && !strings.HasPrefix(sql, "CREATE ") {
 			return nil, fmt.Errorf("catalog unavailable")
 		}
+
 		return nil, nil
 	}))
 }
@@ -106,6 +109,7 @@ func TestSchemaCreationErrorsRetainKnownState(t *testing.T) {
 			resp := resource.CreateResponse{State: tfsdk.State{Schema: state.Schema}}
 			r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan(state)}, &resp)
 			require.True(t, resp.Diagnostics.HasError())
+
 			var observed schemaModel
 			require.False(t, resp.State.Get(context.Background(), &observed).HasError())
 			assert.False(t, observed.ID.IsNull())
@@ -118,19 +122,20 @@ func TestSchemaCreationErrorsRetainKnownState(t *testing.T) {
 // TestSchemaQuotaRejectsMalformedSession fails instead of guessing quota visibility from an ambiguous or unrecognized session row.
 func TestSchemaQuotaRejectsMalformedSession(t *testing.T) {
 	for _, test := range []struct {
-		rows    []dataapi.Row
+		rows    []sqlclient.Row
 		message string
 	}{
 		{nil, "no unique row"},
-		{[]dataapi.Row{{"superuser": "true"}, {"superuser": "false"}}, "no unique row"},
-		{[]dataapi.Row{{"superuser": "unexpected"}}, "unrecognized usesuper"},
+		{[]sqlclient.Row{{"superuser": "true"}, {"superuser": "false"}}, "no unique row"},
+		{[]sqlclient.Row{{"superuser": "unexpected"}}, "unrecognized usesuper"},
 	} {
 		calls := 0
-		r := &schemaResource{testResourceClient(queryFunc(func(context.Context, dataapi.Connection, string, map[string]string) ([]dataapi.Row, error) {
+		r := &schemaResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 			calls++
 			if calls == 1 {
 				return nil, nil
 			}
+
 			return test.rows, nil
 		}))}
 		_, visible, err := r.schemaQuota(context.Background(), schemaModel{Database: types.StringValue("admin"), Name: types.StringValue("serving")}, "owner")
@@ -144,15 +149,20 @@ func TestSchemaQuotaRejectsMalformedSession(t *testing.T) {
 func TestSchemaUpdateReportsDisappearance(t *testing.T) {
 	for _, external := range []bool{false, true} {
 		c := fullCatalog()
-		client := queryFunc(func(ctx context.Context, connection dataapi.Connection, query string, parameters map[string]string) ([]dataapi.Row, error) {
+		client := queryFunc(func(ctx context.Context, connection sqlclient.Connection, query string, parameters map[string]string) ([]sqlclient.Row, error) {
 			rows, err := c.Query(ctx, connection, query, parameters)
 			if strings.HasPrefix(query, "ALTER SCHEMA ") || strings.HasPrefix(query, "ALTER EXTERNAL SCHEMA ") {
 				c.schema, c.external = false, false
 			}
+
 			return rows, err
 		})
-		var r resource.Resource
-		var before, after any
+
+		var (
+			r             resource.Resource
+			before, after any
+		)
+
 		if external {
 			r = newExternalSchemaResource()
 			model := externalSchemaModel{Database: types.StringValue("admin"), Name: types.StringValue("example_external"), GlueDatabase: types.StringValue("example_glue"), IAMRoleARN: types.StringValue("arn:aws:iam::123456789012:role/spectrum"), RefreshRevision: types.StringNull(), Owner: types.StringValue("admin")}
@@ -166,6 +176,7 @@ func TestSchemaUpdateReportsDisappearance(t *testing.T) {
 			model.Owner = types.StringValue("replacement_owner")
 			after = model
 		}
+
 		configureTestResource(t, r, client)
 		_, diagnostics := applyOperation(t, r, "update", before, after, nil)
 		require.True(t, diagnostics.HasError(), "%v", diagnostics)

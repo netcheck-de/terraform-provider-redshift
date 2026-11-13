@@ -15,6 +15,7 @@ func TestObjectGrantSQL(t *testing.T) {
 	render := func(changes map[string]string, privilege sqlclient.Keyword) func() ([]string, error) {
 		fields := maps.Clone(table)
 		maps.Copy(fields, changes)
+
 		return privilegeTargetCase(t, newObjectGrantResource, fields, privilege)
 	}
 	routine := func(kind, name, arguments string) map[string]string {
@@ -27,19 +28,25 @@ func TestObjectGrantSQL(t *testing.T) {
 		return func() ([]string, error) {
 			fields := maps.Clone(table)
 			maps.Copy(fields, changes)
+
 			r := newObjectGrantResource().(*privilegeResource)
+
 			target, err := r.prepare(privilegeObject(t, r, fields))
 			if err != nil {
 				return nil, err
 			}
+
 			var statements []string
+
 			for _, grant := range []bool{true, false} {
 				statement, err := target.grant.optionStatement(grant, privilege)
 				if err != nil {
 					return nil, err
 				}
+
 				statements = append(statements, statement)
 			}
+
 			return statements, nil
 		}
 	}
@@ -97,6 +104,7 @@ func TestObjectGrantSignature(t *testing.T) {
 		require.NoError(t, err, arguments)
 		assert.Equal(t, expected, signature, arguments)
 	}
+
 	for _, arguments := range []string{"integer,", "money", "varchar(10", "integer; DROP TABLE x"} {
 		_, err := objectGrantSignature(arguments)
 		require.Error(t, err, arguments)
@@ -106,6 +114,7 @@ func TestObjectGrantSignature(t *testing.T) {
 // TestObjectGrantPrivileges keeps the object type list and its allowlists in step.
 func TestObjectGrantPrivileges(t *testing.T) {
 	assert.Len(t, objectGrantPrivileges, len(objectGrantKinds))
+
 	for _, kind := range objectGrantKinds {
 		assert.NotEmpty(t, objectGrantPrivileges[kind], kind)
 	}

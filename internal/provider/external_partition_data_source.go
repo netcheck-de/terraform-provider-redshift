@@ -44,19 +44,24 @@ func (d *externalPartitionDataSource) Schema(_ context.Context, _ datasource.Sch
 func (d *externalPartitionDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data externalPartitionModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	reader := &externalPartitionResource{d.resourceClient}
+
 	_, found, err := reader.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read external partition", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("External partition not found", "No partition with these values exists in external table "+data.Table.ValueString()+".")
 		return
 	}
+
 	data.ID = reader.partitionIdentity(data)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

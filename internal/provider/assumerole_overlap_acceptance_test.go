@@ -19,11 +19,14 @@ import (
 // TestAccAssumeroleGrantARNOverlap probes only a disposable SQL role on an already-enabled ASSUMEROLE fixture.
 // Catalog snapshots distinguish the ON ALL marker from implied per-ARN rows without changing PUBLIC's policy.
 func TestAccAssumeroleGrantARNOverlap(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_ASSUMEROLE", "REDSHIFT_ACC_SPECTRUM_ROLE_ARN")
+	t.Parallel()
+
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_ASSUMEROLE", "REDSHIFT_ACC_SPECTRUM_ROLE_ARN")
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, SecretARN: os.Getenv("REDSHIFT_ACC_SECRET_ARN"), Timeout: 5 * time.Minute, Poll: time.Second}
+
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, SecretARN: os.Getenv("REDSHIFT_ACC_SECRET_ARN"), Timeout: 5 * time.Minute, Poll: time.Second})
 	connection := sqlclient.Connection{Database: database}
 	name := "acc_iam_overlap_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	roleARN := os.Getenv("REDSHIFT_ACC_SPECTRUM_ROLE_ARN")
@@ -37,6 +40,7 @@ func TestAccAssumeroleGrantARNOverlap(t *testing.T) {
 		lookupValue(&tuple, "iam_role_arn", types.StringValue(selector))
 		target, err := r.target(tuple)
 		require.NoError(t, err)
+
 		return target.grant.statement(grant, command)
 	}
 	statement := func(selector string, grant bool) string { return statementFor(selector, grant, "COPY") }
@@ -51,8 +55,10 @@ func TestAccAssumeroleGrantARNOverlap(t *testing.T) {
 		rows, err := client.Query(ctx, connection, query, params)
 		require.NoError(t, err)
 		t.Logf("%s: %v", label, rows)
+
 		return rows
 	}
+
 	exec(sqlclient.Stmt("CREATE ROLE").Ident(name).String())
 	t.Cleanup(func() {
 		// Repeated revokes clear both catalog representations even if an earlier assertion interrupted the probe.
@@ -60,6 +66,7 @@ func TestAccAssumeroleGrantARNOverlap(t *testing.T) {
 			_, err := client.Query(ctx, connection, statementFor(selector, false, "ALL"), nil)
 			assert.NoError(t, err)
 		}
+
 		_, err := client.Query(ctx, connection, sqlclient.Stmt("DROP ROLE").Ident(name).String(), nil)
 		assert.NoError(t, err)
 	})
@@ -68,12 +75,15 @@ func TestAccAssumeroleGrantARNOverlap(t *testing.T) {
 	exec(statement(roleARN, false))
 	assert.Empty(t, snapshot("explicit ARN revoked"))
 	exec(statement("ALL", true))
-	assert.Equal(t, []sqlclient.Row{{"iam_arn": assumeroleGrantAllRoles, "command_type": "COPY"}}, snapshot("ON ALL granted"))
+	// Depending on the namespace's associated and default roles, Redshift also lists implied per-ARN rows.
+	assert.Contains(t, snapshot("ON ALL granted"), sqlclient.Row{"iam_arn": assumeroleGrantAllRoles, "command_type": "COPY"})
 	require.ErrorContains(t, r.reconcile(ctx, withPrivileges(data, []string{"COPY"})), "also holds ASSUMEROLE ON ALL")
 	exec(statementFor(roleARN, true, "UNLOAD"))
+
 	rows := snapshot("explicit ARN UNLOAD beside ON ALL COPY")
 	assert.Contains(t, rows, sqlclient.Row{"iam_arn": roleARN, "command_type": "COPY"})
 	assert.Contains(t, rows, sqlclient.Row{"iam_arn": roleARN, "command_type": "UNLOAD"})
+
 	observed := data
 	_, found, err := r.read(ctx, &observed)
 	require.NoError(t, err)
@@ -83,10 +93,12 @@ func TestAccAssumeroleGrantARNOverlap(t *testing.T) {
 	exec(statement(roleARN, true))
 	snapshot("explicit ARN added while ON ALL held")
 	exec(statement(roleARN, false))
+
 	rows = snapshot("specific ARN revoked while ON ALL held")
 	assert.NotContains(t, rows, sqlclient.Row{"iam_arn": roleARN, "command_type": "COPY"})
 	assert.Contains(t, rows, sqlclient.Row{"iam_arn": assumeroleGrantAllRoles, "command_type": "COPY"})
 	exec(statement("ALL", false))
+
 	first := snapshot("first ON ALL revoke")
 	assert.Equal(t, []sqlclient.Row{{"iam_arn": roleARN, "command_type": "UNLOAD"}}, first, "no residual ON ALL marker on this fixture")
 	exec(statement("ALL", false))
@@ -96,14 +108,20 @@ func TestAccAssumeroleGrantARNOverlap(t *testing.T) {
 	require.NoError(t, r.reconcile(ctx, withPrivileges(data, []string{"COPY"})), "ARN ownership becomes safe after ON ALL is revoked")
 	require.NoError(t, r.reconcile(ctx, withPrivileges(data, nil)))
 	exec(statementFor("ALL", true, "ALL"))
+
 	var commands []string
+
 	for _, row := range snapshot("ON ALL FOR ALL granted") {
-		assert.Equal(t, assumeroleGrantAllRoles, row["iam_arn"])
-		commands = append(commands, normalizePrivilege(row["command_type"]))
+		// Rows under associated and default roles are implied by the ON ALL grant; only its marker rows count.
+		if row["iam_arn"] == assumeroleGrantAllRoles {
+			commands = append(commands, normalizePrivilege(row["command_type"]))
+		}
 	}
+
 	for _, command := range assumeroleGrantCommands {
 		assert.Contains(t, commands, string(command), "FOR ALL includes each documented command; extra internal commands are logged, not managed")
 	}
+
 	exec(statementFor("ALL", false, "ALL"))
 	snapshot("first ON ALL FOR ALL revoke")
 	exec(statementFor("ALL", false, "ALL"))

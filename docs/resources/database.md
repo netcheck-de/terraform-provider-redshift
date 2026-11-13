@@ -14,14 +14,6 @@ or, when set, the `timeouts.create` duration. See AWS
 [CREATE DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATABASE.html) and
 [ALTER DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATABASE.html).
 
-## SQL Statements
-
-```sql
-CREATE DATABASE name ...;
-ALTER DATABASE name ...;
-DROP DATABASE name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -82,16 +74,16 @@ resource "redshift_database" "dynamodb_replica" {
 - `collation` (String) `CASE_SENSITIVE` (the Redshift default) or `CASE_INSENSITIVE` string comparison for a local database. Changed in place with `ALTER DATABASE ... COLLATE`; Redshift may reject the change when database objects exist, without replacing the database. A change strictly reads `DB_COLLATION()` in fresh sessions before and immediately after COLLATE, before changing other options. Verified partial progress is saved if later work fails. Refresh also reads collation; a refused session warns and keeps the last known value. Omit it to keep the current collation. Not supported for shared or integration databases.
 - `connection_limit` (Number) Maximum number of concurrent connections to a local database; `-1` means `UNLIMITED`, the Redshift default. Superusers are exempt. Updated in place with `ALTER DATABASE ... CONNECTION LIMIT`. Omit it to keep and report the current limit. Not supported for shared databases, where it is null.
 - `datashare_arn` (String) Producer datashare ARN. Omit for a local database; associate the share through AWS before creating a consumer database.
-- `integration` (Block, Optional) Creates the database as the read-only destination of an active zero-ETL integration with `CREATE DATABASE ... FROM INTEGRATION`, which needs a superuser or a user with `CREATEDB` and `CREATEUSER`; replication runs with that user's permissions. The warehouse must set `enable_case_sensitive_identifier`. Conflicts with `datashare_arn` and `collation`. Adding or removing the block, or changing `integration_id` or `source_database`, replaces the database. Refresh reads `SVV_INTEGRATION`, which only superusers can see. Create and Update wait up to one minute for readable settings to propagate to the catalog, bounded by any shorter operation timeout. (see [below for nested schema](#nestedblock--integration))
+- `integration` (Block, Optional) Creates the database as the read-only destination of an active zero-ETL integration with `CREATE DATABASE ... FROM INTEGRATION`, which needs a superuser or a user with `CREATEDB` and `CREATEUSER`; replication runs with that user's permissions. The warehouse must set `enable_case_sensitive_identifier`. Conflicts with `datashare_arn` and `collation`. Refresh reads `SVV_INTEGRATION`, which only superusers can see. Create and Update wait up to one minute for readable settings to propagate to the catalog, bounded by any shorter operation timeout. (see [below for nested schema](#nestedblock--integration))
 - `isolation_level` (String) `SERIALIZABLE` or `SNAPSHOT` (the Redshift default) isolation for a local database. Updated in place with `ALTER DATABASE ... ISOLATION LEVEL`, which fails while other sessions are connected to the database. Omit it to keep and report the current level. Not supported for shared databases, where it is null.
 - `owner` (String) SQL user owning a local database. Set with `OWNER` at creation and changed in place with `ALTER DATABASE ... OWNER TO`, which requires a superuser. Omit it to keep and report the current owner. Not supported for shared databases, where it is null.
 - `timeouts` (Block, Optional) Time limits for whole Terraform operations, as durations such as `30m` or `2h`. Unset, an operation has no limit of its own and each SQL statement is bounded only by the provider's `query_timeout`; set, a statement still running when the operation's limit expires is cancelled. A change to the timeouts alone runs no DDL of its own, but applies as an in-place update that reads and verifies the catalog like any other. (see [below for nested schema](#nestedblock--timeouts))
-- `with_permissions` (Boolean) Require object-level grants for a shared database; defaults to `true`. Changing it replaces a shared database (`datashare_arn` set); ignored for local databases.
+- `with_permissions` (Boolean) Require object-level grants for a shared database; defaults to `true`; ignored for local databases.
 
 ### Read-Only
 
 - `database_type` (String) `LOCAL` or `SHARED`; for a zero-ETL destination database, the type `SHOW DATABASES` reports, in uppercase.
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `producer_account` (String) Producer account ID; null for local databases.
 - `producer_namespace` (String) Producer namespace ID; null for local databases.
 - `share_name` (String) Producer share name; null for local databases.
@@ -120,6 +112,21 @@ Optional:
 - `delete` (String) Maximum time for dropping the object and verifying that it is gone. Applies only when the value was saved to state by an earlier apply before the destroy.
 - `update` (String) Maximum time for an in-place update, including the catalog reads before and after the change.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the database.
+CREATE DATABASE name ...;
+
+-- Update database settings.
+ALTER DATABASE name ...;
+
+-- Delete the database.
+DROP DATABASE name;
+```
 
 ## Local Database Options
 
@@ -175,11 +182,15 @@ replicated tables. Existing tables must be `Synced` to switch mode, and switchin
 For DynamoDB, use `aws_redshift_integration` instead of `aws_rds_integration`, omit `source_database`, and set
 `refresh_interval` to at least 900 seconds. The source table needs point-in-time recovery and a resource policy
 authorizing Redshift exports. The [complete example](https://github.com/netcheck-de/terraform-provider-redshift/tree/main/examples/complete)
-supports an existing table ARN in `zero_etl_source_arn` or a disposable table with `zero_etl_create_dynamodb_source = true`.
+creates a disposable DynamoDB source by default. To use an existing table ARN in `zero_etl_source_arn`, set
+`zero_etl_create_dynamodb_source = false`.
 
 ## Lifecycle and Ownership
 
-Deletion drops only the matching database, without `CASCADE`; active sessions or grants may prevent it.
+Deletion drops only the matching database, without `CASCADE` or `FORCE`; active sessions or grants may prevent it.
+For ordinary local or shared databases, an explicit active-session refusal is retried for up to 30 seconds, or a
+shorter configured delete timeout, so short-lived catalog sessions can close. Persistent sessions remain an error;
+the provider never terminates them. Other errors and uncertain statement outcomes are not retried.
 
 Redshift refuses to drop a zero-ETL destination while its integration is active, also with `FORCE`. Because the
 destination depends on the integration's ID, Terraform destroys the database first, also under `-target`, and the
@@ -326,29 +337,23 @@ the integration binding from state.
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_database.analytics
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    name           = "analytics"
-    datashare_arn  = "arn:aws:redshift:eu-central-1:123456789012:datashare:11111111-2222-3333-4444-555555555555/source"
+    name          = "analytics"
+    datashare_arn = "arn:aws:redshift:eu-central-1:123456789012:datashare:11111111-2222-3333-4444-555555555555/source"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_database.analytics \
-  '{"workgroup_name":"warehouse","database":"admin","name":"analytics","datashare_arn":"arn:aws:redshift:eu-central-1:123456789012:datashare:11111111-2222-3333-4444-555555555555/source"}'
+  '{"name":"analytics","datashare_arn":"arn:aws:redshift:eu-central-1:123456789012:datashare:11111111-2222-3333-4444-555555555555/source"}'
 ```
 
 For a local database, omit `datashare_arn` and `integration_id` from the import ID. For a shared database

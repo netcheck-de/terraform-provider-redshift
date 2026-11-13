@@ -16,6 +16,7 @@ import (
 // differs from the configured query, so the plan updates the view in place, and the next plan is empty.
 func TestContractViewImportPlansInPlaceReplace(t *testing.T) {
 	t.Parallel()
+
 	c, views := viewFake()
 	configuration := fmt.Sprintf(`
 provider "redshift" {
@@ -35,7 +36,7 @@ resource "redshift_view" "labels" {
 		Steps: []testresource.TestStep{
 			{
 				Config: configuration, ResourceName: address, ImportState: true, ImportStatePersist: true,
-				ImportStateId: fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":%q,"name":%q}`, fakeViewSchema, fakeViewName),
+				ImportStateId: fmt.Sprintf(`{"database":"admin","schema":%q,"name":%q}`, fakeViewSchema, fakeViewName),
 			},
 			{
 				Config:           configuration,
@@ -43,8 +44,10 @@ resource "redshift_view" "labels" {
 				Check: func(*terraform.State) error {
 					c.mu.Lock()
 					defer c.mu.Unlock()
+
 					assert.Equal(t, "SELECT id,\n  label FROM serving.sales", views.get(fakeViewName).query)
 					assert.Equal(t, fakeViewOwner, views.get(fakeViewName).owner, "CREATE OR REPLACE VIEW keeps the owner")
+
 					return nil
 				},
 			},

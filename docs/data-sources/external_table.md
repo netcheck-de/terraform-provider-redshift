@@ -10,13 +10,6 @@ Looks up the definition of an external table in an external schema, including ta
 AWS [SVV_EXTERNAL_TABLES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_TABLES.html) and
 [SVV_EXTERNAL_COLUMNS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_EXTERNAL_COLUMNS.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_external_tables WHERE schemaname = 'schema' AND tablename = 'name';
-SELECT ... FROM svv_external_columns WHERE schemaname = 'schema' AND tablename = 'name';
-```
-
 ## Example Usage
 
 ```terraform
@@ -49,7 +42,7 @@ data "redshift_external_table" "sales" {
 - `partition_key` (Attributes List) `PARTITIONED BY` columns in key order; null for an unpartitioned table. (see [below for nested schema](#nestedatt--partition_key))
 - `serde` (String) `ROW FORMAT SERDE` class, such as `org.openx.data.jsonserde.JsonSerDe` or `org.apache.hadoop.hive.serde2.OpenCSVSerde`. Conflicts with the delimiters.
 - `serde_properties` (Map of String) `WITH SERDEPROPERTIES` pairs for `serde`, such as `{ "strip.outer.array" = "true" }`.
-- `stored_as` (String) File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; switching from name to position mapping also requires the `column` blocks to follow catalog order. Other changes replace the table.
+- `stored_as` (String) File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; switching from name to position mapping also requires the `column` blocks to follow catalog order.
 - `table_properties` (Map of String) Table properties reported by `SHOW EXTERNAL TABLE`, including properties set outside Terraform.
 
 <a id="nestedatt--column"></a>
@@ -69,6 +62,20 @@ Read-Only:
 - `name` (String) Column name. The external catalog stores names in lowercase, so names differing only in case are the same column.
 - `type` (String) Data type: `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `REAL`, `DOUBLE PRECISION`, `BOOLEAN`, `CHAR(n)`, `VARCHAR(n)`, `DATE`, or `TIMESTAMP`, including their aliases such as `INT4` or `NUMERIC`, in any case. Spellings of the same type, such as `INT` and `INTEGER`, are equivalent. A refresh or import reports the uppercase name, and Glue types the provider cannot declare, such as `STRING`, with uppercase type names.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read external table storage settings and properties.
+SELECT ... FROM svv_external_tables WHERE schemaname = 'schema' AND tablename = 'name';
+
+-- Read external table columns and partition keys.
+SELECT ... FROM svv_external_columns WHERE schemaname = 'schema' AND tablename = 'name';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed table's JSON identity, using the same warehouse, database, schema, and name keys
 as the paired resource.

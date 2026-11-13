@@ -10,7 +10,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -25,14 +24,15 @@ import (
 // changes, imports, predicate drift, a WITH change that replaces the attached policy, and that destroying table
 // security turns row-level security off.
 func TestAccRlsLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	t.Parallel()
+
+	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	name, role := "acc_rls_"+suffix, "acc_rls_reader_"+suffix
 	configuration := func(predicate, conjunction string, protected bool) string {
 		base := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
@@ -60,10 +60,11 @@ resource "redshift_rls_policy_attachment" "reader" {
   }
 }
 data "redshift_rls_policies" "local" { database = redshift_database.local.name }
-`, region, profile, workgroup, database, name, role, predicate)
+`, region, workgroup, database, name, role, predicate)
 		if !protected {
 			return base
 		}
+
 		return base + fmt.Sprintf(`
 resource "redshift_table_security" "fixture" {
   database = redshift_rls_policy_attachment.reader.database
@@ -89,6 +90,15 @@ data "redshift_rls_policy" "own_region" {
   database = redshift_rls_policy.own_region.database
   name = redshift_rls_policy.own_region.name
 }
+data "redshift_rls_policy_attachments" "fixture" {
+  database = redshift_rls_policy_attachment.reader.database
+  schema = redshift_rls_policy_attachment.reader.schema
+  relation = redshift_rls_policy_attachment.reader.relation
+}
+data "redshift_table_securities" "local" {
+  database = redshift_table_security.fixture.database
+  schema = redshift_table_security.fixture.schema
+}
 `, conjunction)
 	}
 	// respelled and widened rewrite the WITH clause: the first only respells it, the second changes it.
@@ -105,32 +115,36 @@ data "redshift_rls_policy" "own_region" {
   }`, 1)
 	}
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// A failed run may leave the protected fixture behind; dropping the database removes it with its policies.
 	t.Cleanup(func() {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
-			_, err = client.Query(ctx, admin, "DROP DATABASE "+sqlclient.Identifier(name), nil)
+			_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)
 		}
 	})
+
 	rlsOn := func() (bool, error) {
 		data := tableSecurityModel{Database: types.StringValue(name), Schema: types.StringValue("public"), Relation: types.StringValue("fixture")}
 		r := &tableSecurityResource{resourceClient{client: client, warehouse: warehouseBinding{field: "workgroup_name", value: types.StringValue(workgroup)}, database: types.StringValue(database)}}
 		found, err := r.read(ctx, &data)
+
 		return found && data.RowLevelSecurity.ValueBool(), err
 	}
+
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: `
 provider "redshift" {
   region = "` + region + `"
-  profile = "` + profile + `"
   workgroup_name = "` + workgroup + `"
   database = "` + database + `"
 }
@@ -147,9 +161,17 @@ resource "redshift_database" "local" { name = "` + name + `" }`},
 					resource.TestCheckResourceAttr("data.redshift_rls_policy_attachment.reader", "exists", "true"),
 					resource.TestCheckResourceAttr("data.redshift_rls_policy.own_region", "column.0.type", "CHARACTER VARYING(64)"),
 					resource.TestCheckResourceAttrSet("redshift_rls_policy.own_region", "definition_fingerprint"),
+					resource.TestCheckResourceAttr("data.redshift_rls_policy_attachments.fixture", "rls_policy_attachments.#", "1"),
+					resource.TestCheckResourceAttr("data.redshift_rls_policy_attachments.fixture", "rls_policy_attachments.0.policy", "own_region"),
+					resource.TestCheckResourceAttr("data.redshift_rls_policy_attachments.fixture", "rls_policy_attachments.0.grantee", role),
+					resource.TestCheckResourceAttr("data.redshift_rls_policy_attachments.fixture", "rls_policy_attachments.0.grantee_type", "ROLE"),
+					resource.TestCheckResourceAttr("data.redshift_table_securities.local", "table_securities.#", "1"),
+					resource.TestCheckResourceAttr("data.redshift_table_securities.local", "table_securities.0.relation", "fixture"),
+					resource.TestCheckResourceAttr("data.redshift_table_securities.local", "table_securities.0.row_level_security", "true"),
+					resource.TestCheckResourceAttr("data.redshift_table_securities.local", "table_securities.0.conjunction_type", "AND"),
+					resource.TestCheckResourceAttr("data.redshift_table_securities.local", "table_securities.0.datashare_row_level_security", "true"),
 				),
 			},
-			{Config: configuration("t.region = current_user", "AND", true), PlanOnly: true},
 			{Config: respelled(configuration("t.region = current_user", "AND", true)), PlanOnly: true},
 			{ResourceName: "redshift_rls_policy_attachment.reader", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_table_security.fixture", ImportState: true, ImportStateVerify: true},
@@ -158,7 +180,10 @@ resource "redshift_database" "local" { name = "` + name + `" }`},
 			{ResourceName: "redshift_rls_policy.own_region", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"predicate", "column"}},
 			{
 				Config: configuration("t.region = current_user OR t.region IS NULL", "OR", true),
-				Check:  resource.TestCheckResourceAttr("data.redshift_table_security.fixture", "conjunction_type", "OR"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("data.redshift_table_security.fixture", "conjunction_type", "OR"),
+					resource.TestCheckResourceAttr("data.redshift_table_securities.local", "table_securities.0.conjunction_type", "OR"),
+				),
 			},
 			{
 				Config: configuration("t.region = current_user OR t.region IS NULL", "OR", true), PlanOnly: true, ExpectNonEmptyPlan: true,
@@ -184,6 +209,7 @@ resource "redshift_database" "local" { name = "` + name + `" }`},
 					if err == nil && on {
 						err = fmt.Errorf("row-level security is still on after destroying redshift_table_security")
 					}
+
 					return err
 				},
 			},

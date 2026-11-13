@@ -9,12 +9,6 @@ description: Reads the column-level privileges of one SQL grantee on one table o
 Reads which columns of one table or view hold `SELECT` and `UPDATE` for one grantee. See AWS
 [SVV_COLUMN_PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_COLUMN_PRIVILEGES.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_column_privileges WHERE namespace_name = '...' AND relation_name = '...' AND identity_name = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -44,6 +38,17 @@ data "redshift_column_grant" "events" {
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
 - `privileges` (Map of Set of String) Current explicit privileges for the selected tuple; inherited privileges are excluded.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read column privileges for the selected relation and grantee.
+SELECT ... FROM svv_column_privileges WHERE namespace_name = '...' AND relation_name = '...' AND identity_name = '...';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the tuple's JSON identity, using the paired resource's warehouse, provider database,
 `database_name`, `schema_name`, `object_name`, `grantee`, and `grantee_type` keys.

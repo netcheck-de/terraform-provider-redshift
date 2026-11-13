@@ -36,9 +36,11 @@ func materializedViewDistribution(data materializedViewModel) materializedViewDi
 	case data.Distribution.IsNull():
 		return materializedViewDistributionModel{Style: types.StringNull(), Key: types.StringNull()}
 	}
+
 	attributes := data.Distribution.Attributes()
 	style, _ := attributes["style"].(types.String)
 	key, _ := attributes["key"].(types.String)
+
 	return materializedViewDistributionModel{Style: style, Key: key}
 }
 
@@ -51,7 +53,9 @@ func materializedViewSortKeyColumns(data materializedViewModel) types.List {
 	case data.SortKey.IsNull():
 		return types.ListNull(types.StringType)
 	}
+
 	columns, _ := data.SortKey.Attributes()["columns"].(types.List)
+
 	return columns
 }
 
@@ -60,17 +64,22 @@ func materializedViewSortKey(value types.List) ([]string, error) {
 	if value.IsNull() || value.IsUnknown() {
 		return nil, nil
 	}
+
 	var columns []string
+
 	for _, element := range value.Elements() {
 		column, ok := element.(types.String)
 		if !ok || column.IsUnknown() {
 			continue
 		}
+
 		if strings.TrimSpace(column.ValueString()) == "" {
 			return nil, fmt.Errorf("sort_key.columns must be nonempty")
 		}
+
 		columns = append(columns, column.ValueString())
 	}
+
 	return columns, nil
 }
 
@@ -80,10 +89,12 @@ func materializedViewSortKey(value types.List) ([]string, error) {
 // enforces Required inside a single block even when the block is absent.
 func materializedViewAttributes(data materializedViewModel) (sqlclient.Statement, error) {
 	distribution := materializedViewDistribution(data)
+
 	style, err := optOneOf(distribution.Style, materializedViewDistStyles...)
 	if err != nil {
 		return sqlclient.Statement{}, fmt.Errorf("distribution.style: %w", err)
 	}
+
 	distKey := knownString(distribution.Key)
 	switch {
 	case distKey != "" && style != "" && style != "KEY":
@@ -93,14 +104,17 @@ func materializedViewAttributes(data materializedViewModel) (sqlclient.Statement
 	case !data.Distribution.IsNull() && distribution.Style.IsNull() && distribution.Key.IsNull():
 		return sqlclient.Statement{}, fmt.Errorf("the distribution block requires a style or a key")
 	}
+
 	sortKeyColumns := materializedViewSortKeyColumns(data)
 	if !data.SortKey.IsNull() && sortKeyColumns.IsNull() {
 		return sqlclient.Statement{}, fmt.Errorf("the sort_key block requires columns")
 	}
+
 	sortKey, err := materializedViewSortKey(sortKeyColumns)
 	if err != nil {
 		return sqlclient.Statement{}, err
 	}
+
 	return sqlclient.Fragment().
 		When(style != "", func(s sqlclient.Statement) sqlclient.Statement { return s.Kw("DISTSTYLE", style) }).
 		When(distKey != "", func(s sqlclient.Statement) sqlclient.Statement {
@@ -119,23 +133,28 @@ func createMaterializedViewStatements(data materializedViewModel) ([]string, err
 	if err != nil {
 		return nil, err
 	}
+
 	attributes, err := materializedViewAttributes(data)
 	if err != nil {
 		return nil, err
 	}
+
 	query, err := viewQuery(data.Query.ValueString())
 	if err != nil {
 		return nil, err
 	}
+
 	create := sqlclient.Stmt("CREATE MATERIALIZED VIEW").Append(relation).
 		OptToggle(knownBool(data.Backup), "BACKUP YES", "BACKUP NO").
 		Append(attributes).
 		Toggle(data.AutoRefresh.ValueBool(), "AUTO REFRESH YES", "AUTO REFRESH NO").
 		Kw("AS").Verbatim(query)
+
 	statements := []string{create.String()}
 	if owner := knownString(data.Owner); owner != "" {
 		statements = append(statements, viewOwnerStatement(relation, owner))
 	}
+
 	return statements, create.Err()
 }
 
@@ -146,6 +165,7 @@ func materializedViewDistributionValue(data materializedViewModel) attr.Value {
 	if distribution.Style.IsUnknown() || distribution.Key.IsUnknown() {
 		return types.StringUnknown()
 	}
+
 	style, _ := optOneOf(distribution.Style, materializedViewDistStyles...) // alterMaterializedViewStatements validated it first.
 	switch distKey := knownString(distribution.Key); {
 	case distKey != "":
@@ -153,6 +173,7 @@ func materializedViewDistributionValue(data materializedViewModel) attr.Value {
 	case style != "":
 		return types.StringValue(string(style))
 	}
+
 	return types.StringNull()
 }
 
@@ -170,6 +191,7 @@ var materializedViewAlterSteps = []alterStep[materializedViewModel]{
 			distribution := materializedViewDistribution(plan)
 			style, _ := optOneOf(distribution.Style, materializedViewDistStyles...)
 			statement := sqlclient.Stmt("ALTER MATERIALIZED VIEW").Append(relation).Kw("ALTER DISTSTYLE")
+
 			switch distKey := knownString(distribution.Key); {
 			case distKey != "":
 				statement = statement.Kw("KEY DISTKEY").Ident(distKey)
@@ -179,6 +201,7 @@ var materializedViewAlterSteps = []alterStep[materializedViewModel]{
 				// A removed distribution returns to EVEN, the documented CREATE default.
 				statement = statement.Kw("EVEN")
 			}
+
 			return []string{statement.String()}
 		},
 	},
@@ -188,10 +211,12 @@ var materializedViewAlterSteps = []alterStep[materializedViewModel]{
 		render: func(_, plan materializedViewModel) []string {
 			relation, _ := materializedViewRelation(plan) // alterMaterializedViewStatements validated it first.
 			columns, _ := materializedViewSortKey(materializedViewSortKeyColumns(plan))
+
 			statement := sqlclient.Stmt("ALTER MATERIALIZED VIEW").Append(relation)
 			if len(columns) == 0 {
 				return []string{statement.Kw("ALTER SORTKEY NONE").String()}
 			}
+
 			return []string{statement.Kw("ALTER COMPOUND SORTKEY").Paren(sqlclient.Fragment().Idents(columns...)).String()}
 		},
 	},
@@ -200,6 +225,7 @@ var materializedViewAlterSteps = []alterStep[materializedViewModel]{
 		value:     func(data materializedViewModel) attr.Value { return data.AutoRefresh },
 		render: func(_, plan materializedViewModel) []string {
 			relation, _ := materializedViewRelation(plan) // alterMaterializedViewStatements validated it first.
+
 			return []string{sqlclient.Stmt("ALTER MATERIALIZED VIEW").Append(relation).
 				Toggle(plan.AutoRefresh.ValueBool(), "AUTO REFRESH YES", "AUTO REFRESH NO").String()}
 		},
@@ -212,7 +238,9 @@ var materializedViewAlterSteps = []alterStep[materializedViewModel]{
 			if owner == "" {
 				return nil
 			}
+
 			relation, _ := materializedViewRelation(plan) // alterMaterializedViewStatements validated it first.
+
 			return []string{viewOwnerStatement(relation, owner)}
 		},
 	},
@@ -224,9 +252,11 @@ func alterMaterializedViewStatements(prev, plan materializedViewModel) ([]string
 	if _, err := materializedViewRelation(plan); err != nil {
 		return nil, err
 	}
+
 	if _, err := materializedViewAttributes(plan); err != nil {
 		return nil, err
 	}
+
 	return alterStatements(prev, plan, materializedViewAlterSteps), nil
 }
 
@@ -238,6 +268,7 @@ func dropMaterializedViewStatement(data materializedViewModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return sqlclient.Stmt("DROP MATERIALIZED VIEW").Append(relation).String(), nil
 }
 
@@ -247,14 +278,26 @@ func readMaterializedViewQuery(data materializedViewModel) sqlclient.Query {
 	return viewCatalogQuery(data.Schema.ValueString(), data.Name.ValueString())
 }
 
-// readMaterializedViewRefreshQuery reads the automatic refresh setting from SVV_MV_INFO, which also exists on
-// Serverless, unlike STV_MV_INFO. Its name columns are CHAR(128), so they are trimmed before comparison.
+// materializedViewRefreshSource selects automatic refresh settings from SVV_MV_INFO of one database. The view also
+// exists on Serverless, unlike STV_MV_INFO, and shows regular users only the materialized views they own. Its name
+// columns are CHAR(128), so they are trimmed before comparison.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MV_INFO.html
+func materializedViewRefreshSource(database string) sqlclient.Query {
+	return sqlclient.Select("RTRIM(schema_name) AS schema_name", "RTRIM(name) AS name", "autorefresh").From("svv_mv_info").
+		Where("RTRIM(database_name) = :database", sqlclient.Bind("database", database))
+}
+
+// readMaterializedViewRefreshQuery reads the automatic refresh setting of one materialized view.
 func readMaterializedViewRefreshQuery(data materializedViewModel) sqlclient.Query {
-	return sqlclient.Select("autorefresh").From("svv_mv_info").
-		Where("RTRIM(database_name) = :database", sqlclient.Bind("database", data.Database.ValueString())).
+	return materializedViewRefreshSource(data.Database.ValueString()).
 		Where("RTRIM(schema_name) = :schema", sqlclient.Bind("schema", data.Schema.ValueString())).
 		Where("RTRIM(name) = :name", sqlclient.Bind("name", data.Name.ValueString()))
+}
+
+// listMaterializedViewRefreshQuery lists the automatic refresh settings of one database, optionally of one schema.
+func listMaterializedViewRefreshQuery(database, schema string) sqlclient.Query {
+	return materializedViewRefreshSource(database).
+		WhereIf(schema != "", "RTRIM(schema_name) = :schema", sqlclient.Bind("schema", schema))
 }
 
 // materializedViewFlag parses an SVV_MV_INFO CHAR(1) flag; the reference documents t and f while its sample
@@ -266,5 +309,6 @@ func materializedViewFlag(value string) (bool, error) {
 	case "f", "false", "0":
 		return false, nil
 	}
+
 	return false, fmt.Errorf("unexpected SVV_MV_INFO flag %q", value)
 }

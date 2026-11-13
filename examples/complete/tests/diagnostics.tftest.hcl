@@ -15,17 +15,53 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
 }
-mock_provider "redshift" { alias = "producer_data_api_iam" }
-mock_provider "redshift" { alias = "consumer_data_api_iam" }
-mock_provider "redshift" { alias = "producer_direct_iam" }
-mock_provider "redshift" { alias = "consumer_direct_iam" }
-mock_provider "redshift" { alias = "producer_direct_password" }
-mock_provider "redshift" { alias = "consumer_direct_password" }
+
+run "diagnostics_missing_debug_grant_blocks" {
+  command = apply
+
+  variables {
+    federated_debug_database = "sales_db"
+  }
+
+  override_data {
+    target = data.redshift_debug_grant.account_admins[0]
+    values = { exists = false }
+  }
+
+  expect_failures = [data.redshift_debug_grant.account_admins[0]]
+}
+mock_provider "redshift" {
+  alias  = "producer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
 
 override_data {
   target = data.redshift_configuration.case_sensitive_identifiers
@@ -60,8 +96,8 @@ run "diagnostics_default" {
     error_message = "Without user_lockouts the lockout listing must be skipped."
   }
   assert {
-    condition     = length(redshift_debug_grant.account_admins) == 0 && output.diagnostics.account_admins_debug == null
-    error_message = "Without federated_debug_database the DEBUG grant and its lookup must be skipped."
+    condition     = length(redshift_debug_grant.account_admins) == 0 && output.diagnostics.account_admins_debug == null && output.diagnostics.debug_grantees == null
+    error_message = "Without federated_debug_database the DEBUG grant, its lookup, and its listing must be skipped."
   }
 }
 
@@ -84,9 +120,11 @@ run "diagnostics_debug_grant" {
     condition = (
       data.redshift_debug_grant.account_admins[0].database == redshift_debug_grant.account_admins[0].database &&
       data.redshift_debug_grant.account_admins[0].grantee == redshift_debug_grant.account_admins[0].grantee &&
-      output.diagnostics.account_admins_debug == true
+      output.diagnostics.account_admins_debug == true &&
+      data.redshift_debug_grants.federated[0].database == "sales_db" &&
+      length(output.diagnostics.debug_grantees) == length(data.redshift_debug_grants.federated[0].debug_grants)
     )
-    error_message = "The DEBUG lookup must check the managed grant and expose the result."
+    error_message = "The DEBUG lookup and listing must read the managed grant's database and expose the result."
   }
 }
 

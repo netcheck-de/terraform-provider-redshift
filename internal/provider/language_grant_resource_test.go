@@ -50,8 +50,10 @@ func languageGrantModel(fields map[string]string, privileges, options []string) 
 		for _, value := range values {
 			elements = append(elements, types.StringValue(value))
 		}
+
 		return types.SetValueMust(types.StringType, elements)
 	}
+
 	return languageGrantTestModel{
 		ID: types.StringNull(), DatabaseName: types.StringValue(fields["database_name"]), LanguageName: types.StringValue(fields["language_name"]),
 		Grantee: types.StringValue(fields["grantee"]), GranteeType: types.StringValue(fields["grantee_type"]),
@@ -83,9 +85,11 @@ func TestLanguageGrantTranscripts(t *testing.T) {
 			c.localDB = true
 			fake := fakeState[*languageGrantFake](c, "language_grant")
 			clear(fake.usage)
+
 			if option != nil {
 				fake.usage[languageGrantFakeKey{"sql", user["grantee"], "user"}] = *option
 			}
+
 			return columnGrantClient(c)
 		}
 	}
@@ -112,11 +116,14 @@ func TestLanguageGrantPublicDefault(t *testing.T) {
 		c.localDB = true
 		fake := fakeState[*languageGrantFake](c, "language_grant")
 		clear(fake.usage)
+
 		r := newLanguageGrantResource().(*privilegeResource)
 		r.resourceClient = testResourceClient(c)
+
 		return r, c, fake
 	}
 	ctx := context.Background()
+
 	t.Run("revoked when not desired", func(t *testing.T) {
 		r, c, fake := setup()
 		require.True(t, fake.defaults["sql"], "PUBLIC starts with the built-in USAGE")
@@ -124,7 +131,9 @@ func TestLanguageGrantPublicDefault(t *testing.T) {
 		assert.Equal(t, []string{"REVOKE USAGE ON LANGUAGE SQL FROM PUBLIC"}, c.writes)
 		assert.False(t, fake.defaults["sql"], "the default is gone")
 		assert.True(t, fake.defaults["plpgsql"], "other languages keep their default")
+
 		c.writes = nil
+
 		require.NoError(t, r.reconcile(ctx, optionObject(t, r, public, nil, nil)))
 		assert.Equal(t, []string{"REVOKE USAGE ON LANGUAGE SQL FROM PUBLIC"}, c.writes, "the REVOKE is repeated, because the read cannot tell")
 	})
@@ -144,6 +153,7 @@ func TestLanguageGrantPublicDefault(t *testing.T) {
 // TestLanguageGrantValidation rejects grant options for non-user grantees, foreign privileges, and Python.
 func TestLanguageGrantValidation(t *testing.T) {
 	r := newLanguageGrantResource().(*privilegeResource)
+
 	for name, test := range map[string]struct {
 		fields              map[string]string
 		privileges, options []string
@@ -173,8 +183,10 @@ func TestLanguageGrantOptionReconcile(t *testing.T) {
 	require.NoError(t, r.reconcile(context.Background(), optionObject(t, r, fields, []string{"USAGE"}, []string{"USAGE"})))
 	assert.Equal(t, []string{`GRANT USAGE ON LANGUAGE SQL TO "analyst" WITH GRANT OPTION`}, c.writes)
 	c.writes = nil
+
 	require.NoError(t, r.reconcile(context.Background(), optionObject(t, r, fields, []string{"USAGE"}, nil)))
 	assert.Equal(t, []string{`REVOKE GRANT OPTION FOR USAGE ON LANGUAGE SQL FROM "analyst"`}, c.writes)
 	c.writes, c.stuck = nil, true
+
 	require.ErrorContains(t, r.reconcile(context.Background(), optionObject(t, r, fields, nil, nil)), "did not converge")
 }

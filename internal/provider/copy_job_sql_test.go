@@ -13,13 +13,16 @@ import (
 // copyJobTableObject builds a table block value.
 func copyJobTableObject(schema, name string, columns ...string) types.Object {
 	list := types.ListNull(types.StringType)
+
 	if len(columns) > 0 {
 		elements := make([]attr.Value, len(columns))
 		for i, column := range columns {
 			elements[i] = types.StringValue(column)
 		}
+
 		list = types.ListValueMust(types.StringType, elements)
 	}
+
 	return types.ObjectValueMust(copyJobTableType.AttrTypes, map[string]attr.Value{"schema": types.StringValue(schema), "name": types.StringValue(name), "columns": list})
 }
 
@@ -34,6 +37,7 @@ func copyJobTestModel(name string, parameters map[string]string) copyJobModel {
 	if parameters != nil {
 		model.Parameters = templateTestModel("", "", "", parameters).Parameters
 	}
+
 	return model
 }
 
@@ -47,6 +51,7 @@ func TestCopyJobSQL(t *testing.T) {
 	with := func(change func(*copyJobModel)) copyJobModel {
 		model := basic
 		change(&model)
+
 		return model
 	}
 	create := func(model copyJobModel) func() (string, error) {
@@ -107,12 +112,14 @@ func TestCopyJobCatalogValues(t *testing.T) {
 		require.NoError(t, err, text)
 		assert.Equal(t, expected, value, text)
 	}
+
 	_, err := copyJobAutoValue("2")
 	require.Error(t, err)
 
 	long := types.StringValue("arn:aws:iam::123456789012:role/" + strings.Repeat("r", 120))
 	assert.Equal(t, long, copyJobRoleValue(long, long.ValueString()[:copyJobRoleLength]+"  "))
 	assert.Equal(t, types.StringValue(copyJobFakeRole), copyJobRoleValue(types.StringNull(), copyJobFakeRole+"   "))
+
 	other := "arn:aws:iam::123456789012:role/other"
 	assert.Equal(t, types.StringValue(other), copyJobRoleValue(types.StringValue(copyJobFakeRole), other))
 }

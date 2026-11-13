@@ -30,6 +30,9 @@ type schemaData struct {
 
 var _ = registerDataSource(newSchemaDataSource)
 
+// schemaQuotaLookupDescription describes the observed quota for the lookup and the listing.
+const schemaQuotaLookupDescription = "Disk quota in megabytes; `-1` means `UNLIMITED`. Null when the connection is neither a superuser nor the schema owner, because `SVV_REDSHIFT_SCHEMA_QUOTA` shows a regular user only their own schemas."
+
 // newSchemaDataSource constructs a read-only local schema lookup.
 func newSchemaDataSource() datasource.DataSource { return &schemaDataSource{} }
 
@@ -47,7 +50,7 @@ func (d *schemaDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 			"database": schema.StringAttribute{Required: true, MarkdownDescription: "Database owning the schema."},
 			"name":     schema.StringAttribute{Required: true, MarkdownDescription: "Schema name."},
 			"owner":    schema.StringAttribute{Computed: true, MarkdownDescription: "Database user owning the schema."},
-			"quota":    schema.Int64Attribute{Computed: true, MarkdownDescription: "Disk quota in megabytes; `-1` means `UNLIMITED`. Null when the connection is neither a superuser nor the schema owner, because `SVV_REDSHIFT_SCHEMA_QUOTA` shows a regular user only their own schemas."},
+			"quota":    schema.Int64Attribute{Computed: true, MarkdownDescription: schemaQuotaLookupDescription},
 		},
 	}
 }
@@ -56,20 +59,25 @@ func (d *schemaDataSource) Schema(_ context.Context, _ datasource.SchemaRequest,
 func (d *schemaDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	var data schemaData
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	current := schemaModel{Database: data.Database, Name: data.Name}
+
 	found, err := (&schemaResource{d.resourceClient}).read(ctx, &current)
 	if err != nil {
 		resp.Diagnostics.AddError("Read schema", err.Error())
 		return
 	}
+
 	if !found {
 		resp.Diagnostics.AddError("Schema not found", "No local schema named "+data.Name.ValueString()+" exists in the configured database.")
 		return
 	}
+
 	data.Name, data.Owner, data.Quota = current.Name, current.Owner, current.Quota
-	data.ID = d.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

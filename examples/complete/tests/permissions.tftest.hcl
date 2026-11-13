@@ -14,17 +14,38 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
 }
-mock_provider "redshift" { alias = "producer_data_api_iam" }
-mock_provider "redshift" { alias = "consumer_data_api_iam" }
-mock_provider "redshift" { alias = "producer_direct_iam" }
-mock_provider "redshift" { alias = "consumer_direct_iam" }
-mock_provider "redshift" { alias = "producer_direct_password" }
-mock_provider "redshift" { alias = "consumer_direct_password" }
+mock_provider "redshift" {
+  alias  = "producer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
 
 # Observed catalog state, as the lookups would report it after apply.
 override_data {
@@ -84,9 +105,10 @@ run "permissions_apply" {
     condition = (
       data.redshift_column_grant.reader_events.object_name == redshift_column_grant.reader_events.object_name &&
       data.redshift_language_grant.loader_sql.grantee == redshift_language_grant.loader_sql.grantee &&
-      data.redshift_grants.local_events.object_type == "TABLE" && data.redshift_grants.local_events.object_name == local.local_table_name &&
-      data.redshift_grants.loader.grantee == redshift_user.loader.name && data.redshift_grants.loader.object_type == null &&
-      data.redshift_column_grants.local.schema_name == "public" && data.redshift_column_grants.local.object_name == null
+      data.redshift_object_grants.local_events.object_type == "TABLE" && data.redshift_object_grants.local_events.object_name == local.local_table_name &&
+      data.redshift_object_grants.loader.grantee == redshift_user.loader.name && data.redshift_object_grants.loader.object_type == null &&
+      data.redshift_column_grants.local.schema_name == "public" && data.redshift_column_grants.local.object_name == null &&
+      data.redshift_language_grants.local.database_name == redshift_database.local.name && data.redshift_language_grants.local.grantee == null
     )
     error_message = "Lookups must select the managed tuples and the intended SHOW GRANTS and column listing forms."
   }
@@ -96,10 +118,51 @@ run "permissions_apply" {
       output.permission_checks.column_privileges["SELECT"] == toset(["id", "label"]) &&
       output.permission_checks.language_privileges == toset(["USAGE"]) &&
       output.permission_checks.language_grant_options == toset(["USAGE"]) &&
-      length(output.permission_checks.table_grants) == length(data.redshift_grants.local_events.grants) &&
-      length(output.permission_checks.loader_grants) == length(distinct([for grant in data.redshift_grants.loader.grants : grant.privilege])) &&
-      length(output.permission_checks.column_grants) == length(data.redshift_column_grants.local.column_grants)
+      length(output.permission_checks.table_grants) == length(data.redshift_object_grants.local_events.object_grants) &&
+      length(output.permission_checks.loader_grants) == length(data.redshift_object_grants.loader.object_grants) &&
+      length(output.permission_checks.column_grants) == length(data.redshift_column_grants.local.column_grants) &&
+      length(output.permission_checks.language_grants) == length(data.redshift_language_grants.local.language_grants)
     )
     error_message = "Permission outputs must expose the observed column, language, and listed grants."
   }
+}
+
+run "missing_column_privilege_blocks_apply" {
+  command   = apply
+  state_key = "missing_column_privilege"
+  override_data {
+    target = data.redshift_column_grant.reader_events
+    values = { privileges = { SELECT = ["id", "label"] } }
+  }
+  expect_failures = [data.redshift_column_grant.reader_events]
+}
+
+run "excluded_column_exposed_blocks_apply" {
+  command   = apply
+  state_key = "excluded_column_exposed"
+  override_data {
+    target = data.redshift_column_grant.groups["orders"]
+    values = { privileges = { SELECT = ["order_id", "account_id", "amount", "status", "created_at"] } }
+  }
+  expect_failures = [data.redshift_column_grant.groups]
+}
+
+run "missing_language_grant_option_blocks_apply" {
+  command   = apply
+  state_key = "missing_language_grant_option"
+  override_data {
+    target = data.redshift_language_grant.loader_sql
+    values = { privileges = ["USAGE"], grant_option_privileges = [] }
+  }
+  expect_failures = [data.redshift_language_grant.loader_sql]
+}
+
+run "missing_procedural_language_usage_blocks_apply" {
+  command   = apply
+  state_key = "missing_procedural_language_usage"
+  override_data {
+    target = data.redshift_language_grant.operator_procedures
+    values = { privileges = [], grant_option_privileges = [] }
+  }
+  expect_failures = [data.redshift_language_grant.operator_procedures]
 }

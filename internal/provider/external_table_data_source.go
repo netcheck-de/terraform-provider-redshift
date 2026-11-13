@@ -27,24 +27,33 @@ func newExternalTableDataSource() datasource.DataSource {
 			if diagnostics := data.As(ctx, &model, basetypes.ObjectAsOptions{}); diagnostics.HasError() {
 				return false, externalTableDiagnosticsError(diagnostics)
 			}
+
 			model.ID = types.StringNull()
+
 			catalog, err := (&externalTableResource{*client}).fetch(ctx, model)
 			if err != nil || catalog == nil {
 				return false, err
 			}
+
 			observed := observeExternalTable(catalog, model, externalTableLookup)
+
 			value, diagnostics := types.ObjectValueFrom(ctx, data.AttributeTypes(ctx), observed)
 			if diagnostics.HasError() {
 				return false, externalTableDiagnosticsError(diagnostics)
 			}
+
 			*data = value
+
 			return true, nil
 		},
-	}), map[string]string{
-		"table_properties": "Table properties reported by `SHOW EXTERNAL TABLE`, including properties set outside Terraform.",
-		"column":           "Data columns in catalog order.",
-		"partition_key":    "`PARTITIONED BY` columns in key order; null for an unpartitioned table.",
-	})
+	}), externalTableOutputDescriptions)
+}
+
+// externalTableOutputDescriptions describe the catalog values that both the lookup and the listing report.
+var externalTableOutputDescriptions = map[string]string{
+	"table_properties": "Table properties reported by `SHOW EXTERNAL TABLE`, including properties set outside Terraform.",
+	"column":           "Data columns in catalog order.",
+	"partition_key":    "`PARTITIONED BY` columns in key order; null for an unpartitioned table.",
 }
 
 // externalTableDiagnosticsError turns conversion diagnostics into the error a catalog lookup returns.

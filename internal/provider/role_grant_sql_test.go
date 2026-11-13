@@ -14,6 +14,7 @@ func roleGrantFixture(role, toRole, toUser string, admin bool) roleGrantModel {
 	} else {
 		data.ToRole = types.StringValue(toRole)
 	}
+
 	return data
 }
 
@@ -26,10 +27,12 @@ func TestRoleGrantSQL(t *testing.T) {
 			if err != nil {
 				return nil, err
 			}
+
 			create, err := createRoleGrantStatement(data)
 			if err != nil {
 				return nil, err
 			}
+
 			return []string{read, create, dropRoleGrantStatement(data)}, nil
 		}
 	}
@@ -54,5 +57,9 @@ func TestRoleGrantSQL(t *testing.T) {
 		{"alter_unchanged", alter(admin, admin)},
 		{"alter_null_prior_is_no_option", alter(legacy, user)},
 		{"alter_admin_option_to_role", alter(roleGrantFixture("sys:dba", "example:readers", "", false), roleGrantFixture("sys:dba", "example:readers", "", true))},
+		{"list_to_users", maskingQuerySQL(listRoleUserGrantsQuery("", ""))},
+		{"list_to_users_filtered", maskingQuerySQL(listRoleUserGrantsQuery(`example:Odd"Role`, `Odd"User`))},
+		{"list_to_roles", maskingQuerySQL(listRoleRoleGrantsQuery("", ""))},
+		{"list_to_roles_filtered", maskingQuerySQL(listRoleRoleGrantsQuery(`example:Odd"Role`, `Odd"Readers`))},
 	})
 }

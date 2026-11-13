@@ -15,6 +15,7 @@ func TestCommentSQL(t *testing.T) {
 	constraint := func(schema, name, constraint string) commentModel {
 		data := target("CONSTRAINT", schema, name, "")
 		data.ConstraintName = types.StringValue(constraint)
+
 		return data
 	}
 	withConstraint := func(data commentModel) commentModel {
@@ -27,7 +28,9 @@ func TestCommentSQL(t *testing.T) {
 			if err != nil {
 				return "", err
 			}
+
 			sql, _, err := query.Build()
+
 			return sql, err
 		}
 	}
@@ -44,7 +47,21 @@ func TestCommentSQL(t *testing.T) {
 			if err != nil {
 				return "", err
 			}
+
 			sql, _, err := query.Build()
+
+			return sql, err
+		}
+	}
+	list := func(kind, schema string) func() (string, error) {
+		return func() (string, error) {
+			query, err := listCommentsQuery(kind, "analytics", schema)
+			if err != nil {
+				return "", err
+			}
+
+			sql, _, err := query.Build()
+
 			return sql, err
 		}
 	}
@@ -81,6 +98,14 @@ func TestCommentSQL(t *testing.T) {
 		{"table_with_constraint", set(withConstraint(target("TABLE", "serving", "orders", "")), "note")},
 		{"schema_with_constraint", set(withConstraint(target("SCHEMA", "", "serving", "")), "note")},
 		{"read_constraint", readTarget(constraint(`Odd"Schema`, `Odd"Table`, `Odd"Key`))},
+		{"list_database", list("DATABASE", "")},
+		{"list_schema", list("SCHEMA", "")},
+		{"list_table", list("TABLE", "")},
+		{"list_view", list("VIEW", "")},
+		{"list_column", list("COLUMN", "")},
+		{"list_constraint", list("CONSTRAINT", "")},
+		{"list_table_in_schema", list("TABLE", `Odd"Schema`)},
+		{"list_unsupported_kind", list("FUNCTION", "")},
 		{"read_local_database", func() (string, error) {
 			sql, _, err := commentDatabaseQuery(target("SCHEMA", "", "serving", "")).Build()
 			return sql, err

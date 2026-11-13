@@ -28,14 +28,18 @@ func maskingPolicyColumns(list types.List) []maskingPolicyColumn {
 	if list.IsNull() || list.IsUnknown() {
 		return nil
 	}
+
 	var columns []maskingPolicyColumn
+
 	for _, element := range list.Elements() {
 		object, ok := element.(types.Object)
 		if !ok || object.IsNull() || object.IsUnknown() {
 			continue
 		}
+
 		columns = append(columns, maskingPolicyColumn{Name: objectString(object, "name"), Type: objectString(object, "type")})
 	}
+
 	return columns
 }
 
@@ -45,6 +49,7 @@ func maskingPolicyColumnList(columns []maskingPolicyColumn) types.List {
 	for _, column := range columns {
 		elements = append(elements, types.ObjectValueMust(maskingPolicyColumnType.AttrTypes, map[string]attr.Value{"name": types.StringValue(column.Name), "type": types.StringValue(column.Type)}))
 	}
+
 	return types.ListValueMust(maskingPolicyColumnType, elements)
 }
 
@@ -55,11 +60,14 @@ func maskingPolicyValidate(data maskingPolicyModel) error {
 	if knownString(data.Name) == "" {
 		return fmt.Errorf("name must not be empty")
 	}
+
 	columns := maskingPolicyColumns(data.InputColumn)
 	if len(columns) == 0 {
 		return fmt.Errorf("at least one input_column block is required")
 	}
+
 	seen := map[string]bool{}
+
 	for _, column := range columns {
 		if column.Name == "" {
 			return fmt.Errorf("input column names must not be empty")
@@ -69,14 +77,18 @@ func maskingPolicyValidate(data maskingPolicyModel) error {
 		if seen[key] {
 			return fmt.Errorf("input column %q is declared twice", column.Name)
 		}
+
 		seen[key] = true
+
 		if _, err := maskingPolicyInputType(column.Type); err != nil {
 			return fmt.Errorf("input column %q: %w", column.Name, err)
 		}
 	}
+
 	if _, err := sqlclient.CheckUserSQL(data.Expression.ValueString()); err != nil {
 		return fmt.Errorf("expression: %w", err)
 	}
+
 	return nil
 }
 
@@ -91,6 +103,7 @@ func maskingPolicyInputType(value string) (sqlclient.Keyword, error) {
 	if err == nil && slices.Contains(maskingPolicyRoutineTypes, columnType) {
 		return "", fmt.Errorf("data type %q is a routine pseudo-type that no column can have", value)
 	}
+
 	return columnType, err
 }
 
@@ -103,8 +116,10 @@ func maskingPolicyInputs(columns []maskingPolicyColumn) ([]sqlclient.Statement, 
 		if err != nil {
 			return nil, fmt.Errorf("input column %q: %w", column.Name, err)
 		}
+
 		items = append(items, sqlclient.Ident(column.Name).Kw(columnType))
 	}
+
 	return items, nil
 }
 
@@ -114,6 +129,7 @@ func maskingPolicyUsing(expression types.String) (sqlclient.Statement, error) {
 	if err != nil {
 		return sqlclient.Statement{}, fmt.Errorf("expression: %w", err)
 	}
+
 	return sqlclient.Kw("USING").Paren(sqlclient.Fragment().Verbatim(text)), nil
 }
 
@@ -123,15 +139,19 @@ func createMaskingPolicyStatement(data maskingPolicyModel) (string, error) {
 	if err := maskingPolicyValidate(data); err != nil {
 		return "", err
 	}
+
 	inputs, err := maskingPolicyInputs(maskingPolicyColumns(data.InputColumn))
 	if err != nil {
 		return "", err
 	}
+
 	using, err := maskingPolicyUsing(data.Expression)
 	if err != nil {
 		return "", err
 	}
+
 	statement := sqlclient.Stmt("CREATE MASKING POLICY").Ident(data.Name.ValueString()).Kw("WITH").Paren(inputs...).Append(using)
+
 	return statement.String(), statement.Err()
 }
 
@@ -153,6 +173,7 @@ func alterMaskingPolicyStatements(prev, plan maskingPolicyModel) ([]string, erro
 	if err := maskingPolicyValidate(plan); err != nil {
 		return nil, err
 	}
+
 	return alterStatements(prev, plan, maskingPolicyAlterSteps), nil
 }
 
@@ -190,10 +211,12 @@ func maskingPolicyParseColumns(text string) ([]maskingPolicyColumn, error) {
 	if err := json.Unmarshal([]byte(text), &parsed); err != nil {
 		return nil, fmt.Errorf("unexpected masking policy input_columns %q: %w", text, err)
 	}
+
 	columns := make([]maskingPolicyColumn, 0, len(parsed))
 	for _, column := range parsed {
 		columns = append(columns, maskingPolicyColumn{Name: column.Name, Type: sqlclient.CatalogType(column.Type)})
 	}
+
 	return columns, nil
 }
 
@@ -207,13 +230,16 @@ func maskingPolicyExpressionText(text string) string {
 	if err := json.Unmarshal([]byte(text), &parsed); err != nil || len(parsed) == 0 {
 		return text
 	}
+
 	expressions := make([]string, 0, len(parsed))
 	for _, output := range parsed {
 		if output.Expression == nil {
 			return text
 		}
+
 		expressions = append(expressions, *output.Expression)
 	}
+
 	return strings.Join(expressions, ", ")
 }
 
@@ -223,6 +249,7 @@ func maskingPolicyCanonicalType(columnType string) string {
 	if canonical, err := sqlclient.ColumnType(columnType); err == nil {
 		return string(canonical)
 	}
+
 	return strings.ToUpper(strings.Join(strings.Fields(columnType), " "))
 }
 
@@ -232,10 +259,12 @@ func maskingPolicyColumnsMatch(configured, catalog []maskingPolicyColumn) bool {
 	if len(configured) != len(catalog) {
 		return false
 	}
+
 	for i := range configured {
 		if !strings.EqualFold(configured[i].Name, catalog[i].Name) || maskingPolicyCanonicalType(configured[i].Type) != maskingPolicyCanonicalType(catalog[i].Type) {
 			return false
 		}
 	}
+
 	return true
 }

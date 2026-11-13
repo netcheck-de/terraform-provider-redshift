@@ -72,6 +72,48 @@ data "redshift_column_grant" "reader_events" {
   object_name   = redshift_column_grant.reader_events.object_name
   grantee       = redshift_column_grant.reader_events.grantee
   grantee_type  = redshift_column_grant.reader_events.grantee_type
+
+  lifecycle {
+    postcondition {
+      condition     = self.privileges == redshift_column_grant.reader_events.privileges
+      error_message = "The reader's catalog column privileges must match every configured privilege and column."
+    }
+  }
+}
+
+data "redshift_column_grant" "groups" {
+  for_each = {
+    event_labels = redshift_column_grant.group_event_labels
+    orders       = redshift_column_grant.group_orders
+  }
+  provider      = redshift.consumer
+  database_name = each.value.database_name
+  schema_name   = each.value.schema_name
+  object_name   = each.value.object_name
+  grantee       = each.value.grantee
+  grantee_type  = each.value.grantee_type
+
+  lifecycle {
+    postcondition {
+      condition     = self.privileges == each.value.privileges
+      error_message = "Each group's catalog column privileges must match exactly, without exposing excluded columns."
+    }
+  }
+}
+
+data "redshift_language_grant" "operator_procedures" {
+  provider      = redshift.consumer
+  database_name = redshift_language_grant.operator_procedures.database_name
+  language_name = redshift_language_grant.operator_procedures.language_name
+  grantee       = redshift_language_grant.operator_procedures.grantee
+  grantee_type  = redshift_language_grant.operator_procedures.grantee_type
+
+  lifecycle {
+    postcondition {
+      condition     = self.privileges == redshift_language_grant.operator_procedures.privileges && length(self.grant_option_privileges) == 0
+      error_message = "Operators must hold only the managed procedural-language privileges, without grant options."
+    }
+  }
 }
 
 data "redshift_language_grant" "loader_sql" {
@@ -80,27 +122,42 @@ data "redshift_language_grant" "loader_sql" {
   language_name = redshift_language_grant.loader_sql.language_name
   grantee       = redshift_language_grant.loader_sql.grantee
   grantee_type  = redshift_language_grant.loader_sql.grantee_type
+
+  lifecycle {
+    postcondition {
+      condition = (
+        self.privileges == redshift_language_grant.loader_sql.privileges &&
+        self.grant_option_privileges == redshift_language_grant.loader_sql.grant_option_privileges
+      )
+      error_message = "The loader's SQL-language USAGE and grant option must both be present in the catalog."
+    }
+  }
 }
 
-# Every grant on the local table, after the table-level and column-level grants exist.
-data "redshift_grants" "local_events" {
+# Every object grant on the local table, after the table-level and column-level grants exist.
+data "redshift_object_grants" "local_events" {
   provider      = redshift.consumer
   database_name = redshift_database.local.name
   object_type   = "TABLE"
   schema_name   = "public"
   object_name   = local.local_table_name
 
-  depends_on = [redshift_object_grant.loader_events, redshift_column_grant.reader_events]
+  depends_on = [
+    redshift_object_grant.loader_events,
+    redshift_object_grant.reader_events_option,
+    redshift_object_grant.operators_public_tables,
+    redshift_column_grant.reader_events,
+  ]
 }
 
-# Every grant the loader holds in the local database.
-data "redshift_grants" "loader" {
+# Every object grant the loader holds in the local database.
+data "redshift_object_grants" "loader" {
   provider      = redshift.consumer
   database_name = redshift_database.local.name
   grantee       = redshift_user.loader.name
   grantee_type  = "USER"
 
-  depends_on = [redshift_object_grant.loader_events, redshift_language_grant.loader_sql]
+  depends_on = [redshift_object_grant.loader_events, redshift_object_grant.loader_schema]
 }
 
 data "redshift_column_grants" "local" {
@@ -109,4 +166,11 @@ data "redshift_column_grants" "local" {
   schema_name   = "public"
 
   depends_on = [redshift_column_grant.reader_events, redshift_column_grant.group_event_labels]
+}
+
+data "redshift_language_grants" "local" {
+  provider      = redshift.consumer
+  database_name = redshift_database.local.name
+
+  depends_on = [redshift_language_grant.operator_procedures, redshift_language_grant.loader_sql]
 }

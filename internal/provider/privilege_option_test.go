@@ -20,6 +20,7 @@ import (
 func newOptionGrantTestResource() resource.Resource {
 	r := newObjectGrantResource().(*privilegeResource)
 	r.name, r.grantOptions = "option_grant_test", true
+
 	return r
 }
 
@@ -28,6 +29,7 @@ func newOptionGrantTestResource() resource.Resource {
 func newHookedOptionGrantTestResource() resource.Resource {
 	r := newOptionGrantTestResource().(*privilegeResource)
 	r.optionRecipient = func(data types.Object) bool { return objectString(data, "grantee") == "analyst" }
+
 	return r
 }
 
@@ -39,16 +41,20 @@ func newPolicyGrantTestResource() resource.Resource {
 	attributes["schema_name"] = privilegeString("Schema containing the lookup table.", false)
 	attributes["object_name"] = privilegeString("Lookup table name.", false)
 	attributes["policy"] = privilegeString("RLS policy receiving the lookup privilege.", false)
+
 	return &privilegeResource{
 		name: "policy_grant_test", attributes: attributes, fields: []string{"database_name", "schema_name", "object_name", "policy"},
 		grantOptions: true,
 		prepare: func(data types.Object) (privilegeTarget, error) {
 			database, schemaName, name := objectString(data, "database_name"), objectString(data, "schema_name"), objectString(data, "object_name")
+
 			checks, err := newCatalogChecks(localDatabaseQuery(database), objectGrantTableQuery(database, schemaName, name))
 			if err != nil {
 				return privilegeTarget{}, err
 			}
+
 			object := sqlclient.Kw("ON", "TABLE").Qualified(database, schemaName, name)
+
 			return privilegeTarget{
 				database: database, checks: checks, allowed: []sqlclient.Keyword{"SELECT"}, grant: grantSpec{object: object},
 				query:  catalogCheck{sql: sqlclient.Stmt("SHOW GRANTS").Append(object).String()},
@@ -60,6 +66,7 @@ func newPolicyGrantTestResource() resource.Resource {
 			if policy == "" {
 				return sqlclient.Statement{}, fmt.Errorf("policy is required")
 			}
+
 			return sqlclient.Fragment().KwIdent("RLS POLICY", policy), nil
 		},
 	}
@@ -83,12 +90,15 @@ func optionCatalog(fields map[string]string, privileges, options []string) *priv
 	if fields["policy"] != "" {
 		c.grantee, c.kind = fields["policy"], "rls policy"
 	}
+
 	for _, privilege := range privileges {
 		c.values[privilege] = true
 	}
+
 	for _, option := range options {
 		c.options[option] = true
 	}
+
 	return c
 }
 
@@ -98,13 +108,16 @@ func TestGrantOptionSpecSQL(t *testing.T) {
 	both := func(spec grantSpec, privilege sqlclient.Keyword) func() ([]string, error) {
 		return func() ([]string, error) {
 			var statements []string
+
 			for _, grant := range []bool{true, false} {
 				statement, err := spec.optionStatement(grant, privilege)
 				if err != nil {
 					return nil, err
 				}
+
 				statements = append(statements, statement)
 			}
+
 			return statements, nil
 		}
 	}
@@ -187,13 +200,17 @@ func TestPrivilegeGrantOptionValidation(t *testing.T) {
 			maps.Copy(fields, test.fields)
 			data := optionObject(t, r, fields, test.privileges, test.options)
 			err := r.validate(data)
+
 			var validated resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, data))}, &validated)
+
 			if test.err == "" {
 				require.NoError(t, err)
 				assert.False(t, validated.Diagnostics.HasError(), "%v", validated.Diagnostics)
+
 				return
 			}
+
 			require.ErrorContains(t, err, test.err)
 			assert.True(t, validated.Diagnostics.HasError(), "invalid grant options must be reported during planning")
 			state, diagnostics := applyOperation(t, r, "create", nil, data, nil)
@@ -215,6 +232,7 @@ func TestPrivilegeGrantOptionRead(t *testing.T) {
 		if sql == `SHOW GRANTS ON TABLE "warehouse"."serving"."orders"` {
 			return rows, nil
 		}
+
 		return []sqlclient.Row{{"name": "exists"}}, nil
 	})
 	r := newOptionGrantTestResource().(*privilegeResource)
@@ -271,6 +289,7 @@ func TestPrivilegeGrantOptionReconcile(t *testing.T) {
 			assert.Equal(t, test.writes, c.writes)
 		})
 	}
+
 	t.Run("option not converged", func(t *testing.T) {
 		r := newOptionGrantTestResource().(*privilegeResource)
 		c := optionCatalog(optionGrantFields, []string{"SELECT"}, nil)
@@ -294,9 +313,12 @@ func TestPrivilegeOptionTranscripts(t *testing.T) {
 		prior, priorOptions     []string
 		desired, desiredOptions []string
 	}
+
 	record := func(t *testing.T, factory func() resource.Resource, fields map[string]string, flows []flow) {
 		t.Helper()
+
 		var cases []transcriptCase
+
 		for _, flow := range flows {
 			r := factory().(*privilegeResource)
 			cases = append(cases, transcriptCase{
@@ -306,9 +328,11 @@ func TestPrivilegeOptionTranscripts(t *testing.T) {
 				planned: optionObject(t, r, fields, flow.desired, flow.desiredOptions),
 			})
 		}
+
 		runTranscripts(t, "privilege/"+resourceTypeName(factory), factory, cases)
 	}
 	selectOnly := []string{"SELECT"}
+
 	t.Run("options", func(t *testing.T) {
 		record(t, newOptionGrantTestResource, optionGrantFields, []flow{
 			{name: "create_with_option", operation: "create", desired: []string{"INSERT", "SELECT"}, desiredOptions: selectOnly},

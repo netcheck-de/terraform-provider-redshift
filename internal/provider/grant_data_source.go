@@ -18,11 +18,13 @@ func newGrantDataSource() datasource.DataSource {
 			Role: attributes["role"].(types.String), User: attributes["user"].(types.String), Datashare: attributes["datashare"].(types.String),
 			Scope: attributes["scope"].(types.String),
 		}
+
 		_, found, err := (&grantResource{*client}).read(ctx, &model)
 		if err == nil && found {
 			lookupValue(data, "privileges", model.Privileges)
 			lookupValue(data, "grant_option_privileges", model.GrantOptionPrivileges)
 		}
+
 		return found, err
 	}})
 }

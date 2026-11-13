@@ -17,6 +17,7 @@ func TestRoleLookup(t *testing.T) {
 	fakeState[*roleFakeFamily](c, "role").externalID = "ABC123"
 	state, diagnostics := readSource(t, newRoleDataSource(), roleData{Name: types.StringValue("example:readers")}, c)
 	require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 	var data roleData
 	require.False(t, state.Get(context.Background(), &data).HasError())
 	assert.Equal(t, "example:readers", data.Name.ValueString())
@@ -24,5 +25,5 @@ func TestRoleLookup(t *testing.T) {
 	assert.Equal(t, "ABC123", data.ExternalID.ValueString())
 	assert.Equal(t, int64(100), data.RoleID.ValueInt64())
 	assert.Empty(t, c.writes, "lookups never write")
-	assertLookupIdentity(t, data.ID, "admin", map[string]string{"name": "example:readers"})
+	assertLookupIdentity(t, data.ID, map[string]string{"name": "example:readers"})
 }

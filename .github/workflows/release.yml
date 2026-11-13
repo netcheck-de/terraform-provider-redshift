@@ -31,9 +31,29 @@ jobs:
     needs: guard
     uses: ./.github/workflows/ci.yml
 
+  acceptance:
+    name: Acceptance tests
+    needs: [guard, checks]
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/acceptance.yml
+    with:
+      commit_sha: ${{ github.sha }}
+
+  live-tests:
+    name: Live tests
+    needs: [guard, checks, acceptance]
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/example.yml
+    with:
+      commit_sha: ${{ github.sha }}
+
   release:
     name: Publish signed provider
-    needs: [guard, checks]
+    needs: [guard, checks, acceptance, live-tests]
     runs-on: ubuntu-latest
     permissions:
       contents: write

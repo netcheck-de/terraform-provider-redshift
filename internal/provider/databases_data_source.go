@@ -22,12 +22,12 @@ func newDatabasesDataSource() datasource.DataSource {
 			"database_type": discoveryFilter("Only databases of this type, in any case: `LOCAL`, or `SHARED` for databases created from a datashare.", databaseTypeLocal, databaseTypeShared),
 			"name_like":     discoveryFilter("Only databases whose name matches this case-sensitive SQL `LIKE` pattern, where `%` matches any sequence and `_` any single character."),
 		},
-		element: map[string]schema.Attribute{
-			"name":            discoveryComputed("string", "Database name."),
-			"owner":           discoveryComputed("string", "SQL user owning the database; null when the owner is not a local user."),
-			"database_type":   discoveryComputed("string", "`LOCAL` or `SHARED`."),
-			"isolation_level": discoveryComputed("string", "`SNAPSHOT` or `SERIALIZABLE`, the keyword of the isolation level the catalog reports; null when unknown."),
-		},
+		element: describedOutputs(collectionElement(newDatabaseResource, "name", "owner", "database_type", "isolation_level"), map[string]string{
+			"name":            "Database name.",
+			"owner":           "SQL user owning the database; null when the owner is not a local user.",
+			"database_type":   "`LOCAL` or `SHARED`.",
+			"isolation_level": "`SNAPSHOT` or `SERIALIZABLE`, the keyword of the isolation level the catalog reports; null when unknown.",
+		}),
 		list: databasesList,
 	})
 }
@@ -37,6 +37,7 @@ func databasesIsolationLevel(catalog string) types.String {
 	if level, err := databaseIsolationLevel(catalog); err == nil {
 		return types.StringValue(level)
 	}
+
 	return discoveryText(strings.ToUpper(catalog))
 }
 
@@ -47,11 +48,13 @@ func databasesList(ctx context.Context, client *resourceClient, filters types.Ob
 	if err != nil {
 		return nil, err
 	}
+
 	items := make([]map[string]attr.Value, 0, len(rows))
 	for _, row := range rows {
 		if row["database_name"] == "" {
 			return nil, fmt.Errorf("SVV_REDSHIFT_DATABASES returned a database without a name")
 		}
+
 		items = append(items, map[string]attr.Value{
 			"name":            types.StringValue(row["database_name"]),
 			"owner":           discoveryText(row["owner"]),
@@ -59,5 +62,6 @@ func databasesList(ctx context.Context, client *resourceClient, filters types.Ob
 			"isolation_level": databasesIsolationLevel(row["isolation_level"]),
 		})
 	}
+
 	return items, nil
 }

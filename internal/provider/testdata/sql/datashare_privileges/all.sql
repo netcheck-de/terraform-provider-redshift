@@ -1,0 +1,1 @@
+SELECT BTRIM(d.source_database) AS database_name, p.datashare_name, p.identity_type, p.identity_name, p.privilege_type FROM svv_datashare_privileges p JOIN svv_datashares d ON d.share_name = p.datashare_name AND d.share_type = 'OUTBOUND' ORDER BY p.datashare_name, p.identity_type, p.identity_name, p.privilege_type;

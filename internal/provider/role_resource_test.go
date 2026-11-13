@@ -38,6 +38,7 @@ func TestRoleReadsCatalogName(t *testing.T) {
 	assert.Equal(t, "admin", data.Owner.ValueString())
 	assert.True(t, data.ExternalID.IsNull(), "a NULL external ID is null")
 	assert.Equal(t, int64(100), data.RoleID.ValueInt64())
+
 	state := fakeState[*roleFakeFamily](c, "role")
 	state.owner, state.externalID = "loader", "ABC123"
 	found, err = r.read(context.Background(), &data)
@@ -62,6 +63,7 @@ func TestRoleRejectsInvalidCatalog(t *testing.T) {
 			require.Error(t, err)
 		})
 	}
+
 	r := &roleResource{testResourceClient(queryFunc(func(context.Context, sqlclient.Connection, string, map[string]string) ([]sqlclient.Row, error) {
 		return []sqlclient.Row{{"role_id": "", "role_name": "readers"}}, nil
 	}))}
@@ -89,9 +91,11 @@ func TestRoleCreateFailures(t *testing.T) {
 				if fail(sql) {
 					return nil, errors.New("ALTER denied")
 				}
+
 				if name == "owner ignored" && strings.HasPrefix(sql, "ALTER ROLE") {
 					return nil, nil // An acknowledged ownership change that did not converge.
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			})
 			r := newRoleResource()
@@ -99,6 +103,7 @@ func TestRoleCreateFailures(t *testing.T) {
 			state, diagnostics := applyOperation(t, r, "create", nil, roleWithOptions("loader", "ABC123"), nil)
 			require.True(t, diagnostics.HasError())
 			assert.True(t, c.role, "the role was created before the failure")
+
 			var id types.String
 			require.False(t, state.GetAttribute(context.Background(), path.Root("id"), &id).HasError())
 			assert.False(t, id.IsNull(), "the created role's identity is kept for the next plan")
@@ -110,6 +115,7 @@ func TestRoleCreateFailures(t *testing.T) {
 func TestRoleUpdateFailures(t *testing.T) {
 	prior := roleWithOptions("admin", "ABC123")
 	planned := roleWithOptions("loader", "ABC123")
+
 	for name, respond := range map[string]func() error{
 		"refused":     func() error { return errors.New("ALTER denied") },
 		"not applied": func() error { return nil },
@@ -121,11 +127,13 @@ func TestRoleUpdateFailures(t *testing.T) {
 				if strings.HasPrefix(sql, "ALTER ROLE") {
 					return nil, respond()
 				}
+
 				return c.Query(ctx, target, sql, parameters)
 			})
 			r := newRoleResource()
 			configureTestResource(t, r, client)
-			prior.ID = r.(*roleResource).identity("admin", map[string]string{"name": "example:readers"})
+
+			prior.ID = identity(map[string]string{"name": "example:readers"})
 			planned.ID = prior.ID
 			_, diagnostics := applyOperation(t, r, "update", prior, planned, nil)
 			require.True(t, diagnostics.HasError())
@@ -141,6 +149,7 @@ func TestRoleTranscripts(t *testing.T) {
 		return func() sqlclient.Client {
 			c.identity, c.role = true, true
 			fakeState[*roleFakeFamily](c, "role").externalID = "ABC123"
+
 			return c
 		}
 	}

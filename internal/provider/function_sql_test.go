@@ -16,10 +16,12 @@ func functionTestModel(arguments ...string) functionModel {
 	for i, argument := range arguments {
 		values[i] = types.StringValue(argument)
 	}
+
 	list := types.ListNull(types.StringType)
 	if len(arguments) > 0 {
 		list = types.ListValueMust(types.StringType, values)
 	}
+
 	return functionModel{
 		ID: types.StringNull(), Database: types.StringValue("analytics"), Schema: types.StringValue("public"), Name: types.StringValue("f_example"),
 		Arguments: list, Signature: types.StringNull(), ReturnType: types.StringValue("integer"), Volatility: types.StringValue("IMMUTABLE"),
@@ -34,6 +36,7 @@ func functionTestCreate(data functionModel, replace bool) func() (string, error)
 		if err != nil {
 			return "", err
 		}
+
 		return createFunctionStatement(spec, replace), nil
 	}
 }
@@ -71,12 +74,15 @@ func TestFunctionSQL(t *testing.T) {
 	invalid := func(change func(*functionModel)) functionModel {
 		data := functionTestModel("integer")
 		change(&data)
+
 		return data
 	}
+
 	tooMany := make([]string, routineMaxArguments+1)
 	for i := range tooMany {
 		tooMany[i] = "integer"
 	}
+
 	checkSQL(t, "function", []sqlCase{
 		{"create", functionTestCreate(functionTestModel("integer", "varchar(10)"), false)},
 		{"create_quoted", functionTestCreate(quoted, false)},
@@ -90,6 +96,7 @@ func TestFunctionSQL(t *testing.T) {
 		{"alter_owner_quoted_signature", func() ([]string, error) {
 			after := quoted
 			after.Owner = types.StringValue("etl")
+
 			return alterFunctionStatements(quoted, after)
 		}},
 		{"alter_unchanged", func() ([]string, error) {

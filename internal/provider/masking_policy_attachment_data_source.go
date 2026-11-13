@@ -23,11 +23,13 @@ func newMaskingPolicyAttachmentDataSource() datasource.DataSource {
 		identityFields: []string{"policy", "schema", "relation", "grantee", "grantee_type"}, identityDatabase: "database",
 		lookup: func(ctx context.Context, client *resourceClient, data *types.Object) (bool, error) {
 			model := maskingAttachmentModelFromObject(*data)
+
 			found, err := (&maskingPolicyAttachmentResource{*client}).read(ctx, &model)
 			if err == nil && found {
 				lookupValue(data, "input_columns", model.InputColumns)
 				lookupValue(data, "priority", model.Priority)
 			}
+
 			return found, err
 		},
 	}).(*catalogDataSource)}
@@ -36,15 +38,19 @@ func newMaskingPolicyAttachmentDataSource() datasource.DataSource {
 // Read runs the shared lookup and then replaces its identity with the paired resource's, which includes columns.
 func (d *maskingAttachmentDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
 	d.catalogDataSource.Read(ctx, req, resp)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	var data types.Object
 	resp.Diagnostics.Append(resp.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() || !data.Attributes()["exists"].Equal(types.BoolValue(true)) {
 		return
 	}
+
 	model := maskingAttachmentModelFromObject(data)
-	id := d.identity(model.Database.ValueString(), maskingAttachmentIdentity(model))
+	id := identity(maskingAttachmentIdentity(model))
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 }

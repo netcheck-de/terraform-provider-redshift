@@ -1,7 +1,13 @@
-# Optional zero-ETL integration from Aurora, RDS, or DynamoDB into the consumer warehouse. Existing sources need the
-# AWS-documented prerequisites; the example can instead create a disposable Aurora PostgreSQL cluster or DynamoDB table.
+# Zero-ETL integration into the consumer warehouse, using an owned DynamoDB source by default. Alternative Aurora/RDS
+# sources need the AWS-documented prerequisites, or the example can create a disposable Aurora PostgreSQL cluster.
+variable "zero_etl_reconcile_settings" {
+  description = "Optional local in-place DynamoDB destination update: change the refresh interval from 900 to 1800 seconds and enable auto-remediation. Ignored for other source types."
+  type        = bool
+  default     = false
+}
+
 variable "zero_etl_source_arn" {
-  description = "Existing Aurora/RDS cluster or instance ARN, or DynamoDB table ARN, in the consumer Region to replicate. Existing DynamoDB sources need PITR, supported encryption, and a resource policy authorizing Redshift exports. Null skips the integration unless a create-source option is set."
+  description = "Existing Aurora/RDS cluster or instance ARN, or DynamoDB table ARN, in the consumer Region to replicate. Disable zero_etl_create_dynamodb_source to use this instead of the default owned source. Existing DynamoDB sources need PITR, supported encryption, and a resource policy authorizing Redshift exports. Null skips the integration when both create-source options are false."
   type        = string
   default     = null
 
@@ -18,7 +24,7 @@ variable "zero_etl_source_database" {
 }
 
 variable "zero_etl_create_source" {
-  description = "Create a disposable Aurora PostgreSQL Serverless v2 cluster with the zero-ETL parameters as the integration source, instead of zero_etl_source_arn. It adds about 20 minutes to apply and Aurora charges while it exists."
+  description = "Create a disposable Aurora PostgreSQL Serverless v2 cluster with the zero-ETL parameters as the integration source. Disable zero_etl_create_dynamodb_source and leave zero_etl_source_arn null to use this instead of the default owned DynamoDB source. It adds about 20 minutes to apply and Aurora charges while it exists."
   type        = bool
   default     = false
 
@@ -146,7 +152,8 @@ resource "redshift_database" "zero_etl" {
   integration {
     integration_id   = local.zero_etl_integration_id
     source_database  = local.zero_etl_source_database
-    refresh_interval = local.zero_etl_dynamodb ? 900 : 600
+    refresh_interval = local.zero_etl_dynamodb ? (var.zero_etl_reconcile_settings ? 1800 : 900) : 600
+    auto_remediation = local.zero_etl_dynamodb ? var.zero_etl_reconcile_settings : null
     query_all_states = true
   }
 }
@@ -155,4 +162,18 @@ data "redshift_database" "zero_etl" {
   provider = redshift.consumer
   count    = local.zero_etl_enabled ? 1 : 0
   name     = redshift_database.zero_etl[0].name
+
+  lifecycle {
+    postcondition {
+      condition = try(
+        upper(self.database_type) == "LOCAL" &&
+        self.integration.integration_id == local.zero_etl_integration_id &&
+        self.integration.source_database == local.zero_etl_source_database &&
+        self.integration.refresh_interval == redshift_database.zero_etl[0].integration.refresh_interval &&
+        (local.zero_etl_dynamodb ? self.integration.auto_remediation == var.zero_etl_reconcile_settings : true),
+        false,
+      )
+      error_message = "The zero-ETL destination must report its integration binding and requested settings."
+    }
+  }
 }

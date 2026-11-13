@@ -14,27 +14,95 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
 }
-mock_provider "redshift" { alias = "producer_data_api_iam" }
-mock_provider "redshift" { alias = "consumer_data_api_iam" }
-mock_provider "redshift" { alias = "producer_direct_iam" }
-mock_provider "redshift" { alias = "consumer_direct_iam" }
-mock_provider "redshift" { alias = "producer_direct_password" }
-mock_provider "redshift" { alias = "consumer_direct_password" }
+mock_provider "redshift" {
+  alias  = "producer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
 
-# Observed catalog values deliberately differ from configuration where Redshift rewrites them. Terraform cannot
-# override computed lists of nested objects (column, rls_policies), so those keep their mocked values.
+# Observed catalog values deliberately differ from configuration where Redshift rewrites SQL.
 override_data {
   target = data.redshift_rls_policy.own_region
   values = {
     id                     = "rls-policy-lookup-identity"
     predicate              = "\"region\" IN (SELECT \"region\" FROM example_schema.example_rls_regions WHERE \"reader\" = CAST(current_user AS TEXT))"
     definition_fingerprint = "observed-fingerprint"
+    alias                  = null
   }
+}
+
+run "rls_missing_attachment_blocks" {
+  command = apply
+
+  override_data {
+    target = data.redshift_rls_policy_attachment.readers
+    values = { exists = false }
+  }
+
+  expect_failures = [data.redshift_rls_policy_attachment.readers]
+}
+
+run "rls_disabled_security_blocks" {
+  command = apply
+
+  override_data {
+    target = data.redshift_table_security.rls_events
+    values = { row_level_security = false, conjunction_type = "AND", datashare_row_level_security = true }
+  }
+
+  expect_failures = [data.redshift_table_security.rls_events]
+}
+
+run "rls_changed_predicate_blocks" {
+  command = apply
+
+  override_data {
+    target = data.redshift_rls_policy.own_region
+    values = {
+      alias                  = null
+      definition_fingerprint = "different-catalog-predicate"
+    }
+  }
+
+  expect_failures = [data.redshift_rls_policy.own_region]
+}
+
+run "rls_wrong_table_owner_blocks" {
+  command = apply
+
+  override_data {
+    target = data.redshift_table.rls_regions
+    values = { owner = "unexpected_owner" }
+  }
+
+  expect_failures = [data.redshift_table.rls_regions]
 }
 override_data {
   target = data.redshift_rls_policy_attachment.readers
@@ -43,6 +111,14 @@ override_data {
 override_data {
   target = data.redshift_table_security.rls_events
   values = { row_level_security = true, conjunction_type = "AND", datashare_row_level_security = true }
+}
+override_data {
+  target = data.redshift_rls_policy_attachments.rls_events
+  values = { id = "rls-attachments-listing-identity" }
+}
+override_data {
+  target = data.redshift_table_securities.local
+  values = { id = "table-securities-listing-identity" }
 }
 
 run "rls_apply" {
@@ -95,5 +171,26 @@ run "rls_apply" {
       can(length(output.row_level_security.policies))
     )
     error_message = "Row-level security lookups must be exposed from the catalog observations, not from configuration."
+  }
+  assert {
+    condition = (
+      data.redshift_rls_policy_attachments.rls_events.id == "rls-attachments-listing-identity" &&
+      data.redshift_rls_policy_attachments.rls_events.database == redshift_database.local.name &&
+      data.redshift_rls_policy_attachments.rls_events.schema == redshift_table.rls_events.schema &&
+      data.redshift_rls_policy_attachments.rls_events.relation == redshift_table.rls_events.name &&
+      data.redshift_rls_policy_attachments.rls_events.policy == null &&
+      output.row_level_security.attachments == [
+        for attachment in data.redshift_rls_policy_attachments.rls_events.rls_policy_attachments :
+        "${attachment.policy} ${attachment.grantee_type} ${attachment.grantee}"
+      ] &&
+      data.redshift_table_securities.local.id == "table-securities-listing-identity" &&
+      data.redshift_table_securities.local.database == redshift_database.local.name &&
+      data.redshift_table_securities.local.schema == redshift_schema.local.name &&
+      output.row_level_security.protected_tables == [
+        for relation in data.redshift_table_securities.local.table_securities :
+        relation.relation if relation.row_level_security
+      ]
+    )
+    error_message = "The attachment and table security listings must be scoped to the protected table and exposed in row_level_security."
   }
 }

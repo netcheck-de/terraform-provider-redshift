@@ -25,6 +25,7 @@ func userLockoutBool(value string) (types.Bool, error) {
 	case "f", "false":
 		return types.BoolValue(false), nil
 	}
+
 	return types.BoolNull(), fmt.Errorf("decode is_locked %q", value)
 }
 
@@ -33,10 +34,12 @@ func userLockoutInt(column, value string) (types.Int64, error) {
 	if value == "" {
 		return types.Int64Null(), nil
 	}
+
 	number, err := strconv.ParseInt(value, 10, 64)
 	if err != nil {
 		return types.Int64Null(), fmt.Errorf("decode %s %q: %w", column, value, err)
 	}
+
 	return types.Int64Value(number), nil
 }
 
@@ -45,28 +48,34 @@ func userLockoutInt(column, value string) (types.Int64, error) {
 func userLockoutsItems(userName string, rows []sqlclient.Row) ([]map[string]attr.Value, error) {
 	sorted := slices.Clone(rows)
 	slices.SortStableFunc(sorted, func(a, b sqlclient.Row) int { return strings.Compare(a["user_name"], b["user_name"]) })
+
 	items := make([]map[string]attr.Value, 0, len(sorted))
 	for _, row := range sorted {
 		if userName != "" && row["user_name"] != userName {
 			continue
 		}
+
 		locked, err := userLockoutBool(row["is_locked"])
 		if err != nil {
 			return nil, err
 		}
+
 		attempts, err := userLockoutInt("failed_login_attempts", row["failed_login_attempts"])
 		if err != nil {
 			return nil, err
 		}
+
 		lockedBy, err := userLockoutInt("locked_by", row["locked_by"])
 		if err != nil {
 			return nil, err
 		}
+
 		items = append(items, map[string]attr.Value{
 			"user_name": types.StringValue(row["user_name"]), "is_locked": locked,
 			"lock_reason": grantsNullable(row["lock_reason"]), "locked_at": grantsNullable(row["locked_at"]),
 			"last_failed_at": grantsNullable(row["last_failed_at"]), "failed_login_attempts": attempts, "locked_by": lockedBy,
 		})
 	}
+
 	return items, nil
 }

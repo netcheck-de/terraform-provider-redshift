@@ -28,6 +28,7 @@ func recordingQueryFunc(calls *[]executedStatement, failOn string, rows []sqlcli
 		if sql == failOn {
 			return nil, errors.New("permission denied")
 		}
+
 		return rows, nil
 	}
 }
@@ -35,17 +36,20 @@ func recordingQueryFunc(calls *[]executedStatement, failOn string, rows []sqlcli
 // TestResourceClientExec runs statements in order without parameters and stops at the first failure.
 func TestResourceClientExec(t *testing.T) {
 	var calls []executedStatement
+
 	r := testResourceClient(recordingQueryFunc(&calls, "", nil))
 	require.NoError(t, r.exec(context.Background(), "analytics", `ALTER USER "u" CREATEDB`, `ALTER USER "u" CONNECTION LIMIT 5`))
 	assert.Equal(t, []executedStatement{
 		{database: "analytics", sql: `ALTER USER "u" CREATEDB`},
 		{database: "analytics", sql: `ALTER USER "u" CONNECTION LIMIT 5`},
 	}, calls)
+
 	for _, call := range calls {
 		assert.Nil(t, call.parameters, "DDL is sent without a parameter map")
 	}
 
 	calls = nil
+
 	require.NoError(t, r.exec(context.Background(), "analytics"))
 	assert.Empty(t, calls, "no statements means no round trip")
 
@@ -63,6 +67,7 @@ func TestResourceClientExec(t *testing.T) {
 // TestResourceClientSelectRows builds the query before sending it and never sends an inconsistent one.
 func TestResourceClientSelectRows(t *testing.T) {
 	var calls []executedStatement
+
 	rows := []sqlclient.Row{{"schema_name": "sales"}}
 	r := testResourceClient(recordingQueryFunc(&calls, "", rows))
 	query := sqlclient.Select("schema_name").From("svv_all_schemas").OptEq("database_name", "database", "analytics").OptEq("schema_name", "schema", "sales")
@@ -95,6 +100,7 @@ func TestResourceClientSelectRows(t *testing.T) {
 // the catalog in it, because a dropped target database cannot be connected to.
 func TestResourceClientLocalDatabaseExists(t *testing.T) {
 	var calls []executedStatement
+
 	r := testResourceClient(recordingQueryFunc(&calls, "", nil))
 	exists, err := r.localDatabaseExists(context.Background(), "admin")
 	require.NoError(t, err)

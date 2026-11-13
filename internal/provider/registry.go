@@ -40,23 +40,28 @@ func registeredDataSources() []func() datasource.DataSource {
 	return sortedFactories(dataSourceFactories, registeredDataSourceName)
 }
 
-// Factories can build entire schemas, so discover names once instead of inside every sort comparison.
+// sortedFactories orders factories by type name. Factories can build entire schemas, so discover names once instead of
+// inside every sort comparison.
 func sortedFactories[T any](registered []T, name func(T) string) []T {
 	type namedFactory struct {
 		factory T
 		name    string
 	}
+
 	entries := make([]namedFactory, len(registered))
 	for i, factory := range registered {
 		entries[i] = namedFactory{factory: factory, name: name(factory)}
 	}
+
 	slices.SortStableFunc(entries, func(a, b namedFactory) int {
 		return strings.Compare(a.name, b.name)
 	})
+
 	factories := slices.Clone(registered)
 	for i, entry := range entries {
 		factories[i] = entry.factory
 	}
+
 	return factories
 }
 
@@ -64,6 +69,7 @@ func sortedFactories[T any](registered []T, name func(T) string) []T {
 func registeredResourceName(factory func() resource.Resource) string {
 	var metadata resource.MetadataResponse
 	factory().Metadata(context.Background(), resource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
+
 	return strings.TrimPrefix(metadata.TypeName, "redshift_")
 }
 
@@ -71,5 +77,6 @@ func registeredResourceName(factory func() resource.Resource) string {
 func registeredDataSourceName(factory func() datasource.DataSource) string {
 	var metadata datasource.MetadataResponse
 	factory().Metadata(context.Background(), datasource.MetadataRequest{ProviderTypeName: "redshift"}, &metadata)
+
 	return strings.TrimPrefix(metadata.TypeName, "redshift_")
 }

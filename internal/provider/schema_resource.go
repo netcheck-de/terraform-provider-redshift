@@ -28,7 +28,7 @@ type schemaResource struct {
 
 // schemaModel is the Terraform state for a local schema.
 type schemaModel struct {
-	// ID records the warehouse/database/schema identity.
+	// ID records the database/schema identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database contains the schema.
 	Database types.String `tfsdk:"database"`
@@ -78,6 +78,7 @@ func (r *schemaResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "name")
 }
 
 // catalogRow finds the schema's catalog row, returning a nil row when it or its database is gone. Delete needs only
@@ -86,16 +87,20 @@ func (r *schemaResource) catalogRow(ctx context.Context, data schemaModel) (sqlc
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return nil, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return nil, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readSchemaQuery(data))
 	if err != nil || len(rows) == 0 {
 		return nil, err
 	}
+
 	if len(rows) != 1 {
 		return nil, fmt.Errorf("schema %q has ambiguous catalog metadata", data.Name.ValueString())
 	}
+
 	return rows[0], nil
 }
 
@@ -105,13 +110,16 @@ func (r *schemaResource) read(ctx context.Context, data *schemaModel) (bool, err
 	if err != nil || row == nil {
 		return false, err
 	}
+
 	if row["owner"] == "" {
 		return false, fmt.Errorf("schema %q has incomplete catalog metadata", data.Name.ValueString())
 	}
+
 	quota, visible, err := r.schemaQuota(ctx, *data, row["owner"])
 	if err != nil {
 		return false, fmt.Errorf("schema %q: %w", data.Name.ValueString(), err)
 	}
+
 	data.Name, data.Owner = types.StringValue(row["schema_name"]), types.StringValue(row["owner"])
 	switch {
 	case visible:
@@ -119,6 +127,7 @@ func (r *schemaResource) read(ctx context.Context, data *schemaModel) (bool, err
 	case data.Quota.IsUnknown():
 		data.Quota = types.Int64Null()
 	}
+
 	return true, nil
 }
 
@@ -130,22 +139,50 @@ func (r *schemaResource) schemaQuota(ctx context.Context, data schemaModel, owne
 	if err != nil {
 		return 0, false, err
 	}
+
 	if len(quotas) > 0 {
 		quota, err := schemaQuotaValue(quotas)
 		return quota, err == nil, err
 	}
-	sessions, err := r.selectRows(ctx, data.Database.ValueString(), readSchemaSessionQuery())
+
+	session, err := schemaSessionOf(ctx, &r.resourceClient, data.Database.ValueString())
 	if err != nil {
 		return 0, false, err
 	}
-	if len(sessions) != 1 {
-		return 0, false, errors.New("pg_user has no unique row for the connected user")
+
+	return schemaUnlimited, session.sees(owner), nil
+}
+
+// schemaSession is the connected user, which decides whose quotas SVV_REDSHIFT_SCHEMA_QUOTA shows.
+type schemaSession struct {
+	// name is the connected user.
+	name string
+	// superuser sees every schema's quota.
+	superuser bool
+}
+
+// sees reports whether a schema of owner without a quota row is UNLIMITED rather than hidden.
+func (s schemaSession) sees(owner string) bool {
+	return s.superuser || s.name == owner
+}
+
+// schemaSessionOf reads the connected user in the database.
+func schemaSessionOf(ctx context.Context, client *resourceClient, database string) (schemaSession, error) {
+	sessions, err := client.selectRows(ctx, database, readSchemaSessionQuery())
+	if err != nil {
+		return schemaSession{}, err
 	}
+
+	if len(sessions) != 1 {
+		return schemaSession{}, errors.New("pg_user has no unique row for the connected user")
+	}
+
 	superuser, err := strconv.ParseBool(sessions[0]["superuser"])
 	if err != nil {
-		return 0, false, fmt.Errorf("unrecognized usesuper %q", sessions[0]["superuser"])
+		return schemaSession{}, fmt.Errorf("unrecognized usesuper %q", sessions[0]["superuser"])
 	}
-	return schemaUnlimited, superuser || sessions[0]["name"] == owner, nil
+
+	return schemaSession{name: sessions[0]["name"], superuser: superuser}, nil
 }
 
 // schemaQuotaValue decodes visible SVV_REDSHIFT_SCHEMA_QUOTA rows, where an empty or non-positive quota means
@@ -154,16 +191,20 @@ func schemaQuotaValue(rows []sqlclient.Row) (int64, error) {
 	if len(rows) > 1 {
 		return 0, errors.New("svv_redshift_schema_quota returned several rows")
 	}
+
 	if len(rows) == 0 || strings.TrimSpace(rows[0]["quota"]) == "" {
 		return schemaUnlimited, nil
 	}
+
 	quota, err := strconv.ParseInt(strings.TrimSpace(rows[0]["quota"]), 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("unrecognized quota %q", rows[0]["quota"])
 	}
+
 	if quota < 1 {
 		return schemaUnlimited, nil
 	}
+
 	return quota, nil
 }
 
@@ -177,6 +218,7 @@ func schemaConverged(expected, observed schemaModel) error {
 			return fmt.Errorf("%s is %s in the catalog, not the planned %s", option.name, option.observed, option.expected)
 		}
 	}
+
 	return nil
 }
 
@@ -184,35 +226,44 @@ func schemaConverged(expected, observed schemaModel) error {
 func (r *schemaResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data schemaModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statement, err := createSchemaStatement(data)
 	if err == nil {
 		err = r.exec(ctx, data.Database.ValueString(), statement)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Create schema", err.Error())
 		return
 	}
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"name": data.Name.ValueString()})
+
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "name": data.Name.ValueString()})
 	// A failed verification must still return serializable state for the created schema.
 	if data.Owner.IsUnknown() {
 		data.Owner = types.StringNull()
 	}
+
 	if data.Quota.IsUnknown() {
 		data.Quota = types.Int64Null()
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	expected := data
+
 	found, err := r.read(ctx, &data)
 	if err == nil && !found {
 		err = errors.New("the schema is absent after creation")
 	}
+
 	if err == nil {
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 		err = schemaConverged(expected, data)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Verify schema", err.Error())
 	}
@@ -222,18 +273,23 @@ func (r *schemaResource) Create(ctx context.Context, req resource.CreateRequest,
 func (r *schemaResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data schemaModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err != nil {
 		resp.Diagnostics.AddError("Read schema", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -246,33 +302,42 @@ func (r *schemaResource) Update(ctx context.Context, req resource.UpdateRequest,
 	var data, prior schemaModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	expected := data
+
 	found, err := r.read(ctx, &prior)
 	if err == nil && !found {
 		err = errSchemaVanished
 	}
+
 	var statements []string
 	if err == nil {
 		statements, err = alterSchemaStatements(prior, data)
 	}
+
 	if err == nil {
 		err = r.exec(ctx, data.Database.ValueString(), statements...)
 	}
+
 	if err == nil {
 		if found, err = r.read(ctx, &data); err == nil && !found {
 			err = errSchemaVanished
 		}
 	}
+
 	if err == nil {
 		err = schemaConverged(expected, data)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Update schema", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -280,13 +345,16 @@ func (r *schemaResource) Update(ctx context.Context, req resource.UpdateRequest,
 func (r *schemaResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data schemaModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	row, err := r.catalogRow(ctx, data)
 	if err == nil && row != nil {
 		err = r.exec(ctx, data.Database.ValueString(), dropSchemaStatement(data))
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete schema", err.Error())
 	}

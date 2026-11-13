@@ -12,17 +12,38 @@ mock_provider "aws" {
 mock_provider "random" {
   source = "./tests/mocks/random"
 }
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
 }
-mock_provider "redshift" { alias = "producer_data_api_iam" }
-mock_provider "redshift" { alias = "consumer_data_api_iam" }
-mock_provider "redshift" { alias = "producer_direct_iam" }
-mock_provider "redshift" { alias = "consumer_direct_iam" }
-mock_provider "redshift" { alias = "producer_direct_password" }
-mock_provider "redshift" { alias = "consumer_direct_password" }
+mock_provider "redshift" {
+  alias  = "producer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
 
 # Endpoint discovery must return stable service names across successive mocked applies.
 override_data {
@@ -175,10 +196,10 @@ run "private_same_account_defaults" {
       redshift_object_grant.loader_events.grantee_type == "USER" && redshift_object_grant.loader_events.grantee == redshift_user.loader.name &&
       redshift_object_grant.operators_database.object_type == "DATABASE" && redshift_object_grant.operators_database.grantee_type == "ROLE" &&
       redshift_object_grant.public_schema_usage.grantee_type == "PUBLIC" && redshift_object_grant.public_schema_usage.grantee == "public" &&
-      redshift_default_privileges.reader_tables.grantee_type == "GROUP" &&
-      redshift_default_privileges.reader_schema_tables.schema_name == redshift_schema.local.name &&
-      redshift_default_privileges.reader_schema_tables.grantee_type == "ROLE" &&
-      toset(keys(redshift_default_privileges.operator_routines)) == toset(["FUNCTIONS", "PROCEDURES"]) &&
+      redshift_default_privilege.reader_tables.grantee_type == "GROUP" &&
+      redshift_default_privilege.reader_schema_tables.schema_name == redshift_schema.local.name &&
+      redshift_default_privilege.reader_schema_tables.grantee_type == "ROLE" &&
+      toset(keys(redshift_default_privilege.operator_routines)) == toset(["FUNCTIONS", "PROCEDURES"]) &&
       length(redshift_assumerole_grant.loader) == 1 && redshift_assumerole_grant.loader[0].iam_role_arn == aws_iam_role.consumer.arn &&
       redshift_assumerole_grant.loader[0].grantee_type == "USER"
     )
@@ -206,9 +227,25 @@ run "private_same_account_defaults" {
       length(redshift_role.sso_readers) == 0 && length(redshift_role.sso_operators) == 0 &&
       length(redshift_role_grant.sso_readers) == 0 && length(redshift_role_grant.sso_operators) == 0 &&
       !contains(keys(module.consumer_endpoints.endpoints), "sso_oauth") && !contains(keys(module.consumer_endpoints.endpoints), "identitystore") &&
-      output.identity_center == null && output.identity_namespace == null && alltrue([for name in values(output.connection_checks) : name == null])
+      output.identity_center == null && output.identity_namespace == null
     )
-    error_message = "A null instance ARN must skip the entire SSO graph and default connection probes must be disabled."
+    error_message = "A null instance ARN must skip the entire SSO graph."
+  }
+  assert {
+    condition = (
+      var.connection_checks == toset(["producer_data_api_iam", "consumer_data_api_iam"]) &&
+      length(data.redshift_database.producer_data_api_iam) == 1 && length(data.redshift_database.consumer_data_api_iam) == 1 &&
+      output.connection_checks.producer_data_api_iam == var.admin_database &&
+      output.connection_checks.consumer_data_api_iam == var.admin_database &&
+      alltrue([for mode, name in output.connection_checks : name == null if strcontains(mode, "direct")]) &&
+      length(redshift_copy_job.fixture) == 1 && !redshift_copy_job.fixture[0].auto &&
+      length(aws_redshift_integration.copy_job) == 1 && length(redshift_table.copy_target) == 1 &&
+      length(aws_dynamodb_table.zero_etl_source) == 1 && length(aws_redshift_integration.zero_etl) == 1 &&
+      length(redshift_database.zero_etl) == 1 &&
+      redshift_database.zero_etl[0].integration.refresh_interval == 900 &&
+      !redshift_database.zero_etl[0].integration.auto_remediation
+    )
+    error_message = "Defaults must include both Data API IAM probes, a non-AUTO COPY JOB, and an owned DynamoDB zero-ETL destination without enabling direct SQL."
   }
   assert {
     condition = (
@@ -259,6 +296,19 @@ run "private_same_account_defaults" {
   }
 }
 
+run "connection_checks_disabled" {
+  command = apply
+  variables { connection_checks = [] }
+
+  assert {
+    condition = (
+      length(data.redshift_database.producer_data_api_iam) == 0 && length(data.redshift_database.consumer_data_api_iam) == 0 &&
+      alltrue([for name in values(output.connection_checks) : name == null])
+    )
+    error_message = "An empty connection_checks set must skip the default IAM probes and all direct probes."
+  }
+}
+
 run "assumerole_disabled" {
   command = apply
   variables { enable_assumerole_grant = false }
@@ -284,8 +334,18 @@ run "identity_center_enabled" {
     identity_center_test_user_id = "12345678-1234-1234-1234-123456789abc"
   }
   override_data {
+    target = data.aws_iam_role_policies.verify_consumer
+    values = { policy_names = ["fixture", "lambda-udf", "identity-center"] }
+  }
+  override_data {
     target = data.redshift_identity_provider.this[0]
-    values = { namespace = "observed_identity_namespace" }
+    values = {
+      type            = "AWSIDC"
+      enabled         = true
+      namespace       = "redshift_oss_e2e_deadbeef"
+      application_arn = "arn:aws:sso::111111111111:application/ssoins-1234567890abcdef/apl-1234567890abcdef"
+      iam_role_arn    = "arn:aws:iam::111111111111:role/consumer-fixture"
+    }
   }
   override_data {
     target = module.consumer_endpoints.data.aws_vpc_endpoint_service.this["sso_oauth"]
@@ -324,9 +384,9 @@ run "identity_center_enabled" {
       redshift_role.sso_operators[0].name == "${redshift_identity_provider.this[0].namespace}:${aws_identitystore_group.operators[0].display_name}" &&
       redshift_role_grant.sso_readers[0].role == redshift_role.readers.name && redshift_role_grant.sso_readers[0].to_role == redshift_role.sso_readers[0].name &&
       redshift_role_grant.sso_operators[0].role == redshift_role.operators.name && redshift_role_grant.sso_operators[0].to_role == redshift_role.sso_operators[0].name &&
-      output.identity_namespace == "observed_identity_namespace" && output.identity_center == {
+      output.identity_namespace == "redshift_oss_e2e_deadbeef" && output.identity_center == {
         instance_arn       = var.identity_center_instance_arn, application_arn = aws_redshift_idc_application.this[0].idc_managed_application_arn,
-        namespace          = "observed_identity_namespace", readers_group_id = aws_identitystore_group.readers[0].group_id,
+        namespace          = "redshift_oss_e2e_deadbeef", readers_group_id = aws_identitystore_group.readers[0].group_id,
         operators_group_id = aws_identitystore_group.operators[0].group_id, test_user_id = var.identity_center_test_user_id
       }
     )
@@ -345,11 +405,32 @@ run "identity_center_existing_groups" {
   }
   override_data {
     target = data.aws_identitystore_group.readers[0]
-    values = { group_id = "reader-group-id", display_name = "existing-developers" }
+    values = { group_id = "33333333-3333-3333-3333-333333333333", display_name = "existing-developers" }
   }
   override_data {
     target = data.aws_identitystore_group.operators[0]
-    values = { group_id = "operator-group-id", display_name = "existing-devops" }
+    values = { group_id = "44444444-4444-4444-4444-444444444444", display_name = "existing-devops" }
+  }
+  override_data {
+    target = data.aws_identitystore_group.verify_consumer["readers"]
+    values = { display_name = "existing-developers" }
+  }
+  override_data {
+    target = data.aws_identitystore_group.verify_consumer["operators"]
+    values = { display_name = "existing-devops" }
+  }
+  override_data {
+    target = data.aws_ssoadmin_application_assignments.verify_consumer[0]
+    values = {
+      application_assignments = [
+        { principal_type = "GROUP", principal_id = "33333333-3333-3333-3333-333333333333", application_arn = "arn:aws:sso::111111111111:application/ssoins-1234567890abcdef/apl-1234567890abcdef" },
+        { principal_type = "GROUP", principal_id = "44444444-4444-4444-4444-444444444444", application_arn = "arn:aws:sso::111111111111:application/ssoins-1234567890abcdef/apl-1234567890abcdef" },
+      ]
+    }
+  }
+  override_data {
+    target = data.aws_iam_role_policies.verify_consumer
+    values = { policy_names = ["fixture", "lambda-udf", "identity-center"] }
   }
   override_data {
     target = module.consumer_endpoints.data.aws_vpc_endpoint_service.this["sso_oauth"]
@@ -363,11 +444,11 @@ run "identity_center_existing_groups" {
     condition = (
       length(aws_identitystore_group.readers) == 0 && length(aws_identitystore_group.operators) == 0 &&
       length(aws_identitystore_group_membership.reader) == 0 &&
-      aws_ssoadmin_application_assignment.readers[0].principal_id == "reader-group-id" &&
-      aws_ssoadmin_application_assignment.operators[0].principal_id == "operator-group-id" &&
+      aws_ssoadmin_application_assignment.readers[0].principal_id == "33333333-3333-3333-3333-333333333333" &&
+      aws_ssoadmin_application_assignment.operators[0].principal_id == "44444444-4444-4444-4444-444444444444" &&
       redshift_role.sso_readers[0].name == "${redshift_identity_provider.this[0].namespace}:existing-developers" &&
       redshift_role.sso_operators[0].name == "${redshift_identity_provider.this[0].namespace}:existing-devops" &&
-      output.identity_center.readers_group_id == "reader-group-id" && output.identity_center.operators_group_id == "operator-group-id"
+      output.identity_center.readers_group_id == "33333333-3333-3333-3333-333333333333" && output.identity_center.operators_group_id == "44444444-4444-4444-4444-444444444444"
     )
     error_message = "Existing groups must be looked up and assigned without creating groups or changing their membership."
   }
@@ -378,6 +459,10 @@ run "rejects_single_existing_group" {
   variables {
     identity_center_instance_arn      = "arn:aws:sso:::instance/ssoins-1234567890abcdef"
     identity_center_reader_group_name = "existing-developers"
+  }
+  override_data {
+    target = data.aws_iam_role_policies.verify_consumer
+    values = { policy_names = ["fixture", "lambda-udf", "identity-center"] }
   }
   expect_failures = [var.identity_center_reader_group_name]
 }
@@ -390,6 +475,144 @@ run "cross_account_sharing" {
     target = data.aws_caller_identity.consumer
     values = { account_id = "222222222222" }
   }
+  override_resource {
+    target = aws_iam_role.consumer
+    values = { id = "redshift-oss-e2e-deadbeef-consumer", arn = "arn:aws:iam::222222222222:role/consumer-fixture" }
+  }
+  override_resource {
+    target = aws_iam_role.extfunctions_lambda
+    values = { id = "redshift-oss-e2e-deadbeef-udf-exec", arn = "arn:aws:iam::222222222222:role/lambda-udf-exec" }
+  }
+  override_resource {
+    target = aws_redshiftserverless_namespace.consumer
+    values = {
+      namespace_id              = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+      arn                       = "arn:aws:redshift-serverless:eu-central-1:222222222222:namespace/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+      admin_password_secret_arn = "arn:aws:secretsmanager:eu-central-1:222222222222:secret:consumer-admin-ABC123"
+    }
+  }
+  override_resource {
+    target = aws_dynamodb_table.zero_etl_source[0]
+    values = { arn = "arn:aws:dynamodb:eu-central-1:222222222222:table/example-zero-etl-source" }
+  }
+  override_resource {
+    target = aws_redshiftserverless_workgroup.consumer
+    values = {
+      arn      = "arn:aws:redshift-serverless:eu-central-1:222222222222:workgroup/bbbbbbbb-cccc-dddd-eeee-ffffffffffff"
+      port     = 5439
+      endpoint = [{ address = "consumer.example.test", port = 5439 }]
+    }
+  }
+  override_resource {
+    target = aws_lambda_function.extfunctions_upper
+    values = { arn = "arn:aws:lambda:eu-central-1:222222222222:function:redshift-oss-e2e-deadbeef-upper" }
+  }
+  override_resource {
+    target = aws_redshift_integration.zero_etl[0]
+    values = { arn = "arn:aws:redshift:eu-central-1:222222222222:integration:a1b2c3d4-5678-90ab-cdef-example11111" }
+  }
+  override_resource {
+    target = module.reader_secret.aws_secretsmanager_secret.this[0]
+    values = { arn = "arn:aws:secretsmanager:eu-central-1:222222222222:secret:reader-ABC123" }
+  }
+  override_data {
+    target = data.aws_vpc.verify_consumer
+    values = { cidr_block = "10.43.0.0/16", owner_id = "222222222222", enable_dns_support = true, enable_dns_hostnames = true }
+  }
+  override_data {
+    target = data.aws_subnet.verify_consumer["0"]
+    values = { vpc_id = "vpc-consumer", cidr_block = "10.43.0.0/24", availability_zone = "eu-central-1a", owner_id = "222222222222", map_public_ip_on_launch = false }
+  }
+  override_data {
+    target = data.aws_subnet.verify_consumer["1"]
+    values = { vpc_id = "vpc-consumer", cidr_block = "10.43.1.0/24", availability_zone = "eu-central-1b", owner_id = "222222222222", map_public_ip_on_launch = false }
+  }
+  override_data {
+    target = data.aws_subnet.verify_consumer["2"]
+    values = { vpc_id = "vpc-consumer", cidr_block = "10.43.2.0/24", availability_zone = "eu-central-1c", owner_id = "222222222222", map_public_ip_on_launch = false }
+  }
+  override_data {
+    target = data.aws_redshiftserverless_namespace.verify_consumer
+    values = {
+      arn                  = "arn:aws:redshift-serverless:eu-central-1:222222222222:namespace/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+      namespace_id         = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+      db_name              = "dev", admin_username = "tfadmin"
+      default_iam_role_arn = "arn:aws:iam::222222222222:role/consumer-fixture"
+      iam_roles            = ["arn:aws:iam::222222222222:role/consumer-fixture"]
+    }
+  }
+  override_data {
+    target = data.aws_iam_role.verify_consumer
+    values = {
+      arn = "arn:aws:iam::222222222222:role/consumer-fixture"
+      assume_role_policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [{
+          Effect    = "Allow", Principal = { Service = ["redshift.amazonaws.com", "redshift-serverless.amazonaws.com"] }
+          Action    = ["sts:AssumeRole", "sts:SetContext"]
+          Condition = { StringEquals = { "aws:SourceAccount" = "222222222222" } }
+        }]
+      })
+    }
+  }
+  override_data {
+    target = data.aws_iam_role.verify_lambda
+    values = {
+      arn = "arn:aws:iam::222222222222:role/lambda-udf-exec"
+      assume_role_policy = jsonencode({
+        Version   = "2012-10-17"
+        Statement = [{ Effect = "Allow", Principal = { Service = "lambda.amazonaws.com" }, Action = "sts:AssumeRole" }]
+      })
+    }
+  }
+  override_data {
+    target = data.aws_lambda_function.verify_upper
+    values = { role = "arn:aws:iam::222222222222:role/lambda-udf-exec", runtime = "python3.12", handler = "index.handler", code_sha256 = "uQKxXeOixWb6cYdvULKBSzw2FBs+2DGpSF89PjXrSfY=" }
+  }
+  override_data {
+    target = data.aws_dynamodb_table.verify_zero_etl[0]
+    values = {
+      arn                    = "arn:aws:dynamodb:eu-central-1:222222222222:table/example-zero-etl-source", billing_mode = "PAY_PER_REQUEST", hash_key = "order_id"
+      attribute              = [{ name = "order_id", type = "S" }]
+      point_in_time_recovery = [{ enabled = true, recovery_period_in_days = 35 }]
+    }
+  }
+  override_data {
+    target = data.aws_s3_bucket_policy.verify_fixture
+    values = {
+      policy = jsonencode({
+        Version = "2012-10-17"
+        Statement = [
+          {
+            Sid       = "RequireTLS", Effect = "Deny", Principal = "*", Action = "s3:*"
+            Resource  = ["arn:aws:s3:::mock-fixture", "arn:aws:s3:::mock-fixture/*"]
+            Condition = { Bool = { "aws:SecureTransport" = "false" } }
+          },
+          {
+            Sid      = "RedshiftEventIntegration", Effect = "Allow", Principal = { Service = "redshift.amazonaws.com" }
+            Action   = ["s3:GetBucketNotification", "s3:PutBucketNotification", "s3:GetBucketLocation"]
+            Resource = ["arn:aws:s3:::mock-fixture"]
+            Condition = {
+              StringEquals = { "aws:SourceAccount" = "111111111111" }
+              ArnLike      = { "aws:SourceArn" = "arn:aws:redshift:eu-central-1:111111111111:integration:*" }
+            }
+          },
+          {
+            Sid    = "ConsumerBucketMetadata", Effect = "Allow", Principal = { AWS = "arn:aws:iam::222222222222:role/consumer-fixture" }
+            Action = ["s3:GetBucketLocation", "s3:ListBucket"], Resource = ["arn:aws:s3:::mock-fixture"]
+          },
+          {
+            Sid    = "ConsumerFixtureRead", Effect = "Allow", Principal = { AWS = "arn:aws:iam::222222222222:role/consumer-fixture" }
+            Action = ["s3:GetObject"], Resource = ["arn:aws:s3:::mock-fixture/data/*", "arn:aws:s3:::mock-fixture/unload/*"]
+          },
+          {
+            Sid    = "ConsumerUnload", Effect = "Allow", Principal = { AWS = "arn:aws:iam::222222222222:role/consumer-fixture" }
+            Action = ["s3:PutObject", "s3:AbortMultipartUpload"], Resource = ["arn:aws:s3:::mock-fixture/unload/*"]
+          },
+        ]
+      })
+    }
+  }
   assert {
     condition = (
       redshift_datashare_grant.consumer.account_id == "222222222222" && redshift_datashare_grant.consumer.namespace_id == null &&
@@ -401,9 +624,15 @@ run "cross_account_sharing" {
       !aws_redshift_data_share_consumer_association.this[0].allow_writes && redshift_database.shared.datashare_arn == local.datashare_arn &&
       length(aws_glue_resource_policy.fixture) == 1 &&
       jsondecode(aws_glue_resource_policy.fixture[0].policy).Statement[0].Principal.AWS == aws_iam_role.consumer.arn &&
-      length(jsondecode(local.fixture_bucket_policy).Statement) == 4 &&
+      toset([for s in jsondecode(local.fixture_bucket_policy).Statement : s.Sid]) == toset([
+        "RequireTLS", "ConsumerBucketMetadata", "ConsumerFixtureRead", "ConsumerUnload", "RedshiftEventIntegration",
+      ]) &&
       alltrue([for s in jsondecode(local.fixture_bucket_policy).Statement :
-        s.Effect != "Allow" || s.Principal.AWS == aws_iam_role.consumer.arn
+        s.Sid == "RedshiftEventIntegration" ? (
+          s.Principal.Service == "redshift.amazonaws.com" &&
+          s.Condition.StringEquals["aws:SourceAccount"] == data.aws_caller_identity.producer.account_id &&
+          s.Condition.ArnLike["aws:SourceArn"] == "arn:aws:redshift:${var.region}:${data.aws_caller_identity.producer.account_id}:integration:*"
+        ) : s.Principal.AWS == aws_iam_role.consumer.arn if s.Effect == "Allow"
       ]) &&
       jsondecode(aws_iam_role.consumer.assume_role_policy).Statement[0].Condition.StringEquals["aws:SourceAccount"] == "222222222222"
     )
@@ -423,6 +652,72 @@ run "all_connection_checks" {
     consumer_password = "MockOnlyConsumerPassword123"
     allow_public_sql  = true
     public_sql_cidrs  = ["203.0.113.10/32"]
+  }
+  override_data {
+    target = data.aws_route_table.verify_producer
+    values = {
+      vpc_id = "vpc-producer"
+      routes = [
+        { cidr_block = "10.42.0.0/16", gateway_id = "local", ipv6_cidr_block = "", destination_prefix_list_id = "" },
+        { cidr_block = "", gateway_id = "vpce-producer-s3", ipv6_cidr_block = "", destination_prefix_list_id = "pl-producer-s3" },
+        { cidr_block = "0.0.0.0/0", gateway_id = "igw-producer", ipv6_cidr_block = "", destination_prefix_list_id = "" },
+      ]
+    }
+  }
+  override_data {
+    target = data.aws_route_table.verify_consumer
+    values = {
+      vpc_id = "vpc-consumer"
+      routes = [
+        { cidr_block = "10.43.0.0/16", gateway_id = "local", ipv6_cidr_block = "", destination_prefix_list_id = "" },
+        { cidr_block = "", gateway_id = "vpce-consumer-s3", ipv6_cidr_block = "", destination_prefix_list_id = "pl-consumer-s3" },
+        { cidr_block = "0.0.0.0/0", gateway_id = "igw-consumer", ipv6_cidr_block = "", destination_prefix_list_id = "" },
+      ]
+    }
+  }
+  override_data {
+    target = data.aws_vpc_endpoint.verify_producer["s3"]
+    values = {
+      state           = "available", vpc_id = "vpc-producer", service_name = "com.amazonaws.eu-central-1.s3", vpc_endpoint_type = "Gateway"
+      route_table_ids = ["rtb-producer-public"]
+    }
+  }
+  override_data {
+    target = data.aws_vpc_endpoint.verify_consumer["s3"]
+    values = {
+      state           = "available", vpc_id = "vpc-consumer", service_name = "com.amazonaws.eu-central-1.s3", vpc_endpoint_type = "Gateway"
+      route_table_ids = ["rtb-consumer-public"]
+    }
+  }
+  override_data {
+    target = data.aws_vpc_security_group_rules.verify_producer
+    values = { ids = ["sgr-producer-vpc", "sgr-producer-s3", "sgr-producer-client"] }
+  }
+  override_data {
+    target = data.aws_vpc_security_group_rules.verify_consumer
+    values = { ids = ["sgr-consumer-vpc", "sgr-consumer-s3", "sgr-consumer-client"] }
+  }
+  override_data {
+    target = data.aws_redshift_cluster.verify_producer
+    values = {
+      encrypted                    = true, enhanced_vpc_routing = true, publicly_accessible = true, vpc_id = "vpc-producer"
+      node_type                    = "ra3.large", database_name = "dev", master_username = "tfadmin", port = 5439
+      cluster_subnet_group_name    = "redshift-oss-e2e-deadbeef-producer"
+      cluster_parameter_group_name = "redshift-oss-e2e-deadbeef-producer"
+      vpc_security_group_ids       = ["sg-producer"]
+      iam_roles                    = ["arn:aws:iam::111111111111:role/producer-fixture"]
+      default_iam_role_arn         = "arn:aws:iam::111111111111:role/producer-fixture"
+      cluster_namespace_arn        = "arn:aws:redshift:eu-central-1:111111111111:namespace:11111111-2222-3333-4444-555555555555"
+    }
+  }
+  override_data {
+    target = data.aws_redshiftserverless_workgroup.verify_consumer
+    values = {
+      namespace_name     = "redshift-oss-e2e-deadbeef-consumer", enhanced_vpc_routing = true, publicly_accessible = true
+      subnet_ids         = ["subnet-consumer-0", "subnet-consumer-1", "subnet-consumer-2"]
+      security_group_ids = ["sg-consumer"]
+      endpoint           = [{ address = "consumer.example.test", port = 5439 }]
+    }
   }
   override_data {
     target = data.redshift_datashare.producer
@@ -491,6 +786,10 @@ run "rejects_unknown_connection_check" {
 run "rejects_invalid_identity_center_arn" {
   command = plan
   variables { identity_center_instance_arn = "arn:aws:sso:::application/invalid" }
+  override_data {
+    target = data.aws_iam_role_policies.verify_consumer
+    values = { policy_names = ["fixture", "lambda-udf", "identity-center"] }
+  }
   expect_failures = [var.identity_center_instance_arn]
 }
 
@@ -504,4 +803,46 @@ run "rejects_password_probe_without_password" {
   command = plan
   variables { connection_checks = ["consumer_direct_password"] }
   expect_failures = [var.consumer_password]
+}
+
+run "rejects_wrong_identity_center_binding" {
+  command   = apply
+  state_key = "wrong_identity_center_binding"
+  variables {
+    identity_center_instance_arn = "arn:aws:sso:::instance/ssoins-1234567890abcdef"
+  }
+  override_data {
+    target = data.aws_iam_role_policies.verify_consumer
+    values = { policy_names = ["fixture", "lambda-udf", "identity-center"] }
+  }
+  override_data {
+    target = data.redshift_identity_provider.this[0]
+    values = {
+      type            = "AWSIDC"
+      enabled         = true
+      namespace       = "unrelated_namespace"
+      application_arn = "arn:aws:sso::111111111111:application/ssoins-1234567890abcdef/apl-1234567890abcdef"
+      iam_role_arn    = "arn:aws:iam::111111111111:role/consumer-fixture"
+    }
+  }
+
+  expect_failures = [data.redshift_identity_provider.this]
+}
+
+run "rejects_missing_identity_center_role_grant" {
+  command   = apply
+  state_key = "missing_identity_center_grant"
+  variables {
+    identity_center_instance_arn = "arn:aws:sso:::instance/ssoins-1234567890abcdef"
+  }
+  override_data {
+    target = data.aws_iam_role_policies.verify_consumer
+    values = { policy_names = ["fixture", "lambda-udf", "identity-center"] }
+  }
+  override_data {
+    target = data.redshift_role_grant.sso_readers[0]
+    values = { exists = false, admin_option = false }
+  }
+
+  expect_failures = [data.redshift_role_grant.sso_readers]
 }

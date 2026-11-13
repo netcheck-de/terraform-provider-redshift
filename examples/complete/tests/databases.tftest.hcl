@@ -1,4 +1,4 @@
-# Mocked runs for databases, schemas, and external schemas. The mocks are shared with composition.tftest.hcl through tests/mocks, so
+# Mocked runs for databases, schemas, external schemas, and their listings. The mocks are shared with composition.tftest.hcl through tests/mocks, so
 # this block adds runs and assertions here without editing the composition suite.
 mock_provider "aws" {
   alias  = "producer"
@@ -14,7 +14,10 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
@@ -62,6 +65,12 @@ run "databases_apply" {
     }
   }
 
+  # Keep the external-schema listing identity independent from the direct lookup.
+  override_data {
+    target = data.redshift_external_schemas.local
+    values = { id = "external-schemas-listing-identity" }
+  }
+
   assert {
     condition = (
       redshift_database.local.connection_limit == 100 && redshift_database.local.collation == "CASE_SENSITIVE" &&
@@ -97,6 +106,53 @@ run "databases_apply" {
     )
     error_message = "Database outputs must expose the lookup values."
   }
+
+  assert {
+    condition = (
+      data.redshift_external_schemas.local.database == redshift_database.local.name &&
+      data.redshift_comments.local.database_name == redshift_database.local.name &&
+      data.redshift_comments.local.object_type == null &&
+      data.redshift_external_schemas.local.id == "external-schemas-listing-identity" &&
+      data.redshift_comments.local.id == "comments-listing-identity" &&
+      length(output.database_listings.external_schemas) == 0 && length(output.database_listings.comments) == 5
+    )
+    error_message = "Database listings must cover the local database and expose the listed external schemas and comments."
+  }
+}
+
+run "database_readback_rejects_wrong_options" {
+  command = apply
+  override_data {
+    target = data.redshift_database.local
+    values = { database_type = "LOCAL", connection_limit = 99, collation = "CASE_SENSITIVE", isolation_level = "SNAPSHOT" }
+  }
+  expect_failures = [data.redshift_database.local]
+}
+
+run "external_schema_readback_rejects_wrong_source" {
+  command = apply
+  override_data {
+    target = data.redshift_external_schema.shared
+    values = { source_type = "REDSHIFT", source_database = "wrong_database", source_schema = "public", owner = "example_loader" }
+  }
+  expect_failures = [data.redshift_external_schema.shared]
+}
+
+run "database_readback_rejects_stale_collation" {
+  command = apply
+  variables {
+    database_collation_insensitive = true
+  }
+  expect_failures = [data.redshift_database.collation_probe]
+}
+
+run "comments_readback_rejects_missing_annotations" {
+  command = apply
+  override_data {
+    target = data.redshift_comments.local
+    values = { comments = [] }
+  }
+  expect_failures = [data.redshift_comments.local]
 }
 
 run "database_collation_migration" {

@@ -15,18 +15,23 @@ var policyGrantTupleFields = map[string]string{"database_name": "analytics", "sc
 // privilege read to render.
 func policyGrantCase(t *testing.T, changes map[string]string) func() ([]string, error) {
 	t.Helper()
+
 	return func() ([]string, error) {
 		fields := maps.Clone(policyGrantTupleFields)
 		maps.Copy(fields, changes)
+
 		r := newPolicyGrantResource().(*policyGrantResource)
+
 		target, err := r.target(privilegeObject(t, r.privilegeResource, fields))
 		if err != nil {
 			return nil, err
 		}
+
 		statements := make([]string, 0, len(target.checks)+2)
 		for _, check := range target.checks {
 			statements = append(statements, check.sql)
 		}
+
 		return append(statements, target.grant.statement(true, "SELECT"), target.grant.statement(false, "SELECT")), nil
 	}
 }
@@ -49,6 +54,7 @@ func TestPolicyGrantSQL(t *testing.T) {
 // normally rejects them first.
 func TestPolicyGrantRecipient(t *testing.T) {
 	r := newPolicyGrantResource().(*policyGrantResource).privilegeResource
+
 	for _, test := range []struct {
 		changes  map[string]string
 		expected string
@@ -60,11 +66,13 @@ func TestPolicyGrantRecipient(t *testing.T) {
 	} {
 		fields := maps.Clone(policyGrantTupleFields)
 		maps.Copy(fields, test.changes)
+
 		recipient, err := policyGrantRecipient(privilegeObject(t, r, fields))
 		if test.expected == "" {
 			require.Error(t, err, "%v", test.changes)
 			continue
 		}
+
 		require.NoError(t, err)
 		assert.Equal(t, test.expected, recipient.String())
 	}

@@ -1,17 +1,55 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 
+	frameworkprovider "github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestContractIndependentProviderConnections checks that multi-connection acceptance fixtures retain each provider's
+// administration database, rather than letting the second configuration overwrite the first via the reattach server.
+func TestContractIndependentProviderConnections(t *testing.T) {
+	t.Parallel()
+
+	factory := func() frameworkprovider.Provider {
+		return &testAccProvider{redshiftProvider: &redshiftProvider{client: queryFunc(func(_ context.Context, connection sqlclient.Connection, _ string, _ map[string]string) ([]sqlclient.Row, error) {
+			return []sqlclient.Row{{"datestyle": connection.Database}}, nil
+		})}}
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(factory, "redshift", "redshiftother"),
+		Steps: []resource.TestStep{{Config: `
+provider "redshift" {
+  region = "eu-central-1"
+  workgroup_name = "warehouse"
+  database = "first"
+}
+provider "redshiftother" {
+  region = "eu-central-1"
+  workgroup_name = "other"
+  database = "second"
+}
+data "redshift_configuration" "first" { name = "datestyle" }
+data "redshift_configuration" "second" {
+  provider = redshiftother
+  name = "datestyle"
+}
+`, Check: resource.ComposeAggregateTestCheckFunc(
+			resource.TestCheckResourceAttr("data.redshift_configuration.first", "value", "first"),
+			resource.TestCheckResourceAttr("data.redshift_configuration.second", "value", "second"),
+		)}},
+	})
+}
 
 // testConfig composes the provider's SQL objects for offline Terraform lifecycle tests.
 func testConfig(privileges, iamRole string) string {
@@ -139,13 +177,16 @@ data "redshift_external_schema" "glue" {
 // checkAttributes compares selected Terraform state attributes using Testify assertions.
 func checkAttributes(t *testing.T, name string, expected map[string]string) resource.TestCheckFunc {
 	t.Helper()
+
 	return func(state *terraform.State) error {
 		data := state.RootModule().Resources[name]
 		require.NotNil(t, data, "resource %s", name)
 		require.NotNil(t, data.Primary, "resource %s", name)
+
 		for key, value := range expected {
 			assert.Equal(t, value, data.Primary.Attributes[key], "%s.%s", name, key)
 		}
+
 		return nil
 	}
 }
@@ -153,6 +194,7 @@ func checkAttributes(t *testing.T, name string, expected map[string]string) reso
 // TestContractProviderLifecycle exercises creation, imports, drift repair, replacement, and dependency-ordered cleanup.
 func TestContractProviderLifecycle(t *testing.T) {
 	t.Parallel()
+
 	c := &catalog{privileges: map[string]bool{}}
 	factories := map[string]func() (tfprotov6.ProviderServer, error){
 		"redshift": providerserver.NewProtocol6WithError(&redshiftProvider{version: "test", client: c, datashareARN: testDatashareARN}),
@@ -165,6 +207,7 @@ func TestContractProviderLifecycle(t *testing.T) {
 		CheckDestroy: func(*terraform.State) error {
 			c.mu.Lock()
 			defer c.mu.Unlock()
+
 			assert.False(t, c.role)
 			assert.False(t, c.membership)
 			assert.False(t, c.userGrant)
@@ -179,6 +222,7 @@ func TestContractProviderLifecycle(t *testing.T) {
 			assert.False(t, c.shareGrant)
 			assert.False(t, c.identity)
 			assert.Empty(t, c.privileges)
+
 			return nil
 		},
 		Steps: []resource.TestStep{
@@ -192,7 +236,7 @@ func TestContractProviderLifecycle(t *testing.T) {
 				checkAttributes(t, "redshift_identity_provider.main", map[string]string{"enabled": "true"}),
 				checkAttributes(t, "redshift_user.grafana", map[string]string{"password_wo_version": "0"}),
 				checkAttributes(t, "data.redshift_user.grafana", map[string]string{"superuser": "false"}),
-				checkAttributes(t, "data.redshift_database.analytics", map[string]string{"database_type": "SHARED", "datashare_arn": shareARN, "id": `{"database":"admin","datashare_arn":"` + shareARN + `","name":"analytics","workgroup_name":"warehouse"}`}),
+				checkAttributes(t, "data.redshift_database.analytics", map[string]string{"database_type": "SHARED", "datashare_arn": shareARN, "id": `{"datashare_arn":"` + shareARN + `","name":"analytics"}`}),
 				checkAttributes(t, "data.redshift_datashare.producer", map[string]string{"publicly_accessible": "false"}),
 				checkAttributes(t, "redshift_grant.read", map[string]string{"privileges.#": "1"}),
 			)},
@@ -215,6 +259,7 @@ func TestContractProviderLifecycle(t *testing.T) {
 				PreConfig: func() {
 					c.mu.Lock()
 					defer c.mu.Unlock()
+
 					c.privileges["INSERT"] = true
 					c.enabled = false
 					c.writes = nil
@@ -225,14 +270,17 @@ func TestContractProviderLifecycle(t *testing.T) {
 				PreConfig: func() {
 					c.mu.Lock()
 					defer c.mu.Unlock()
+
 					require.Empty(t, c.writes, "plan must not perform SQL mutations")
 				},
 				Check: func(*terraform.State) error {
 					c.mu.Lock()
 					defer c.mu.Unlock()
+
 					assert.True(t, c.enabled)
 					assert.Equal(t, map[string]bool{"SELECT": true}, c.privileges)
 					assert.Contains(t, c.writes, `REVOKE INSERT FOR TABLES IN DATABASE "analytics" FROM ROLE "example:readers"`)
+
 					return nil
 				},
 			},
@@ -248,6 +296,7 @@ func TestContractProviderLifecycle(t *testing.T) {
 				PreConfig: func() {
 					c.mu.Lock()
 					defer c.mu.Unlock()
+
 					c.role, c.membership = false, false
 					clear(c.privileges)
 				},
@@ -267,6 +316,7 @@ func TestContractProviderLifecycle(t *testing.T) {
 // TestContractFreshWorkgroupProviderConfiguration checks a warehouse that is unknown until apply.
 func TestContractFreshWorkgroupProviderConfiguration(t *testing.T) {
 	t.Parallel()
+
 	c := &catalog{identity: true, enabled: true, iamRole: "role-one"}
 	config := `
 resource "terraform_data" "workgroup" {}

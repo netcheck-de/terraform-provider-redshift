@@ -9,7 +9,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
@@ -22,13 +21,14 @@ import (
 // TestAccViewLifecycle verifies ordinary, late-binding, and materialized views: creation, lookups, import, in-place
 // query, storage, and refresh changes, definition drift detection and repair, and restrictive deletion.
 func TestAccViewLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	t.Parallel()
+
+	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_views_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(label string, autoRefresh, enabled bool) string {
 		base := fmt.Sprintf(`
 provider "redshift" {
   region = %q
-  profile = %q
   workgroup_name = %q
   database = %q
 }
@@ -37,7 +37,7 @@ resource "redshift_schema" "local" {
   database = redshift_database.local.name
   name = "serving"
 }
-`, region, profile, workgroup, database, name)
+`, region, workgroup, database, name)
 		if !enabled {
 			return base
 		}
@@ -54,6 +54,7 @@ resource "redshift_schema" "local" {
   sort_key {
     columns = ["label", "events"]
   }`}[autoRefresh]
+
 		return base + fmt.Sprintf(`
 resource "redshift_view" "ordinary" {
   database = redshift_schema.local.database
@@ -89,21 +90,23 @@ data "redshift_materialized_view" "counts" {
 `, label, autoRefresh, storage)
 	}
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region), config.WithSharedConfigProfile(profile))
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// A failed test may leave the fixture table and views, which block restrictive schema deletion.
 	t.Cleanup(func() {
 		rows, err := client.Query(ctx, admin, "SELECT database_name FROM svv_redshift_databases WHERE database_name = :name", map[string]string{"name": name})
 		require.NoError(t, err)
+
 		if len(rows) != 0 {
-			_, err = client.Query(ctx, admin, "DROP DATABASE "+sqlclient.Identifier(name), nil)
+			_, err = client.Query(ctx, admin, sqlclient.Stmt("DROP DATABASE").Ident(name).String(), nil)
 			require.NoError(t, err)
 		}
 	})
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration("label", true, false)},
 			{
@@ -121,7 +124,6 @@ data "redshift_materialized_view" "counts" {
 					resource.TestCheckResourceAttrPair("data.redshift_materialized_view.counts", "owner", "redshift_materialized_view.counts", "owner"),
 				),
 			},
-			{Config: configuration("label", true, true), PlanOnly: true},
 			{ResourceName: "redshift_view.ordinary", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"query"}},
 			{ResourceName: "redshift_view.late", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"query"}},
 			{ResourceName: "redshift_materialized_view.counts", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"query", "distribution", "sort_key"}},
@@ -134,7 +136,6 @@ data "redshift_materialized_view" "counts" {
 				}},
 				Check: resource.TestCheckResourceAttr("redshift_materialized_view.counts", "auto_refresh", "false"),
 			},
-			{Config: configuration("UPPER(label)", false, true), PlanOnly: true},
 			{
 				Config: configuration("UPPER(label)", false, true), PlanOnly: true, ExpectNonEmptyPlan: true,
 				PreConfig: func() {
@@ -143,7 +144,6 @@ data "redshift_materialized_view" "counts" {
 				},
 			},
 			{Config: configuration("UPPER(label)", false, true)},
-			{Config: configuration("UPPER(label)", false, true), PlanOnly: true},
 			{
 				Config: configuration("label", false, false),
 				Check: func(*terraform.State) error {

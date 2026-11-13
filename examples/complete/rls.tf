@@ -98,6 +98,17 @@ data "redshift_rls_policy" "own_region" {
   provider = redshift.consumer
   database = redshift_rls_policy.own_region.database
   name     = redshift_rls_policy.own_region.name
+
+  lifecycle {
+    postcondition {
+      condition = try(
+        self.alias == redshift_rls_policy.own_region.alias &&
+        self.definition_fingerprint == redshift_rls_policy.own_region.definition_fingerprint,
+        false,
+      )
+      error_message = "The RLS policy catalog must report the configured alias and the predicate fingerprint recorded after creation (not raw rewritten SQL)."
+    }
+  }
 }
 
 data "redshift_rls_policy_attachment" "readers" {
@@ -108,6 +119,13 @@ data "redshift_rls_policy_attachment" "readers" {
   relation     = redshift_rls_policy_attachment.readers.relation
   grantee      = redshift_rls_policy_attachment.readers.grantee
   grantee_type = redshift_rls_policy_attachment.readers.grantee_type
+
+  lifecycle {
+    postcondition {
+      condition     = self.exists
+      error_message = "The readers role must have the RLS policy attached to the managed events table in the catalog."
+    }
+  }
 }
 
 data "redshift_table_security" "rls_events" {
@@ -115,9 +133,65 @@ data "redshift_table_security" "rls_events" {
   database = redshift_table_security.rls_events.database
   schema   = redshift_table_security.rls_events.schema
   relation = redshift_table_security.rls_events.relation
+
+  lifecycle {
+    postcondition {
+      condition = try(
+        self.row_level_security && self.conjunction_type == "AND" && self.datashare_row_level_security,
+        false,
+      )
+      error_message = "The events table catalog must report RLS enabled with AND conjunction and datashare RLS enabled."
+    }
+  }
 }
 
 data "redshift_rls_policies" "local" {
   provider = redshift.consumer
   database = redshift_rls_policy.own_region.database
+}
+
+data "redshift_rls_policy_attachments" "rls_events" {
+  provider = redshift.consumer
+  database = redshift_rls_policy_attachment.readers.database
+  schema   = redshift_rls_policy_attachment.readers.schema
+  relation = redshift_rls_policy_attachment.readers.relation
+}
+
+data "redshift_table_securities" "local" {
+  provider = redshift.consumer
+  database = redshift_table_security.rls_events.database
+  schema   = redshift_table_security.rls_events.schema
+}
+
+# Policy SELECT grants have no catalog readback; verification.tf exercises lookup access as the restricted reader.
+data "redshift_table" "rls_events" {
+  provider = redshift.consumer
+  database = redshift_table.rls_events.database
+  schema   = redshift_table.rls_events.schema
+  name     = redshift_table.rls_events.name
+
+  lifecycle {
+    postcondition {
+      condition = try(
+        self.owner == redshift_table.rls_events.owner && length(self.owner) > 0, false,
+      )
+      error_message = "The RLS events table must exist in the catalog with the owner recorded after creation."
+    }
+  }
+}
+
+data "redshift_table" "rls_regions" {
+  provider = redshift.consumer
+  database = redshift_table.rls_regions.database
+  schema   = redshift_table.rls_regions.schema
+  name     = redshift_table.rls_regions.name
+
+  lifecycle {
+    postcondition {
+      condition = try(
+        self.owner == redshift_table.rls_regions.owner && length(self.owner) > 0, false,
+      )
+      error_message = "The RLS lookup table must exist in the catalog with the owner recorded after creation."
+    }
+  }
 }

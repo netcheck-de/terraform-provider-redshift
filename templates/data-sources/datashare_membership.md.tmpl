@@ -12,14 +12,6 @@ indicates that the schema membership is visible; `all` indicates coverage of the
 visible source set is covered; a schema membership that is absent or invisible has `exists = false, all = false`.
 Restricted visibility can therefore yield `all = true` without proving that every actual source object is shared.
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND share_name = '...';
-SELECT ... FROM svv_all_tables WHERE database_name = '...' AND schema_name = '...';
-SELECT ... FROM pg_proc_info JOIN pg_namespace ... JOIN pg_language ... WHERE nspname = '...';
-```
-
 ## Example Usage
 
 {{ tffile "examples/data-sources/redshift_datashare_membership/data-source.tf" }}
@@ -28,6 +20,23 @@ SELECT ... FROM pg_proc_info JOIN pg_namespace ... JOIN pg_language ... WHERE ns
 
 {{ .SchemaMarkdown | trimspace }}
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read current datashare members.
+SELECT ... FROM svv_datashare_objects WHERE share_type = 'OUTBOUND' AND share_name = '...';
+
+-- List source tables to check membership coverage.
+SELECT ... FROM svv_all_tables WHERE database_name = '...' AND schema_name = '...';
+
+-- List source functions to check membership coverage.
+SELECT ... FROM pg_proc_info JOIN pg_namespace ... JOIN pg_language ... WHERE nspname = '...';
+```
+
+## Read Behavior
 
 The same period-containing identifier restrictions as the resource apply. The lookup can observe
 a schema with `include_new = true` without changing it, but reports current coverage, not a guarantee about future objects.

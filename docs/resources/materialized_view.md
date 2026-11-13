@@ -12,17 +12,6 @@ Manages a materialized view stored in Redshift. See AWS
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html), and
 [DROP MATERIALIZED VIEW](https://docs.aws.amazon.com/redshift/latest/dg/materialized-view-drop-sql-command.html).
 
-## SQL Statements
-
-```sql
-CREATE MATERIALIZED VIEW schema.name ... AS query;
-ALTER MATERIALIZED VIEW schema.name ALTER DISTSTYLE ...;
-ALTER MATERIALIZED VIEW schema.name ALTER COMPOUND SORTKEY (...);
-ALTER MATERIALIZED VIEW schema.name AUTO REFRESH ...;
-ALTER TABLE schema.name OWNER TO owner;
-DROP MATERIALIZED VIEW schema.name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -57,7 +46,7 @@ resource "redshift_materialized_view" "revenue_by_region" {
 
 - `database` (String) Local database containing the materialized view.
 - `name` (String) Materialized view name.
-- `query` (String) SELECT statement defining the materialized view, without a trailing `;`. Redshift cannot alter the definition. State keeps this text while the catalog definition is unchanged; a change made outside Terraform surfaces the catalog definition and plans a replacement. An import leaves it unset; the first apply after an import records the configured value without replacing the view and warns with the catalog definition, which it cannot compare.
+- `query` (String) SELECT statement defining the materialized view, without a trailing `;`. Redshift cannot alter the definition. State keeps this text while the catalog definition is unchanged; a change made outside Terraform surfaces the catalog definition. An import leaves it unset; the first apply after an import records the configured value without replacing the view and warns with the catalog definition, which it cannot compare.
 - `schema` (String) Existing schema containing the materialized view.
 
 ### Optional
@@ -71,8 +60,8 @@ resource "redshift_materialized_view" "revenue_by_region" {
 
 ### Read-Only
 
-- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed outside literals, quoted identifiers, and comments; detects definition changes made outside Terraform.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 
 <a id="nestedblock--distribution"></a>
 ### Nested Schema for `distribution`
@@ -100,6 +89,30 @@ Optional:
 - `delete` (String) Maximum time for dropping the object and verifying that it is gone. Applies only when the value was saved to state by an earlier apply before the destroy.
 - `update` (String) Maximum time for an in-place update, including the catalog reads before and after the change.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the materialized view.
+CREATE MATERIALIZED VIEW schema.name ... AS query;
+
+-- Change the distribution style.
+ALTER MATERIALIZED VIEW schema.name ALTER DISTSTYLE ...;
+
+-- Change the compound sort key.
+ALTER MATERIALIZED VIEW schema.name ALTER COMPOUND SORTKEY (...);
+
+-- Enable or disable automatic refresh.
+ALTER MATERIALIZED VIEW schema.name AUTO REFRESH ...;
+
+-- Transfer ownership.
+ALTER TABLE schema.name OWNER TO owner;
+
+-- Delete the materialized view.
+DROP MATERIALIZED VIEW schema.name;
+```
 
 ## Lifecycle and Ownership
 
@@ -255,29 +268,24 @@ ALTER MATERIALIZED VIEW "serving"."sales_summary" ALTER COMPOUND SORTKEY ("label
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_materialized_view.revenue_by_region
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    schema         = "reporting"
-    name           = "revenue_by_region"
+    database = "analytics"
+    schema   = "reporting"
+    name     = "revenue_by_region"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_materialized_view.revenue_by_region \
-  '{"workgroup_name":"warehouse","database":"analytics","schema":"reporting","name":"revenue_by_region"}'
+  '{"database":"analytics","schema":"reporting","name":"revenue_by_region"}'
 ```
 
 Import reads `owner` and `auto_refresh` but leaves `query` and the storage options unset, and marks the state as

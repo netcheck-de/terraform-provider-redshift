@@ -27,3 +27,14 @@ output "identity_provider_details" {
     enabled                      = data.redshift_identity_provider.this[0].enabled
   }, null)
 }
+
+output "role_listings" {
+  description = "Warehouse-wide role listing, the recipients of the operators role, and the optional identity providers."
+  value = {
+    roles = [for role in data.redshift_roles.all.roles : role.name]
+    operator_recipients = [
+      for grant in data.redshift_role_grants.operators.role_grants : coalesce(grant.to_user, grant.to_role)
+    ]
+    identity_providers = try([for provider in data.redshift_identity_providers.all[0].identity_providers : provider.name], null)
+  }
+}

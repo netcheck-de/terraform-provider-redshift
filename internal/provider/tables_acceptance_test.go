@@ -1,24 +1,32 @@
 package provider
 
 import (
+	"context"
 	"fmt"
+	"regexp"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/stretchr/testify/require"
 )
 
 // TestAccTableLifecycle creates tables in an isolated database, applies every in-place change kind, including a
 // column inserted between others, reordered columns, and columns dropped from the middle of both the configured and
-// the physical order, checks that catalog reads plan no drift, imports the table, replaces it for a narrowed column,
-// and destroys it.
+// the physical order, checks that catalog reads plan no drift, imports the table, narrows a column in place without
+// losing its rows, refuses to narrow it below a stored value, and destroys it.
 func TestAccTableLifecycle(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t)
+	t.Parallel()
+
+	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_table_" + strconv.FormatInt(time.Now().UnixNano(), 36)
+	client := testAccRolesClient(t, region, workgroup)
+
 	const (
 		idColumn = `
   column {
@@ -43,6 +51,7 @@ func TestAccTableLifecycle(t *testing.T) {
     default = "'n/a'"
   }`
 	)
+
 	note := func(dataType, encoding string) string {
 		text := fmt.Sprintf(`
   column {
@@ -52,6 +61,7 @@ func TestAccTableLifecycle(t *testing.T) {
 			text += fmt.Sprintf(`
     encoding = %q`, encoding)
 		}
+
 		return text + `
   }`
 	}
@@ -59,7 +69,6 @@ func TestAccTableLifecycle(t *testing.T) {
 		return fmt.Sprintf(`
 provider "redshift" {
   region         = %q
-  profile        = %q
   workgroup_name = %q
   database       = %q
 }
@@ -95,7 +104,7 @@ data "redshift_table" "events" {
   schema   = redshift_table.events.schema
   name     = redshift_table.events.name
 }
-`, region, profile, workgroup, database, name, columns, attributes)
+`, region, workgroup, database, name, columns, attributes)
 	}
 	inPlace := func(columns, attributes string) resource.TestStep {
 		return resource.TestStep{Config: configuration(columns, attributes), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
@@ -130,7 +139,7 @@ data "redshift_table" "events" {
     style = "AUTO"
   }`
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("acc")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(base, keys), Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("data.redshift_table.events", "column.0.type", "BIGINT"),
@@ -139,7 +148,6 @@ data "redshift_table" "events" {
 				resource.TestCheckResourceAttr("redshift_table.events", "effective_distribution.key", "account_id"),
 				resource.TestCheckResourceAttr("redshift_table.events", "effective_sort_key.auto", "false"),
 			)},
-			{Config: configuration(base, keys), PlanOnly: true},
 			inPlace(idColumn+note("varchar(32)", "LZO")+accountColumn+labelColumn, keys),
 			{Config: configuration(idColumn+note("varchar(32)", "LZO")+accountColumn+labelColumn, keys), PlanOnly: true},
 			inPlace(labelColumn+idColumn+accountColumn+note("varchar(64)", "ZSTD"), constraints),
@@ -154,9 +162,27 @@ data "redshift_table" "events" {
 			{Config: configuration(base+note("varchar(16)", ""), keys), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
 				plancheck.ExpectResourceAction("redshift_table.events", plancheck.ResourceActionUpdate),
 			}}},
-			{Config: configuration(base+note("varchar(8)", ""), keys), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
-				plancheck.ExpectResourceAction("redshift_table.events", plancheck.ResourceActionDestroyBeforeCreate),
-			}}},
+			{
+				Config: configuration(base+note("varchar(8)", ""), keys), ExpectError: regexp.MustCompile(`target column size 8`),
+				PreConfig: func() {
+					_, err := client.Query(context.Background(), sqlclient.Connection{Database: name}, `INSERT INTO serving.events (account_id, label, note) VALUES (1, 'x', 'abcdefghij')`, nil)
+					require.NoError(t, err)
+				},
+			},
+			{
+				Config: configuration(base+note("varchar(12)", ""), keys),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("redshift_table.events", plancheck.ResourceActionUpdate),
+				}},
+				Check: func(*terraform.State) error {
+					rows, err := client.Query(context.Background(), sqlclient.Connection{Database: name}, `SELECT note FROM serving.events`, nil)
+					if err == nil && (len(rows) != 1 || rows[0]["note"] != "abcdefghij") {
+						err = fmt.Errorf("narrowing must keep the stored row, got %v", rows)
+					}
+
+					return err
+				},
+			},
 		},
 	})
 }

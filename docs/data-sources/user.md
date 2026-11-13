@@ -9,13 +9,6 @@ description: Looks up non-secret attributes of an existing SQL user.
 Looks up an existing database user, its options, and its stored session defaults without reading its password. See
 AWS [SVV_USER_INFO](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_USER_INFO.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM pg_user WHERE usename = 'name';
-SELECT ... FROM svv_user_info WHERE user_name = 'name';
-```
-
 ## Example Usage
 
 ```terraform
@@ -45,6 +38,20 @@ data "redshift_user" "grafana" {
 - `syslog_access` (String) `RESTRICTED` or `UNRESTRICTED`. Null when `SVV_USER_INFO` does not show the user.
 - `valid_until` (String) Password expiration as an RFC 3339 timestamp; null when the password does not expire.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read user capabilities and session defaults.
+SELECT ... FROM pg_user WHERE usename = 'name';
+
+-- Read additional sign-in and connection settings.
+SELECT ... FROM svv_user_info WHERE user_name = 'name';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the observed user's JSON identity, using the same warehouse, provider database, and name keys
 as the paired resource. Whether the password is disabled is not reported, because the catalog does not document it.

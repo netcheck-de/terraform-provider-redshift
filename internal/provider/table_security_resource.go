@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 )
 
 // tableSecurityResource owns the row-level security switch of one relation; policies and their attachments are
@@ -25,7 +26,7 @@ type tableSecurityResource struct {
 
 // tableSecurityModel is the Terraform state of one relation's row-level security settings.
 type tableSecurityModel struct {
-	// ID records the warehouse/database/schema/relation identity.
+	// ID records the database/schema/relation identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database contains the relation.
 	Database types.String `tfsdk:"database"`
@@ -75,11 +76,12 @@ func (r *tableSecurityResource) Schema(_ context.Context, _ resource.SchemaReque
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "relation")
 }
 
 // tableSecurityIdentity is the JSON identity shared by the resource, its lookup, and imports.
 func (r *tableSecurityResource) tableSecurityIdentity(data tableSecurityModel) types.String {
-	return r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "relation": data.Relation.ValueString()})
+	return identity(map[string]string{"database": data.Database.ValueString(), "schema": data.Schema.ValueString(), "relation": data.Relation.ValueString()})
 }
 
 // read refreshes the settings. A relation that svv_rls_relation does not list has never been protected, so it
@@ -88,36 +90,65 @@ func (r *tableSecurityResource) read(ctx context.Context, data *tableSecurityMod
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return false, err
 	}
+
 	if exists, err := r.localDatabaseExists(ctx, data.Database.ValueString()); err != nil || !exists {
 		return false, err
 	}
+
 	relations, err := r.selectRows(ctx, data.Database.ValueString(), readTableSecurityRelationQuery(*data))
 	if err != nil || len(relations) == 0 {
 		return false, err
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readTableSecurityQuery(*data))
 	if err != nil {
 		return false, err
 	}
-	on, datashare, conjunction := false, true, "AND"
+
+	settings := tableSecurityDefaults()
+
 	switch len(rows) {
 	case 0:
 	case 1:
-		if on, err = strconv.ParseBool(rows[0]["is_rls_on"]); err != nil {
-			return false, fmt.Errorf("parse is_rls_on: %w", err)
-		}
-		if datashare, err = strconv.ParseBool(rows[0]["is_rls_datashare_on"]); err != nil {
-			return false, fmt.Errorf("parse is_rls_datashare_on: %w", err)
-		}
-		// The column is CHAR(3), so OR arrives padded.
-		if reported := strings.ToUpper(strings.TrimSpace(rows[0]["rls_conjunction_type"])); reported != "" {
-			conjunction = reported
+		if settings, err = tableSecuritySettings(rows[0]); err != nil {
+			return false, err
 		}
 	default:
 		return false, fmt.Errorf("relation %s.%s has ambiguous row-level security metadata", data.Schema.ValueString(), data.Relation.ValueString())
 	}
-	data.RowLevelSecurity, data.DatashareRowLevelSecurity, data.ConjunctionType = types.BoolValue(on), types.BoolValue(datashare), types.StringValue(conjunction)
+
+	data.RowLevelSecurity, data.DatashareRowLevelSecurity, data.ConjunctionType = settings.RowLevelSecurity, settings.DatashareRowLevelSecurity, settings.ConjunctionType
+
 	return true, nil
+}
+
+// tableSecurityDefaults are the settings of a relation that svv_rls_relation does not list: RLS off, AND, and RLS on
+// for datashares.
+func tableSecurityDefaults() tableSecurityModel {
+	return tableSecurityModel{RowLevelSecurity: types.BoolValue(false), ConjunctionType: types.StringValue("AND"), DatashareRowLevelSecurity: types.BoolValue(true)}
+}
+
+// tableSecuritySettings parses one svv_rls_relation row into the switch, conjunction type, and datashare setting.
+func tableSecuritySettings(row sqlclient.Row) (tableSecurityModel, error) {
+	settings := tableSecurityDefaults()
+
+	on, err := strconv.ParseBool(row["is_rls_on"])
+	if err != nil {
+		return settings, fmt.Errorf("parse is_rls_on: %w", err)
+	}
+
+	datashare, err := strconv.ParseBool(row["is_rls_datashare_on"])
+	if err != nil {
+		return settings, fmt.Errorf("parse is_rls_datashare_on: %w", err)
+	}
+
+	settings.RowLevelSecurity, settings.DatashareRowLevelSecurity = types.BoolValue(on), types.BoolValue(datashare)
+	// The column is CHAR(3), so OR arrives padded.
+	if reported := strings.ToUpper(strings.TrimSpace(row["rls_conjunction_type"])); reported != "" {
+		settings.ConjunctionType = types.StringValue(reported)
+	}
+
+	return settings, nil
 }
 
 // verify re-reads the settings after Create or Update and fails unless every planned value took effect.
@@ -135,6 +166,7 @@ func (r *tableSecurityResource) verify(ctx context.Context, data *tableSecurityM
 	case knownBool(planned.DatashareRowLevelSecurity) != nil && !data.DatashareRowLevelSecurity.Equal(planned.DatashareRowLevelSecurity):
 		return fmt.Errorf("the catalog reports datashare_row_level_security = %s instead of %s", data.DatashareRowLevelSecurity, planned.DatashareRowLevelSecurity)
 	}
+
 	return nil
 }
 
@@ -142,32 +174,46 @@ func (r *tableSecurityResource) verify(ctx context.Context, data *tableSecurityM
 func (r *tableSecurityResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data tableSecurityModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statements, err := createTableSecurityStatements(data)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid table security", err.Error())
 		return
 	}
-	if err := r.exec(ctx, data.Database.ValueString(), statements...); err != nil {
+
+	if err := r.exec(ctx, data.Database.ValueString(), statements[0]); err != nil {
 		resp.Diagnostics.AddError("Set table row-level security", err.Error())
 		return
 	}
+
 	data.ID = r.tableSecurityIdentity(data)
 	planned := data
-	// A failed verification must still leave serializable state for the changed relation.
+	// Row-level security is on now, so a failed later statement or verification must still leave serializable
+	// state for the changed relation, or removing the resource from configuration would leave it on.
 	if data.ConjunctionType.IsUnknown() {
 		data.ConjunctionType = types.StringNull()
 	}
+
 	if data.DatashareRowLevelSecurity.IsUnknown() {
 		data.DatashareRowLevelSecurity = types.BoolNull()
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
+	if err := r.exec(ctx, data.Database.ValueString(), statements[1:]...); err != nil {
+		resp.Diagnostics.AddError("Set table row-level security", err.Error())
+		return
+	}
+
 	if err := r.verify(ctx, &data, planned); err != nil {
 		resp.Diagnostics.AddError("Verify table row-level security", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -175,12 +221,15 @@ func (r *tableSecurityResource) Create(ctx context.Context, req resource.CreateR
 func (r *tableSecurityResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data tableSecurityModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if _, err := optOneOf(data.ConjunctionType, tableSecurityConjunctions...); err != nil {
 		resp.Diagnostics.AddError("Invalid table security", err.Error())
 	}
+
 	if (!data.Schema.IsUnknown() && data.Schema.ValueString() == "") || (!data.Relation.IsUnknown() && data.Relation.ValueString() == "") {
 		resp.Diagnostics.AddError("Invalid table security", "table security requires a nonempty schema and relation")
 	}
@@ -190,9 +239,11 @@ func (r *tableSecurityResource) ValidateConfig(ctx context.Context, req resource
 func (r *tableSecurityResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data tableSecurityModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	switch {
 	case err != nil:
@@ -200,6 +251,7 @@ func (r *tableSecurityResource) Read(ctx context.Context, req resource.ReadReque
 	case !found:
 		resp.State.RemoveResource(ctx)
 	default:
+		data.ID = normalizeLegacyIdentity(data.ID, true)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 }
@@ -209,26 +261,32 @@ func (r *tableSecurityResource) Update(ctx context.Context, req resource.UpdateR
 	var plan, prior tableSecurityModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	if err := r.bound(prior.ID, prior.Database.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Update table row-level security", err.Error())
 		return
 	}
+
 	statements, err := alterTableSecurityStatements(prior, plan)
 	if err == nil {
 		err = r.exec(ctx, plan.Database.ValueString(), statements...)
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Update table row-level security", err.Error())
 		return
 	}
+
 	planned := plan
 	if err := r.verify(ctx, &plan, planned); err != nil {
 		resp.Diagnostics.AddError("Verify table row-level security", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -236,15 +294,18 @@ func (r *tableSecurityResource) Update(ctx context.Context, req resource.UpdateR
 func (r *tableSecurityResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data tableSecurityModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	found, err := r.read(ctx, &data)
 	if err == nil && found && data.RowLevelSecurity.ValueBool() {
 		var statement string
 		if statement, err = deleteTableSecurityStatement(data); err == nil {
 			err = r.exec(ctx, data.Database.ValueString(), statement)
 		}
+
 		if err == nil {
 			found, err = r.read(ctx, &data)
 			if err == nil && found && data.RowLevelSecurity.ValueBool() {
@@ -252,6 +313,7 @@ func (r *tableSecurityResource) Delete(ctx context.Context, req resource.DeleteR
 			}
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Turn off table row-level security", err.Error())
 	}

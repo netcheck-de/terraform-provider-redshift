@@ -61,10 +61,12 @@ func identifierContinues(sql string, code, offset int) bool {
 	if code < 0 {
 		return false
 	}
+
 	start := offset
 	for start > code && (identifierByte(sql[start-1], false) || sql[start-1] == '$' || sql[start-1] >= 0x80) {
 		start--
 	}
+
 	return start < offset && (identifierByte(sql[start], true) || sql[start] >= 0x80)
 }
 
@@ -74,6 +76,7 @@ func identifierContinues(sql string, code, offset int) bool {
 // from either.
 func lex(sql string, view reading) []lexeme {
 	var lexemes []lexeme
+
 	code := -1
 	flush := func(end int) {
 		if code >= 0 {
@@ -81,6 +84,7 @@ func lex(sql string, view reading) []lexeme {
 			code = -1
 		}
 	}
+
 	emit := func(kind lexemeKind, start, end int, open bool) {
 		flush(start)
 		lexemes = append(lexemes, lexeme{kind: kind, text: sql[start:end], open: open})
@@ -93,38 +97,48 @@ func lex(sql string, view reading) []lexeme {
 			escaped := quote == '\'' && (view == redshiftReading || start > 0 && (sql[start-1] == 'E' || sql[start-1] == 'e') && (start == 1 || !identifierByte(sql[start-2], false)))
 			offset++
 			open := true
+
 			for offset < len(sql) {
 				if sql[offset] == '\\' && escaped && offset+1 < len(sql) {
 					offset += 2
 					continue
 				}
+
 				if sql[offset] == quote {
 					offset++
 					if offset < len(sql) && sql[offset] == quote {
 						offset++
 						continue
 					}
+
 					open = false
+
 					break
 				}
+
 				offset++
 			}
+
 			kind := lexString
 			if quote == '"' {
 				kind = lexQuotedIdentifier
 			}
+
 			emit(kind, start, offset, open)
 		case strings.HasPrefix(sql[offset:], "--"):
 			open := true
+
 			if end := strings.IndexByte(sql[offset:], '\n'); end >= 0 {
 				offset += end + 1
 				open = false
 			} else {
 				offset = len(sql)
 			}
+
 			emit(lexLineComment, start, offset, open)
 		case strings.HasPrefix(sql[offset:], "/*"):
 			offset += 2
+
 			depth := 1
 			for offset < len(sql) && depth != 0 {
 				switch {
@@ -138,16 +152,19 @@ func lex(sql string, view reading) []lexeme {
 					offset++
 				}
 			}
+
 			emit(lexBlockComment, start, offset, depth != 0)
 		case sql[offset] == '$' && dollarDelimiter(sql[offset:]) != "" && (view == transportReading || !identifierContinues(sql, code, offset)):
 			delimiter := dollarDelimiter(sql[offset:])
 			open := true
+
 			if closeAt := strings.Index(sql[offset+len(delimiter):], delimiter); closeAt >= 0 {
 				offset += len(delimiter) + closeAt + len(delimiter)
 				open = false
 			} else {
 				offset = len(sql)
 			}
+
 			emit(lexDollarQuote, start, offset, open)
 		case strings.HasPrefix(sql[offset:], "::") || strings.HasPrefix(sql[offset:], ":="):
 			offset += 2
@@ -157,15 +174,19 @@ func lex(sql string, view reading) []lexeme {
 			for offset < len(sql) && identifierByte(sql[offset], false) {
 				offset++
 			}
+
 			emit(lexParameter, start, offset, false)
 		default:
 			if code < 0 {
 				code = offset
 			}
+
 			offset++
 		}
 	}
+
 	flush(len(sql))
+
 	return lexemes
 }
 
@@ -176,15 +197,18 @@ func dollarDelimiter(text string) string {
 	for end < len(text) && identifierByte(text[end], end == 1) {
 		end++
 	}
+
 	if end < len(text) && text[end] == '$' {
 		return text[:end+1]
 	}
+
 	return ""
 }
 
 // placeholders returns the distinct :name parameters in order of first use, as the transports bind them.
 func placeholders(sql string) []string {
 	var names []string
+
 	seen := map[string]bool{}
 	for _, item := range lex(sql, transportReading) {
 		if name := strings.TrimPrefix(item.text, ":"); item.kind == lexParameter && !seen[name] {
@@ -192,6 +216,7 @@ func placeholders(sql string) []string {
 			names = append(names, name)
 		}
 	}
+
 	return names
 }
 
@@ -204,5 +229,6 @@ func endsInLineComment(text string) bool {
 			return true
 		}
 	}
+
 	return false
 }

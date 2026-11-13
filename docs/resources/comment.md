@@ -9,13 +9,6 @@ description: Manages existing local object annotations independently of object d
 Manages a comment on an existing local database, schema, table, view, column, or table constraint without owning the
 object's definition. See AWS [COMMENT](https://docs.aws.amazon.com/redshift/latest/dg/r_COMMENT.html).
 
-## SQL Statements
-
-```sql
-COMMENT ON ... IS 'text' | NULL;
-COMMENT ON CONSTRAINT constraint_name ON schema_name.object_name IS 'text' | NULL;
-```
-
 ## Example Usage
 
 ```terraform
@@ -64,8 +57,22 @@ resource "redshift_comment" "primary_key" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Set or remove an object comment.
+COMMENT ON ... IS 'text' | NULL;
+
+-- Set or remove a constraint comment.
+COMMENT ON CONSTRAINT constraint_name ON schema_name.object_name IS 'text' | NULL;
+```
+
+## Object Selectors
 
 For `DATABASE`, `object_name` must equal `database_name`. For `COLUMN`, `object_name` identifies the relation. For
 `CONSTRAINT`, `object_name` is the table and `constraint_name` the primary key, unique, or foreign key constraint on
@@ -101,32 +108,26 @@ object exists.
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_comment.column
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "admin"
-    database_name  = "analytics"
-    object_type    = "COLUMN"
-    schema_name    = "reporting"
-    object_name    = "daily_summary"
-    column_name    = "day"
+    database_name = "analytics"
+    object_type   = "COLUMN"
+    schema_name   = "reporting"
+    object_name   = "daily_summary"
+    column_name   = "day"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_comment.column \
-  '{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","object_type":"COLUMN","schema_name":"reporting","object_name":"daily_summary","column_name":"day"}'
+  '{"database_name":"analytics","object_type":"COLUMN","schema_name":"reporting","object_name":"daily_summary","column_name":"day"}'
 ```
 
 For database/schema annotations, omit `schema_name`, `column_name`, and `constraint_name`. For table/view annotations,

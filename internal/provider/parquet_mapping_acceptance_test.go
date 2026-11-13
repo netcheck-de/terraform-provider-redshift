@@ -19,9 +19,11 @@ import (
 // "second": pa.array([22], type=pa.int32()), "nullable": pa.array([None], type=pa.int32())}).
 // The caller owns that S3 fixture; this test only creates and drops uniquely named SQL/Glue objects.
 func TestAccSpectrumParquetColumnMapping(t *testing.T) {
-	region, profile, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SPECTRUM_ROLE_ARN", "REDSHIFT_ACC_SPECTRUM_GLUE_DATABASE", "REDSHIFT_ACC_PARQUET_LOCATION")
+	t.Parallel()
+
+	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SPECTRUM_ROLE_ARN", "REDSHIFT_ACC_SPECTRUM_GLUE_DATABASE", "REDSHIFT_ACC_PARQUET_LOCATION")
 	f := liveValidationFixture{
-		client: testAccRolesClient(t, region, profile, workgroup),
+		client: testAccRolesClient(t, region, workgroup),
 		conn:   sqlclient.Connection{Database: database},
 		schema: "acc_parquet_" + strconv.FormatInt(time.Now().UnixNano(), 36),
 	}
@@ -34,6 +36,7 @@ func TestAccSpectrumParquetColumnMapping(t *testing.T) {
 		_, err := f.client.Query(context.Background(), f.conn, sqlclient.Stmt("DROP SCHEMA IF EXISTS").Ident(f.schema).String(), nil)
 		assert.NoError(t, err, "clean up Parquet external schema without deleting the shared Glue database")
 	})
+
 	for _, scenario := range []struct {
 		name, first, second, nullable, wantFirst, wantSecond string
 		property, value                                      string
@@ -46,18 +49,23 @@ func TestAccSpectrumParquetColumnMapping(t *testing.T) {
 		{"orc_resolution", "second", "first", "nullable", "22", "11", "orc.schema.resolution", "position"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
+
 			// Glue is shared, so table names must be unique even across different external schemas.
 			table := f.schema + "_" + scenario.name
+
 			t.Cleanup(func() {
 				_, err := f.client.Query(context.Background(), f.conn, sqlclient.Stmt("DROP TABLE IF EXISTS").Qualified(f.schema, table).String(), nil)
 				assert.NoError(t, err, "clean up Parquet Glue table")
 			})
+
 			create := sqlclient.Stmt("CREATE EXTERNAL TABLE").Qualified(f.schema, table).
 				Kw("(").Ident(scenario.first).Kw("INTEGER,").Ident(scenario.second).Kw("INTEGER,").Ident(scenario.nullable).Kw("INTEGER)").
 				Kw("STORED AS PARQUET LOCATION").Lit(strings.TrimRight(os.Getenv("REDSHIFT_ACC_PARQUET_LOCATION"), "/") + "/")
 			if scenario.property != "" {
 				create = create.Kw("TABLE PROPERTIES (").Lit(scenario.property).Kw("=").Lit(scenario.value).Kw(")")
 			}
+
 			f.exec(t, create)
 			rows := f.exec(t, sqlclient.Stmt("SELECT").Ident(scenario.first).Kw("AS first_value,").Ident(scenario.second).
 				Kw("AS second_value,").Ident(scenario.first).Kw("IS NULL AS first_null,").Ident(scenario.second).

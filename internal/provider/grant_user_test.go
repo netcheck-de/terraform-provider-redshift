@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,6 +27,7 @@ func grantUserModel(privileges, options []string) grantModel {
 // as the shared lifecycle harness does for the role tuple, and checks missing parents.
 func TestGrantUserFailures(t *testing.T) {
 	model := grantUserModel([]string{"SELECT"}, []string{"SELECT"})
+
 	for _, operation := range []string{"create", "read", "update", "delete"} {
 		t.Run(operation, func(t *testing.T) {
 			queries := 0
@@ -37,23 +38,28 @@ func TestGrantUserFailures(t *testing.T) {
 					family := c.family("grant_user").(*grantUserFamily)
 					family.privileges, family.options = map[string]bool{"INSERT": true}, map[string]bool{}
 				}
+
 				calls := 0
 				r := newGrantResource()
-				configureTestResource(t, r, queryFunc(func(ctx context.Context, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+				configureTestResource(t, r, queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 					calls++
 					if calls == failAt {
 						return nil, fmt.Errorf("injected API failure")
 					}
+
 					return c.Query(ctx, connection, sql, parameters)
 				}))
+
 				diagnostics := invoke(t, r, operation, model)
 				if failAt == 0 {
 					require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 					queries = calls
 				} else {
 					require.True(t, diagnostics.HasError(), "query %d failure must be reported", failAt)
 				}
 			}
+
 			r := newGrantResource()
 			configureTestResource(t, r, &catalog{database: true})
 			diagnostics := invoke(t, r, operation, model)
@@ -65,13 +71,15 @@ func TestGrantUserFailures(t *testing.T) {
 // TestGrantUserTranscripts records grant option upgrades and downgrades for a user recipient.
 func TestGrantUserTranscripts(t *testing.T) {
 	selectOnly := []string{"SELECT"}
-	catalogWithUser := func(privileges, options []string) func() dataapi.Client {
+	catalogWithUser := func(privileges, options []string) func() sqlclient.Client {
 		return catalogWith(func(c *catalog) {
 			family := c.family("grant_user").(*grantUserFamily)
+
 			family.privileges, family.options = map[string]bool{}, map[string]bool{}
 			for _, privilege := range privileges {
 				family.privileges[privilege] = true
 			}
+
 			for _, option := range options {
 				family.options[option] = true
 			}
@@ -90,19 +98,20 @@ func TestGrantUserTranscripts(t *testing.T) {
 // TestGrantUserReadsOptionsPerTuple keeps other identities, scopes, and schema-level rows out of a user tuple and
 // reports a privilege with the option when any of its rows carries it.
 func TestGrantUserReadsOptionsPerTuple(t *testing.T) {
-	r := &grantResource{testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+	r := &grantResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 		switch {
 		case strings.HasPrefix(sql, "SELECT database_type"):
-			return []dataapi.Row{{"database_type": "local"}}, nil
+			return []sqlclient.Row{{"database_type": "local"}}, nil
 		case strings.HasPrefix(sql, "SELECT usename"):
-			return []dataapi.Row{{"usename": "analyst"}}, nil
+			return []sqlclient.Row{{"usename": "analyst"}}, nil
 		case sql == `SHOW GRANTS ON DATABASE "analytics" FOR "analyst"`:
-			row := func(identity, kind, scope, privilege, option string) dataapi.Row {
-				return dataapi.Row{"database_name": "analytics", "identity_name": identity, "identity_type": kind, "privilege_scope": scope, "privilege_type": privilege, "admin_option": option}
+			row := func(identity, kind, scope, privilege, option string) sqlclient.Row {
+				return sqlclient.Row{"database_name": "analytics", "identity_name": identity, "identity_type": kind, "privilege_scope": scope, "privilege_type": privilege, "admin_option": option}
 			}
 			schemaRow := row("analyst", "user", "TABLES", "TRUNCATE", "f")
 			schemaRow["schema_name"] = "serving"
-			return []dataapi.Row{
+
+			return []sqlclient.Row{
 				row("analyst", "user", "TABLES", "SELECT", "false"),
 				row("analyst", "user", "TABLES", "SELECT", "t"),
 				row("analyst", "user", "TABLES", "INSERT", "f"),
@@ -148,16 +157,20 @@ func TestGrantValidation(t *testing.T) {
 			data.DatabaseName = types.StringValue("analytics")
 			data.Privileges = types.SetValueMust(types.StringType, grantStringValues(test.privileges))
 			data.GrantOptionPrivileges = types.SetValueMust(types.StringType, grantStringValues(test.options))
-			r := &grantResource{testResourceClient(queryFunc(func(_ context.Context, _ dataapi.Connection, sql string, _ map[string]string) ([]dataapi.Row, error) {
+			r := &grantResource{testResourceClient(queryFunc(func(_ context.Context, _ sqlclient.Connection, sql string, _ map[string]string) ([]sqlclient.Row, error) {
 				return nil, fmt.Errorf("unexpected SQL %q", sql)
 			}))}
+
 			var validated resource.ValidateConfigResponse
 			r.ValidateConfig(context.Background(), resource.ValidateConfigRequest{Config: tfsdk.Config(testState(t, r, data))}, &validated)
+
 			if test.err == "" {
 				require.NoError(t, data.validate())
 				assert.False(t, validated.Diagnostics.HasError(), "%v", validated.Diagnostics)
+
 				return
 			}
+
 			require.ErrorContains(t, data.validate(), test.err)
 			assert.True(t, validated.Diagnostics.HasError(), "invalid tuples must be reported during planning")
 			state, diagnostics := applyOperation(t, r, "create", nil, data, nil)
@@ -172,16 +185,19 @@ func TestGrantValidation(t *testing.T) {
 func TestGrantUserImport(t *testing.T) {
 	r := &grantResource{testResourceClient(&catalog{})}
 	for id, user := range map[string]string{
-		`{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","user":"analyst","scope":"TEMPLATES","schema_name":"serving"}`: "analyst",
-		`{"workgroup_name":"warehouse","database":"admin","database_name":"analytics","scope":"TABLES"}`:                                             "",
+		`{"database_name":"analytics","user":"analyst","scope":"TEMPLATES","schema_name":"serving"}`: "analyst",
+		`{"database_name":"analytics","scope":"TABLES"}`:                                             "",
 	} {
 		resp := resource.ImportStateResponse{State: emptyState(t, r)}
 		r.ImportState(context.Background(), resource.ImportStateRequest{ID: id}, &resp)
+
 		if user == "" {
 			assert.True(t, resp.Diagnostics.HasError(), "an identity without a recipient must be rejected")
 			continue
 		}
+
 		require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+
 		var imported grantModel
 		require.False(t, resp.State.Get(context.Background(), &imported).HasError())
 		assert.Equal(t, user, imported.User.ValueString())
@@ -193,10 +209,11 @@ func TestGrantUserImport(t *testing.T) {
 // TestGrantUserRejectsUnconvergedOptions fails when the catalog keeps a grant option the plan removes.
 func TestGrantUserRejectsUnconvergedOptions(t *testing.T) {
 	c := fullCatalog()
-	r := &grantResource{testResourceClient(queryFunc(func(ctx context.Context, connection dataapi.Connection, sql string, parameters map[string]string) ([]dataapi.Row, error) {
+	r := &grantResource{testResourceClient(queryFunc(func(ctx context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 		if strings.HasPrefix(sql, "REVOKE GRANT OPTION") {
 			return nil, nil
 		}
+
 		return c.Query(ctx, connection, sql, parameters)
 	}))}
 	require.ErrorContains(t, r.reconcile(context.Background(), grantUserModel([]string{"SELECT"}, nil)), "did not converge")

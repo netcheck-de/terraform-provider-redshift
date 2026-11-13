@@ -1,0 +1,3 @@
+-- database: admin
+SELECT n.nspname AS schemaname, s.eskind, s.databasename, s.esoptions, u.usename AS owner FROM pg_namespace n JOIN svv_external_schemas s ON s.esoid = n.oid LEFT JOIN pg_user u ON u.usesysid = n.nspowner ORDER BY n.nspname;
+-- params: {}

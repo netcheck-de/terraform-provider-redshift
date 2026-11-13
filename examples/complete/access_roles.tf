@@ -40,27 +40,86 @@ resource "redshift_role_grant" "loader_operators" {
 data "redshift_role" "readers" {
   provider = redshift.consumer
   name     = redshift_role.readers.name
+
+  lifecycle {
+    postcondition {
+      condition     = self.role_id > 0 && self.owner != null && self.owner != ""
+      error_message = "The readers role must have a catalog ID and an owning user."
+    }
+  }
+}
+
+data "redshift_role" "operators" {
+  provider = redshift.consumer
+  name     = redshift_role.operators.name
+
+  lifecycle {
+    postcondition {
+      condition     = self.role_id > 0 && self.owner != null && self.owner != ""
+      error_message = "The operators role must have a catalog ID and an owning user."
+    }
+  }
 }
 
 data "redshift_role" "auditors" {
   provider = redshift.consumer
   name     = redshift_role.auditors.name
+
+  lifecycle {
+    postcondition {
+      condition     = self.role_id > 0 && self.owner == redshift_role.auditors.owner
+      error_message = "The auditors role must exist and be owned by the configured administrator."
+    }
+  }
 }
 
 data "redshift_role_grant" "loader_operators" {
   provider = redshift.consumer
   role     = redshift_role_grant.loader_operators.role
   to_user  = redshift_role_grant.loader_operators.to_user
+
+  lifecycle {
+    postcondition {
+      condition     = self.exists ? self.admin_option == redshift_role_grant.loader_operators.admin_option : false
+      error_message = "The loader must hold the operators role WITH ADMIN OPTION in the catalog."
+    }
+  }
 }
 
 data "redshift_role_grant" "reader" {
   provider = redshift.consumer
   role     = redshift_role_grant.reader.role
   to_user  = redshift_role_grant.reader.to_user
+
+  lifecycle {
+    postcondition {
+      condition     = self.exists ? self.admin_option == false : false
+      error_message = "The reader must hold the readers role without ADMIN OPTION."
+    }
+  }
 }
 
 data "redshift_role_grant" "operators" {
   provider = redshift.consumer
   role     = redshift_role_grant.operators.role
   to_role  = redshift_role_grant.operators.to_role
+
+  lifecycle {
+    postcondition {
+      condition     = self.exists ? self.admin_option == false : false
+      error_message = "The operators role must inherit sys:operator without ADMIN OPTION."
+    }
+  }
+}
+
+data "redshift_roles" "all" {
+  provider = redshift.consumer
+
+  depends_on = [redshift_role.readers, redshift_role.operators, redshift_role.auditors]
+}
+
+# Every explicit grant of the operators role, to users and roles alike.
+data "redshift_role_grants" "operators" {
+  provider = redshift.consumer
+  role     = redshift_role_grant.loader_operators.role
 }

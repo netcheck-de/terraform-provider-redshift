@@ -20,6 +20,7 @@ func maskingTestAttachment(change func(*maskingPolicyAttachmentModel)) maskingPo
 	if change != nil {
 		change(&model)
 	}
+
 	return model
 }
 
@@ -66,6 +67,8 @@ func TestMaskingPolicyAttachmentSQL(t *testing.T) {
 		}},
 		{"read", maskingQuerySQL(readMaskingAttachmentQuery(quoted))},
 		{"read_peers", maskingQuerySQL(maskingAttachmentPeersQuery(quoted))},
+		{"list", maskingQuerySQL(listMaskingAttachmentsQuery("", "", ""))},
+		{"list_filtered", maskingQuerySQL(listMaskingAttachmentsQuery("mask_email", "public", "customers"))},
 		// A failed re-attach restores the attachment Update read from the catalog, which reports explicit inputs.
 		{"restore_after_failed_attach", func() (string, error) {
 			return attachMaskingPolicyStatement(maskingTestAttachment(func(m *maskingPolicyAttachmentModel) {
@@ -107,6 +110,7 @@ func TestMaskingAttachmentRowSelection(t *testing.T) {
 	row, err = maskingAttachmentRow(maskingTestAttachment(func(m *maskingPolicyAttachmentModel) { m.GranteeType = types.StringValue("USER") }), rows)
 	require.NoError(t, err)
 	assert.Nil(t, row)
+
 	_, err = maskingAttachmentRow(maskingTestAttachment(nil), []sqlclient.Row{{"grantee": "example_readers", "grantee_type": "role", "output_columns": "email"}})
 	require.Error(t, err)
 	_, err = maskingAttachmentPriority("high")
@@ -123,6 +127,7 @@ func TestMaskingAttachmentPriorityConflict(t *testing.T) {
 	plan := maskingTestAttachment(func(m *maskingPolicyAttachmentModel) {
 		m.Columns, m.Priority = maskingAttachmentNameList([]string{"email", "phone"}), types.Int64Value(20)
 	})
+
 	for name, test := range map[string]struct {
 		rows     []sqlclient.Row
 		conflict string
@@ -141,10 +146,12 @@ func TestMaskingAttachmentPriorityConflict(t *testing.T) {
 				require.NoError(t, err)
 				return
 			}
+
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), test.conflict)
 		})
 	}
+
 	unknown := plan
 	unknown.Priority = types.Int64Unknown()
 	require.NoError(t, maskingAttachmentPriorityConflict(unknown, []sqlclient.Row{peer("mask_phone", "high", `["phone"]`)}), "an unknown priority is checked at apply time")

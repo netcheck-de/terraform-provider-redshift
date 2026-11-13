@@ -58,7 +58,7 @@ variable "consumer_vpc_cidr" {
 variable "cluster_node_type" {
   description = "Single-node RA3 producer type; regional availability and quotas still apply."
   type        = string
-  default     = "ra3.xlplus"
+  default     = "ra3.large"
 
   validation {
     condition     = contains(["ra3.large", "ra3.xlplus"], var.cluster_node_type)
@@ -67,13 +67,13 @@ variable "cluster_node_type" {
 }
 
 variable "serverless_capacity" {
-  description = "Fixed Serverless base/max RPUs; 8 is supported in the default region."
+  description = "Fixed Serverless base/max RPUs; 4 is the smallest capacity. Raise it where a region or feature rejects 4."
   type        = number
-  default     = 8
+  default     = 4
 
   validation {
-    condition     = var.serverless_capacity >= 8 && var.serverless_capacity <= 512 && var.serverless_capacity % 8 == 0
-    error_message = "Use a supported capacity from 8–512 RPUs in multiples of 8."
+    condition     = var.serverless_capacity == 4 || (var.serverless_capacity >= 8 && var.serverless_capacity <= 512 && var.serverless_capacity % 8 == 0)
+    error_message = "Use 4 RPUs or a supported capacity from 8–512 RPUs in multiples of 8."
   }
 }
 
@@ -100,7 +100,7 @@ variable "admin_database" {
 }
 
 variable "enable_assumerole_grant" {
-  description = "Initialize identity-specific ASSUMEROLE access on the disposable consumer and demonstrate COPY/UNLOAD grants."
+  description = "Demonstrate identity-specific COPY/UNLOAD ASSUMEROLE grants on the disposable consumer. Bedrock independently initializes and grants its required EXTERNAL FUNCTION access."
   type        = bool
   default     = true
 }
@@ -168,9 +168,9 @@ variable "public_sql_cidrs" {
 }
 
 variable "connection_checks" {
-  description = "Optional read-only connection probes; direct modes require endpoint connectivity and password probes require ephemeral inputs."
+  description = "Read-only connection probes; defaults to Data API IAM checks on both warehouses. Direct modes require endpoint connectivity and password probes require ephemeral inputs. Set an empty set to skip all probes."
   type        = set(string)
-  default     = []
+  default     = ["producer_data_api_iam", "consumer_data_api_iam"]
 
   validation {
     condition = length(setsubtract(var.connection_checks, toset([

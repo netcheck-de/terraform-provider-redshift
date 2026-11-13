@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -40,6 +41,7 @@ func (s *iamStub) GetWorkgroup(context.Context, *redshiftserverless.GetWorkgroup
 	if s.fail == "workgroup" {
 		return nil, errors.New("workgroup failed")
 	}
+
 	return &redshiftserverless.GetWorkgroupOutput{Workgroup: s.workgroup}, nil
 }
 
@@ -48,12 +50,15 @@ func (s *iamStub) ListWorkgroups(_ context.Context, input *redshiftserverless.Li
 	if s.fail == "list" {
 		return nil, errors.New("list failed")
 	}
+
 	if s.absent {
 		return &redshiftserverless.ListWorkgroupsOutput{}, nil
 	}
+
 	if input.NextToken == nil {
 		return &redshiftserverless.ListWorkgroupsOutput{NextToken: aws.String("next")}, nil
 	}
+
 	return &redshiftserverless.ListWorkgroupsOutput{Workgroups: []serverlessTypes.Workgroup{{WorkgroupId: aws.String("uuid"), WorkgroupName: aws.String("warehouse")}}}, nil
 }
 
@@ -62,7 +67,9 @@ func (s *iamStub) GetCredentials(_ context.Context, input *redshiftserverless.Ge
 	if s.fail == "serverless credentials" {
 		return nil, errors.New("credentials failed")
 	}
+
 	s.calls[aws.ToString(input.DbName)]++
+
 	return &redshiftserverless.GetCredentialsOutput{DbUser: aws.String(s.username), DbPassword: aws.String(s.password), Expiration: s.expiration}, nil
 }
 
@@ -71,6 +78,7 @@ func (s *iamStub) DescribeClusters(context.Context, *redshift.DescribeClustersIn
 	if s.fail == "cluster" {
 		return nil, errors.New("cluster failed")
 	}
+
 	return &redshift.DescribeClustersOutput{Clusters: s.clusters}, nil
 }
 
@@ -79,10 +87,13 @@ func (s *iamStub) GetClusterCredentials(_ context.Context, input *redshift.GetCl
 	if s.fail == "cluster credentials" {
 		return nil, errors.New("credentials failed")
 	}
+
 	if aws.ToBool(input.AutoCreate) || len(input.DbGroups) != 0 {
 		return nil, errors.New("unexpected user/group mutation")
 	}
+
 	s.calls[aws.ToString(input.DbName)]++
+
 	return &redshift.GetClusterCredentialsOutput{DbUser: aws.String(s.username), DbPassword: aws.String(s.password), Expiration: s.expiration}, nil
 }
 
@@ -90,6 +101,7 @@ func (s *iamStub) GetClusterCredentials(_ context.Context, input *redshift.GetCl
 func iamTestClient() (*IAM, *iamStub) {
 	expiration := time.Now().Add(15 * time.Minute)
 	stub := &iamStub{workgroup: &serverlessTypes.Workgroup{Endpoint: &serverlessTypes.Endpoint{Address: aws.String("warehouse.example.com"), Port: aws.Int32(5439)}}, clusters: []clusterTypes.Cluster{{Endpoint: &clusterTypes.Endpoint{Address: aws.String("cluster.example.com"), Port: aws.Int32(5439)}}}, username: "IAM:reader", password: "temporary", expiration: &expiration, calls: map[string]int{}}
+
 	return &IAM{Workgroup: "warehouse", Serverless: stub, Provisioned: stub}, stub
 }
 
@@ -100,15 +112,18 @@ func TestIAMCredentialsRefreshByDatabase(t *testing.T) {
 		if provisioned {
 			iam.Workgroup, iam.Cluster, iam.DBUser = "", "cluster", "reader"
 		}
+
 		first, err := iam.Resolve(context.Background(), "admin")
 		require.NoError(t, err)
 		assert.Equal(t, "IAM:reader", first.Username)
 		assert.Equal(t, uint16(5439), first.Port)
+
 		_, err = iam.Resolve(context.Background(), "admin")
 		require.NoError(t, err)
 		_, err = iam.Resolve(context.Background(), "analytics")
 		require.NoError(t, err)
 		assert.Equal(t, map[string]int{"admin": 1, "analytics": 1}, stub.calls)
+
 		iam.now = func() time.Time { return stub.expiration.Add(-30 * time.Second) }
 		_, err = iam.Resolve(context.Background(), "admin")
 		require.NoError(t, err)
@@ -126,6 +141,7 @@ func TestIAMDiscoveryPrefersCustomCertificateDomains(t *testing.T) {
 		} else {
 			stub.workgroup.CustomDomainName = aws.String("redshift.internal.example.com")
 		}
+
 		credentials, err := iam.Resolve(context.Background(), "admin")
 		require.NoError(t, err)
 		assert.Equal(t, "redshift.internal.example.com", credentials.Host)
@@ -139,9 +155,11 @@ func TestIAMARNResolution(t *testing.T) {
 	_, err := iam.Resolve(context.Background(), "admin")
 	require.NoError(t, err)
 	assert.Equal(t, "warehouse", iam.name)
+
 	for _, mode := range []string{"invalid", "absent", "list"} {
 		iam, stub := iamTestClient()
 		iam.Workgroup = "arn:aws:redshift-serverless:eu-central-1:123456789012:workgroup/uuid"
+
 		switch mode {
 		case "invalid":
 			iam.Workgroup = "arn:aws:iam::123456789012:role/reader"
@@ -150,6 +168,7 @@ func TestIAMARNResolution(t *testing.T) {
 		case "list":
 			stub.fail = "list"
 		}
+
 		_, err := iam.Resolve(context.Background(), "admin")
 		require.Error(t, err)
 	}
@@ -159,6 +178,7 @@ func TestIAMARNResolution(t *testing.T) {
 func TestIAMDiscoveryAndCredentialFailures(t *testing.T) {
 	for _, mode := range []string{"workgroup", "cluster", "serverless credentials", "cluster credentials", "missing workgroup", "missing endpoint", "missing cluster", "missing cluster endpoint", "host", "port", "username", "password", "expiration", "expired"} {
 		iam, stub := iamTestClient()
+
 		switch mode {
 		case "cluster", "cluster credentials":
 			iam.Workgroup, iam.Cluster, iam.DBUser = "", "cluster", "reader"
@@ -189,8 +209,94 @@ func TestIAMDiscoveryAndCredentialFailures(t *testing.T) {
 		default:
 			stub.fail = mode
 		}
+
 		_, err := iam.Resolve(context.Background(), "admin")
 		require.Error(t, err, mode)
 		assert.Empty(t, iam.cache)
+	}
+}
+
+// blockingIAMStub holds one credential request open while another caller's deadline expires.
+type blockingIAMStub struct {
+	// iamStub supplies the normal response after the held call is released.
+	*iamStub
+
+	// started signals that the resolver is holding its credential gate.
+	started chan struct{}
+	// release lets the active lookup finish independently of the waiting caller.
+	release chan struct{}
+}
+
+// wait holds the active request open until the test releases it or its own context ends.
+func (s *blockingIAMStub) wait(ctx context.Context) error {
+	close(s.started)
+
+	select {
+	case <-s.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// GetCredentials blocks the active Serverless call while a second query waits.
+func (s *blockingIAMStub) GetCredentials(ctx context.Context, input *redshiftserverless.GetCredentialsInput, options ...func(*redshiftserverless.Options)) (*redshiftserverless.GetCredentialsOutput, error) {
+	if err := s.wait(ctx); err != nil {
+		return nil, err
+	}
+
+	return s.iamStub.GetCredentials(ctx, input, options...)
+}
+
+// GetClusterCredentials exercises the same wait with provisioned credentials.
+func (s *blockingIAMStub) GetClusterCredentials(ctx context.Context, input *redshift.GetClusterCredentialsInput, options ...func(*redshift.Options)) (*redshift.GetClusterCredentialsOutput, error) {
+	if err := s.wait(ctx); err != nil {
+		return nil, err
+	}
+
+	return s.iamStub.GetClusterCredentials(ctx, input, options...)
+}
+
+// TestIAMCredentialWaitHonorsCancellation ensures waiting queries keep their own deadline and leave the active
+// lookup and its cache usable, for both credential APIs.
+func TestIAMCredentialWaitHonorsCancellation(t *testing.T) {
+	for name, provisioned := range map[string]bool{"serverless": false, "provisioned": true} {
+		t.Run(name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				iam, stub := iamTestClient()
+				blocking := &blockingIAMStub{iamStub: stub, started: make(chan struct{}), release: make(chan struct{})}
+
+				iam.Serverless, iam.Provisioned = blocking, blocking
+				if provisioned {
+					iam.Workgroup, iam.Cluster, iam.DBUser = "", "cluster", "reader"
+				}
+
+				finished := make(chan error, 1)
+
+				go func() {
+					_, err := iam.Resolve(context.Background(), "admin")
+					finished <- err
+				}()
+
+				<-blocking.started
+
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+
+				_, err := iam.Resolve(ctx, "admin")
+
+				close(blocking.release)
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+				require.NoError(t, <-finished)
+
+				credentials, err := iam.Resolve(context.Background(), "admin")
+				require.NoError(t, err)
+				assert.Equal(t, "IAM:reader", credentials.Username)
+				assert.Equal(t, 1, stub.calls["admin"])
+
+				_, err = iam.Resolve(ctx, "admin")
+				require.ErrorIs(t, err, context.DeadlineExceeded, "expired callers cannot use cached credentials")
+			})
+		})
 	}
 }

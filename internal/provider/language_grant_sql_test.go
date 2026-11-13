@@ -14,6 +14,7 @@ func TestLanguageGrantSQL(t *testing.T) {
 	render := func(changes map[string]string) func() ([]string, error) {
 		fields := maps.Clone(languageGrantBaseFields)
 		maps.Copy(fields, changes)
+
 		return privilegeTargetCase(t, newLanguageGrantResource, fields, "USAGE")
 	}
 	options := func(changes map[string]string) func() ([]string, error) {
@@ -22,20 +23,25 @@ func TestLanguageGrantSQL(t *testing.T) {
 			if err != nil {
 				return nil, err
 			}
+
 			r := newLanguageGrantResource().(*privilegeResource)
 			fields := maps.Clone(languageGrantBaseFields)
 			maps.Copy(fields, changes)
+
 			target, err := r.prepare(privilegeObject(t, r, fields))
 			if err != nil {
 				return nil, err
 			}
+
 			for _, grant := range []bool{true, false} {
 				statement, err := target.grant.optionStatement(grant, languageGrantPrivileges[0])
 				if err != nil {
 					return nil, err
 				}
+
 				statements = append(statements, statement)
 			}
+
 			return statements, nil
 		}
 	}

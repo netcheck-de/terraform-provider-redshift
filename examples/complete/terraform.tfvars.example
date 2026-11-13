@@ -1,4 +1,5 @@
-# The defaults create both warehouses, private networks, and all non-SSO SQL/data fixtures in one account.
+# The defaults create both warehouses, private networks, COPY JOB, DynamoDB zero-ETL, and Data API IAM probes in one account.
+# The DynamoDB table, PITR backups, exports, and warehouses incur charges; delete the integration before destroy.
 # Uncomment and adjust only the optional inputs you need; passwords stay in ephemeral environment variables.
 region = "eu-central-1"
 # profile = "sandbox-admin"
@@ -7,8 +8,8 @@ region = "eu-central-1"
 # name_prefix         = "redshift-oss-e2e"
 # producer_vpc_cidr   = "10.42.0.0/16"
 # consumer_vpc_cidr   = "10.43.0.0/16"
-# cluster_node_type   = "ra3.xlplus"
-# serverless_capacity = 8
+# cluster_node_type   = "ra3.large"
+# serverless_capacity = 4
 # admin_username      = "tfadmin"
 # admin_database      = "dev"
 
@@ -16,6 +17,7 @@ region = "eu-central-1"
 # table_rename_event_id          = false
 # database_collation_insensitive = false
 # spectrum_parquet_add_column    = false
+# zero_etl_reconcile_settings    = false
 
 # Revoke PUBLIC ASSUMEROLE on the consumer and grant COPY/UNLOAD explicitly.
 # enable_assumerole_grant = true
@@ -34,16 +36,17 @@ region = "eu-central-1"
 # Grant the grants datashare VIA DATA CATALOG to a Lake Formation account and authorize its DataCatalog/ identifier.
 # lake_formation_account_id = "123456789012"
 
-# Create a COPY JOB that loads the fixture bucket's data/ prefix, with the S3 event integration COPY JOB requires.
-# copy_job = { auto = false }
+# COPY JOB and its S3 event integration are enabled by default, without automatic loading. Set null to omit them.
+# copy_job = null
 
-# Replicate an existing Aurora or RDS source into the consumer through a zero-ETL integration (see README).
+# The default creates a disposable DynamoDB source with PITR and scoped export permissions. Set false to omit zero-ETL
+# or to choose an alternative source below (see README).
+# zero_etl_create_dynamodb_source = false
+# Replicate an existing Aurora or RDS source instead, with the default DynamoDB source disabled.
 # zero_etl_source_arn      = "arn:aws:rds:eu-central-1:123456789012:cluster:orders"
 # zero_etl_source_database = "orders" # PostgreSQL and Oracle sources only.
 # Or create a disposable Aurora PostgreSQL Serverless v2 source instead (about 20 more minutes, Aurora charges).
 # zero_etl_create_source = true
-# Or create a disposable DynamoDB source with PITR and scoped export permissions.
-# zero_etl_create_dynamodb_source = false
 
 # Grant DEBUG on a federated-permissions database to the administrators of the consumer account.
 # federated_debug_database = "sales_db"
@@ -63,7 +66,8 @@ region = "eu-central-1"
 # public_sql_cidrs = ["203.0.113.10/32"]
 # direct_sslmode = "verify-full"
 
-# Read-only connection probes. IAM Data API probes need no TCP connectivity; direct probes do, and direct password
+# Both IAM Data API probes run by default; set connection_checks = [] to omit them. They need no TCP connectivity;
+# direct probes do, and direct password
 # probes additionally use ephemeral TF_VAR_producer_password / TF_VAR_consumer_password (never set them here).
 # connection_checks = [
 #   "producer_data_api_iam", "consumer_data_api_iam",

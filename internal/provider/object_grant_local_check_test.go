@@ -21,12 +21,14 @@ func TestObjectGrantLocalChecks(t *testing.T) {
 				"grantee_type": "USER", "grantee": "loader",
 			}))
 			require.NoError(t, err)
+
 			var local []catalogCheck
 			for _, check := range target.checks {
 				if check.local {
 					local = append(local, check)
 				}
 			}
+
 			require.Len(t, local, 1)
 			assert.Contains(t, local[0].sql, want)
 			assert.Equal(t, "warehouse", r.targetDatabase(target))

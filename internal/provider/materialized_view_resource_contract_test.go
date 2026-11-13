@@ -18,6 +18,7 @@ import (
 // place.
 func TestContractMaterializedViewImportAdoptionPlans(t *testing.T) {
 	t.Parallel()
+
 	c := fullCatalog()
 	configuration := func(options string) string {
 		return fmt.Sprintf(`
@@ -44,7 +45,7 @@ resource "redshift_materialized_view" "summary" {
 		Steps: []testresource.TestStep{
 			{
 				Config: configuration(`backup = false`), ResourceName: address, ImportState: true, ImportStatePersist: true,
-				ImportStateId: fmt.Sprintf(`{"workgroup_name":"warehouse","database":"admin","schema":%q,"name":%q}`, fakeViewSchema, fakeMaterializedViewName),
+				ImportStateId: fmt.Sprintf(`{"database":"admin","schema":%q,"name":%q}`, fakeViewSchema, fakeMaterializedViewName),
 			},
 			{Config: configuration(`backup = false`), ConfigPlanChecks: expect(plancheck.ResourceActionUpdate), Check: testresource.TestCheckResourceAttr(address, "query", fakeMaterializedQuery)},
 			{Config: configuration(`backup = true`), ConfigPlanChecks: expect(plancheck.ResourceActionDestroyBeforeCreate)},
@@ -59,6 +60,7 @@ resource "redshift_materialized_view" "summary" {
 // place, and an empty distribution block is rejected before apply.
 func TestContractMaterializedViewStorageBlockPlans(t *testing.T) {
 	t.Parallel()
+
 	c := fullCatalog()
 	configuration := func(storage string) string {
 		return fmt.Sprintf(`
@@ -113,11 +115,14 @@ resource "redshift_materialized_view" "rollup" {
 			)},
 		},
 	})
+
 	var storage []string
+
 	for _, write := range c.writes {
 		if strings.HasPrefix(write, `ALTER MATERIALIZED VIEW "serving"."sales_rollup"`) {
 			storage = append(storage, strings.TrimPrefix(write, `ALTER MATERIALIZED VIEW "serving"."sales_rollup" `))
 		}
 	}
+
 	assert.Equal(t, []string{`ALTER DISTSTYLE EVEN`, `ALTER COMPOUND SORTKEY ("label", "sales")`, `ALTER DISTSTYLE EVEN`, `ALTER SORTKEY NONE`}, storage)
 }

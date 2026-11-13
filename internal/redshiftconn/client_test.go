@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,6 +38,7 @@ func (f credentialFunc) Resolve(ctx context.Context, database string) (Credentia
 type rowsStub struct {
 	// Rows supplies unused pgx methods without duplicating its complete interface.
 	pgx.Rows
+
 	// values contains the single result row used in a test.
 	values []any
 	// columns provides the corresponding result column names.
@@ -56,7 +58,9 @@ func (r *rowsStub) Next() bool {
 	if r.consumed || r.values == nil {
 		return false
 	}
+
 	r.consumed = true
+
 	return true
 }
 
@@ -112,6 +116,7 @@ func TestDirectQueryBindsRowsAndCloses(t *testing.T) {
 		assert.Equal(t, uint16(tls.VersionTLS12), config.TLSConfig.MinVersion)
 		assert.Empty(t, config.Fallbacks)
 		assert.Equal(t, pgx.QueryExecModeExec, config.DefaultQueryExecMode)
+
 		return session, nil
 	}
 	result, err := client.Query(context.Background(), sqlclient.Connection{Database: "analytics"}, "SELECT :name", map[string]string{"name": "O'Reilly"})
@@ -121,6 +126,17 @@ func TestDirectQueryBindsRowsAndCloses(t *testing.T) {
 	assert.Equal(t, []sqlclient.Row{{"value": "value", "enabled": "true", "null": "", "count": "42", "bytes": "text"}}, result)
 	assert.True(t, session.closed)
 	assert.True(t, rows.closed)
+}
+
+// TestDirectQueryDecodesCatalogCodes returns one-byte "char" catalog codes as their letter, as the Data API does, while
+// ordinary integers keep their decimal text.
+func TestDirectQueryDecodesCatalogCodes(t *testing.T) {
+	client := directTestClient()
+	rows := &rowsStub{values: []any{'v', int32(118)}, columns: []pgconn.FieldDescription{{Name: "volatility", DataTypeOID: pgtype.QCharOID}, {Name: "count", DataTypeOID: pgtype.Int4OID}}}
+	client.dial = func(context.Context, *pgx.ConnConfig) (connection, error) { return &connectionStub{rows: rows}, nil }
+	result, err := client.Query(context.Background(), sqlclient.Connection{Database: "analytics"}, "SELECT provolatile", nil)
+	require.NoError(t, err)
+	assert.Equal(t, []sqlclient.Row{{"volatility": "v", "count": "118"}}, result)
 }
 
 // TestDirectQueryFailureCleanup checks binding, dialing, execution, decoding, metadata, and completion failures.
@@ -134,16 +150,18 @@ func TestDirectQueryFailureCleanup(t *testing.T) {
 				if mode == "dial" {
 					return nil, errors.New("dial failed")
 				}
+
 				return session, nil
 			}
 			sql := "SELECT 1"
+
 			switch mode {
 			case "bind":
 				sql = "SELECT :missing"
 			case "configuration":
 				client.Credentials.Host = ""
 			case "query":
-				session.queryError = errors.New("query failed")
+				session.queryError = &pgconn.PgError{Severity: "ERROR", Code: "42601", Message: "syntax error"}
 			case "values":
 				rows.valueError = errors.New("decode failed")
 			case "metadata":
@@ -151,7 +169,7 @@ func TestDirectQueryFailureCleanup(t *testing.T) {
 			case "unsupported":
 				rows.values = []any{struct{}{}}
 			case "completion":
-				rows.resultError = errors.New("server error")
+				rows.resultError = &pgconn.PgError{Severity: "ERROR", Code: "42501", Message: "permission denied"}
 			case "command":
 				rows.values = nil
 			case "default dial":
@@ -159,12 +177,15 @@ func TestDirectQueryFailureCleanup(t *testing.T) {
 				client.Credentials.Host = "127.0.0.1"
 				client.Credentials.Port = 1
 			}
+
 			_, err := client.Query(context.Background(), sqlclient.Connection{Database: "analytics"}, sql, nil)
 			if mode == "command" {
 				require.NoError(t, err)
 			} else {
 				require.Error(t, err)
+				require.NotErrorIs(t, err, sqlclient.ErrUnsettled, "the server reported the outcome or nothing was sent")
 			}
+
 			if mode == "query" || mode == "values" || mode == "metadata" || mode == "unsupported" || mode == "completion" || mode == "command" {
 				assert.True(t, session.closed)
 			}
@@ -186,10 +207,12 @@ func TestDirectConfigurationUsesFreshIAMAndOverrides(t *testing.T) {
 	assert.Equal(t, uint16(5440), config.Port)
 	assert.Equal(t, "IAM:reader", config.User)
 	assert.Equal(t, "temporary", config.Password)
+
 	client.Credentials = Credentials{}
 	config, err = client.configuration(context.Background(), "analytics")
 	require.NoError(t, err)
 	assert.Equal(t, "discovered.example.com", config.Host)
+
 	client.IAM = credentialFunc(func(context.Context, string) (Credentials, error) {
 		return Credentials{}, errors.New("credentials failed")
 	})
@@ -201,25 +224,31 @@ func TestDirectConfigurationUsesFreshIAMAndOverrides(t *testing.T) {
 func TestDirectConfigurationCAValidation(t *testing.T) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
+
 	certificate := &x509.Certificate{SerialNumber: big.NewInt(1), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
 	der, err := x509.CreateCertificate(rand.Reader, certificate, certificate, &key.PublicKey, key)
 	require.NoError(t, err)
 	path := filepath.Join(t.TempDir(), "ca.pem")
 	require.NoError(t, os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600))
+
 	client := directTestClient()
 	client.CACertFile = path
 	config, err := client.configuration(context.Background(), "analytics")
 	require.NoError(t, err)
 	assert.NotNil(t, config.TLSConfig.RootCAs)
 	require.NoError(t, os.WriteFile(path, []byte("invalid"), 0o600))
+
 	_, err = client.configuration(context.Background(), "analytics")
 	require.ErrorContains(t, err, "valid certificates")
 	client.CACertFile = filepath.Join(t.TempDir(), "absent")
 	_, err = client.configuration(context.Background(), "analytics")
 	require.ErrorContains(t, err, "CA bundle")
+
 	client.CACertFile = path
 	original := systemCertPool
+
 	t.Cleanup(func() { systemCertPool = original })
+
 	systemCertPool = func() (*x509.CertPool, error) { return nil, errors.New("trust failed") }
 	_, err = client.configuration(context.Background(), "analytics")
 	require.ErrorContains(t, err, "system CA trust")
@@ -231,6 +260,7 @@ func TestDirectScalarText(t *testing.T) {
 		_, err := valueText(value)
 		require.NoError(t, err)
 	}
+
 	text, err := valueText(time.Date(2026, 1, 1, 1, 0, 0, 0, time.FixedZone("offset", 3600)))
 	require.NoError(t, err)
 	assert.Equal(t, "2026-01-01T00:00:00Z", text)
@@ -239,6 +269,7 @@ func TestDirectScalarText(t *testing.T) {
 // TestDirectConfigurationRejectsInvalidPGEnvironment checks configuration errors without attempting a network connection.
 func TestDirectConfigurationRejectsInvalidPGEnvironment(t *testing.T) {
 	t.Setenv("PGPORT", "invalid")
+
 	_, err := directTestClient().configuration(context.Background(), "analytics")
 	require.ErrorContains(t, err, "parse SQL configuration")
 }
@@ -250,12 +281,14 @@ func TestDirectConfigurationConnectTimeoutAndApplicationName(t *testing.T) {
 		t.Run(value, func(t *testing.T) {
 			t.Setenv("PGCONNECT_TIMEOUT", value)
 			t.Setenv("PGAPPNAME", "environment")
+
 			client := directTestClient()
 			client.Timeout = time.Hour
 			config, err := client.configuration(context.Background(), "analytics")
 			require.NoError(t, err)
 			assert.Equal(t, DefaultConnectTimeout, config.ConnectTimeout)
 			assert.NotContains(t, config.RuntimeParams, "application_name")
+
 			client.ConnectTimeout, client.ApplicationName = 10*time.Second, "terraform-provider-redshift/test"
 			config, err = client.configuration(context.Background(), "analytics")
 			require.NoError(t, err)
@@ -270,25 +303,32 @@ func TestDirectConfigurationConnectTimeoutAndApplicationName(t *testing.T) {
 func TestDirectQueryTimeoutCoversCredentials(t *testing.T) {
 	for _, callerDeadline := range []bool{false, true} {
 		var remaining time.Duration
+
 		client := directTestClient()
 		client.Timeout, client.ConnectTimeout = time.Hour, time.Second
 		client.IAM = credentialFunc(func(ctx context.Context, _ string) (Credentials, error) {
 			deadline, ok := ctx.Deadline()
 			require.True(t, ok)
+
 			remaining = time.Until(deadline)
+
 			return Credentials{Host: "warehouse.example.com", Username: "IAM:reader", Password: "temporary"}, nil
 		})
 		client.dial = func(context.Context, *pgx.ConnConfig) (connection, error) {
 			return &connectionStub{rows: &rowsStub{}}, nil
 		}
 		ctx := context.Background()
+
 		if callerDeadline {
 			var cancel context.CancelFunc
+
 			ctx, cancel = context.WithTimeout(ctx, time.Minute)
 			defer cancel()
 		}
+
 		_, err := client.Query(ctx, sqlclient.Connection{Database: "analytics"}, "SELECT 1", nil)
 		require.NoError(t, err)
+
 		if callerDeadline {
 			assert.LessOrEqual(t, remaining, time.Minute)
 		} else {
@@ -324,6 +364,7 @@ func TestDirectConfigurationSSLModes(t *testing.T) {
 			assert.Empty(t, config.Fallbacks)
 		})
 	}
+
 	client := directTestClient()
 	client.SSLMode = "prefer"
 	_, err := client.configuration(context.Background(), "analytics")
@@ -332,11 +373,13 @@ func TestDirectConfigurationSSLModes(t *testing.T) {
 	// verify-ca accepts a chain to a trusted root regardless of hostname and rejects untrusted or missing certificates.
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
+
 	root := &x509.Certificate{SerialNumber: big.NewInt(1), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign, NotAfter: time.Now().Add(time.Hour)}
 	rootDER, err := x509.CreateCertificate(rand.Reader, root, root, &key.PublicKey, key)
 	require.NoError(t, err)
 	rootCertificate, err := x509.ParseCertificate(rootDER)
 	require.NoError(t, err)
+
 	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), DNSNames: []string{"other.example.com"}, NotAfter: time.Now().Add(time.Hour), ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
 	leafDER, err := x509.CreateCertificate(rand.Reader, leaf, rootCertificate, &key.PublicKey, key)
 	require.NoError(t, err)
@@ -344,13 +387,16 @@ func TestDirectConfigurationSSLModes(t *testing.T) {
 	require.NoError(t, err)
 	path := filepath.Join(t.TempDir(), "ca.pem")
 	require.NoError(t, os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rootDER}), 0o600))
+
 	client = directTestClient()
 	client.SSLMode, client.CACertFile = SSLModeVerifyCA, path
 	config, err := client.configuration(context.Background(), "analytics")
 	require.NoError(t, err)
+
 	verify := config.TLSConfig.VerifyConnection
 	require.NoError(t, verify(tls.ConnectionState{PeerCertificates: []*x509.Certificate{leafCertificate, rootCertificate}}))
 	require.ErrorContains(t, verify(tls.ConnectionState{}), "no certificate")
+
 	client.CACertFile = ""
 	config, err = client.configuration(context.Background(), "analytics")
 	require.NoError(t, err)
@@ -360,30 +406,17 @@ func TestDirectConfigurationSSLModes(t *testing.T) {
 // TestDirectQueryDeadlineCancelsStatement sends a cancel request for the running statement when its context ends, so
 // Redshift stops an autocommit statement instead of committing it after the provider reported a failure.
 func TestDirectQueryDeadlineCancelsStatement(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = listener.Close() })
 	server := &stalledServer{secret: []byte{1, 2, 3, 4}, cancels: make(chan *pgproto3.CancelRequest, 1), cancelled: make(chan struct{})}
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
-			go server.serve(conn)
-		}
-	}()
-	address := listener.Addr().(*net.TCPAddr)
-	client := &Client{
-		Credentials: Credentials{Host: "127.0.0.1", Port: uint16(address.Port), Username: "admin", Password: "secret"},
-		SSLMode:     SSLModeDisable,
-		Timeout:     time.Hour,
-	}
+	client := server.start(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
+
 	started := time.Now()
-	_, err = client.Query(ctx, sqlclient.Connection{Database: "analytics"}, "CREATE MATERIALIZED VIEW slow AS SELECT 1", nil)
+	_, err := client.Query(ctx, sqlclient.Connection{Database: "analytics"}, "CREATE MATERIALIZED VIEW slow AS SELECT 1", nil)
 	require.Error(t, err)
+	require.NotErrorIs(t, err, sqlclient.ErrUnsettled, "Redshift confirmed the cancellation")
+
 	select {
 	case request := <-server.cancels:
 		assert.Equal(t, uint32(42), request.ProcessID)
@@ -395,9 +428,29 @@ func TestDirectQueryDeadlineCancelsStatement(t *testing.T) {
 	assert.Less(t, time.Since(started), cancelGrace)
 }
 
+// TestDirectQueryFlagsLostStatements reports a statement whose outcome the server never sent as unsettled, so the
+// mutation gate stops sending changes that could overlap it.
+func TestDirectQueryFlagsLostStatements(t *testing.T) {
+	t.Run("dropped connection", func(t *testing.T) {
+		server := &stalledServer{secret: []byte{1, 2, 3, 4}, drop: true}
+		_, err := server.start(t).Query(context.Background(), sqlclient.Connection{Database: "analytics"}, "ALTER TABLE sales ALTER DISTSTYLE EVEN", nil)
+		require.ErrorIs(t, err, sqlclient.ErrUnsettled)
+	})
+	t.Run("network error", func(t *testing.T) {
+		client := directTestClient()
+		session := &connectionStub{rows: &rowsStub{resultError: &net.OpError{Op: "read", Err: errors.New("connection reset by peer")}}}
+		client.dial = func(context.Context, *pgx.ConnConfig) (connection, error) { return session, nil }
+		_, err := client.Query(context.Background(), sqlclient.Connection{Database: "analytics"}, "GRANT", nil)
+		require.ErrorIs(t, err, sqlclient.ErrUnsettled)
+		assert.True(t, session.closed)
+	})
+}
+
 // stalledServer completes a password-less startup and holds every statement until a cancel request arrives on another
 // connection, as Redshift does for a long-running statement.
 type stalledServer struct {
+	// drop closes the session after receiving a statement instead of answering it.
+	drop bool
 	// secret is the cancel key announced in BackendKeyData.
 	secret []byte
 	// cancels receives the first cancel request.
@@ -406,41 +459,83 @@ type stalledServer struct {
 	cancelled chan struct{}
 }
 
+// start serves the protocol on a loopback listener for the test's lifetime and returns a client routed to it.
+func (s *stalledServer) start(t *testing.T) *Client {
+	t.Helper()
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+
+			go s.serve(conn)
+		}
+	}()
+
+	address := listener.Addr().(*net.TCPAddr)
+
+	return &Client{
+		Credentials: Credentials{Host: "127.0.0.1", Port: uint16(address.Port), Username: "admin", Password: "secret"},
+		SSLMode:     SSLModeDisable,
+		Timeout:     time.Hour,
+	}
+}
+
 // serve handles one connection: either a cancel request or a session whose statements wait for one.
 func (s *stalledServer) serve(conn net.Conn) {
 	defer func() { _ = conn.Close() }()
+
 	backend := pgproto3.NewBackend(conn, conn)
+
 	startup, err := backend.ReceiveStartupMessage()
 	if err != nil {
 		return
 	}
+
 	if request, ok := startup.(*pgproto3.CancelRequest); ok {
 		s.cancels <- request
+
 		close(s.cancelled)
+
 		return
 	}
+
 	backend.Send(&pgproto3.AuthenticationOk{})
 	backend.Send(&pgproto3.BackendKeyData{ProcessID: 42, SecretKey: s.secret})
 	backend.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
+
 	if backend.Flush() != nil {
 		return
 	}
+
 	for {
 		message, err := backend.Receive()
 		if err != nil {
 			return
 		}
+
 		switch message.(type) {
 		case *pgproto3.Terminate:
 			return
 		case *pgproto3.Sync:
+			if s.drop {
+				return
+			}
+
 			select {
 			case <-s.cancelled:
 			case <-time.After(time.Minute):
 				return
 			}
+
 			backend.Send(&pgproto3.ErrorResponse{Severity: "ERROR", Code: "57014", Message: "canceling statement due to user request"})
 			backend.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
+
 			if backend.Flush() != nil {
 				return
 			}

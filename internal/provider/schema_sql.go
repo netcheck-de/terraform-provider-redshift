@@ -45,6 +45,7 @@ func createSchemaStatement(data schemaModel) (string, error) {
 			return "", err
 		}
 	}
+
 	return statement.String(), statement.Err()
 }
 
@@ -76,12 +77,15 @@ func alterSchemaStatements(prev, plan schemaModel) ([]string, error) {
 			return nil, err
 		}
 	}
+
 	var managed []alterStep[schemaModel]
+
 	for _, step := range schemaAlterSteps {
 		if !step.value(plan).IsNull() {
 			managed = append(managed, step)
 		}
 	}
+
 	return alterStatements(prev, plan, managed), nil
 }
 
@@ -90,11 +94,26 @@ func dropSchemaStatement(data schemaModel) string {
 	return sqlclient.Stmt("DROP SCHEMA").Ident(data.Name.ValueString()).String()
 }
 
+// schemaSource joins each schema to its owner's name, which read requires to be present.
+const schemaSource sqlclient.Keyword = "pg_namespace n JOIN pg_user u ON n.nspowner = u.usesysid"
+
 // readSchemaQuery reads the schema with its owner's name, which read requires to be present.
 func readSchemaQuery(data schemaModel) sqlclient.Query {
 	return sqlclient.Select("n.nspname AS schema_name", "u.usename AS owner").
-		From("pg_namespace n JOIN pg_user u ON n.nspowner = u.usesysid").
+		From(schemaSource).
 		Where("n.nspname = :name", sqlclient.Bind("name", data.Name.ValueString()))
+}
+
+// localSchemasSource is schemaSource with external schemas left out by their PG_EXTERNAL_SCHEMA row.
+const localSchemasSource sqlclient.Keyword = "pg_namespace n JOIN pg_user u ON n.nspowner = u.usesysid LEFT JOIN pg_external_schema e ON e.esoid = n.oid"
+
+// listSchemasQuery lists the local schemas of the connected database: the lookup's query without the name
+// predicate, leaving out the schemas PG_EXTERNAL_SCHEMA records as external.
+func listSchemasQuery() sqlclient.Query {
+	return sqlclient.Select("n.nspname AS schema_name", "u.usename AS owner").
+		From(localSchemasSource).
+		Where("e.esoid IS NULL").
+		OrderBy("n.nspname")
 }
 
 // readSchemaSessionQuery reads the connected user and whether it is a superuser, which decides whether
@@ -109,4 +128,10 @@ func readSchemaQuotaQuery(data schemaModel) sqlclient.Query {
 	return sqlclient.Select("quota").From("svv_redshift_schema_quota").
 		Where("TRIM(database_name) = :database", sqlclient.Bind("database", data.Database.ValueString())).
 		Where("TRIM(schema_name) = :name", sqlclient.Bind("name", data.Name.ValueString()))
+}
+
+// listSchemaQuotasQuery reads the visible quotas of every schema of the database, keyed by the trimmed name.
+func listSchemaQuotasQuery(database string) sqlclient.Query {
+	return sqlclient.Select("TRIM(schema_name) AS schema_name", "quota").From("svv_redshift_schema_quota").
+		Where("TRIM(database_name) = :database", sqlclient.Bind("database", database))
 }

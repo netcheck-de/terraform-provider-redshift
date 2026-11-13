@@ -13,6 +13,7 @@ func optionalString(value string) types.String {
 	if value == "" {
 		return types.StringNull()
 	}
+
 	return types.StringValue(value)
 }
 
@@ -21,6 +22,7 @@ func knownString(value types.String) string {
 	if value.IsNull() || value.IsUnknown() {
 		return ""
 	}
+
 	return value.ValueString()
 }
 
@@ -29,7 +31,9 @@ func knownInt64(value types.Int64) *int64 {
 	if value.IsNull() || value.IsUnknown() {
 		return nil
 	}
+
 	known := value.ValueInt64()
+
 	return &known
 }
 
@@ -38,7 +42,9 @@ func knownBool(value types.Bool) *bool {
 	if value.IsNull() || value.IsUnknown() {
 		return nil
 	}
+
 	known := value.ValueBool()
+
 	return &known
 }
 
@@ -55,13 +61,17 @@ func knownStrings(value stringElements) []string {
 	if value.IsNull() || value.IsUnknown() {
 		return nil
 	}
+
 	var strings []string
+
 	for _, element := range value.Elements() {
 		if text, ok := element.(types.String); ok && !text.IsNull() && !text.IsUnknown() {
 			strings = append(strings, text.ValueString())
 		}
 	}
+
 	slices.Sort(strings)
+
 	return strings
 }
 
@@ -70,12 +80,15 @@ func knownMap(value types.Map) map[string]string {
 	if value.IsNull() || value.IsUnknown() {
 		return nil
 	}
+
 	known := map[string]string{}
+
 	for key, element := range value.Elements() {
 		if text, ok := element.(types.String); ok && !text.IsNull() && !text.IsUnknown() {
 			known[key] = text.ValueString()
 		}
 	}
+
 	return known
 }
 
@@ -85,5 +98,6 @@ func optOneOf(value types.String, allowed ...sqlclient.Keyword) (sqlclient.Keywo
 	if text := knownString(value); text != "" {
 		return sqlclient.OneOf(text, allowed...)
 	}
+
 	return "", nil
 }

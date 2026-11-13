@@ -14,7 +14,10 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
@@ -25,6 +28,24 @@ mock_provider "redshift" { alias = "producer_direct_iam" }
 mock_provider "redshift" { alias = "consumer_direct_iam" }
 mock_provider "redshift" { alias = "producer_direct_password" }
 mock_provider "redshift" { alias = "consumer_direct_password" }
+
+override_resource {
+  target = module.fixture_bucket.aws_s3_bucket.this[0]
+  values = { id = "mock-fixture", arn = "arn:aws:s3:::mock-fixture" }
+}
+
+run "extfunction_missing_overload_blocks_apply" {
+  command = apply
+  plan_options { target = [data.redshift_external_functions.example] }
+  # Terraform's generated empty nested list is a missing catalog overload, not a valid readback.
+  expect_failures = [data.redshift_external_functions.example]
+}
+
+run "extfunction_missing_parameters_block_apply" {
+  command = apply
+  plan_options { target = [data.redshift_routine_parameters.upper] }
+  expect_failures = [data.redshift_routine_parameters.upper]
+}
 
 run "extfunctions_apply" {
   command = apply
@@ -52,22 +73,21 @@ run "extfunctions_apply" {
 
   assert {
     condition = (
-      data.redshift_functions.example.database == redshift_external_function.upper.database &&
-      data.redshift_functions.example.schema == redshift_external_function.upper.schema &&
-      data.redshift_functions.example.name == redshift_external_function.upper.name &&
-      data.redshift_procedures.example.schema == redshift_schema.local.name &&
+      data.redshift_external_functions.example.database == redshift_external_function.upper.database &&
+      data.redshift_external_functions.example.schema == redshift_external_function.upper.schema &&
+      data.redshift_external_functions.example.name == redshift_external_function.upper.name &&
       data.redshift_routine_parameters.upper.routine_name == redshift_external_function.upper.name &&
       data.redshift_routine_parameters.upper.routine_type == "FUNCTION"
     )
     error_message = "The routine listings must be filtered to the managed function and its schema."
   }
 
-  # Terraform mocks cannot populate nested list attributes, so the listings stay empty here; the Go tests cover their
-  # contents, and this checks that the outputs are derived from the listings alone.
+  # Terraform 1.17 cannot populate computed nested lists. These outputs remain empty under mocks;
+  # the real catalog postconditions still reject that incomplete readback instead of accepting configuration.
   assert {
     condition = (
       output.extfunction_checks.lambda_udfs == [] &&
-      output.extfunction_checks.procedures == [] &&
+      output.extfunction_checks.lambda_owners == {} &&
       output.extfunction_checks.upper_parameters == []
     )
     error_message = "The routine checks must expose only what the routine listings observe."

@@ -14,19 +14,6 @@ commands reference instead of repeating them. Grant `USAGE`, `ALTER`, or `DROP` 
 [DROP TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_TEMPLATE.html), and
 [SHOW TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_TEMPLATE.html).
 
-## SQL Statements
-
-```sql
-CREATE TEMPLATE schema.name FOR COPY AS ...;
-CREATE OR REPLACE TEMPLATE schema.name FOR COPY AS ...;
-ALTER TEMPLATE schema.name RENAME TO name;
-ALTER TEMPLATE schema.name ADD ...;
-ALTER TEMPLATE schema.name DROP ...;
-ALTER TEMPLATE schema.name SET ... TO ...;
-ALTER TEMPLATE schema.name OWNER TO owner;
-DROP TEMPLATE schema.name;
-```
-
 ## Example Usage
 
 ```terraform
@@ -89,8 +76,38 @@ resource "redshift_template" "shapefile" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the COPY options template.
+CREATE TEMPLATE schema.name FOR COPY AS ...;
+
+-- Replace the template definition when the data format changes.
+CREATE OR REPLACE TEMPLATE schema.name FOR COPY AS ...;
+
+-- Rename the template.
+ALTER TEMPLATE schema.name RENAME TO name;
+
+-- Add COPY parameters.
+ALTER TEMPLATE schema.name ADD ...;
+
+-- Remove COPY parameters.
+ALTER TEMPLATE schema.name DROP ...;
+
+-- Change COPY parameter values.
+ALTER TEMPLATE schema.name SET ... TO ...;
+
+-- Transfer ownership.
+ALTER TEMPLATE schema.name OWNER TO owner;
+
+-- Delete the template.
+DROP TEMPLATE schema.name;
+```
 
 ## Parameters
 
@@ -147,29 +164,24 @@ from state, and the next plan creates it again. Grants on the template are never
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_template.csv_events
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    schema         = "staging"
-    name           = "csv_events"
+    database = "analytics"
+    schema   = "staging"
+    name     = "csv_events"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_template.csv_events \
-  '{"workgroup_name":"warehouse","database":"analytics","schema":"staging","name":"csv_events"}'
+  '{"database":"analytics","schema":"staging","name":"csv_events"}'
 ```
 
 Import reads `owner`, `format`, `format_argument`, and `parameters` from the catalog in their canonical spelling, so the

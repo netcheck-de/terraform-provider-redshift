@@ -25,10 +25,12 @@ func TestAssumeroleGrantLookupCanonicalIdentity(t *testing.T) {
 		source := newAssumeroleGrantDataSource()
 		state, diagnostics := readSource(t, source, catalogLookupObject(t, source, fields), &privilegeCatalog{values: map[string]bool{"COPY": true}})
 		require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
 		var observed types.Object
 		require.False(t, state.Get(context.Background(), &observed).HasError())
 		assert.Equal(t, types.StringValue(configured), observed.Attributes()["iam_role_arn"])
+
 		fields["iam_role_arn"] = canonical
-		assertLookupIdentity(t, observed.Attributes()["id"].(types.String), "admin", fields)
+		assertLookupIdentity(t, observed.Attributes()["id"].(types.String), fields)
 	}
 }

@@ -9,12 +9,6 @@ description: Reads a dynamic data masking policy's inputs and expression.
 Reads one masking policy's input columns and its expression as Redshift stores it. See AWS
 [SVV_MASKING_POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_MASKING_POLICY.html).
 
-## Catalog Query
-
-```sql
-SELECT ... FROM svv_masking_policy WHERE policy_database = '...' AND policy_name = '...';
-```
-
 ## Example Usage
 
 ```terraform
@@ -48,6 +42,17 @@ Read-Only:
 - `name` (String) Input column name used in `expression`; it does not have to match the masked column's name.
 - `type` (String) Data type in the canonical form the catalog reports, in uppercase, such as `CHARACTER VARYING(256)` for a configured `VARCHAR(256)`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to read this data source.
+
+```sql
+-- Read the masking policy definition.
+SELECT ... FROM svv_masking_policy WHERE policy_database = '...' AND policy_name = '...';
+```
+
+## Read Behavior
 
 `id` (String, computed) is the policy's JSON identity, using the paired resource's warehouse, `database`, and `name`
 keys. Only superusers and `sys:secadmin` members can see policies; for others, and for a missing database or policy, the

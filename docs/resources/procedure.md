@@ -12,14 +12,6 @@ configuration, and owner. See AWS
 [ALTER PROCEDURE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_PROCEDURE.html), and
 [DROP PROCEDURE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_PROCEDURE.html).
 
-## SQL Statements
-
-```sql
-CREATE [ OR REPLACE ] PROCEDURE schema.name (arguments) ... AS $$ body $$ LANGUAGE plpgsql ...;
-ALTER PROCEDURE schema.name (arguments) OWNER TO owner;
-DROP PROCEDURE schema.name (arguments);
-```
-
 ## Example Usage
 
 ```terraform
@@ -71,8 +63,8 @@ resource "redshift_procedure" "purge" {
 
 ### Read-Only
 
-- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; detects definition changes made outside Terraform.
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed outside literals, quoted identifiers, and comments; detects definition changes made outside Terraform.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 - `signature` (String) Canonical `IN` and `INOUT` argument types without modifiers, as `ALTER PROCEDURE`, `DROP PROCEDURE`, and `GRANT ... ON PROCEDURE` identify the procedure, for example `INTEGER, CHARACTER VARYING`.
 
 <a id="nestedblock--argument"></a>
@@ -87,6 +79,21 @@ Optional:
 - `mode` (String) `IN` (when omitted), `OUT`, or `INOUT`. `OUT` arguments are returned by `CALL` and are not part of the signature.
 - `name` (String) Argument name used in `body`; omit to reference the argument as `$n`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Create the procedure or update its definition.
+CREATE [ OR REPLACE ] PROCEDURE schema.name (arguments) ... AS $$ body $$ LANGUAGE PLPGSQL ...;
+
+-- Transfer ownership.
+ALTER PROCEDURE schema.name (arguments) OWNER TO owner;
+
+-- Delete the procedure.
+DROP PROCEDURE schema.name (arguments);
+```
 
 ## Lifecycle and Ownership
 
@@ -146,30 +153,27 @@ argument types are not read back either.
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity. `arguments` holds the `IN` and `INOUT` types as
-`signature` reports them, comma-separated, and is `""` for a procedure without input arguments. They are imported as
-`argument` blocks, and the refresh after the import reports argument names, modes, and `OUT` arguments:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_procedure.purge
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    schema         = "reporting"
-    name           = "sp_purge_events"
-    arguments      = "integer"
+    database  = "analytics"
+    schema    = "reporting"
+    name      = "sp_purge_events"
+    arguments = "INTEGER"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_procedure.purge \
-  '{"workgroup_name":"warehouse","database":"analytics","schema":"reporting","name":"sp_purge_events","arguments":"integer"}'
+  '{"database":"analytics","schema":"reporting","name":"sp_purge_events","arguments":"INTEGER"}'
 ```
+
+`arguments` holds the `IN` and `INOUT` types as `signature` reports them, comma-separated, and is `""` for a procedure
+without input arguments. They are imported as `argument` blocks, and the refresh after the import reports argument
+names, modes, and `OUT` arguments.

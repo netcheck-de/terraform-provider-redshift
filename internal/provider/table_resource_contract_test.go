@@ -7,19 +7,21 @@ import (
 	"testing"
 
 	testresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
-	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"github.com/stretchr/testify/assert"
 )
 
 // TestContractTablePlans runs real plans against the fake: derived defaults plan no drift, a column inserted between
-// others and reordered columns update in place without inconsistent results, widened columns update in place, and
-// a narrowed column replaces the table.
+// others and reordered columns update in place without inconsistent results, and widened and narrowed columns update
+// in place.
 func TestContractTablePlans(t *testing.T) {
 	t.Parallel()
+
 	c := fullCatalog()
 	delete(fakeState[*tableFake](c, "table").tables, "serving.events")
+
 	var reordered int
+
 	testresource.UnitTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: tablePlanProviders(c),
 		Steps: []testresource.TestStep{
@@ -36,13 +38,16 @@ func TestContractTablePlans(t *testing.T) {
 				testresource.TestCheckResourceAttr("redshift_table.events", "column.1.default", "'none'"),
 				testresource.TestCheckNoResourceAttr("redshift_table.events", "column.1.identity.seed"),
 			)},
-			{Config: tableConfig(tableIDColumn+tableNoteColumn("varchar(32)")+tableLabelColumn, ""), ConfigPlanChecks: tableExpectUpdate(),
+			{
+				Config: tableConfig(tableIDColumn+tableNoteColumn("varchar(32)")+tableLabelColumn, ""), ConfigPlanChecks: tableExpectUpdate(),
 				Check: testresource.ComposeTestCheckFunc(
 					testresource.TestCheckResourceAttr("redshift_table.events", "column.1.name", "note"),
 					testresource.TestCheckResourceAttr("redshift_table.events", "column.1.encoding", "LZO"),
 					testresource.TestCheckResourceAttr("redshift_table.events", "column.2.name", "label"),
-				)},
-			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(32)"), ""), ConfigPlanChecks: tableExpectUpdate(),
+				),
+			},
+			{
+				Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(32)"), ""), ConfigPlanChecks: tableExpectUpdate(),
 				PreConfig: func() { reordered = len(c.writes) },
 				Check: testresource.ComposeTestCheckFunc(
 					testresource.TestCheckResourceAttr("redshift_table.events", "column.0.name", "label"),
@@ -50,19 +55,20 @@ func TestContractTablePlans(t *testing.T) {
 						if len(c.writes) != reordered {
 							return fmt.Errorf("reordering columns wrote %v", c.writes[reordered:])
 						}
+
 						return nil
 					},
-				)},
+				),
+			},
 			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(128)"), `
   owner = "analyst"`), ConfigPlanChecks: tableExpectUpdate(), Check: testresource.TestCheckResourceAttr("redshift_table.events", "owner", "analyst")},
 			{Config: tableConfig(tableLabelColumn+tableIDColumn+tableNoteColumn("varchar(16)"), `
-  owner = "analyst"`), PlanOnly: true, ExpectNonEmptyPlan: true, ConfigPlanChecks: testresource.ConfigPlanChecks{PostApplyPostRefresh: []plancheck.PlanCheck{
-				plancheck.ExpectResourceAction("redshift_table.events", plancheck.ResourceActionDestroyBeforeCreate),
-			}}},
+  owner = "analyst"`), ConfigPlanChecks: tableExpectUpdate()},
 		},
 	})
 	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ADD COLUMN "note" CHARACTER VARYING(32)`)
 	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ALTER COLUMN "note" TYPE CHARACTER VARYING(128)`)
+	assert.Contains(t, c.writes, `ALTER TABLE "serving"."events" ALTER COLUMN "note" TYPE CHARACTER VARYING(16)`)
 }
 
 // TestContractTableAutoLayoutPlans runs plans of a table that leaves its layout to Redshift: a distribution changed outside
@@ -70,6 +76,7 @@ func TestContractTablePlans(t *testing.T) {
 // detours through EVEN and no sort key before the drop.
 func TestContractTableAutoLayoutPlans(t *testing.T) {
 	t.Parallel()
+
 	c := fullCatalog()
 	fake := fakeState[*tableFake](c, "table")
 	delete(fake.tables, "serving.events")
@@ -78,7 +85,9 @@ func TestContractTableAutoLayoutPlans(t *testing.T) {
 		{name: "note", dataType: "character varying(32)", encoding: "lzo"},
 	}}
 	table := func() *tableFakeTable { return fake.tables["serving.events"] }
+
 	var detour int
+
 	testresource.UnitTest(t, testresource.TestCase{
 		ProtoV6ProviderFactories: tablePlanProviders(c),
 		Steps: []testresource.TestStep{
@@ -89,8 +98,10 @@ func TestContractTableAutoLayoutPlans(t *testing.T) {
 				testresource.TestCheckResourceAttr("redshift_table.events", "effective_sort_key.style", "NONE"),
 				testresource.TestCheckResourceAttr("redshift_table.events", "effective_sort_key.auto", "true"),
 			)},
-			{Config: tableAutoConfig(tableNoteColumn("varchar(32)")), PreConfig: func() { table().distStyle = "0" }, ConfigPlanChecks: tableExpectUpdate(),
-				Check: testresource.TestCheckNoResourceAttr("redshift_table.events", "distribution.style")},
+			{
+				Config: tableAutoConfig(tableNoteColumn("varchar(32)")), PreConfig: func() { table().distStyle = "0" }, ConfigPlanChecks: tableExpectUpdate(),
+				Check: testresource.TestCheckNoResourceAttr("redshift_table.events", "distribution.style"),
+			},
 			{Config: tableAutoConfig(""), ConfigPlanChecks: tableExpectUpdate(), PreConfig: func() {
 				detour = len(c.writes)
 				table().autoDistStyle = "12"
@@ -110,11 +121,12 @@ func TestContractTableAutoLayoutPlans(t *testing.T) {
 // is empty.
 func TestContractTableImportPlan(t *testing.T) {
 	t.Parallel()
+
 	c := fullCatalog()
 	config := tableConfig(tableIDColumn+tableLabelColumn, "") + `
 import {
   to = redshift_table.events
-  id = jsonencode({ workgroup_name = "warehouse", database = "admin", schema = "serving", name = "events" })
+  id = jsonencode({ database = "admin", schema = "serving", name = "events" })
 }
 `
 	testresource.UnitTest(t, testresource.TestCase{
@@ -125,5 +137,6 @@ import {
 	})
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	assert.Equal(t, []string{`DROP TABLE "serving"."events"`}, c.writes, "only the final destroy writes")
 }

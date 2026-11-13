@@ -10,13 +10,6 @@ Attaches one row-level security policy to one table or view for one user, role, 
 [ATTACH RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_ATTACH_RLS_POLICY.html) and
 [DETACH RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_DETACH_RLS_POLICY.html).
 
-## SQL Statements
-
-```sql
-ATTACH RLS POLICY policy ON schema.relation TO grantee;
-DETACH RLS POLICY policy ON schema.relation FROM grantee;
-```
-
 ## Example Usage
 
 ```terraform
@@ -63,8 +56,20 @@ resource "redshift_rls_policy_attachment" "everyone" {
 
 ### Read-Only
 
-- `id` (String) JSON import identity; independent of Data API execution history.
+- `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
+
+## SQL Statements
+
+Simplified SQL used by the provider to manage this resource.
+
+```sql
+-- Apply the row-level security policy to a relation for a grantee.
+ATTACH RLS POLICY policy ON schema.relation TO grantee;
+
+-- Remove the row-level security policy attachment.
+DETACH RLS POLICY policy ON schema.relation FROM grantee;
+```
 
 ## Lifecycle and Ownership
 
@@ -102,30 +107,25 @@ next plan creates the attachment again. Other attachments of the policy or the r
 
 ## Import
 
-In Terraform 1.5 and later, use an `import` block with a JSON identity:
+Use an `import` block with a JSON identity:
 
 ```terraform
 import {
   to = redshift_rls_policy_attachment.analysts
   id = jsonencode({
-    workgroup_name = "warehouse"
-    database       = "analytics"
-    policy         = "own_region"
-    schema         = "sales"
-    relation       = "orders"
-    grantee        = "analysts"
-    grantee_type   = "ROLE"
+    database     = "analytics"
+    policy       = "own_region"
+    schema       = "sales"
+    relation     = "orders"
+    grantee      = "analysts"
+    grantee_type = "ROLE"
   })
 }
 ```
-
-The example binds a Serverless workgroup. Replace `workgroup_name` with `cluster_identifier` for a provisioned
-cluster, or with `endpoint` (`host:port`) for a direct password connection; see
-[connection methods](../guides/connection_methods.md#imports-and-transport-switching).
 
 Alternatively, use `terraform import`:
 
 ```shell
 terraform import redshift_rls_policy_attachment.analysts \
-  '{"workgroup_name":"warehouse","database":"analytics","policy":"own_region","schema":"sales","relation":"orders","grantee":"analysts","grantee_type":"ROLE"}'
+  '{"database":"analytics","policy":"own_region","schema":"sales","relation":"orders","grantee":"analysts","grantee_type":"ROLE"}'
 ```

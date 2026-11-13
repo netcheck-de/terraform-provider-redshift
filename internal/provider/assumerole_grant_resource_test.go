@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ = registerLifecycleExemption("redshift_assumerole_grant", "TestAssumeroleGrantLifecycle uses exercisePrivilege and privilegeCatalog.")
+
 var _ = registerReplacementPolicy("redshift_assumerole_grant", map[string]replaceRule{
 	"iam_role_arn": replaceAlways,
 	"grantee":      replaceAlways,
@@ -29,6 +31,7 @@ func TestAssumeroleGrantIAMRoleValidation(t *testing.T) {
 			require.Error(t, err)
 		}
 	}
+
 	_, err := r.prepare(privilegeObject(t, r, map[string]string{"grantee_type": "invalid"}))
 	require.Error(t, err)
 }

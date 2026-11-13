@@ -17,5 +17,6 @@ const languageGrantOptionLookupDescription = "Subset of `privileges` the grantee
 func newLanguageGrantDataSource() datasource.DataSource {
 	d := newPrivilegeDataSource(newLanguageGrantResource).(*catalogDataSource)
 	d.attributes["grant_option_privileges"] = schema.SetAttribute{Computed: true, ElementType: types.StringType, MarkdownDescription: languageGrantOptionLookupDescription}
+
 	return d
 }

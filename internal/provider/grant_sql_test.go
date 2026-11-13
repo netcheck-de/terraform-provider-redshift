@@ -15,37 +15,47 @@ import (
 // option upgrade and downgrade of it.
 func grantSQL(data grantModel, privilege sqlclient.Keyword) ([]string, error) {
 	data = grantTestModel(data)
+
 	data.Privileges = types.SetValueMust(types.StringType, []attr.Value{types.StringValue(string(privilege))})
 	if err := data.validate(); err != nil {
 		return nil, err
 	}
+
 	spec, err := data.spec()
 	if err != nil {
 		return nil, err
 	}
+
 	queries := []sqlclient.Query{grantDatabaseTypeQuery(data.DatabaseName.ValueString()), grantRecipientQuery(data)}
 	if schema := knownString(data.SchemaName); schema != "" {
 		queries = append(queries, privilegeSchemaQuery(data.DatabaseName.ValueString(), schema))
 	}
+
 	var statements []string
+
 	for _, query := range queries {
 		sql, _, err := query.Build()
 		if err != nil {
 			return nil, err
 		}
+
 		statements = append(statements, sql)
 	}
+
 	statements = append(statements, readGrantStatement(data), spec.statement(true, privilege), spec.statement(false, privilege))
 	if knownString(data.User) == "" {
 		return statements, nil
 	}
+
 	for _, grant := range []bool{true, false} {
 		statement, err := spec.optionStatement(grant, privilege)
 		if err != nil {
 			return nil, err
 		}
+
 		statements = append(statements, statement)
 	}
+
 	return statements, nil
 }
 
@@ -55,6 +65,7 @@ func TestGrantSQL(t *testing.T) {
 		if value == "" {
 			return types.StringNull()
 		}
+
 		return types.StringValue(value)
 	}
 	model := func(database, schema, scope string) grantModel {
@@ -63,25 +74,30 @@ func TestGrantSQL(t *testing.T) {
 	render := func(database, schema, role, datashare, scope string, privilege sqlclient.Keyword) func() ([]string, error) {
 		data := model(database, schema, scope)
 		data.Role, data.Datashare = optional(role), optional(datashare)
+
 		return func() ([]string, error) { return grantSQL(data, privilege) }
 	}
 	user := func(database, schema, name, scope string, privilege sqlclient.Keyword) func() ([]string, error) {
 		data := model(database, schema, scope)
 		data.User = optional(name)
+
 		return func() ([]string, error) { return grantSQL(data, privilege) }
 	}
 	options := func(data grantModel, privileges, options []string) func() ([]string, error) {
 		return func() ([]string, error) {
 			data = grantTestModel(data)
 			data.Privileges = types.SetValueMust(types.StringType, grantStringValues(privileges))
+
 			data.GrantOptionPrivileges = types.SetValueMust(types.StringType, grantStringValues(options))
 			if err := data.validate(); err != nil {
 				return nil, err
 			}
+
 			spec, err := data.spec()
 			if err != nil {
 				return nil, err
 			}
+
 			return privilegeOptionStatements(spec, data.allowed(), privilegeSets{}, privilegeSets{privileges: privileges, options: options})
 		}
 	}
@@ -125,6 +141,7 @@ func TestGrantSQL(t *testing.T) {
 		{"role_and_user", func() ([]string, error) {
 			data := model("analytics", "", "DATABASE")
 			data.Role, data.User = types.StringValue("readers"), types.StringValue("analyst")
+
 			return grantSQL(data, "USAGE")
 		}},
 		{"datashare_database_scope", render("analytics", "serving", "", "producer", "FUNCTIONS", "EXECUTE")},
@@ -155,11 +172,14 @@ func TestGrantSpecOptionRevoke(t *testing.T) {
 // TestGrantScopePrivileges keeps the schema validator, the scope list, and the per-scope allowlists in step.
 func TestGrantScopePrivileges(t *testing.T) {
 	assert.Len(t, grantScopePrivileges, len(grantScopes))
+
 	for _, scope := range grantScopes {
 		assert.NotEmpty(t, grantScopePrivileges[scope], scope)
+
 		for _, privilege := range grantScopePrivileges[scope] {
 			assert.True(t, privilegeAllowed(scopedPrivileges, string(privilege)), "%s %s", scope, privilege)
 		}
 	}
+
 	assert.ElementsMatch(t, privilegeNames(scopedPrivileges), grantScopeNames())
 }

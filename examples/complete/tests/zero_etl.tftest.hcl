@@ -1,4 +1,4 @@
-# Mocked runs for the optional zero-ETL integration. The mocks are shared with composition.tftest.hcl through
+# Mocked runs for the default DynamoDB and alternative zero-ETL integrations. The mocks are shared with composition.tftest.hcl through
 # tests/mocks, so this block adds runs and assertions here without editing the composition suite.
 mock_provider "aws" {
   alias  = "producer"
@@ -14,20 +14,46 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
 }
-mock_provider "redshift" { alias = "producer_data_api_iam" }
-mock_provider "redshift" { alias = "consumer_data_api_iam" }
-mock_provider "redshift" { alias = "producer_direct_iam" }
-mock_provider "redshift" { alias = "consumer_direct_iam" }
-mock_provider "redshift" { alias = "producer_direct_password" }
-mock_provider "redshift" { alias = "consumer_direct_password" }
+mock_provider "redshift" {
+  alias  = "producer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_data_api_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_iam"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "producer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
+mock_provider "redshift" {
+  alias  = "consumer_direct_password"
+  source = "./tests/mocks/redshift_connections"
+}
 
 run "zero_etl_disabled" {
   command = apply
+
+  variables {
+    zero_etl_create_dynamodb_source = false
+    copy_job                        = null
+  }
 
   assert {
     condition = (
@@ -35,7 +61,7 @@ run "zero_etl_disabled" {
       length(aws_dynamodb_table.zero_etl_source) == 0 && length(aws_redshift_resource_policy.inbound_integrations) == 0 &&
       length(redshift_database.zero_etl) == 0 && output.zero_etl_database == null
     )
-    error_message = "Without zero_etl_source_arn the example must not create a zero-ETL integration or destination."
+    error_message = "Disabling both owned integrations without an existing source must omit their resources and namespace policy."
   }
 
   assert {
@@ -51,7 +77,8 @@ run "zero_etl_dynamodb_existing" {
   command = apply
 
   variables {
-    zero_etl_source_arn = "arn:aws:dynamodb:eu-central-1:111111111111:table/orders"
+    zero_etl_create_dynamodb_source = false
+    zero_etl_source_arn             = "arn:aws:dynamodb:eu-central-1:111111111111:table/orders"
   }
 
   override_resource {
@@ -102,17 +129,8 @@ run "zero_etl_dynamodb_existing" {
   }
 }
 
-run "zero_etl_dynamodb_created" {
+run "zero_etl_dynamodb_defaults" {
   command = apply
-
-  variables {
-    zero_etl_create_dynamodb_source = true
-  }
-
-  override_resource {
-    target = aws_dynamodb_table.zero_etl_source[0]
-    values = { arn = "arn:aws:dynamodb:eu-central-1:111111111111:table/example-zero-etl-source" }
-  }
 
   assert {
     condition = (
@@ -135,6 +153,42 @@ run "zero_etl_dynamodb_created" {
       jsondecode(aws_dynamodb_resource_policy.zero_etl_source[0].policy).Statement[0].Condition.StringEquals["aws:SourceAccount"] == data.aws_caller_identity.consumer.account_id
     )
     error_message = "The source policy must authorize Redshift table exports and export-status reads, scoped to the consumer account."
+  }
+}
+
+run "zero_etl_dynamodb_reconcile_settings" {
+  command = apply
+
+  variables {
+    zero_etl_reconcile_settings = true
+  }
+
+  override_data {
+    target = data.redshift_database.zero_etl[0]
+    values = {
+      database_type = "LOCAL"
+      integration = {
+        integration_id       = "a1b2c3d4-5678-90ab-cdef-example11111"
+        source_database      = null
+        refresh_interval     = 1800
+        auto_remediation     = true
+        history_mode         = false
+        query_all_states     = null
+        accept_invalid_chars = null
+        truncate_columns     = null
+      }
+    }
+  }
+
+  assert {
+    condition = (
+      redshift_database.zero_etl[0].integration.refresh_interval == 1800 &&
+      redshift_database.zero_etl[0].integration.auto_remediation &&
+      output.zero_etl_database.refresh_interval == 1800 &&
+      output.zero_etl_database.auto_remediation &&
+      output.zero_etl_database.source_database == null
+    )
+    error_message = "An optional local update must change the DynamoDB destination settings and expose their readback."
   }
 }
 
@@ -164,8 +218,9 @@ run "zero_etl_apply" {
   command = apply
 
   variables {
-    zero_etl_source_arn      = "arn:aws:rds:eu-central-1:111111111111:cluster:orders"
-    zero_etl_source_database = "orders"
+    zero_etl_create_dynamodb_source = false
+    zero_etl_source_arn             = "arn:aws:rds:eu-central-1:111111111111:cluster:orders"
+    zero_etl_source_database        = "orders"
   }
 
   override_resource {
@@ -236,12 +291,26 @@ run "zero_etl_created_source" {
   command = apply
 
   variables {
-    zero_etl_create_source = true
+    zero_etl_create_dynamodb_source = false
+    zero_etl_create_source          = true
   }
 
   override_resource {
     target = aws_rds_cluster.zero_etl_source[0]
     values = { arn = "arn:aws:rds:eu-central-1:111111111111:cluster:example-zero-etl-source" }
+  }
+
+  override_data {
+    target = data.redshift_database.zero_etl[0]
+    values = {
+      database_type = "LOCAL"
+      integration = {
+        integration_id   = "a1b2c3d4-5678-90ab-cdef-example11111"
+        source_database  = "orders"
+        refresh_interval = 600
+        auto_remediation = false
+      }
+    }
   }
 
   assert {
@@ -271,9 +340,62 @@ run "zero_etl_source_conflict" {
   command = plan
 
   variables {
-    zero_etl_create_source = true
-    zero_etl_source_arn    = "arn:aws:rds:eu-central-1:111111111111:cluster:orders"
+    zero_etl_create_dynamodb_source = false
+    zero_etl_create_source          = true
+    zero_etl_source_arn             = "arn:aws:rds:eu-central-1:111111111111:cluster:orders"
   }
 
   expect_failures = [var.zero_etl_create_source]
+}
+
+run "rejects_wrong_zero_etl_binding" {
+  command = apply
+
+  override_data {
+    target = data.redshift_database.zero_etl[0]
+    values = {
+      database_type = "LOCAL"
+      integration = {
+        integration_id   = "wrong-integration"
+        source_database  = null
+        refresh_interval = 900
+        auto_remediation = false
+      }
+    }
+  }
+
+  expect_failures = [data.redshift_database.zero_etl]
+}
+
+run "rejects_wrong_zero_etl_settings" {
+  command = apply
+
+  override_data {
+    target = data.redshift_database.zero_etl[0]
+    values = {
+      database_type = "LOCAL"
+      integration = {
+        integration_id   = "a1b2c3d4-5678-90ab-cdef-example11111"
+        source_database  = null
+        refresh_interval = 1800
+        auto_remediation = true
+      }
+    }
+  }
+
+  expect_failures = [data.redshift_database.zero_etl]
+}
+
+run "rejects_missing_zero_etl_integration" {
+  command = apply
+
+  override_data {
+    target = data.redshift_database.zero_etl[0]
+    values = {
+      database_type = "LOCAL"
+      integration   = null
+    }
+  }
+
+  expect_failures = [data.redshift_database.zero_etl]
 }

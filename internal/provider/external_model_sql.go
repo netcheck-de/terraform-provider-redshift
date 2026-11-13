@@ -21,6 +21,7 @@ func externalModelTarget(schema, name string) (sqlclient.Statement, error) {
 	if schema == "" || name == "" {
 		return sqlclient.Statement{}, fmt.Errorf("a model requires a nonempty schema and name")
 	}
+
 	return sqlclient.Fragment().Qualified(schema, name), nil
 }
 
@@ -30,9 +31,11 @@ func externalModelIAMRole(role string) (sqlclient.Statement, error) {
 	if strings.EqualFold(role, "DEFAULT") {
 		return sqlclient.Kw("DEFAULT"), nil
 	}
+
 	if !externalFunctionRolePattern.MatchString(role) {
 		return sqlclient.Statement{}, fmt.Errorf("iam_role must be DEFAULT or one IAM role ARN, got %q", role)
 	}
+
 	return sqlclient.Lit(role), nil
 }
 
@@ -43,23 +46,29 @@ func externalModelFormats(data externalModelModel) (request, response sqlclient.
 	if request, err = optOneOf(data.RequestType, externalModelRequestTypes...); err != nil {
 		return "", "", fmt.Errorf("request_type: %w", err)
 	}
+
 	if response, err = optOneOf(data.ResponseType, externalModelResponseTypes...); err != nil {
 		return "", "", fmt.Errorf("response_type: %w", err)
 	}
+
 	if request == "" {
 		request = externalModelRequestTypes[0]
 	}
+
 	if response == "" {
 		response = externalModelResponseTypes[0]
 	}
+
 	if request == "RAW" {
 		if response != "SUPER" {
 			return "", "", fmt.Errorf("request_type RAW requires response_type SUPER")
 		}
+
 		if knownString(data.Prompt) != "" || knownString(data.Suffix) != "" {
 			return "", "", fmt.Errorf("prompt and suffix are only supported with request_type UNIFIED")
 		}
 	}
+
 	return request, response, nil
 }
 
@@ -71,33 +80,41 @@ func createExternalModelStatement(data externalModelModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	if data.Function.ValueString() == "" {
 		return "", fmt.Errorf("function must not be empty")
 	}
+
 	if data.ModelID.ValueString() == "" {
 		return "", fmt.Errorf("model_id must not be empty")
 	}
+
 	role, err := externalModelIAMRole(data.IAMRole.ValueString())
 	if err != nil {
 		return "", err
 	}
+
 	request, response, err := externalModelFormats(data)
 	if err != nil {
 		return "", err
 	}
+
 	settings := []sqlclient.Statement{sqlclient.Fragment().KwLit("MODEL_ID", data.ModelID.ValueString())}
 	if prompt := knownString(data.Prompt); prompt != "" {
 		settings = append(settings, sqlclient.Fragment().KwLit("PROMPT", prompt))
 	}
+
 	if suffix := knownString(data.Suffix); suffix != "" {
 		settings = append(settings, sqlclient.Fragment().KwLit("SUFFIX", suffix))
 	}
+
 	settings = append(settings, sqlclient.Kw("REQUEST_TYPE", request), sqlclient.Kw("RESPONSE_TYPE", response))
 	// Redshift creates the function in the model's schema and rejects a qualified FUNCTION name.
 	statement := sqlclient.Stmt("CREATE EXTERNAL MODEL").Append(target).
 		KwIdent("FUNCTION", data.Function.ValueString()).
 		Kw("IAM_ROLE").Append(role).
 		Kw("MODEL_TYPE BEDROCK SETTINGS").Paren(settings...)
+
 	return statement.String(), statement.Err()
 }
 
@@ -109,6 +126,7 @@ func dropExternalModelStatement(data externalModelModel) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return sqlclient.Stmt("DROP MODEL").Append(target).String(), nil
 }
 
@@ -126,6 +144,7 @@ func readExternalModelStatement(schema, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return sqlclient.Stmt("SHOW MODEL").Append(target).String(), nil
 }
 
@@ -143,6 +162,7 @@ func showModelValue(value string) string {
 	if len(value) >= 2 && strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'") {
 		value = value[1 : len(value)-1]
 	}
+
 	return value
 }
 
@@ -153,6 +173,7 @@ func showModelCell(row sqlclient.Row, column string) string {
 			return showModelValue(value)
 		}
 	}
+
 	return ""
 }
 
@@ -170,14 +191,18 @@ func parseShowModels(rows []sqlclient.Row) ([]showModelEntry, error) {
 		if entry.schema == "" || entry.name == "" {
 			return nil, fmt.Errorf("SHOW MODEL ALL returned a model without a schema or name")
 		}
+
 		entries = append(entries, entry)
 	}
+
 	slices.SortFunc(entries, func(a, b showModelEntry) int {
 		if order := strings.Compare(a.schema, b.schema); order != 0 {
 			return order
 		}
+
 		return strings.Compare(a.name, b.name)
 	})
+
 	return entries, nil
 }
 
@@ -185,12 +210,15 @@ func parseShowModels(rows []sqlclient.Row) ([]showModelEntry, error) {
 // such as "PARAMETERS:" carry no value and are skipped; the first occurrence of a key wins.
 func parseShowModel(rows []sqlclient.Row) map[string]string {
 	settings := map[string]string{}
+
 	for _, row := range rows {
 		key, value := showModelLabel(showModelCell(row, "key")), showModelCell(row, "value")
 		if _, seen := settings[key]; key == "" || value == "" || seen {
 			continue
 		}
+
 		settings[key] = value
 	}
+
 	return settings
 }

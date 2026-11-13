@@ -27,7 +27,7 @@ type materializedViewResource struct {
 
 // materializedViewModel is the Terraform state of one materialized view.
 type materializedViewModel struct {
-	// ID records the warehouse/database/schema/name identity.
+	// ID records the database/schema/name identity within the configured warehouse.
 	ID types.String `tfsdk:"id"`
 	// Database contains the materialized view.
 	Database types.String `tfsdk:"database"`
@@ -55,6 +55,7 @@ type materializedViewModel struct {
 // resource has.
 type materializedViewResourceModel struct {
 	materializedViewModel
+
 	// Timeouts bounds create, update, and delete.
 	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
@@ -78,19 +79,16 @@ const materializedViewAdoptionNote = "An import leaves it unset; the first apply
 // configuration. Only then is a null query or backup unknown rather than absent from CREATE.
 const materializedViewImportedKey = "materialized_view_imported"
 
-// materializedViewPrivate is the private state accessor of plan modifier, import, and update requests.
-type materializedViewPrivate interface {
-	GetKey(ctx context.Context, key string) ([]byte, diag.Diagnostics)
-}
-
 // materializedViewReplaces reports whether a changed query or backup replaces the view: always, except for
 // a null prior right after an import, which cannot read the option back, so adopting the configured value must
 // not recreate the view. A null prior on a view Terraform created means the option was omitted from CREATE.
-func materializedViewReplaces(ctx context.Context, state interface{ IsNull() bool }, private materializedViewPrivate) bool {
+func materializedViewReplaces(ctx context.Context, state interface{ IsNull() bool }, private privateState) bool {
 	if !state.IsNull() || private == nil {
 		return true
 	}
+
 	imported, _ := private.GetKey(ctx, materializedViewImportedKey)
+
 	return len(imported) == 0
 }
 
@@ -117,7 +115,7 @@ func (r *materializedViewResource) Schema(ctx context.Context, _ resource.Schema
 				Required: true,
 				MarkdownDescription: "SELECT statement defining the materialized view, without a trailing `;`. Redshift cannot alter the definition. " +
 					"State keeps this text while the catalog definition is unchanged; a change made " +
-					"outside Terraform surfaces the catalog definition and plans a replacement. " + materializedViewAdoptionNote,
+					"outside Terraform surfaces the catalog definition. " + materializedViewAdoptionNote,
 				Validators:    []validator.String{stringvalidator.LengthAtLeast(1)},
 				PlanModifiers: []planmodifier.String{materializedViewReplaceString()},
 			},
@@ -170,6 +168,7 @@ func (r *materializedViewResource) Schema(ctx context.Context, _ resource.Schema
 			},
 		},
 	}
+	foldNames(&resp.Schema, "database", "schema", "name")
 }
 
 // materializedViewOwnerAttribute adds the SVV_MV_INFO visibility rule to the shared owner attribute, because a
@@ -179,6 +178,7 @@ func materializedViewOwnerAttribute() schema.StringAttribute {
 	owner.MarkdownDescription += " `SVV_MV_INFO` shows a regular user only the materialized views it owns, so after a provider " +
 		"identity that is not a superuser transfers ownership away, `auto_refresh` is no longer read back, and changing or " +
 		"dropping the view needs privileges that the new owner grants."
+
 	return owner
 }
 
@@ -208,13 +208,16 @@ func (r *materializedViewResource) read(ctx context.Context, data materializedVi
 	if err := r.bound(data.ID, data.Database.ValueString()); err != nil {
 		return materializedViewCatalog{}, false, err
 	}
+
 	entry, found, err := readViewCatalog(ctx, &r.resourceClient, data.Database.ValueString(), data.Schema.ValueString(), data.Name.ValueString())
 	if err != nil || !found {
 		return materializedViewCatalog{}, false, err
 	}
+
 	if !entry.materialized {
 		return materializedViewCatalog{}, false, errors.New("the relation is an ordinary view; manage it with redshift_view")
 	}
+
 	rows, err := r.selectRows(ctx, data.Database.ValueString(), readMaterializedViewRefreshQuery(data))
 	if err != nil {
 		return materializedViewCatalog{}, false, err
@@ -227,10 +230,12 @@ func (r *materializedViewResource) read(ctx context.Context, data materializedVi
 	default:
 		return materializedViewCatalog{}, false, fmt.Errorf("materialized view %s.%s has ambiguous SVV_MV_INFO rows", data.Schema.ValueString(), data.Name.ValueString())
 	}
+
 	autoRefresh, err := materializedViewFlag(rows[0]["autorefresh"])
 	if err != nil {
 		return materializedViewCatalog{}, false, err
 	}
+
 	return materializedViewCatalog{view: entry, autoRefresh: autoRefresh}, true, nil
 }
 
@@ -257,9 +262,11 @@ func (r *materializedViewResource) converge(ctx context.Context, data *materiali
 	case knownString(planned.Owner) != "" && observed.view.owner != planned.Owner.ValueString():
 		return fmt.Errorf("the materialized view is owned by %q after apply, expected %q", observed.view.owner, planned.Owner.ValueString())
 	}
+
 	observed.warnHidden(diagnostics, *data)
 	data.observe(observed)
 	data.Query, data.DefinitionFingerprint = recordDefinition(planned.Query, observed.view.definition)
+
 	return nil
 }
 
@@ -267,36 +274,45 @@ func (r *materializedViewResource) converge(ctx context.Context, data *materiali
 func (r *materializedViewResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data materializedViewResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+
 	ctx, done := boundOperation(ctx, "create", data.Timeouts.Create, &resp.Diagnostics)
 	defer done()
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	statements, err := createMaterializedViewStatements(data.materializedViewModel)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid materialized view", err.Error())
 		return
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), statements[0]); err != nil {
 		resp.Diagnostics.AddError("Create materialized view", err.Error())
 		return
 	}
+
 	planned := data
-	data.ID = r.identity(data.Database.ValueString(), map[string]string{"schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
+	data.ID = identity(map[string]string{"database": data.Database.ValueString(), "schema": data.Schema.ValueString(), "name": data.Name.ValueString()})
 	// A failed ownership change or verification must still record the created view in serializable state.
 	if data.Owner.IsUnknown() {
 		data.Owner = types.StringNull()
 	}
+
 	data.DefinitionFingerprint = types.StringNull()
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
 	if err := r.exec(ctx, data.Database.ValueString(), statements[1:]...); err != nil {
 		resp.Diagnostics.AddError("Set materialized view owner", err.Error())
 		return
 	}
+
 	if err := r.converge(ctx, &data.materializedViewModel, planned.materializedViewModel, &resp.Diagnostics); err != nil {
 		resp.Diagnostics.AddError("Verify materialized view", err.Error())
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -306,14 +322,17 @@ func (r *materializedViewResource) Create(ctx context.Context, req resource.Crea
 func (r *materializedViewResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var config materializedViewResourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	data := config.materializedViewModel
 	if _, err := materializedViewAttributes(data); err != nil {
 		resp.Diagnostics.AddError("Invalid materialized view", err.Error())
 		return
 	}
+
 	if err := validateViewConfig(data.Schema, data.Name, data.Query); err != nil {
 		resp.Diagnostics.AddError("Invalid materialized view", err.Error())
 	}
@@ -325,25 +344,32 @@ func (r *materializedViewResource) ValidateConfig(ctx context.Context, req resou
 func (r *materializedViewResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data materializedViewResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	observed, found, err := r.read(ctx, data.materializedViewModel)
 	if err != nil {
 		resp.Diagnostics.AddError("Read materialized view", err.Error())
 		return
 	}
+
 	if !found {
 		resp.State.RemoveResource(ctx)
 		return
 	}
+
 	observed.warnHidden(&resp.Diagnostics, data.materializedViewModel)
 	data.observe(observed)
+
 	if data.Query.IsNull() {
 		data.DefinitionFingerprint = types.StringValue(definitionFingerprint(observed.view.definition))
 	} else {
 		data.Query, data.DefinitionFingerprint = reconcileDefinition(data.Query, data.DefinitionFingerprint, observed.view.definition)
 	}
+
+	data.ID = normalizeLegacyIdentity(data.ID, true)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -354,17 +380,22 @@ func (r *materializedViewResource) Update(ctx context.Context, req resource.Upda
 	var data, prior materializedViewResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
+
 	ctx, done := boundOperation(ctx, "update", data.Timeouts.Update, &resp.Diagnostics)
 	defer done()
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	previous := prior.materializedViewModel
+
 	statements, err := alterMaterializedViewStatements(previous, data.materializedViewModel)
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid materialized view", err.Error())
 		return
 	}
+
 	current, found, err := r.read(ctx, previous)
 	switch {
 	case err != nil:
@@ -374,6 +405,7 @@ func (r *materializedViewResource) Update(ctx context.Context, req resource.Upda
 		resp.Diagnostics.AddError("Update materialized view", "The materialized view disappeared during the update; refresh the plan.")
 		return
 	}
+
 	if previous.Query.IsNull() {
 		resp.Diagnostics.AddWarning("Imported materialized view adopted without verification", fmt.Sprintf(
 			"Terraform recorded the configured query and backup without comparing them to the imported materialized view: "+
@@ -381,10 +413,12 @@ func (r *materializedViewResource) Update(ctx context.Context, req resource.Upda
 				"were not checked either. If the catalog definition below does not match the configuration, replace the view "+
 				"with `terraform apply -replace`.\n\n%s", current.view.definition))
 	}
+
 	if err := r.exec(ctx, data.Database.ValueString(), statements...); err != nil {
 		resp.Diagnostics.AddError("Update materialized view", err.Error())
 		return
 	}
+
 	if err := r.converge(ctx, &data.materializedViewModel, data.materializedViewModel, &resp.Diagnostics); err != nil {
 		resp.Diagnostics.AddError("Verify materialized view", err.Error())
 		return
@@ -393,6 +427,7 @@ func (r *materializedViewResource) Update(ctx context.Context, req resource.Upda
 	if resp.Private != nil {
 		resp.Diagnostics.Append(resp.Private.SetKey(ctx, materializedViewImportedKey, nil)...)
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -400,11 +435,14 @@ func (r *materializedViewResource) Update(ctx context.Context, req resource.Upda
 func (r *materializedViewResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state materializedViewResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
 	ctx, done := boundOperation(ctx, "delete", state.Timeouts.Delete, &resp.Diagnostics)
 	defer done()
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	data := state.materializedViewModel
 
 	_, found, err := r.read(ctx, data)
@@ -414,6 +452,7 @@ func (r *materializedViewResource) Delete(ctx context.Context, req resource.Dele
 			err = r.exec(ctx, data.Database.ValueString(), statement)
 		}
 	}
+
 	if err != nil {
 		resp.Diagnostics.AddError("Delete materialized view", err.Error())
 	}

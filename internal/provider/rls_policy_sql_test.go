@@ -16,6 +16,7 @@ func rlsPolicyColumnsValue(pairs ...string) types.List {
 	for i := 0; i+1 < len(pairs); i += 2 {
 		elements = append(elements, types.ObjectValueMust(rlsPolicyColumnType.AttrTypes, map[string]attr.Value{"name": types.StringValue(pairs[i]), "type": types.StringValue(pairs[i+1])}))
 	}
+
 	return types.ListValueMust(rlsPolicyColumnType, elements)
 }
 
@@ -33,6 +34,7 @@ func TestRlsPolicySQL(t *testing.T) {
 	with := func(change func(*rlsPolicyModel)) rlsPolicyModel {
 		data := rlsPolicySample()
 		change(&data)
+
 		return data
 	}
 	create := func(data rlsPolicyModel) func() (string, error) {
@@ -98,17 +100,20 @@ func TestRlsPolicyColumnsMatch(t *testing.T) {
 	assert.False(t, rlsPolicyColumnsMatch(configured, []rlsPolicyCatalogColumn{catalog[0], {Name: "tenant", Type: "bigint"}}), "a different type differs")
 	assert.False(t, rlsPolicyColumnsMatch(configured, []rlsPolicyCatalogColumn{catalog[0], {Name: "tenant", Type: "unknown type"}}), "an unparsable catalog type differs")
 	assert.False(t, rlsPolicyColumnsMatch(configured, []rlsPolicyCatalogColumn{catalog[1], catalog[0]}), "order matters")
+
 	for _, empty := range []string{"", " ", "[]"} {
 		columns, err := parseRlsPolicyColumns(empty)
 		require.NoError(t, err)
 		assert.Empty(t, columns)
 		assert.True(t, rlsPolicyColumnsList(columns).IsNull())
 	}
+
 	_, err = parseRlsPolicyColumns("{")
 	require.Error(t, err)
 	none, err := rlsPolicyColumns(types.ListUnknown(rlsPolicyColumnType))
 	require.NoError(t, err)
 	assert.Empty(t, none)
+
 	_, err = rlsPolicyColumns(types.ListValueMust(rlsPolicyColumnType, []attr.Value{types.ObjectNull(rlsPolicyColumnType.AttrTypes)}))
 	require.Error(t, err)
 }

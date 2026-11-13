@@ -98,6 +98,7 @@ func TestQueryBuild(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, test.sql, sql)
 			assert.Equal(t, test.params, params)
+
 			if test.params == nil {
 				assert.Nil(t, params, "queries without placeholders pass nil parameters")
 			}
@@ -132,6 +133,7 @@ func TestQueryBuildRejectsInconsistentBinds(t *testing.T) {
 func TestQueryValueSemantics(t *testing.T) {
 	base := Select("a").From("t").Where("a = :a", Bind("a", "1"))
 	left := base.Where("b = :b", Bind("b", "2")).OrderBy("a")
+
 	right := base.Where("c = :c", Bind("c", "3"))
 	for _, test := range []struct {
 		query  Query
@@ -147,6 +149,7 @@ func TestQueryValueSemantics(t *testing.T) {
 		assert.Equal(t, test.sql, sql)
 		assert.Equal(t, test.params, params)
 	}
+
 	columns := []Keyword{"a"}
 	query := Select(columns...)
 	columns[0] = "b"

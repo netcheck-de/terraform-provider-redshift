@@ -14,7 +14,10 @@ mock_provider "random" {
   source = "./tests/mocks/random"
 }
 
-mock_provider "redshift" { alias = "producer" }
+mock_provider "redshift" {
+  alias  = "producer"
+  source = "./tests/mocks/redshift_producer"
+}
 mock_provider "redshift" {
   alias  = "consumer"
   source = "./tests/mocks/redshift_consumer"
@@ -26,29 +29,15 @@ mock_provider "redshift" { alias = "consumer_direct_iam" }
 mock_provider "redshift" { alias = "producer_direct_password" }
 mock_provider "redshift" { alias = "consumer_direct_password" }
 
-# Observed overloads report canonical signatures and catalog owners that differ from the configured spellings.
-# Terraform mocks cannot override the elements of a nested attribute list, so the procedure lookup's argument output
-# stays empty here; the provider's unit tests cover its contents.
+# Shared observations use canonical types and keep independently observed catalog owners/IDs.
 override_data {
-  target = data.redshift_function.label
-  values = {
-    id          = "function-lookup-identity"
-    signature   = "INTEGER, CHARACTER VARYING"
-    return_type = "CHARACTER VARYING"
-    volatility  = "IMMUTABLE"
-    owner       = "observed_function_owner"
-  }
+  target = data.redshift_functions.local
+  values = { id = "functions-listing-identity" }
 }
 override_data {
-  target = data.redshift_procedure.scale
-  values = {
-    id        = "procedure-lookup-identity"
-    signature = "INTEGER, BIGINT"
-    security  = "INVOKER"
-    owner     = "observed_procedure_owner"
-  }
+  target = data.redshift_procedures.local
+  values = { id = "procedures-listing-identity" }
 }
-
 run "routines_apply" {
   command = apply
 
@@ -98,6 +87,23 @@ run "routines_apply" {
   }
   assert {
     condition = (
+      data.redshift_functions.local.id == "functions-listing-identity" &&
+      data.redshift_functions.local.database == redshift_schema.local.database &&
+      data.redshift_functions.local.schema == redshift_schema.local.name &&
+      data.redshift_procedures.local.id == "procedures-listing-identity" &&
+      data.redshift_procedures.local.database == redshift_schema.local.database &&
+      data.redshift_procedures.local.schema == redshift_schema.local.name
+    )
+    error_message = "The routine listings must cover the consumer workspace schema."
+  }
+  # Terraform mocks cannot populate nested list attributes, so the listings stay empty here; the Go tests cover their
+  # contents, and this checks that the outputs are derived from the listings alone.
+  assert {
+    condition     = output.routines.functions == [] && output.routines.procedures == []
+    error_message = "The routines output must expose only what the routine listings observe."
+  }
+  assert {
+    condition = (
       output.routines.function.signature == "INTEGER, CHARACTER VARYING" &&
       output.routines.function.owner == "observed_function_owner" &&
       output.routines.procedure.signature == "INTEGER, BIGINT" &&
@@ -106,4 +112,34 @@ run "routines_apply" {
     )
     error_message = "The routines output must expose the observed lookups."
   }
+}
+
+run "function_readback_rejects_wrong_volatility" {
+  command = apply
+  override_data {
+    target = data.redshift_function.label
+    values = {
+      signature              = "INTEGER, CHARACTER VARYING", return_type = "CHARACTER VARYING", language = "SQL", volatility = "VOLATILE"
+      definition_fingerprint = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+  }
+  expect_failures = [data.redshift_function.label]
+}
+
+run "procedure_readback_rejects_missing_out_parameter" {
+  command = apply
+  override_data {
+    target = data.redshift_procedure.scale
+    values = { signature = "INTEGER, BIGINT", security = "INVOKER", argument = [] }
+  }
+  expect_failures = [data.redshift_procedure.scale]
+}
+
+run "routine_grant_readback_rejects_missing_grant_option" {
+  command = apply
+  override_data {
+    target = data.redshift_object_grant.loader_label
+    values = { privileges = ["EXECUTE"], grant_option_privileges = [] }
+  }
+  expect_failures = [data.redshift_object_grant.loader_label]
 }
