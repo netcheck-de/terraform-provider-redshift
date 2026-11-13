@@ -159,8 +159,8 @@ var (
 	quotedValue = regexp.MustCompile(`"([^"]+)"`)
 )
 
-// terraformSnippets returns the lines of every example file and of every Terraform snippet in a template, keyed by
-// file (and snippet number), because the documentation renders both as written.
+// terraformSnippets returns per-type documentation examples and template snippets, keyed by file and snippet number.
+// The standalone complete example is validated separately by Terraform.
 func terraformSnippets(t *testing.T) map[string][]string {
 	t.Helper()
 
@@ -168,10 +168,8 @@ func terraformSnippets(t *testing.T) map[string][]string {
 	snippets := map[string][]string{}
 	examples, err := filepath.Glob(filepath.Join(root, "examples", "*", "*", "*.tf"))
 	require.NoError(t, err)
-	complete, err := filepath.Glob(filepath.Join(root, "examples", "complete", "*.tf"))
-	require.NoError(t, err)
 
-	for _, file := range append(examples, complete...) {
+	for _, file := range examples {
 		content, err := os.ReadFile(file)
 		require.NoError(t, err)
 

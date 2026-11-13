@@ -11,7 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftserverless"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -173,7 +172,7 @@ data "redshift_object_grant" "all_functions" {
 `, suffix, os.Getenv("REDSHIFT_ACC_SHARED_DATABASE"), schema, function, procedure, privileges, execute, executeOptions, grantOptions)
 	}
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(true, false), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_object_grant.function", "grant_option_privileges.#", "1"),
@@ -201,7 +200,6 @@ data "redshift_object_grant" "all_functions" {
 					return nil
 				},
 			)},
-			{Config: configuration(true, false), PlanOnly: true},
 			{ResourceName: "redshift_object_grant.function", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_object_grant.all_functions", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_object_grant.procedure", ImportState: true, ImportStateVerify: true},

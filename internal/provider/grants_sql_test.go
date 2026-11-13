@@ -65,3 +65,32 @@ func TestGrantsItems(t *testing.T) {
 		assert.Equal(t, stringSet(), items[1]["grant_option_privileges"])
 	}
 }
+
+// TestGrantsDatashareRoleRows reproduces the live SHOW GRANTS spelling for datashares, which must not be listed or
+// filtered as ordinary roles. A user with the same prefix still belongs to the user namespace.
+func TestGrantsDatashareRoleRows(t *testing.T) {
+	t.Parallel()
+
+	rows := []sqlclient.Row{
+		{"database_name": "warehouse", "schema_name": "serving", "object_name": "serving", "object_type": "SCHEMA", "privilege_type": "SELECT", "identity_name": "ds:producer", "identity_type": "role", "admin_option": "f", "privilege_scope": "TABLES"},
+	}
+
+	items := grantsItems("warehouse", "serving", "", "", rows)
+	if assert.Len(t, items, 1) {
+		assert.Equal(t, types.StringValue("producer"), items[0]["datashare"])
+		assert.True(t, items[0]["role"].IsNull())
+		assert.True(t, items[0]["user"].IsNull())
+		assert.Equal(t, stringSet("SELECT"), items[0]["privileges"])
+	}
+
+	assert.Empty(t, grantsItems("warehouse", "serving", "ds:producer", "", rows))
+	assert.Empty(t, grantsItems("warehouse", "serving", "", "ds:producer", rows))
+
+	rows[0]["identity_type"] = "user"
+
+	items = grantsItems("warehouse", "serving", "", "ds:producer", rows)
+	if assert.Len(t, items, 1) {
+		assert.Equal(t, types.StringValue("ds:producer"), items[0]["user"])
+		assert.True(t, items[0]["datashare"].IsNull())
+	}
+}

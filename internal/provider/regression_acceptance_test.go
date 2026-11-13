@@ -6,13 +6,12 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
-	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata"
@@ -24,7 +23,9 @@ import (
 // regressionFixture owns one disposable database for a live regression check and drops it after the test.
 type regressionFixture struct {
 	// client runs fixture SQL through the Data API as the acceptance identity.
-	client *dataapi.Client
+	client sqlclient.Client
+	// rawClient exposes per-query timeout controls to the read-only cancellation probe.
+	rawClient *dataapi.Client
 	// admin is the administration database connection.
 	admin sqlclient.Connection
 	// target is the disposable database connection.
@@ -43,9 +44,10 @@ func newRegressionFixture(t *testing.T, prefix string, flags ...string) regressi
 	require.NoError(t, err)
 
 	name := prefix + strconv.FormatInt(time.Now().UnixNano(), 36)
+	rawClient := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
 	f := regressionFixture{
-		client: &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second},
-		admin:  sqlclient.Connection{Database: database}, target: sqlclient.Connection{Database: name}, name: name,
+		client: testAccDataClient(rawClient), rawClient: rawClient,
+		admin: sqlclient.Connection{Database: database}, target: sqlclient.Connection{Database: name}, name: name,
 		provider: fmt.Sprintf(`
 provider "redshift" {
   region = %q
@@ -85,11 +87,13 @@ func (f regressionFixture) rows(statement string, parameters map[string]string) 
 }
 
 // regressionFactories serves the provider under test.
-var regressionFactories = map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())}
+var regressionFactories = testAccProviderFactories("redshift")
 
 // TestAccViewDetectsQuotedWhitespaceDrift detects an outside change that only alters whitespace inside a literal,
 // which the earlier fingerprint ignored.
 func TestAccViewDetectsQuotedWhitespaceDrift(t *testing.T) {
+	t.Parallel()
+
 	f := newRegressionFixture(t, "acc_fingerprint_")
 	configuration := f.provider + fmt.Sprintf(`
 resource "redshift_database" "local" { name = %q }
@@ -108,20 +112,20 @@ resource "redshift_view" "label" {
 		ProtoV6ProviderFactories: regressionFactories,
 		Steps: []resource.TestStep{
 			{Config: configuration},
-			{Config: configuration, PlanOnly: true},
 			{
 				Config: configuration, PlanOnly: true, ExpectNonEmptyPlan: true,
 				PreConfig: func() { f.exec(t, `CREATE OR REPLACE VIEW serving.label AS SELECT CAST('a b' AS VARCHAR(8)) AS label`) },
 			},
 			{Config: configuration},
-			{Config: configuration, PlanOnly: true},
 		},
 	})
 }
 
-// TestAccObjectGrantSnapshotRevokesPartialGrants creates tables in parallel with an ALL TABLES grant, then adds an
-// ungranted table outside Terraform and destroys the grant: no table may keep the privilege.
+// TestAccObjectGrantSnapshotRevokesPartialGrants adds tables after a nonempty snapshot, repairs the resulting partial
+// grants, then adds an ungranted table and destroys the grant: no table may keep the privilege.
 func TestAccObjectGrantSnapshotRevokesPartialGrants(t *testing.T) {
+	t.Parallel()
+
 	f := newRegressionFixture(t, "acc_snapshot_")
 	base := f.provider + fmt.Sprintf(`
 resource "redshift_database" "local" { name = %q }
@@ -132,9 +136,10 @@ resource "redshift_schema" "local" {
 resource "redshift_role" "reader" { name = %q }
 `, f.name, f.name+"_reader")
 
-	var tables string
+	var seed, tables string
+
 	for i := range 4 {
-		tables += fmt.Sprintf(`
+		table := fmt.Sprintf(`
 resource "redshift_table" "t%[1]d" {
   database = redshift_schema.local.database
   schema = redshift_schema.local.name
@@ -145,6 +150,11 @@ resource "redshift_table" "t%[1]d" {
   }
 }
 `, i)
+		tables += table
+
+		if i == 0 {
+			seed = table
+		}
 	}
 
 	grant := `
@@ -155,6 +165,7 @@ resource "redshift_object_grant" "all_tables" {
   grantee = redshift_role.reader.name
   grantee_type = "ROLE"
   privileges = ["SELECT"]
+  depends_on = [redshift_table.t0]
 }
 `
 	held := func(want int) resource.TestCheckFunc {
@@ -174,8 +185,11 @@ resource "redshift_object_grant" "all_tables" {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: regressionFactories,
 		Steps: []resource.TestStep{
-			// The grant does not depend on the tables, so Terraform creates them in parallel with it.
-			{Config: base + tables + grant},
+			// Establish a valid nonempty snapshot; it covers only the seed table, not future members.
+			{Config: base + seed + grant, Check: held(1)},
+			// The other three tables are created in parallel while the existing grant is a no-op. Their missing
+			// privileges deterministically cause drift, rather than depending on the scheduler's CREATE order.
+			{Config: base + tables + grant, ExpectNonEmptyPlan: true},
 			{Config: base + tables + grant, Check: held(4)},
 			{
 				Config: base + tables,
@@ -195,6 +209,8 @@ resource "redshift_object_grant" "all_tables" {
 // TestAccUserCreateRecordsUserWhenDefaultsFail keeps a user whose stored default Redshift rejects in state, so the
 // next apply replaces it instead of failing to create it again.
 func TestAccUserCreateRecordsUserWhenDefaultsFail(t *testing.T) {
+	t.Parallel()
+
 	f := newRegressionFixture(t, "acc_user_defaults_")
 	configuration := func(timezone string) string {
 		return f.provider + fmt.Sprintf(`
@@ -215,7 +231,6 @@ resource "redshift_user" "reader" {
 		Steps: []resource.TestStep{
 			{Config: configuration("Not/A_Zone"), ExpectError: regexp.MustCompile(`Configure Redshift user`)},
 			{Config: configuration("UTC"), Check: resource.TestCheckResourceAttr("redshift_user.reader", "session_defaults.timezone", "UTC")},
-			{Config: configuration("UTC"), PlanOnly: true},
 		},
 	})
 }
@@ -223,6 +238,8 @@ resource "redshift_user" "reader" {
 // TestAccTemplateRenameKeepsStateOnFailure records a completed rename when a later statement of the update fails, so
 // the next apply updates the renamed template instead of failing to create it.
 func TestAccTemplateRenameKeepsStateOnFailure(t *testing.T) {
+	t.Parallel()
+
 	f := newRegressionFixture(t, "acc_template_rename_")
 	configuration := func(name, owner string) string {
 		owned := ""
@@ -251,7 +268,6 @@ resource "redshift_template" "load" {
 			{Config: configuration("csv_load", "")},
 			{Config: configuration("csv_import", "acc_missing_owner_"+f.name), ExpectError: regexp.MustCompile(`Update template`)},
 			{Config: configuration("csv_import", ""), Check: resource.TestCheckResourceAttr("redshift_template.load", "name", "csv_import")},
-			{Config: configuration("csv_import", ""), PlanOnly: true},
 		},
 	})
 }
@@ -259,16 +275,54 @@ resource "redshift_template" "load" {
 // TestAccSharedDatabaseWithoutPermissions creates a consumer database from a datashare without WITH PERMISSIONS,
 // imports it, and destroys it.
 func TestAccSharedDatabaseWithoutPermissions(t *testing.T) {
-	f := newRegressionFixture(t, "acc_shared_noperm_", "REDSHIFT_ACC_SHARED_DATASHARE_ARN", "REDSHIFT_ACC_SHARED_SCHEMA", "REDSHIFT_ACC_SHARED_TABLE")
+	t.Parallel()
+
+	f := newRegressionFixture(t, "acc_shared_noperm_", "REDSHIFT_ACC_SHARED_DATASHARE_ARN", "REDSHIFT_ACC_SHARED_SCHEMA", "REDSHIFT_ACC_SHARED_TABLE", "REDSHIFT_ACC_SHARED_PRODUCER_CLUSTER", "REDSHIFT_ACC_SHARED_PRODUCER_SECRET_ARN", "REDSHIFT_ACC_SHARED_CONSUMER_NAMESPACE")
+	// A namespace can bind a share only once. Own another share of the fixture table instead of reusing the
+	// already-bound WITH PERMISSIONS share, or dropping the database other acceptance tests depend on.
 	configuration := f.provider + fmt.Sprintf(`
+provider "redshiftproducer" {
+  region = %q
+  database = %q
+  cluster_identifier = %q
+  secret_arn = %q
+}
+resource "redshift_datashare" "source" {
+  provider = redshiftproducer
+  database = %q
+  name = %q
+  publicly_accessible = true
+}
+resource "redshift_datashare_schema" "source" {
+  provider = redshiftproducer
+  database = redshift_datashare.source.database
+  datashare = redshift_datashare.source.name
+  schema = %q
+  include_new = false
+}
+resource "redshift_datashare_table" "source" {
+  provider = redshiftproducer
+  database = redshift_datashare_schema.source.database
+  datashare = redshift_datashare_schema.source.datashare
+  schema = redshift_datashare_schema.source.schema
+  table = %q
+}
+resource "redshift_datashare_grant" "source" {
+  provider = redshiftproducer
+  database = redshift_datashare_table.source.database
+  datashare = redshift_datashare_table.source.datashare
+  namespace_id = %q
+}
 resource "redshift_database" "shared" {
   name = %q
-  datashare_arn = %q
+  datashare_arn = "%s/${redshift_datashare_grant.source.datashare}"
   with_permissions = false
 }
-`, f.name, os.Getenv("REDSHIFT_ACC_SHARED_DATASHARE_ARN"))
+`, os.Getenv("REDSHIFT_ACC_REGION"), os.Getenv("REDSHIFT_ACC_DATABASE"), os.Getenv("REDSHIFT_ACC_SHARED_PRODUCER_CLUSTER"), os.Getenv("REDSHIFT_ACC_SHARED_PRODUCER_SECRET_ARN"),
+		os.Getenv("REDSHIFT_ACC_DATABASE"), f.name, os.Getenv("REDSHIFT_ACC_SHARED_SCHEMA"), os.Getenv("REDSHIFT_ACC_SHARED_TABLE"), os.Getenv("REDSHIFT_ACC_SHARED_CONSUMER_NAMESPACE"),
+		f.name, strings.Split(os.Getenv("REDSHIFT_ACC_SHARED_DATASHARE_ARN"), "/")[0])
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: regressionFactories,
+		ProtoV6ProviderFactories: testAccProviderFactories("redshift", "redshiftproducer"),
 		Steps: []resource.TestStep{
 			{
 				Config: configuration,
@@ -283,7 +337,6 @@ resource "redshift_database" "shared" {
 					},
 				),
 			},
-			{Config: configuration, PlanOnly: true},
 			{ResourceName: "redshift_database.shared", ImportState: true, ImportStateVerify: true},
 		},
 	})
@@ -291,6 +344,8 @@ resource "redshift_database" "shared" {
 
 // TestAccUppercaseNameRejected fails planning for an object name Redshift would fold to lowercase.
 func TestAccUppercaseNameRejected(t *testing.T) {
+	t.Parallel()
+
 	f := newRegressionFixture(t, "acc_upper_")
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: regressionFactories,
@@ -309,7 +364,7 @@ func TestAccUppercaseNameRejected(t *testing.T) {
 // stopped it within the settle wait, so the mutation gate is released without an unsettled statement.
 func TestAccDataAPICancellationSettles(t *testing.T) {
 	f := newRegressionFixture(t, "acc_cancel_")
-	client := *f.client
+	client := *f.rawClient
 	client.Timeout = 5 * time.Second
 	started := time.Now()
 	_, err := client.Query(context.Background(), f.admin, "SELECT COUNT(*) FROM pg_catalog.pg_attribute a, pg_catalog.pg_attribute b, pg_catalog.pg_attribute c", nil)
@@ -328,6 +383,8 @@ const settleWait = 40 * time.Second
 // TestAccDirectCatalogCodes reads one-letter catalog codes over a direct connection: a function's volatility and a
 // table's primary key must converge and plan no change, which they did not when pgx returned the codes as numbers.
 func TestAccDirectCatalogCodes(t *testing.T) {
+	t.Parallel()
+
 	f := newRegressionFixture(t, "acc_direct_codes_", "REDSHIFT_ACC_DIRECT")
 	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
 	configuration := fmt.Sprintf(`
@@ -368,7 +425,6 @@ resource "redshift_table" "keyed" {
 		ProtoV6ProviderFactories: regressionFactories,
 		Steps: []resource.TestStep{
 			{Config: configuration, Check: resource.TestCheckResourceAttr("redshift_function.stable", "volatility", "STABLE")},
-			{Config: configuration, PlanOnly: true},
 			{ResourceName: "redshift_function.stable", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"body"}},
 		},
 	})

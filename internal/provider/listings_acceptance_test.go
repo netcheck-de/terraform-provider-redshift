@@ -8,18 +8,21 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 // TestAccListingsMissingDatabase exercises the real database existence lookup without connecting to a missing database.
 func TestAccListingsMissingDatabase(t *testing.T) {
+	t.Parallel()
+
 	testAccListingDatabaseBoundary(t, "acc_absent_"+strconv.FormatInt(time.Now().UnixNano(), 36))
 }
 
 // TestAccListingsSharedDatabase keeps local-only listings out of the fixture's consumer database.
 func TestAccListingsSharedDatabase(t *testing.T) {
+	t.Parallel()
+
 	testAccPreCheck(t, "REDSHIFT_ACC_SHARED_DATABASE")
 	testAccListingDatabaseBoundary(t, os.Getenv("REDSHIFT_ACC_SHARED_DATABASE"))
 }
@@ -66,18 +69,19 @@ func testAccListingDatabaseBoundary(t *testing.T, selected string) {
 	}
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
-		Steps:                    []resource.TestStep{{Config: configuration, Check: resource.ComposeAggregateTestCheckFunc(checks...)}, {Config: configuration, PlanOnly: true}},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
+		Steps:                    []resource.TestStep{{Config: configuration, Check: resource.ComposeAggregateTestCheckFunc(checks...)}},
 	})
 }
 
 // TestAccSharedListings checks actual inbound and consumer rows, not an empty result or Lake Formation prerequisite.
 func TestAccSharedListings(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SHARED_DATABASE", "REDSHIFT_ACC_SHARED_DATASHARE", "REDSHIFT_ACC_SHARED_PRODUCER_CLUSTER", "REDSHIFT_ACC_SHARED_PRODUCER_SECRET_ARN", "REDSHIFT_ACC_SHARED_CONSUMER_NAMESPACE", "REDSHIFT_ACC_SHARED_PRODUCER_NAMESPACE")
 	share := os.Getenv("REDSHIFT_ACC_SHARED_DATASHARE")
 	configuration := grantAcceptanceProvider(region, workgroup, database) + fmt.Sprintf(`
-provider "redshift" {
- alias = "producer"
+provider "redshiftproducer" {
  region = %q
  database = %q
  cluster_identifier = %q
@@ -85,12 +89,12 @@ provider "redshift" {
 }
 data "redshift_inbound_datashares" "fixture" { name = %q }
 data "redshift_datashare_grants" "fixture" {
- provider = redshift.producer
+  provider = redshiftproducer
  datashare = %q
 }
 `, region, database, os.Getenv("REDSHIFT_ACC_SHARED_PRODUCER_CLUSTER"), os.Getenv("REDSHIFT_ACC_SHARED_PRODUCER_SECRET_ARN"), share, share)
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: testAccProviderFactories("redshift", "redshiftproducer"),
 		Steps: []resource.TestStep{{Config: configuration, Check: resource.ComposeAggregateTestCheckFunc(
 			resource.TestCheckResourceAttr("data.redshift_inbound_datashares.fixture", "inbound_datashares.#", "1"),
 			resource.TestCheckResourceAttr("data.redshift_inbound_datashares.fixture", "inbound_datashares.0.producer_namespace", os.Getenv("REDSHIFT_ACC_SHARED_PRODUCER_NAMESPACE")),
@@ -99,6 +103,6 @@ data "redshift_datashare_grants" "fixture" {
 			resource.TestCheckResourceAttr("data.redshift_datashare_grants.fixture", "datashare_grants.0.database", database),
 			resource.TestCheckResourceAttr("data.redshift_datashare_grants.fixture", "datashare_grants.0.namespace_id", os.Getenv("REDSHIFT_ACC_SHARED_CONSUMER_NAMESPACE")),
 			resource.TestCheckNoResourceAttr("data.redshift_datashare_grants.fixture", "datashare_grants.0.account_id"),
-		)}, {Config: configuration, PlanOnly: true}},
+		)}},
 	})
 }

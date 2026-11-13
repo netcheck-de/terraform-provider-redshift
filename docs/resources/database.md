@@ -187,7 +187,10 @@ creates a disposable DynamoDB source by default. To use an existing table ARN in
 
 ## Lifecycle and Ownership
 
-Deletion drops only the matching database, without `CASCADE`; active sessions or grants may prevent it.
+Deletion drops only the matching database, without `CASCADE` or `FORCE`; active sessions or grants may prevent it.
+For ordinary local or shared databases, an explicit active-session refusal is retried for up to 30 seconds, or a
+shorter configured delete timeout, so short-lived catalog sessions can close. Persistent sessions remain an error;
+the provider never terminates them. Other errors and uncertain statement outcomes are not retried.
 
 Redshift refuses to drop a zero-ETL destination while its integration is active, also with `FORCE`. Because the
 destination depends on the integration's ID, Terraform destroys the database first, also under `-target`, and the

@@ -10,7 +10,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -25,6 +24,8 @@ import (
 // changes, imports, predicate drift, a WITH change that replaces the attached policy, and that destroying table
 // security turns row-level security off.
 func TestAccRlsLifecycle(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	name, role := "acc_rls_"+suffix, "acc_rls_reader_"+suffix
@@ -117,7 +118,7 @@ data "redshift_table_securities" "local" {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// A failed run may leave the protected fixture behind; dropping the database removes it with its policies.
 	t.Cleanup(func() {
@@ -139,7 +140,7 @@ data "redshift_table_securities" "local" {
 	}
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: `
 provider "redshift" {
@@ -171,7 +172,6 @@ resource "redshift_database" "local" { name = "` + name + `" }`},
 					resource.TestCheckResourceAttr("data.redshift_table_securities.local", "table_securities.0.datashare_row_level_security", "true"),
 				),
 			},
-			{Config: configuration("t.region = current_user", "AND", true), PlanOnly: true},
 			{Config: respelled(configuration("t.region = current_user", "AND", true)), PlanOnly: true},
 			{ResourceName: "redshift_rls_policy_attachment.reader", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_table_security.fixture", ImportState: true, ImportStateVerify: true},

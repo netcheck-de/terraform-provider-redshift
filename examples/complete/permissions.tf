@@ -142,7 +142,12 @@ data "redshift_object_grants" "local_events" {
   schema_name   = "public"
   object_name   = local.local_table_name
 
-  depends_on = [redshift_object_grant.loader_events, redshift_column_grant.reader_events]
+  depends_on = [
+    redshift_object_grant.loader_events,
+    redshift_object_grant.reader_events_option,
+    redshift_object_grant.operators_public_tables,
+    redshift_column_grant.reader_events,
+  ]
 }
 
 # Every object grant the loader holds in the local database.

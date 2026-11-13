@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
@@ -16,6 +15,8 @@ import (
 // the routine listings, imports it, and drops it with the database. REDSHIFT_ACC_LAMBDA_FUNCTION names an existing
 // Lambda function; REDSHIFT_ACC_LAMBDA_ROLE optionally names an associated role ARN instead of the default role.
 func TestAccExternalFunctionLifecycle(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_LAMBDA_FUNCTION")
 
 	role := os.Getenv("REDSHIFT_ACC_LAMBDA_ROLE")
@@ -56,7 +57,7 @@ data "redshift_routine_parameters" "upper" {
 `, region, workgroup, database, name, volatility, os.Getenv("REDSHIFT_ACC_LAMBDA_FUNCTION"), role, retryTimeout)
 	}
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(0, "VOLATILE"), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_external_function.upper", "volatility", "VOLATILE"),
@@ -71,7 +72,6 @@ data "redshift_routine_parameters" "upper" {
 				resource.TestCheckResourceAttr("redshift_external_function.upper", "volatility", "STABLE"),
 				resource.TestCheckResourceAttr("data.redshift_external_functions.upper", "external_functions.0.volatility", "STABLE"),
 			)},
-			{Config: configuration(3000, "STABLE"), PlanOnly: true},
 			{
 				ResourceName: "redshift_external_function.upper", ImportState: true, ImportStateVerify: true,
 				// No documented catalog view reports the Lambda options, and the catalog spells the types canonically.

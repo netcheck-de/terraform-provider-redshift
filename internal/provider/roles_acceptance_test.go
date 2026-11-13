@@ -10,7 +10,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -23,6 +22,13 @@ import (
 func testAccRolesClient(t *testing.T, region, workgroup string) sqlclient.Client {
 	t.Helper()
 
+	return testAccDataClient(testAccRawDataClient(t, region, workgroup))
+}
+
+// testAccRawDataClient exposes service/session controls only to probes that need the Data API interface itself.
+func testAccRawDataClient(t *testing.T, region, workgroup string) *dataapi.Client {
+	t.Helper()
+
 	cfg, err := config.LoadDefaultConfig(context.Background(), config.WithRegion(region))
 	require.NoError(t, err)
 
@@ -32,6 +38,8 @@ func testAccRolesClient(t *testing.T, region, workgroup string) sqlclient.Client
 // TestAccRoleOwnerAndAdminOption changes a role's owner and a user's admin option in place, repairs admin option
 // drift, and imports both resources with the observed values.
 func TestAccRoleOwnerAndAdminOption(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	roleName, first, second := "acc_role_"+suffix, "acc_owner_a_"+suffix, "acc_owner_b_"+suffix
@@ -78,7 +86,7 @@ data "redshift_role_grants" "this" {
 	admin := sqlclient.Connection{Database: database}
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		CheckDestroy: func(*terraform.State) error {
 			rows, err := client.Query(ctx, admin, "SELECT role_name FROM svv_roles WHERE role_name = :name", map[string]string{"name": roleName})
 			if err == nil && len(rows) != 0 {
@@ -98,7 +106,6 @@ data "redshift_role_grants" "this" {
 				resource.TestCheckResourceAttr("data.redshift_role_grants.this", "role_grants.0.to_user", first),
 				resource.TestCheckResourceAttr("data.redshift_role_grants.this", "role_grants.0.admin_option", "false"),
 			)},
-			{Config: configuration("first", false), PlanOnly: true},
 			{Config: configuration("second", true), Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_role.this", "owner", second),
 				resource.TestCheckResourceAttr("redshift_role_grant.this", "admin_option", "true"),
@@ -117,7 +124,6 @@ data "redshift_role_grants" "this" {
 			},
 			{Config: configuration("second", true), Check: resource.TestCheckResourceAttr("redshift_role_grant.this", "admin_option", "true")},
 			{Config: configuration("second", false), Check: resource.TestCheckResourceAttr("data.redshift_role_grant.this", "admin_option", "false")},
-			{Config: configuration("second", false), PlanOnly: true},
 		},
 	})
 }
@@ -158,7 +164,7 @@ data "redshift_identity_providers" "all" {
 	ctx, client := context.Background(), testAccRolesClient(t, region, workgroup)
 	issuer, legacyIssuer := "https://login.microsoftonline.com/"+tenant+"/v2.0", "https://sts.windows.net/"+tenant+"/"
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		CheckDestroy: func(*terraform.State) error {
 			rows, err := client.Query(ctx, sqlclient.Connection{Database: database}, "SELECT name FROM svv_identity_providers WHERE name = :name", map[string]string{"name": name})
 			if err == nil && len(rows) != 0 {
@@ -177,7 +183,6 @@ data "redshift_identity_providers" "all" {
 					"name": name, "type": "AZURE", "issuer": issuer, "client_id": clientID, "audience.#": "1", "enabled": "true",
 				}),
 			)},
-			{Config: configuration("acc"+suffix, issuer, 1, true), PlanOnly: true},
 			{
 				Config: configuration("acc"+suffix, legacyIssuer, 2, true),
 				Check:  resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "issuer", legacyIssuer),
@@ -186,7 +191,6 @@ data "redshift_identity_providers" "all" {
 				Config: configuration("accb"+suffix, legacyIssuer, 2, false),
 				Check:  resource.TestCheckResourceAttr("data.redshift_identity_provider.this", "namespace", "accb"+suffix),
 			},
-			{Config: configuration("accb"+suffix, legacyIssuer, 2, false), PlanOnly: true},
 			{
 				ResourceName: "redshift_identity_provider.this", ImportState: true, ImportStateVerify: true,
 				ImportStateVerifyIgnore: []string{"client_secret_wo_version", "auto_create_roles"},

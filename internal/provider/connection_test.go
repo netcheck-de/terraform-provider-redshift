@@ -13,11 +13,13 @@ import (
 	"strings"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/redshift"
 	redshifttypes "github.com/aws/aws-sdk-go-v2/service/redshift/types"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
+	redshiftdatatypes "github.com/aws/aws-sdk-go-v2/service/redshiftdata/types"
 	"github.com/aws/smithy-go"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata"
@@ -159,8 +161,9 @@ func (f dataAPIHTTPClientFunc) Do(request *http.Request) (*http.Response, error)
 	return f(request)
 }
 
-// TestDataAPIRetriesUseProviderSettings keeps SDK backoff and adaptive rate limiting on virtual time while
-// exercising the provider's real retryer, error classification, and statement application name.
+// TestDataAPIRetriesUseProviderSettings exercises the real SDK retryer, error classification, and statement name.
+// Standard backoff uses virtual time. Adaptive token refill needs real time: fractional-token rounding can produce
+// zero-duration waits that keep synctest runnable forever without advancing its frozen clock.
 func TestDataAPIRetriesUseProviderSettings(t *testing.T) {
 	t.Setenv("AWS_PROFILE", "")
 	t.Setenv("AWS_DEFAULT_PROFILE", "")
@@ -174,9 +177,19 @@ func TestDataAPIRetriesUseProviderSettings(t *testing.T) {
 
 	for _, retries := range []int64{0, 1} {
 		for _, mode := range []string{"standard", "adaptive"} {
-			for _, code := range []string{"ActiveStatementsExceededException", "ValidationException"} {
-				t.Run(fmt.Sprintf("%s/%d/%s", mode, retries, code), func(t *testing.T) {
-					synctest.Test(t, func(t *testing.T) {
+			for _, test := range []struct {
+				name, code, message string
+				retryable           bool
+			}{
+				{"active", "ActiveStatementsExceededException", "rejected", true},
+				{"throttled", "ThrottlingException", "rejected", true},
+				{"validation", "ValidationException", "rejected", false},
+				{"nested_throttle", "ValidationException", "Service returned error code ThrottlingException (Service: RedshiftServerless, Status Code: 400, Request ID: example) (SDK Attempt Count: 3)", true},
+			} {
+				t.Run(fmt.Sprintf("%s/%d/%s", mode, retries, test.name), func(t *testing.T) {
+					run := func(t *testing.T) {
+						t.Helper()
+
 						data := providerModel{Workgroup: types.StringValue("warehouse"), Database: types.StringValue("admin"), MaxRetries: types.Int64Value(retries), RetryMode: types.StringValue(mode)}
 						client, err := data.sqlClient(context.Background(), "test")
 						require.NoError(t, err)
@@ -203,30 +216,66 @@ func TestDataAPIRetriesUseProviderSettings(t *testing.T) {
 									StatusCode: http.StatusBadRequest,
 									Header: http.Header{
 										"Content-Type":     {"application/x-amz-json-1.1"},
-										"X-Amzn-Errortype": {code},
+										"X-Amzn-Errortype": {test.code},
 									},
-									Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{"__type":%q,"Message":"rejected"}`, code))),
+									Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{"__type":%q,"Message":%q}`, test.code, test.message))),
 								}, nil
 							})
 						})
-						_, err = client.Query(context.Background(), sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
-						require.ErrorContains(t, err, code)
+
+						ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+						defer cancel()
+
+						_, err = client.Query(ctx, sqlclient.Connection{Database: "admin"}, "SELECT 1", nil)
+						require.ErrorContains(t, err, test.code)
 
 						wantAttempts := int(retries + 1)
-						if code == "ValidationException" {
+						if !test.retryable {
 							wantAttempts = 1
 						}
 
 						assert.Equal(t, wantAttempts, attempts)
 						// A client shared by every resource must not exhaust retries under sustained errors.
 						for range 1000 {
-							_, err := options.Retryer.GetRetryToken(context.Background(), &smithy.GenericAPIError{Code: code})
+							_, err := options.Retryer.GetRetryToken(context.Background(), &smithy.GenericAPIError{Code: test.code})
 							require.NoError(t, err)
 						}
-					})
+					}
+					if mode == "adaptive" {
+						run(t)
+					} else {
+						synctest.Test(t, run)
+					}
 				})
 			}
 		}
+	}
+}
+
+// TestDataAPIThrottleClassification does not turn unrelated validation failures or error text into SQL retries.
+func TestDataAPIThrottleClassification(t *testing.T) {
+	t.Parallel()
+
+	message := "Service returned error code ThrottlingException (Service: RedshiftServerless, Status Code: 400, Request ID: example)"
+	for _, test := range []struct {
+		name string
+		err  error
+		want aws.Ternary
+	}{
+		{"nested", fmt.Errorf("execute: %w", &redshiftdatatypes.ValidationException{Message: aws.String(message)}), aws.TrueTernary},
+		{"nil", nil, aws.UnknownTernary},
+		{"empty", &redshiftdatatypes.ValidationException{}, aws.UnknownTernary},
+		{"validation", &redshiftdatatypes.ValidationException{Message: aws.String("invalid database")}, aws.UnknownTernary},
+		{"text_only", errors.New(message), aws.UnknownTernary},
+		{"other_api", &smithy.GenericAPIError{Code: "ValidationException", Message: message}, aws.UnknownTernary},
+		{"other_service", &redshiftdatatypes.ValidationException{Message: aws.String(strings.ReplaceAll(message, "RedshiftServerless", "OtherService"))}, aws.UnknownTernary},
+		{"other_failure", &redshiftdatatypes.ValidationException{Message: aws.String(strings.ReplaceAll(message, "ThrottlingException", "InternalServerException"))}, aws.UnknownTernary},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, test.want, dataAPIThrottle(test.err))
+		})
 	}
 }
 

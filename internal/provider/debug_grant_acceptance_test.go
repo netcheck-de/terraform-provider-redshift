@@ -11,7 +11,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -95,7 +94,7 @@ data "redshift_debug_grants" "test" {
 			}
 
 			resource.Test(t, resource.TestCase{
-				ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+				ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 				Steps: []resource.TestStep{
 					{Config: configuration, Check: resource.ComposeAggregateTestCheckFunc(checks...)},
 					{ResourceName: "redshift_debug_grant.test", ImportState: true, ImportStateVerify: true},

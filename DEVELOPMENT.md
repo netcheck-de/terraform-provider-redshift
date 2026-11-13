@@ -80,6 +80,7 @@ Add or update tests alongside behavior changes; extend existing suites rather th
 - Data-source acceptance tests must check actual returned fields from known fixtures, not just successful reads or empty
   results. Include filters and missing-object behavior where supported.
 - Mocked example tests check composition, not live SQL behavior; they do not replace acceptance tests.
+- Keep complete-example and fixture composition validation in Terraform, not the provider's Go test package.
 - A skipped acceptance test is not executed coverage. Keep fixture requirements explicit and enable self-contained
   optional example features in CI; do not assume externally managed identities or account settings exist.
 - Adding acceptance coverage is required; running AWS tests locally is not. Report which checks ran and which tests
@@ -189,7 +190,7 @@ acceptance fixtures use their pinned Registry release with development overrides
 
 Acceptance fixture tests run native `terraform test` using `TF_CLI_CONFIG_FILE=/dev/null`, as described in the
 [fixture guide](tests/acceptance/README.md). Existing provider Go contracts, including real resource lifecycles against
-focused fake SQL catalogs and static example type/output coverage, run through `task check`. None of these checks deploys
+focused fake SQL catalogs, run through `task check`. None of these checks deploys
 AWS resources. The `terraform` task remains available for normal local development-provider CLI commands.
 
 The complete example uses blocking lifecycle postconditions on catalog and AWS readbacks. They remain enabled during
@@ -224,6 +225,11 @@ credentials as CI does. No acceptance-specific AWS profile setting or generated 
 - Prefer `verify-full`, with `REDSHIFT_ACC_CA_CERT_FILE` if needed; `REDSHIFT_ACC_SSLMODE=require` is for disposable fixtures.
 - Use isolated, disposable warehouses/accounts and state. Register cleanup before mutations and verify restoration;
   never use production warehouses or existing directory memberships as fixtures.
+- Isolated tests opt into `t.Parallel()`; run acceptance with `-parallel=8`. Test provider servers and SQL fixture/drift
+  helpers share a per-warehouse mutation gate: catalog writes are exclusive; reads and independent lifecycles overlap.
+  Shared-fixture and warehouse-setting tests stay sequential and finish before queued parallel tests start.
+  Keep lifecycle steps ordered; parallelize subtests only when their objects are independent, including in shared
+  Glue databases.
 - Remove zero-ETL integrations before destination databases, and consumer associations before producer shares/warehouses.
   Large-table tests can load about 1 GiB; model metadata tests do not invoke Bedrock or train models.
 
@@ -238,7 +244,7 @@ TF_ACC=1 \
 REDSHIFT_ACC_REGION=eu-central-1 \
 REDSHIFT_ACC_WORKGROUP=test-workgroup \
 REDSHIFT_ACC_DATABASE=master \
-go test ./internal/provider -run '^TestAccLocalSQLLifecycle$' -count=1 -v -timeout=0
+go test ./internal/provider -run '^TestAccLocalSQLLifecycle$' -count=1 -parallel=8 -v -timeout=0
 ```
 
 Run from the module directory with disposable test-account credentials. Without `TF_ACC=1`, live tests skip.
@@ -253,8 +259,9 @@ Other useful tests:
 - `TestAccDirectIAMQueries`, `TestAccTransportSwitchLifecycle`, and `TestAccDirectPasswordPrivileges` cover direct TLS,
   transport changes, imports, and restricted password identities. Set `REDSHIFT_ACC_DIRECT=1` and ensure endpoint access.
 
-Select one with `go test ./internal/provider -run '^<test-name>$' -count=1 -v -timeout=0`. Cross-account sharing and
-Identity Center need external prerequisites. Set `REDSHIFT_ACC_CA_CERT_FILE` to an Amazon Trust Services PEM bundle if
+Select one with `go test ./internal/provider -run '^<test-name>$' -count=1 -parallel=8 -v -timeout=0`.
+Cross-account sharing and Identity Center need external prerequisites.
+Set `REDSHIFT_ACC_CA_CERT_FILE` to an Amazon Trust Services PEM bundle if
 the platform rejects the Serverless certificate; certificate-chain and hostname verification remain enabled.
 
 Open enhancements, test limitations, and external acceptance prerequisites are tracked in [TODO.md](TODO.md).

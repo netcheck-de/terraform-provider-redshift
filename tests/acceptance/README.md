@@ -38,8 +38,17 @@ The workflow lifecycle is:
 
 1. Terraform applies the independent AWS and SQL acceptance fixtures in `infra/`.
 2. AWS Data API statement resources create/elevate the assumed role's IAM SQL identity and revoke PUBLIC ASSUMEROLE.
+   Before elevation, a random MD5 password hash enables the identity without a known plaintext password: Redshift
+   forbids password-disabled superusers. The hash/statement remain in protected Terraform state and statement history;
+   the test harness continues authenticating with IAM, not that password.
    There are no acceptance preparation scripts or generated AWS profiles.
-3. One Go test invocation runs Serverless and cluster acceptance, with each warehouse's own secret.
+3. One Go test invocation runs Serverless and cluster acceptance, with each warehouse's own secret and `-parallel=8`.
+   Tests owning isolated databases/schemas and read-only probes opt into `t.Parallel()`; lifecycle steps remain ordered.
+   Provider servers and fixture/drift helpers share a per-warehouse write gate: catalog writes remain exclusive, while
+   reads, planning, and independent test lifecycles overlap. Shared-fixture and warehouse-setting tests stay serial.
+   Go completes sequential tests (including cleanup) before running queued parallel tests; the groups never overlap.
+   Apply steps already check empty plans with and without refresh. Explicit plans remain for changed configuration,
+   import adoption, drift, and other distinct assertions—not to repeat that automatic check.
 4. Terraform destroys SQL prerequisites before their dependent AWS infrastructure, including after failures.
 
 The fixture pins Registry provider `netcheck-de/redshift` to **0.4.0** for SQL schemas, tables, sharing and COPY JOB
@@ -123,7 +132,8 @@ organization policies must allow those operations. CI does not change organizati
 
 DynamoDB PITR, exports and Redshift replication can incur charges even for a small fixture. Integration activation and
 deletion add asynchronous waits; cleanup waits at most five minutes before reporting failure and attempting the ordinary
-destroy. All provisioning, probes, postconditions and cleanup still use the initial one-hour AWS session.
+destroy. Provisioning, probes, postconditions, the no-change plan, and cleanup must all finish within the initial
+one-hour AWS session; CI does not renew credentials between phases.
 The Aurora alternative (`zero_etl_create_source`) stays disabled: it adds another paid database and about 20 minutes to
 apply, leaving less cleanup time. Existing-source zero-ETL is not used.
 
@@ -159,8 +169,9 @@ permissions are needed only for the example.
 Both warehouses allow public SQL only from the runner's `/32`; the VPC module owns the routed Redshift subnets and
 provisioned-cluster subnet group. There are no NAT gateways. The cluster, Serverless queries, S3 and Lambda can incur
 charges on every main-branch acceptance run as well as on releases; DynamoDB PITR/exports are example-only costs.
-Provisioning can overlap, but the single Go test invocation does not make individual tests parallel. All tests share
-the initial one-hour credentials.
+Provisioning can overlap, and isolated tests run at most eight at a time. Keep `-parallel=8` on local acceptance commands
+too; the Go default follows the machine's CPU count and can overload the shared warehouse. Provisioning, testing, and
+cleanup must all finish within the initial one-hour AWS session; CI does not renew credentials between phases.
 
 Protect `main` and release-tag creation so only maintainers can initiate deployments. The existing `dev` deployment
 rules must allow `main` and `v*` tags. The role's OIDC trust must restrict access to this repository's `dev` environment:

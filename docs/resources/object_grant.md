@@ -242,6 +242,10 @@ privilege itself stays. Groups, roles, and `PUBLIC` cannot hold grant options.
 
 Deleting the resource revokes the privileges it owns; see [Reconciliation](#reconciliation) for changes.
 
+An `ALL ...` snapshot requires at least one existing member; an empty snapshot is treated as missing. When creating
+its member objects in the same apply, use explicit Terraform dependencies to establish the initial members before
+the grant. A snapshot covers current objects, not an enduring permission on future objects.
+
 The resource checks object and grantee existence. Databases, schemas, tables, and templates are read with
 `SHOW GRANTS ON` the object, routines with `SVV_FUNCTION_PRIVILEGES`, models with `SVV_ML_MODEL_PRIVILEGES`, and
 snapshots with `SVV_RELATION_PRIVILEGES` or `SVV_FUNCTION_PRIVILEGES`, all in the object's local database. Scoped,

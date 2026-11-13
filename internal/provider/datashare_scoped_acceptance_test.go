@@ -9,7 +9,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -20,13 +19,15 @@ import (
 
 // TestAccDatashareScopedGrants checks current/future objects, replacement, imports, drift, and cleanup in isolated state.
 func TestAccDatashareScopedGrants(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_scoped_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	connection := sqlclient.Connection{Database: name}
 
 	t.Cleanup(func() {
@@ -97,7 +98,7 @@ data "redshift_grants" "share" {
 	}
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: base, Check: func(*terraform.State) error {
 				execute("CREATE TABLE serving.existing (id INTEGER)")

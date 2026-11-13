@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftserverless"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -25,6 +24,8 @@ import (
 // TestAccPermissionsLifecycle verifies column, language, and system grants, their lookups and listings, imports, drift
 // repair, and revocation on destroy against a disposable database.
 func TestAccPermissionsLifecycle(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	name := "acc_permissions_" + suffix
@@ -126,7 +127,7 @@ data "redshift_system_grants" "role" {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// A failed test may leave the fixture database behind; dropping it removes its tables and grants.
 	t.Cleanup(func() {
@@ -145,7 +146,7 @@ data "redshift_system_grants" "role" {
 	}
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(false)},
 			{Config: configuration(true), PreConfig: func() {
@@ -165,7 +166,6 @@ data "redshift_system_grants" "role" {
 				resource.TestCheckResourceAttr("data.redshift_system_grants.role", "system_grants.#", "1"),
 				resource.TestCheckTypeSetElemAttr("data.redshift_system_grants.role", "system_grants.0.privileges.*", "EXPLAIN RLS"),
 			)},
-			{Config: configuration(true), PlanOnly: true},
 			{ResourceName: "redshift_column_grant.role", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_column_grant.group_view", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_language_grant.role", ImportState: true, ImportStateVerify: true},
@@ -175,7 +175,6 @@ data "redshift_system_grants" "role" {
 				exec(fmt.Sprintf(`GRANT SELECT (secret) ON TABLE serving.fixture_table TO ROLE %s`, sqlclient.Identifier("acc_readers_"+suffix)))
 			}},
 			{Config: configuration(true)},
-			{Config: configuration(true), PlanOnly: true},
 			{Config: configuration(false), Check: func(*terraform.State) error {
 				rows, err := client.Query(ctx, target, "SELECT column_name FROM svv_column_privileges WHERE relation_name IN ('fixture_table', 'fixture_view')", nil)
 				require.NoError(t, err)
@@ -196,6 +195,8 @@ data "redshift_system_grants" "role" {
 // which SVV_LANGUAGE_PRIVILEGES may not list, by creating procedures as a disposable non-superuser over a direct
 // connection before the revoke, after it, and after destroy.
 func TestAccLanguageGrantPublicDefault(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
@@ -210,7 +211,7 @@ func TestAccLanguageGrantPublicDefault(t *testing.T) {
 	require.NoError(t, err)
 
 	password := "Aa1" + hex.EncodeToString(secret)
-	admin := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+	admin := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	adminDB, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// Cleanups run last in first out: the database, with the probe's procedures, goes before its owner.
 	t.Cleanup(func() {
@@ -235,7 +236,7 @@ func TestAccLanguageGrantPublicDefault(t *testing.T) {
 	_, err = admin.Query(ctx, adminDB, sqlclient.Stmt("CREATE USER").Ident(userName).Kw("PASSWORD").Lit(password).Kw("NOCREATEDB NOCREATEUSER").String(), nil)
 	require.NoError(t, err)
 
-	probe := &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: routing.Host, Port: routing.Port, Username: userName, Password: password}, CACertFile: testAccCACertFile(), SSLMode: testAccSSLMode(), Timeout: 30 * time.Second}
+	probe := testAccCatalogClient("workgroup_name/"+workgroup, &redshiftconn.Client{Credentials: redshiftconn.Credentials{Host: routing.Host, Port: routing.Port, Username: userName, Password: password}, CACertFile: testAccCACertFile(), SSLMode: testAccSSLMode(), Timeout: 30 * time.Second})
 	// Every user may create in the public schema by default, so only language USAGE decides the outcome.
 	createProcedure := func(procedure string) error {
 		_, err := probe.Query(ctx, target, "CREATE PROCEDURE public."+procedure+"() AS $$ BEGIN RAISE INFO 'probe'; END; $$ LANGUAGE plpgsql", nil)
@@ -271,7 +272,7 @@ resource "redshift_language_grant" "public_sql" {
 }`
 	}
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(false), Check: func(*terraform.State) error {
 				rows, err := admin.Query(ctx, target, "SELECT language_name FROM svv_language_privileges WHERE identity_type = 'public'", nil)
@@ -285,7 +286,6 @@ resource "redshift_language_grant" "public_sql" {
 				require.ErrorContains(t, createProcedure("sp_acc_restricted"), "permission denied", "the PUBLIC tuple revoked the default")
 				return nil
 			}},
-			{Config: configuration(true), PlanOnly: true},
 			{Config: configuration(false), Check: func(*terraform.State) error {
 				require.ErrorContains(t, createProcedure("sp_acc_destroyed"), "permission denied", "destroy does not restore the default")
 				return nil

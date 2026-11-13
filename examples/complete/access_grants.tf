@@ -97,13 +97,18 @@ resource "redshift_system_grant" "operators" {
   privileges = ["CREATE ROLE"]
 }
 
+locals {
+  reader_assumerole_enabled = var.enable_assumerole_grant || local.bedrock_enabled
+}
+
 resource "redshift_assumerole_grant" "reader" {
   provider     = redshift.consumer
-  count        = var.enable_assumerole_grant ? 1 : 0
+  count        = local.reader_assumerole_enabled ? 1 : 0
   iam_role_arn = "DEFAULT"
   grantee      = redshift_role.readers.name
   grantee_type = "ROLE"
-  privileges   = ["COPY", "UNLOAD"]
+  # Model EXECUTE alone is insufficient: invoking Bedrock also requires EXTERNAL FUNCTION on its IAM role.
+  privileges = concat(var.enable_assumerole_grant ? ["COPY", "UNLOAD"] : [], local.bedrock_enabled ? ["EXTERNAL FUNCTION"] : [])
 
   depends_on = [aws_redshiftdata_statement.assumerole_policy]
 }
@@ -230,13 +235,13 @@ data "redshift_system_grant" "operators" {
 
 data "redshift_assumerole_grant" "reader" {
   provider     = redshift.consumer
-  iam_role_arn = var.enable_assumerole_grant ? redshift_assumerole_grant.reader[0].iam_role_arn : "DEFAULT"
-  grantee      = var.enable_assumerole_grant ? redshift_assumerole_grant.reader[0].grantee : redshift_role.readers.name
+  iam_role_arn = local.reader_assumerole_enabled ? redshift_assumerole_grant.reader[0].iam_role_arn : "DEFAULT"
+  grantee      = local.reader_assumerole_enabled ? redshift_assumerole_grant.reader[0].grantee : redshift_role.readers.name
   grantee_type = "ROLE"
 
   lifecycle {
     postcondition {
-      condition     = var.enable_assumerole_grant ? self.privileges == redshift_assumerole_grant.reader[0].privileges : true
+      condition     = local.reader_assumerole_enabled ? self.privileges == redshift_assumerole_grant.reader[0].privileges : true
       error_message = "The readers role must hold exactly the managed commands for the default IAM role."
     }
   }

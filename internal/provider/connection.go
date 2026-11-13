@@ -2,7 +2,9 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/ratelimit"
@@ -10,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshift"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
+	redshiftdatatypes "github.com/aws/aws-sdk-go-v2/service/redshiftdata/types"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftserverless"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/redshiftconn"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata"
@@ -58,6 +61,18 @@ func findDatashareARN(ctx context.Context, api redshift.DescribeDataSharesAPICli
 // ThrottlingException is already a throttle code in the standard retryer; listing it keeps it retryable regardless.
 var dataAPIRetryableCodes = []string{"ThrottlingException", "ActiveStatementsExceededException"}
 
+// dataAPIThrottle recognizes a credential-service throttle wrapped by the Data API as ValidationException.
+// This explicit downstream refusal happens before SQL submission; unrelated validation errors remain terminal.
+func dataAPIThrottle(err error) aws.Ternary {
+	var validation *redshiftdatatypes.ValidationException
+	if errors.As(err, &validation) && strings.HasPrefix(aws.ToString(validation.Message),
+		"Service returned error code ThrottlingException (Service: RedshiftServerless, Status Code: 400,") {
+		return aws.TrueTernary
+	}
+
+	return aws.UnknownTernary
+}
+
 // awsConfig loads the AWS SDK configuration shared by every AWS client the provider builds.
 func (data providerModel) awsConfig(ctx context.Context) (aws.Config, error) {
 	var options []func(*config.LoadOptions) error
@@ -95,6 +110,9 @@ func (data providerModel) awsConfig(ctx context.Context) (aws.Config, error) {
 func newRetryer(mode aws.RetryMode, attempts int) aws.Retryer {
 	standard := func(options *retry.StandardOptions) {
 		options.RateLimiter = ratelimit.None
+		options.Retryables = append(options.Retryables, retry.IsErrorRetryableFunc(dataAPIThrottle))
+		options.Throttles = append(options.Throttles, retry.IsErrorThrottleFunc(dataAPIThrottle))
+
 		if attempts != 0 {
 			options.MaxAttempts = attempts
 		}
@@ -102,6 +120,7 @@ func newRetryer(mode aws.RetryMode, attempts int) aws.Retryer {
 	if mode == aws.RetryModeAdaptive {
 		return retry.NewAdaptiveMode(func(options *retry.AdaptiveModeOptions) {
 			options.StandardOptions = append(options.StandardOptions, standard)
+			options.Throttles = append(options.Throttles, retry.IsErrorThrottleFunc(dataAPIThrottle))
 		})
 	}
 

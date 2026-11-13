@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
@@ -17,6 +16,8 @@ import (
 
 // TestAccConfiguration reads an ordinary session parameter without changing warehouse-wide settings.
 func TestAccConfiguration(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	client := testAccRolesClient(t, region, workgroup)
 	statement, err := readConfigurationStatement("datestyle")
@@ -28,7 +29,7 @@ func TestAccConfiguration(t *testing.T) {
 	require.NotEmpty(t, wanted)
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{{
 			Config: configurationAcceptanceHCL(region, workgroup, database, "datestyle"),
 			Check: resource.ComposeAggregateTestCheckFunc(
@@ -96,7 +97,7 @@ func TestAccSystemConfigurationSessionValue(t *testing.T) {
 	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SYSTEM_SETTINGS")
 	configuration := configurationAcceptanceHCL(region, workgroup, database, "default_mv_auto_refresh_interval")
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration, Check: resource.TestCheckResourceAttr("data.redshift_configuration.current", "value", initial)},
 			{Config: configuration, PreConfig: func() {

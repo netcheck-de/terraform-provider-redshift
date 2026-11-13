@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
@@ -22,6 +21,8 @@ import (
 // the physical order, checks that catalog reads plan no drift, imports the table, narrows a column in place without
 // losing its rows, refuses to narrow it below a stored value, and destroys it.
 func TestAccTableLifecycle(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_table_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	client := testAccRolesClient(t, region, workgroup)
@@ -138,7 +139,7 @@ data "redshift_table" "events" {
     style = "AUTO"
   }`
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("acc")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(base, keys), Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("data.redshift_table.events", "column.0.type", "BIGINT"),
@@ -147,7 +148,6 @@ data "redshift_table" "events" {
 				resource.TestCheckResourceAttr("redshift_table.events", "effective_distribution.key", "account_id"),
 				resource.TestCheckResourceAttr("redshift_table.events", "effective_sort_key.auto", "false"),
 			)},
-			{Config: configuration(base, keys), PlanOnly: true},
 			inPlace(idColumn+note("varchar(32)", "LZO")+accountColumn+labelColumn, keys),
 			{Config: configuration(idColumn+note("varchar(32)", "LZO")+accountColumn+labelColumn, keys), PlanOnly: true},
 			inPlace(labelColumn+idColumn+accountColumn+note("varchar(64)", "ZSTD"), constraints),

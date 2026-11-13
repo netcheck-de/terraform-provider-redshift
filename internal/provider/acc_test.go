@@ -6,8 +6,37 @@ import (
 	"strings"
 	"testing"
 
+	frameworkprovider "github.com/hashicorp/terraform-plugin-framework/provider"
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/stretchr/testify/require"
 )
+
+// testAccProviderFactories gives every test connection a distinct in-process server and every command a fresh provider.
+// The reattach harness shares one server across aliases of the same provider address, so tests using multiple warehouse
+// or database configurations register separate local provider names instead of aliases.
+func testAccProviderFactories(names ...string) map[string]func() (tfprotov6.ProviderServer, error) {
+	return testProviderFactories(func() frameworkprovider.Provider {
+		return &testAccProvider{redshiftProvider: New("test")().(*redshiftProvider)}
+	}, names...)
+}
+
+// testAccProviderServer constructs a fresh server for single-connection acceptance cases using the same write gate.
+func testAccProviderServer() (tfprotov6.ProviderServer, error) {
+	return providerserver.NewProtocol6WithError(&testAccProvider{redshiftProvider: New("test")().(*redshiftProvider)})()
+}
+
+// testProviderFactories also accepts offline provider factories so connection routing can be checked without AWS.
+func testProviderFactories(factory func() frameworkprovider.Provider, names ...string) map[string]func() (tfprotov6.ProviderServer, error) {
+	factories := make(map[string]func() (tfprotov6.ProviderServer, error), len(names))
+	for _, name := range names {
+		factories[name] = func() (tfprotov6.ProviderServer, error) {
+			return providerserver.NewProtocol6WithError(factory())()
+		}
+	}
+
+	return factories
+}
 
 // testAccPreCheck skips unless TF_ACC=1 and every feature flag selecting an optional fixture is set.
 func testAccPreCheck(t *testing.T, flags ...string) {

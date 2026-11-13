@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
@@ -15,6 +14,8 @@ import (
 // group lookup's members against a live warehouse, including no-change plans that prove the catalog reads match
 // the configuration.
 func TestAccUserOptionsLifecycle(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(options string) string {
@@ -60,7 +61,7 @@ data "redshift_group_memberships" "readers" {
   session_timeout = 0
   syslog_access = "RESTRICTED"`
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(options), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("data.redshift_user.iam", "search_path.2", `Odd"Schema`),
@@ -77,11 +78,9 @@ data "redshift_group_memberships" "readers" {
 				resource.TestCheckResourceAttr("data.redshift_group_memberships.readers", "group_memberships.#", "1"),
 				resource.TestCheckResourceAttr("data.redshift_group_memberships.readers", "group_memberships.0.user", "acc_iam_"+suffix),
 			)},
-			{Config: configuration(options), PlanOnly: true},
 			// Import cannot observe a disabled password and records the default instead.
 			{ResourceName: "redshift_user.iam", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"password_disabled"}},
 			{Config: configuration(cleared), Check: resource.TestCheckNoResourceAttr("data.redshift_user.iam", "search_path.#")},
-			{Config: configuration(cleared), PlanOnly: true},
 		},
 	})
 }

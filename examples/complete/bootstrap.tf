@@ -21,7 +21,7 @@ resource "aws_redshiftdata_statement" "source_seed" {
 # This is initialization of a newly owned disposable warehouse, not a per-role resource's hidden policy change.
 resource "aws_redshiftdata_statement" "assumerole_policy" {
   provider       = aws.consumer
-  count          = var.enable_assumerole_grant ? 1 : 0
+  count          = local.reader_assumerole_enabled ? 1 : 0
   workgroup_name = aws_redshiftserverless_workgroup.consumer.workgroup_name
   database       = aws_redshiftserverless_namespace.consumer.db_name
   secret_arn     = aws_redshiftserverless_namespace.consumer.admin_password_secret_arn

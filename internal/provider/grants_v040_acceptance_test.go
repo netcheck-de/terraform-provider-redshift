@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
@@ -32,6 +31,8 @@ func grantAcceptanceProvider(region, workgroup, database string) string {
 // TestAccGrantRestoreDefaults checks that removing lockdown resources grants the documented defaults back while the
 // isolated SQL database stays alive. Both languages and the connecting user's function defaults are observed afterward.
 func TestAccGrantRestoreDefaults(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_restore_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	base := grantAcceptanceProvider(region, workgroup, database) + fmt.Sprintf(`
@@ -84,13 +85,12 @@ data "redshift_default_privilege" "public" {
 }
 `
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: restricted, Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_language_grant.public_sql", "privileges.#", "0"),
 				resource.TestCheckResourceAttr("redshift_default_privilege.public", "privileges.#", "0"),
 			)},
-			{Config: restricted, PlanOnly: true},
 			{ResourceName: "redshift_default_privilege.public", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"restore_default_on_destroy"}},
 			{Config: base},
 			{Config: restored, Check: resource.ComposeAggregateTestCheckFunc(
@@ -159,7 +159,7 @@ data "redshift_object_grants" "table" {
 `, name, os.Getenv("REDSHIFT_ACC_SHARED_DATABASE"), os.Getenv("REDSHIFT_ACC_SHARED_SCHEMA"), os.Getenv("REDSHIFT_ACC_SHARED_TABLE"), privileges)
 	}
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(`"SELECT"`), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_object_grant.database", "privileges.#", "1"),
@@ -169,7 +169,6 @@ data "redshift_object_grants" "table" {
 				resource.TestCheckResourceAttr("data.redshift_object_grants.table", "object_grants.0.grantee", name),
 				resource.TestCheckTypeSetElemAttr("data.redshift_object_grants.table", "object_grants.0.privileges.*", "SELECT"),
 			)},
-			{Config: configuration(`"SELECT"`), PlanOnly: true},
 			{ResourceName: "redshift_object_grant.table", ImportState: true, ImportStateVerify: true},
 			{Config: configuration(``), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("data.redshift_object_grant.table", "privileges.#", "0"),

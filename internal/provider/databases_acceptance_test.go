@@ -10,7 +10,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -34,6 +33,8 @@ func externalSchemasCheck(shared, sourceSchema, owner string) resource.TestCheck
 // options, imports both, and checks that no drift remains. An external schema maps the connection database's public
 // schema by default; REDSHIFT_ACC_SHARED_DATABASE optionally selects an existing datashare consumer database instead.
 func TestAccDatabaseOptionsLifecycle(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	name, owner, successor := "acc_db_"+suffix, "acc_owner_"+suffix, "acc_successor_"+suffix
@@ -117,7 +118,7 @@ data "redshift_schemas" "local" {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	admin := sqlclient.Connection{Database: database}
 	// A failed test may leave the database behind; the schema inside it is dropped with it.
 	t.Cleanup(func() {
@@ -130,7 +131,7 @@ data "redshift_schemas" "local" {
 		}
 	})
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(10, "SNAPSHOT", 2048, "redshift_user.owner.name"), Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("data.redshift_database.local", "owner", owner),
@@ -154,7 +155,6 @@ data "redshift_schemas" "local" {
 				resource.TestCheckNoResourceAttr("data.redshift_external_schema.shared", "glue_database"),
 				resource.TestCheckNoResourceAttr("data.redshift_external_schema.shared", "iam_role_arn"),
 			)},
-			{Config: configuration(10, "SNAPSHOT", 2048, "redshift_user.owner.name"), PlanOnly: true},
 			{Config: configuration(-1, "SERIALIZABLE", -1, "redshift_user.successor.name"), Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_database.local", "connection_limit", "-1"),
 				resource.TestCheckResourceAttr("redshift_database.local", "isolation_level", "SERIALIZABLE"),

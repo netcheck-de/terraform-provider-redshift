@@ -868,7 +868,7 @@ func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteReques
 
 	found, err := r.read(ctx, &data)
 	if err == nil && found {
-		if err = r.exec(ctx, r.database.ValueString(), dropDatabaseStatement(data)); err != nil && state.Integration != nil {
+		if err = r.dropDatabase(ctx, data, state.Integration == nil); err != nil && state.Integration != nil {
 			// Redshift refuses DROP DATABASE, even with FORCE, while the integration is active, and Terraform destroys
 			// the destination before the integration it depends on, also under -target, so only the operator can fix
 			// the order.
@@ -884,7 +884,35 @@ func (r *databaseResource) Delete(ctx context.Context, req resource.DeleteReques
 	}
 
 	if err != nil {
-		resp.Diagnostics.AddError("Delete shared database", err.Error())
+		resp.Diagnostics.AddError("Delete database", err.Error())
+	}
+}
+
+// databaseBusyWait bounds retries of an explicitly refused DROP while short-lived catalog sessions disconnect.
+const databaseBusyWait = 30 * time.Second
+
+// dropDatabase retries only Redshift's definite active-session refusal, without terminating sessions or retrying an
+// uncertain mutation. Integration destinations retain their actionable first-failure diagnostic instead of waiting.
+func (r *databaseResource) dropDatabase(ctx context.Context, data databaseModel, retryBusy bool) error {
+	statement := dropDatabaseStatement(data)
+	busy := fmt.Sprintf("database \"%s\" is being accessed by other users", data.Name.ValueString())
+	deadline := time.Now().Add(databaseBusyWait)
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		err := r.exec(ctx, r.database.ValueString(), statement)
+		if err == nil || !retryBusy || errors.Is(err, sqlclient.ErrUnsettled) || !strings.Contains(err.Error(), busy) || !time.Now().Before(deadline) {
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			return errors.Join(err, ctx.Err())
+		case <-time.After(time.Second):
+		}
 	}
 }
 

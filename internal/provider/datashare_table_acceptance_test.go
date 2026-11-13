@@ -10,7 +10,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -22,13 +21,15 @@ import (
 // TestAccDatashareTable needs no second warehouse. Explicit membership never overlaps a bulk owner
 // or INCLUDENEW policy. Removing/replacing membership must preserve both source tables.
 func TestAccDatashareTable(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_member_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	admin := sqlclient.Connection{Database: database}
 	producer := sqlclient.Connection{Database: name}
 	query := func(connection sqlclient.Connection, statement sqlclient.Query) ([]sqlclient.Row, error) {
@@ -83,10 +84,10 @@ resource "redshift_schema" "local" {
   name = %q
 }
 resource "redshift_table" "source" {
-  for_each = toset(["events", "audit"])
+  count = 2
   database = redshift_schema.local.database
   schema = redshift_schema.local.name
-  name = each.key
+  name = ["events", "audit"][count.index]
   column {
     name = "id"
     type = "INTEGER"
@@ -115,11 +116,11 @@ data "redshift_datashare_schema" "missing" {
   schema = "absent"
 }
 data "redshift_datashare_table" "source" {
-  for_each = redshift_table.source
-  database = each.value.database
+  count = 2
+  database = redshift_table.source[count.index].database
   datashare = redshift_datashare.local.name
-  schema = each.value.schema
-  table = each.value.name
+  schema = redshift_table.source[count.index].schema
+  table = redshift_table.source[count.index].name
   depends_on = [%s]
 }
 data "redshift_datashare_tables" "tables" {
@@ -140,13 +141,18 @@ data "redshift_datashare_schemas" "missing" {
 }`, dependency, dependency)
 	}
 	membership := func(table string) string {
+		index := 0
+		if table == "audit" {
+			index = 1
+		}
+
 		return fmt.Sprintf(`
 resource "redshift_datashare_table" "local" {
   database = redshift_datashare_schema.local.database
   datashare = redshift_datashare_schema.local.datashare
   schema = redshift_datashare_schema.local.schema
-  table = redshift_table.source[%q].name
-}`, table)
+  table = redshift_table.source[%d].name
+}`, index)
 	}
 	check := func(table string, includeNew bool) resource.TestCheckFunc {
 		count := 0
@@ -164,8 +170,8 @@ resource "redshift_datashare_table" "local" {
 			resource.TestCheckResourceAttr("data.redshift_datashare_schemas.schemas", "datashare_schemas.0.schema", name),
 			resource.TestCheckResourceAttr("data.redshift_datashare_schemas.schemas", "datashare_schemas.0.include_new", strconv.FormatBool(includeNew)),
 		}
-		for _, source := range []string{"events", "audit"} {
-			checks = append(checks, resource.TestCheckResourceAttr(fmt.Sprintf("data.redshift_datashare_table.source[%q]", source), "exists", strconv.FormatBool(source == table)))
+		for index, source := range []string{"events", "audit"} {
+			checks = append(checks, resource.TestCheckResourceAttr(fmt.Sprintf("data.redshift_datashare_table.source.%d", index), "exists", strconv.FormatBool(source == table)))
 		}
 
 		if table != "" {
@@ -205,7 +211,7 @@ resource "redshift_datashare_table" "local" {
 	events := base + membership("events") + observations("redshift_datashare_table.local")
 	audit := base + membership("audit") + observations("redshift_datashare_table.local")
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		CheckDestroy: func(*terraform.State) error {
 			for _, statement := range []sqlclient.Query{databases, shares} {
 				rows, err := query(admin, statement)

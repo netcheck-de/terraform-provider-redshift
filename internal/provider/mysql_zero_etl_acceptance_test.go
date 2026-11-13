@@ -5,13 +5,14 @@ import (
 	"os"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 // The destination remains externally owned so the test cannot drop an active integration's database.
 func TestAccDatabaseIntegrationMySQLLookup(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_MYSQL_DATABASE", "REDSHIFT_ACC_MYSQL_INTEGRATION_ID", "REDSHIFT_ACC_SECRET_ARN")
 	configuration := fmt.Sprintf(`
 provider "redshift" {
@@ -26,7 +27,7 @@ data "redshift_database" "destination" {
 `, region, workgroup, database, os.Getenv("REDSHIFT_ACC_SECRET_ARN"), os.Getenv("REDSHIFT_ACC_MYSQL_DATABASE"))
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
-			"redshift": providerserver.NewProtocol6WithError(New("test")()),
+			"redshift": testAccProviderServer,
 		},
 		Steps: []resource.TestStep{{
 			Config: configuration,

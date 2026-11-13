@@ -9,7 +9,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -21,13 +20,15 @@ import (
 // TestAccDatashareMembership exercises both exclusive kinds against real catalog rows, including indistinguishable
 // overload names. All SQL objects belong to this test's unique database; the shared warehouse is never removed.
 func TestAccDatashareMembership(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_bulk_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	admin := sqlclient.Connection{Database: database}
 	producer := sqlclient.Connection{Database: name}
 	databases := sqlclient.Select("database_name").From("svv_redshift_databases").Where("database_name = :name", sqlclient.Bind("name", name))
@@ -218,7 +219,7 @@ data "redshift_datashare_memberships" "local" {
 	}
 	configuration := base + memberships
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		CheckDestroy: func(*terraform.State) error {
 			for _, statement := range []sqlclient.Query{databases, shares} {
 				rows, err := query(admin, statement)
@@ -255,7 +256,6 @@ data "redshift_datashare_memberships" "local" {
 				memberCounts(1, 1),
 			)},
 			{Config: configuration, Check: resource.ComposeTestCheckFunc(coverage("true"), memberCounts(2, 2))},
-			{Config: configuration, PlanOnly: true},
 			// Destroy just the exclusive owners first: their source SQL objects and schema membership must survive.
 			{Config: base, Check: resource.ComposeTestCheckFunc(memberCounts(0, 0),
 				resource.TestCheckResourceAttr("redshift_table.events", "name", "events"),

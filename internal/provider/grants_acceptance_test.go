@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
@@ -17,6 +16,8 @@ import (
 // reported until revoked. The scoped grant and default privilege listings report the same tuples. Every object is
 // uniquely named and dropped afterwards.
 func TestAccGrantsUserOptionsAndScopes(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(options string, publicExecute string) string {
@@ -96,7 +97,7 @@ data "redshift_default_privileges" "analyst" {
 `, region, workgroup, database, suffix, options, publicExecute)
 	}
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(`"SELECT"`, `"EXECUTE"`), Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_grant.analyst_tables", "grant_option_privileges.#", "1"),
@@ -109,7 +110,6 @@ data "redshift_default_privileges" "analyst" {
 				resource.TestCheckTypeSetElemAttr("data.redshift_grants.analyst_schema", "grants.0.grant_option_privileges.*", "SELECT"),
 				resource.TestCheckTypeSetElemNestedAttrs("data.redshift_default_privileges.analyst", "default_privileges.*", map[string]string{"object_type": "FUNCTIONS", "grantee_type": "PUBLIC", "privileges.#": "1"}),
 			)},
-			{Config: configuration(`"SELECT"`, `"EXECUTE"`), PlanOnly: true},
 			{ResourceName: "redshift_grant.analyst_tables", ImportState: true, ImportStateVerify: true},
 			{ResourceName: "redshift_grant.copy_jobs", ImportState: true, ImportStateVerify: true},
 			{Config: configuration(``, ``), Check: resource.ComposeAggregateTestCheckFunc(
@@ -118,7 +118,6 @@ data "redshift_default_privileges" "analyst" {
 				resource.TestCheckResourceAttr("data.redshift_grants.analyst_schema", "grants.0.grant_option_privileges.#", "0"),
 				resource.TestCheckResourceAttr("data.redshift_default_privileges.analyst", "default_privileges.#", "0"),
 			)},
-			{Config: configuration(``, ``), PlanOnly: true},
 		},
 	})
 }
@@ -126,6 +125,8 @@ data "redshift_default_privileges" "analyst" {
 // TestAccObjectGrantRoutinesAndSnapshots grants EXECUTE on one function overload and SELECT on all tables of a
 // schema. The routines and source table belong to this test, not an externally provisioned SQL fixture.
 func TestAccObjectGrantRoutinesAndSnapshots(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := fmt.Sprintf(`
@@ -180,10 +181,9 @@ resource "redshift_object_grant" "tables" {
 }
 `, region, workgroup, database, suffix)
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration, Check: resource.TestCheckResourceAttr("redshift_object_grant.function", "grant_option_privileges.#", "1")},
-			{Config: configuration, PlanOnly: true},
 			{ResourceName: "redshift_object_grant.function", ImportState: true, ImportStateVerify: true},
 		},
 	})
@@ -192,6 +192,8 @@ resource "redshift_object_grant" "tables" {
 // TestAccAssumeroleGrantAllRoles checks that ON ALL grants read back through the default role's catalog entry, which
 // the listing reports as ALL. It requires a warehouse whose PUBLIC ASSUMEROLE default is already revoked.
 func TestAccAssumeroleGrantAllRoles(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_ASSUMEROLE")
 	name := "acc_iam_all_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := fmt.Sprintf(`
@@ -218,7 +220,7 @@ data "redshift_assumerole_grants" "wrong_type" {
 }
 `, region, workgroup, database, name)
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration, Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_assumerole_grant.all", "privileges.#", "2"),
@@ -228,7 +230,6 @@ data "redshift_assumerole_grants" "wrong_type" {
 				resource.TestCheckResourceAttr("data.redshift_assumerole_grants.all", "assumerole_grants.0.grantee_type", "ROLE"),
 				resource.TestCheckResourceAttr("data.redshift_assumerole_grants.all", "assumerole_grants.0.privileges.#", "2"),
 			)},
-			{Config: configuration, PlanOnly: true},
 		},
 	})
 }

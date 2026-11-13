@@ -10,7 +10,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata"
@@ -23,13 +22,15 @@ import (
 // Formation account, a VIA DATA CATALOG grant. Everything lives in an isolated database that the cleanup removes
 // without cascading.
 func TestAccDatasharing(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_sharing_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	execute := func(target, sql string) error {
 		_, err := client.Query(ctx, sqlclient.Connection{Database: target}, sql, nil)
 		return err
@@ -139,7 +140,7 @@ data "redshift_datashare_grants" "share" {
 	}
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration, Check: resource.ComposeAggregateTestCheckFunc(
 				resource.ComposeAggregateTestCheckFunc(checks...),

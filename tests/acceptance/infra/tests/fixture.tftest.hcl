@@ -32,6 +32,11 @@ mock_provider "aws" {
   }
 }
 mock_provider "archive" {}
+mock_provider "random" {
+  mock_resource "random_id" {
+    defaults = { hex = "0123456789abcdef0123456789abcdef" }
+  }
+}
 mock_provider "redshift" {}
 mock_provider "redshift" { alias = "producer" }
 
@@ -108,11 +113,14 @@ run "bootstrap_statements" {
     condition = (
       aws_redshiftdata_statement.iam_identity.secret_arn == null &&
       aws_redshiftdata_statement.iam_identity.sql == "SELECT current_user" &&
+      random_id.iam_password_hash.byte_length == 16 &&
+      nonsensitive(aws_redshiftdata_statement.iam_password.sql) == "ALTER USER \"IAMR:redshift-ci\" PASSWORD 'md50123456789abcdef0123456789abcdef'" &&
+      aws_redshiftdata_statement.iam_password.secret_arn == aws_redshiftserverless_namespace.this.admin_password_secret_arn &&
       aws_redshiftdata_statement.iam_superuser.sql == "ALTER USER \"IAMR:redshift-ci\" CREATEUSER" &&
       aws_redshiftdata_statement.iam_superuser.secret_arn == aws_redshiftserverless_namespace.this.admin_password_secret_arn &&
       aws_redshiftdata_statement.public_assumerole.sql == "REVOKE ASSUMEROLE ON ALL FROM PUBLIC FOR ALL"
     )
-    error_message = "Terraform must create the IAM SQL identity before elevation and revoke PUBLIC's engine-wide default."
+    error_message = "Terraform must enable an unknown password for the IAM SQL identity before elevation and revoke PUBLIC's engine-wide default."
   }
 }
 

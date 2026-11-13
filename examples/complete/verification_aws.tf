@@ -79,6 +79,8 @@ data "aws_subnet" "verify_consumer" {
 
 # Select by subnet to verify the effective association, not merely a route table that should have been attached.
 # Wait for endpoint routes and all route-table associations; no additional network resources depend on these reads.
+# The AWS route-table data source omits local and gateway-endpoint routes. Verify S3 attachment through the endpoint
+# readback, and require every visible custom route to be the explicitly enabled internet default.
 data "aws_route_table" "verify_producer" {
   provider  = aws.producer
   for_each  = { for i in range(3) : tostring(i) => i }
@@ -90,10 +92,9 @@ data "aws_route_table" "verify_producer" {
     postcondition {
       condition = (
         self.vpc_id == module.producer_vpc.vpc_id &&
-        anytrue([for route in self.routes : route.destination_prefix_list_id == module.producer_endpoints.endpoints["s3"].prefix_list_id && route.gateway_id == module.producer_endpoints.endpoints["s3"].id]) &&
+        contains(data.aws_vpc_endpoint.verify_producer["s3"].route_table_ids, self.id) &&
+        anytrue([for association in self.associations : association.subnet_id == local.producer_subnet_ids[each.value] && association.route_table_id == self.id]) &&
         alltrue([for route in self.routes :
-          (route.cidr_block == var.producer_vpc_cidr && route.gateway_id == "local") ||
-          (route.destination_prefix_list_id == module.producer_endpoints.endpoints["s3"].prefix_list_id && route.gateway_id == module.producer_endpoints.endpoints["s3"].id) ||
           (var.allow_public_sql && route.cidr_block == "0.0.0.0/0" && route.gateway_id == module.producer_vpc.igw_id)
         ]) &&
         (var.allow_public_sql ? (
@@ -102,7 +103,7 @@ data "aws_route_table" "verify_producer" {
           alltrue([for route in self.routes : route.cidr_block != "0.0.0.0/0" && route.ipv6_cidr_block != "::/0"])
         ))
       )
-      error_message = "Effective producer subnet routes must contain only local/S3 routes and, in public SQL mode, the intended internet default route."
+      error_message = "The effective producer subnet route table must attach to the S3 endpoint and contain no visible custom route except the explicitly enabled internet default."
     }
   }
 }
@@ -118,10 +119,9 @@ data "aws_route_table" "verify_consumer" {
     postcondition {
       condition = (
         self.vpc_id == module.consumer_vpc.vpc_id &&
-        anytrue([for route in self.routes : route.destination_prefix_list_id == module.consumer_endpoints.endpoints["s3"].prefix_list_id && route.gateway_id == module.consumer_endpoints.endpoints["s3"].id]) &&
+        contains(data.aws_vpc_endpoint.verify_consumer["s3"].route_table_ids, self.id) &&
+        anytrue([for association in self.associations : association.subnet_id == local.consumer_subnet_ids[each.value] && association.route_table_id == self.id]) &&
         alltrue([for route in self.routes :
-          (route.cidr_block == var.consumer_vpc_cidr && route.gateway_id == "local") ||
-          (route.destination_prefix_list_id == module.consumer_endpoints.endpoints["s3"].prefix_list_id && route.gateway_id == module.consumer_endpoints.endpoints["s3"].id) ||
           (var.allow_public_sql && route.cidr_block == "0.0.0.0/0" && route.gateway_id == module.consumer_vpc.igw_id)
         ]) &&
         (var.allow_public_sql ? (
@@ -130,7 +130,7 @@ data "aws_route_table" "verify_consumer" {
           alltrue([for route in self.routes : route.cidr_block != "0.0.0.0/0" && route.ipv6_cidr_block != "::/0"])
         ))
       )
-      error_message = "Effective consumer subnet routes must contain only local/S3 routes and, in public SQL mode, the intended internet default route."
+      error_message = "The effective consumer subnet route table must attach to the S3 endpoint and contain no visible custom route except the explicitly enabled internet default."
     }
   }
 }
@@ -438,12 +438,12 @@ data "aws_iam_role_policies" "verify_consumer" {
   provider  = aws.consumer
   role_name = aws_iam_role.consumer.name
 
-  depends_on = [aws_iam_role_policy.consumer_fixture, aws_iam_role_policy.consumer_lambda_udf, aws_iam_role_policy.identity_center]
+  depends_on = [aws_iam_role_policy.consumer_fixture, aws_iam_role_policy.consumer_lambda_udf, aws_iam_role_policy.identity_center, aws_iam_role_policy.consumer_bedrock]
 
   lifecycle {
     postcondition {
-      condition     = self.policy_names == toset(concat(["fixture", "lambda-udf"], local.sso_enabled ? ["identity-center"] : []))
-      error_message = "The consumer role must have exactly its fixture/UDF policies and, when enabled, the Identity Center policy attached."
+      condition     = self.policy_names == toset(concat(["fixture", "lambda-udf"], local.sso_enabled ? ["identity-center"] : [], local.bedrock_enabled ? ["bedrock-model"] : []))
+      error_message = "The consumer role must have exactly its fixture/UDF policies and the enabled Identity Center and Bedrock policies attached."
     }
   }
 }

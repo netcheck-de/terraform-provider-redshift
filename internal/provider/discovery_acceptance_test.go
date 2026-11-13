@@ -10,9 +10,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/require"
@@ -22,6 +22,8 @@ import (
 // the offline fakes can only approximate: owners, table, view, and materialized view classification, nullability
 // spelling, and pg_get_constraintdef output.
 func TestAccDiscoveryListings(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_discovery_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(text string, enabled bool) string {
@@ -99,7 +101,7 @@ data "redshift_comments" "keys" {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// Quoted identifiers still fold unless the warehouse enables case-sensitive identifiers.
 	show, err := readConfigurationStatement("enable_case_sensitive_identifier")
@@ -130,9 +132,43 @@ data "redshift_comments" "keys" {
 		`CREATE VIEW public.order_labels AS SELECT id, label FROM public.orders`,
 		`CREATE MATERIALIZED VIEW public.order_totals AS SELECT COUNT(*) AS total FROM public.orders`,
 	}
+	// SVV_REDSHIFT_TABLES can legitimately omit table_owner. Compare the actual catalog, including nulls,
+	// rather than requiring an optional observation that this warehouse does not provide.
+	tableOwners := func(state *terraform.State) error {
+		query, parameters, err := sqlclient.Select("table_name", "table_owner").From("svv_redshift_tables").
+			Where("database_name = :database", sqlclient.Bind("database", name)).
+			Where("schema_name = 'public'").Where("table_name IN ('order_lines', 'orders')").OrderBy("table_name").Build()
+		if err != nil {
+			return err
+		}
+
+		rows, err := client.Query(ctx, admin, query, parameters)
+		if err != nil {
+			return err
+		}
+
+		if len(rows) != 2 {
+			return fmt.Errorf("expected both source tables in the raw catalog, got %v", rows)
+		}
+
+		for index, row := range rows {
+			attribute := fmt.Sprintf("tables.%d.owner", index)
+
+			check := resource.TestCheckNoResourceAttr("data.redshift_tables.acc", attribute)
+			if owner := row["table_owner"]; owner != "" {
+				check = resource.TestCheckResourceAttr("data.redshift_tables.acc", attribute, owner)
+			}
+
+			if err := check(state); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration("", false)},
 			{
@@ -152,7 +188,7 @@ data "redshift_comments" "keys" {
 					resource.TestCheckResourceAttr("data.redshift_tables.acc", "tables.#", "2"),
 					resource.TestCheckResourceAttr("data.redshift_tables.acc", "tables.0.name", "order_lines"),
 					resource.TestCheckResourceAttr("data.redshift_tables.acc", "tables.1.name", "orders"),
-					resource.TestCheckResourceAttrSet("data.redshift_tables.acc", "tables.1.owner"),
+					tableOwners,
 					resource.TestCheckResourceAttr("data.redshift_views.acc", "views.#", "1"),
 					resource.TestCheckResourceAttr("data.redshift_views.acc", "views.0.name", "order_labels"),
 					resource.TestCheckResourceAttr("data.redshift_views.acc", "views.0.late_binding", "false"),
@@ -186,7 +222,6 @@ data "redshift_comments" "keys" {
 					resource.TestCheckNoResourceAttr("data.redshift_comments.keys", "comments.0.column_name"),
 				),
 			},
-			{Config: configuration("O'Reilly key", true), PlanOnly: true},
 			{ResourceName: "redshift_comment.key", ImportState: true, ImportStateVerify: true},
 			{
 				Config: configuration("O'Reilly key", true), PlanOnly: true, ExpectNonEmptyPlan: true,

@@ -20,6 +20,17 @@ resource "aws_redshiftdata_statement" "verify_spectrum" {
   depends_on = [aws_glue_catalog_table.fixture, aws_s3_object.fixture]
 }
 
+# SHOW MODEL omits the default response type on some engines. Check every generated inference overload's actual
+# catalog return type instead of inferring VARCHAR from a missing setting; this does not invoke Bedrock.
+resource "aws_redshiftdata_statement" "verify_model_response" {
+  provider       = aws.consumer
+  count          = local.bedrock_enabled ? 1 : 0
+  workgroup_name = aws_redshiftserverless_workgroup.consumer.workgroup_name
+  database       = redshift_external_model.summarizer[0].database
+  secret_arn     = aws_redshiftserverless_namespace.consumer.admin_password_secret_arn
+  sql            = "SELECT 1 / CASE WHEN COUNT(*) > 0 AND COUNT(CASE WHEN format_type(p.prorettype, NULL) = 'character varying' THEN 1 END) = COUNT(*) THEN 1 ELSE 0 END AS verified_model_response FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = '${redshift_external_model.summarizer[0].schema}' AND p.proname = '${redshift_external_model.summarizer[0].function}'"
+}
+
 # Policy SELECT grants have no catalog readback. Seed disposable owned tables, then evaluate each policy as the reader
 # rather than claiming that an attachment's existence proves the policy can access its lookup table.
 resource "aws_redshiftdata_statement" "rls_regions" {

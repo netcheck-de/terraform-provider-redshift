@@ -33,7 +33,7 @@ data "redshift_databases" "example" {
   database_type = "local"
   name_like     = "example_%"
 
-  depends_on = [redshift_database.local]
+  depends_on = [redshift_database.local, redshift_database.zero_etl]
 
   lifecycle {
     postcondition {

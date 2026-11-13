@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -49,7 +48,7 @@ resource "redshift_grant" "fixture" {
 `, region, workgroup, database, secret, prefix, shared)
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
-			"redshift": providerserver.NewProtocol6WithError(New("test")()),
+			"redshift": testAccProviderServer,
 		},
 		Steps: []resource.TestStep{
 			{Config: configuration, Check: func(state *terraform.State) error {
@@ -73,7 +72,6 @@ resource "redshift_grant" "fixture" {
 
 				return nil
 			}},
-			{Config: configuration, PlanOnly: true},
 		},
 	})
 }

@@ -49,7 +49,7 @@ func TestAcceptanceCredentials(t *testing.T) {
 			p.Configure(context.Background(), framework.ConfigureRequest{Config: providerConfig(t, p, types.StringValue("eu-central-1"))}, &response)
 			require.False(t, response.Diagnostics.HasError(), "%v", response.Diagnostics)
 
-			for _, client := range []*dataapi.Client{testAccRolesClient(t, "eu-central-1", "fixture").(*dataapi.Client), p.client.(*dataapi.Client)} {
+			for _, client := range []*dataapi.Client{testAccRawDataClient(t, "eu-central-1", "fixture"), p.client.(*dataapi.Client)} {
 				identity, err := client.API.(*redshiftdata.Client).Options().Credentials.Retrieve(context.Background())
 				require.NoError(t, err)
 				require.Equal(t, test.want, identity.AccessKeyID)

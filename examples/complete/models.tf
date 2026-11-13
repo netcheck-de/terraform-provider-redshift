@@ -214,11 +214,11 @@ data "redshift_external_model" "summarizer" {
         self.function == redshift_external_model.summarizer[0].function &&
         self.model_id == var.bedrock_model_id &&
         self.prompt == redshift_external_model.summarizer[0].prompt &&
-        self.request_type == "UNIFIED" && self.response_type == "VARCHAR" &&
+        self.request_type == "UNIFIED" && (self.response_type == null || self.response_type == "VARCHAR") &&
         (upper(self.iam_role) == "DEFAULT" || self.iam_role == aws_iam_role.consumer.arn),
         false,
       )
-      error_message = "SHOW MODEL must report the configured inference function, Bedrock model, prompt, UNIFIED/VARCHAR formats, and the consumer namespace's default IAM role. This metadata check does not invoke Bedrock."
+      error_message = "SHOW MODEL must match the configured inference function, Bedrock model, prompt, UNIFIED request, any reported VARCHAR response, and default IAM role. The separate catalog statement verifies the generated functions' actual VARCHAR return type without invoking Bedrock."
     }
   }
 }

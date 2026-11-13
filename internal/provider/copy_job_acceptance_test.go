@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
 	redshifttypes "github.com/aws/aws-sdk-go-v2/service/redshiftdata/types"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -27,7 +26,7 @@ import (
 // set.
 func copyJobAcceptanceClient(t *testing.T, region, workgroup string) sqlclient.Client {
 	t.Helper()
-	client := testAccRolesClient(t, region, workgroup).(*dataapi.Client)
+	client := testAccRawDataClient(t, region, workgroup)
 	client.SecretARN = os.Getenv("REDSHIFT_ACC_SECRET_ARN")
 
 	return client
@@ -36,6 +35,8 @@ func copyJobAcceptanceClient(t *testing.T, region, workgroup string) sqlclient.C
 // TestAccCopyJobDatabaseScope confirms that SYS_COPY_JOB lists a job only in its own database, so the read query needs
 // no database filter.
 func TestAccCopyJobDatabaseScope(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, _ := testAccWorkgroup(t, "REDSHIFT_ACC_COPY_JOB_NAME", "REDSHIFT_ACC_COPY_JOB_DATABASE", "REDSHIFT_ACC_COPY_JOB_OTHER_DATABASE")
 	client := copyJobAcceptanceClient(t, region, workgroup)
 	job, database, other := os.Getenv("REDSHIFT_ACC_COPY_JOB_NAME"), os.Getenv("REDSHIFT_ACC_COPY_JOB_DATABASE"), os.Getenv("REDSHIFT_ACC_COPY_JOB_OTHER_DATABASE")
@@ -119,6 +120,8 @@ func TestAccCopyJobNonOwnerVisibility(t *testing.T) {
 
 // TestAccCopyCatalogDefinitionAvailability probes engine support even before an integrated COPY job exists.
 func TestAccCopyCatalogDefinitionAvailability(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	client := copyJobAcceptanceClient(t, region, workgroup)
 	query := sqlclient.Select("copy_query", "data_source", "table_id", "job_owner").From("sys_copy_job").Where("1 = 0")
@@ -131,6 +134,8 @@ func TestAccCopyCatalogDefinitionAvailability(t *testing.T) {
 
 // TestAccCopyJobDefinition uses an already integrated bucket and attached IAM role; it provisions no AWS fixtures.
 func TestAccCopyJobDefinition(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_COPY_SOURCE", "REDSHIFT_ACC_COPY_ROLE")
 	name := "acc_copy_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	source := strings.TrimRight(os.Getenv("REDSHIFT_ACC_COPY_SOURCE"), "/") + "/" + name + "/"
@@ -256,7 +261,7 @@ data "redshift_copy_jobs" "copy" {
 		}
 	}
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(source, true, false), Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("data.redshift_copy_job.copy", "source", source),
@@ -271,7 +276,6 @@ data "redshift_copy_jobs" "copy" {
 			{Config: configuration(moved, true, false), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
 				plancheck.ExpectResourceAction("redshift_copy_job.copy", plancheck.ResourceActionDestroyBeforeCreate),
 			}}},
-			{Config: configuration(moved, true, false), PlanOnly: true},
 			{Config: configuration(moved, false, false)},
 			{ResourceName: "redshift_copy_job.copy", ImportState: true, ImportStateVerify: true},
 			{Config: configuration(moved, false, false), PlanOnly: true},
@@ -279,7 +283,6 @@ data "redshift_copy_jobs" "copy" {
 				plancheck.ExpectResourceAction("redshift_copy_job.copy", plancheck.ResourceActionUpdate),
 			}}, Check: resource.ComposeAggregateTestCheckFunc(resource.TestCheckResourceAttr("data.redshift_copy_job.copy", "auto", "true"), checkListing(true))},
 			{Config: configuration(moved, false, false), Check: resource.ComposeAggregateTestCheckFunc(resource.TestCheckResourceAttr("data.redshift_copy_job.copy", "auto", "false"), checkListing(false))},
-			{Config: configuration(moved, false, false), PlanOnly: true},
 		},
 	})
 }

@@ -1,17 +1,55 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
 
+	frameworkprovider "github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/netcheck-de/terraform-provider-redshift/internal/sqlclient"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestContractIndependentProviderConnections checks that multi-connection acceptance fixtures retain each provider's
+// administration database, rather than letting the second configuration overwrite the first via the reattach server.
+func TestContractIndependentProviderConnections(t *testing.T) {
+	t.Parallel()
+
+	factory := func() frameworkprovider.Provider {
+		return &testAccProvider{redshiftProvider: &redshiftProvider{client: queryFunc(func(_ context.Context, connection sqlclient.Connection, _ string, _ map[string]string) ([]sqlclient.Row, error) {
+			return []sqlclient.Row{{"datestyle": connection.Database}}, nil
+		})}}
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProviderFactories(factory, "redshift", "redshiftother"),
+		Steps: []resource.TestStep{{Config: `
+provider "redshift" {
+  region = "eu-central-1"
+  workgroup_name = "warehouse"
+  database = "first"
+}
+provider "redshiftother" {
+  region = "eu-central-1"
+  workgroup_name = "other"
+  database = "second"
+}
+data "redshift_configuration" "first" { name = "datestyle" }
+data "redshift_configuration" "second" {
+  provider = redshiftother
+  name = "datestyle"
+}
+`, Check: resource.ComposeAggregateTestCheckFunc(
+			resource.TestCheckResourceAttr("data.redshift_configuration.first", "value", "first"),
+			resource.TestCheckResourceAttr("data.redshift_configuration.second", "value", "second"),
+		)}},
+	})
+}
 
 // testConfig composes the provider's SQL objects for offline Terraform lifecycle tests.
 func testConfig(privileges, iamRole string) string {

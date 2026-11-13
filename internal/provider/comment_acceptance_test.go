@@ -10,7 +10,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -23,6 +22,8 @@ import (
 
 // TestAccCommentLifecycle verifies all annotation kinds, imports, drift repair, and annotation-only deletion.
 func TestAccCommentLifecycle(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_comment_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(text string, enabled bool) string {
@@ -67,7 +68,7 @@ data "redshift_comment" %[1]q {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// A failed test may leave manual fixtures that block restrictive schema deletion.
 	t.Cleanup(func() {
@@ -88,7 +89,6 @@ data "redshift_comment" %[1]q {
 			_, err = client.Query(ctx, target, `CREATE VIEW serving.fixture_view AS SELECT id FROM serving.fixture_table`, nil)
 			require.NoError(t, err)
 		}},
-		{Config: configuration("O'Reilly initial", true), PlanOnly: true},
 	}
 	for _, kind := range []string{"DATABASE", "SCHEMA", "TABLE", "VIEW", "COLUMN"} {
 		steps = append(steps, resource.TestStep{ResourceName: "redshift_comment." + strings.ToLower(kind), ImportState: true, ImportStateVerify: true})
@@ -139,7 +139,7 @@ data "redshift_comment" %[1]q {
 		}},
 	)
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps:                    steps,
 	})
 }

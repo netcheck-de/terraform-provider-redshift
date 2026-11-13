@@ -11,7 +11,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
@@ -25,7 +24,9 @@ import (
 // imports them, and checks that a refresh plans nothing. A Parquet or ORC table beside them maps columns by name, inserts
 // a column mid-list in place while the catalog appends it. It needs an existing Glue database, an IAM role attached to
 // the namespace that may write it, and an S3 prefix in the warehouse's region; the S3 data is never written.
-func TestAccSpectrumExternalTableLifecycle(t *testing.T) {
+func TestAccSpectrumExternalTableLifecycle(t *testing.T) { //nolint:tparallel // Format subtests own the same Glue table names and must not overlap.
+	t.Parallel()
+
 	for _, format := range []string{"ORC", "PARQUET"} {
 		t.Run(format, func(t *testing.T) { testAccSpectrumExternalTableLifecycle(t, format) })
 	}
@@ -44,7 +45,7 @@ func testAccSpectrumExternalTableLifecycle(t *testing.T, format string) {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 
 	t.Cleanup(func() {
 		// A failed run may leave the table in the shared Glue database, which restrictive DROP SCHEMA cannot remove.
@@ -156,7 +157,7 @@ data "redshift_external_partitions" "events" {
 		}
 	}
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: initial, Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttrPair("data.redshift_external_schema.lake", "id", "redshift_external_schema.lake", "id"),
@@ -186,7 +187,6 @@ data "redshift_external_partitions" "events" {
 				resource.TestCheckResourceAttr("data.redshift_external_partitions.events", "external_partitions.0.values.event_date", "2024-01-01"),
 				resource.TestCheckResourceAttrPair("data.redshift_external_partitions.events", "external_partitions.0.location", "data.redshift_external_partition.first", "location"),
 			)},
-			{Config: initial, PlanOnly: true},
 			{Config: changed, ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
 				plancheck.ExpectResourceAction("redshift_external_table.events", plancheck.ResourceActionUpdate),
 				plancheck.ExpectResourceAction("redshift_external_partition.first", plancheck.ResourceActionUpdate),

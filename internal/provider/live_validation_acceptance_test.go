@@ -101,9 +101,13 @@ func (f liveValidationFixture) directUser(t *testing.T, name, password string) l
 // TestAccLiveValidationNotNullAdd confirms that Redshift refuses ADD COLUMN ... NOT NULL without a default even on an
 // empty table, which is why the provider replaces the table instead.
 func TestAccLiveValidationNotNullAdd(t *testing.T) {
+	t.Parallel()
+
 	f := newLiveValidationFixture(t)
 	for _, populated := range []bool{false, true} {
 		t.Run(strconv.FormatBool(populated), func(t *testing.T) {
+			t.Parallel()
+
 			name := "not_null_" + strconv.FormatBool(populated)
 			f.exec(t, sqlclient.Stmt("CREATE TABLE").Qualified(f.schema, name).Kw("(id INTEGER)"))
 
@@ -124,8 +128,12 @@ func TestAccLiveValidationNotNullAdd(t *testing.T) {
 // TestAccLiveValidationAutoKeyDetours checks that a key column kept by AUTO can be dropped by leaving AUTO, dropping
 // it, and returning, without losing rows, and that interleaved tables refuse the detour.
 func TestAccLiveValidationAutoKeyDetours(t *testing.T) {
+	t.Parallel()
+
 	f := newLiveValidationFixture(t)
 	t.Run("distribution", func(t *testing.T) {
+		t.Parallel()
+
 		large := os.Getenv("REDSHIFT_ACC_LARGE_TABLES") == "1"
 
 		var expectedRows int64
@@ -195,6 +203,8 @@ func TestAccLiveValidationAutoKeyDetours(t *testing.T) {
 		}
 	})
 	t.Run("sort", func(t *testing.T) {
+		t.Parallel()
+
 		f.exec(t, sqlclient.Stmt("CREATE TABLE").Qualified(f.schema, "auto_sort").Kw("(id INTEGER, payload INTEGER) SORTKEY(id)"))
 		f.exec(t, sqlclient.Stmt("INSERT INTO").Qualified(f.schema, "auto_sort").Kw("VALUES (1, 1)"))
 		f.exec(t, sqlclient.Stmt("ALTER TABLE").Qualified(f.schema, "auto_sort").Kw("ALTER SORTKEY AUTO"))
@@ -215,6 +225,8 @@ func TestAccLiveValidationAutoKeyDetours(t *testing.T) {
 		assert.Len(t, f.query(t, readTableAttributesQuery(spec)), 1)
 	})
 	t.Run("interleaved", func(t *testing.T) {
+		t.Parallel()
+
 		f.exec(t, sqlclient.Stmt("CREATE TABLE").Qualified(f.schema, "interleaved").Kw("(id INTEGER, payload INTEGER) DISTSTYLE KEY DISTKEY(id) INTERLEAVED SORTKEY(id, payload)"))
 		_, err := f.client.Query(context.Background(), f.conn, sqlclient.Stmt("ALTER TABLE").Qualified(f.schema, "interleaved").Kw("ALTER DISTSTYLE EVEN").String(), nil)
 		require.Error(t, err)
@@ -225,6 +237,8 @@ func TestAccLiveValidationAutoKeyDetours(t *testing.T) {
 // TestAccLiveValidationNonSuperuserCatalog checks that a non-superuser granted SELECT sees the effective distribution
 // style and distribution key through the provider's table queries.
 func TestAccLiveValidationNonSuperuserCatalog(t *testing.T) {
+	t.Parallel()
+
 	f := newLiveValidationFixture(t, "REDSHIFT_ACC_DIRECT")
 	name, password := f.user(t)
 	reader := f.directUser(t, name, password)
@@ -253,6 +267,8 @@ func TestAccLiveValidationNonSuperuserCatalog(t *testing.T) {
 // TestAccLiveValidationMaterializedViewReset checks that the statements removing a materialized view's distribution and
 // sort keys run on Redshift and reset both in the catalog.
 func TestAccLiveValidationMaterializedViewReset(t *testing.T) {
+	t.Parallel()
+
 	f := newLiveValidationFixture(t)
 	f.exec(t, sqlclient.Stmt("CREATE TABLE").Qualified(f.schema, "source").Kw("(id INTEGER, payload INTEGER)"))
 	f.exec(t, sqlclient.Stmt("CREATE MATERIALIZED VIEW").Qualified(f.schema, "mv").Kw("DISTSTYLE KEY DISTKEY(id) SORTKEY(id) AS SELECT id, payload FROM").Qualified(f.schema, "source"))
@@ -299,10 +315,14 @@ func (f liveValidationFixture) templateDefinition(t *testing.T, data templateMod
 // TestAccLiveValidationTemplateKeywords creates a template for each supported COPY parameter and value class and checks
 // that SHOW TEMPLATE reads it back unchanged.
 func TestAccLiveValidationTemplateKeywords(t *testing.T) {
+	t.Parallel()
+
 	f := newLiveValidationFixture(t)
 	// Each keyword gets its own template: mutually exclusive compression and error options must not mask acceptance.
 	for _, keyword := range copyParameterNames(false) {
 		t.Run(keyword, func(t *testing.T) {
+			t.Parallel()
+
 			_, parameter, err := copyParameterKeyword(keyword, false)
 			require.NoError(t, err)
 
@@ -352,6 +372,8 @@ func TestAccLiveValidationTemplateKeywords(t *testing.T) {
 // TestAccLiveValidationTemplateAlterAndReplace checks that the provider's ALTER statements change and remove
 // parameters, and that CREATE OR REPLACE keeps the template's owner and grants.
 func TestAccLiveValidationTemplateAlterAndReplace(t *testing.T) {
+	t.Parallel()
+
 	f := newLiveValidationFixture(t)
 	owner, _ := f.user(t)
 	data := templateModel{Database: types.StringValue(f.conn.Database), Schema: types.StringValue(f.schema), Name: types.StringValue("replace_me"), Format: types.StringValue("CSV"), FormatArgument: types.StringNull(), Parameters: types.MapValueMust(types.StringType, map[string]attr.Value{"IGNOREHEADER": types.StringValue("1")}), Owner: types.StringValue(owner)}
@@ -416,6 +438,8 @@ func TestAccLiveValidationTemplateAlterAndReplace(t *testing.T) {
 // TestAccLiveValidationShowUserDefaults checks that SHOW reads a user's persisted ALTER USER SET default in new
 // sessions without changing the admin's value.
 func TestAccLiveValidationShowUserDefaults(t *testing.T) {
+	t.Parallel()
+
 	f := newLiveValidationFixture(t, "REDSHIFT_ACC_DIRECT")
 	name, password := f.user(t)
 	reader := f.directUser(t, name, password)

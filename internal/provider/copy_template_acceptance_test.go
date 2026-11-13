@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -21,6 +20,8 @@ import (
 // TestAccCopyTemplateEscapeRoundtrip checks on Redshift that NULL AS and DELIMITER values with tabs, backslashes, and
 // quotes read back from SHOW TEMPLATE as configured.
 func TestAccCopyTemplateEscapeRoundtrip(t *testing.T) {
+	t.Parallel()
+
 	f := newLiveValidationFixture(t)
 	// Redshift rejects an actual newline in NULL AS; literal backslash+n must remain representable.
 	for i, value := range []string{"\t", `\t`, `\n`, `\\t`, `\\n`, `\`, `O'Reilly\tail`} {
@@ -49,6 +50,8 @@ func TestAccCopyTemplateEscapeRoundtrip(t *testing.T) {
 // TestAccCopyTemplateQuotedWhitespace checks that the templates listing keeps leading spaces in live schema, template,
 // and owner names.
 func TestAccCopyTemplateQuotedWhitespace(t *testing.T) {
+	t.Parallel()
+
 	f := newLiveValidationFixture(t)
 	schema, name, owner := " "+f.schema, " leading template", " "+f.schema+"_owner"
 	f.exec(t, sqlclient.Stmt("CREATE USER").Ident(owner).Kw("PASSWORD DISABLE"))
@@ -70,6 +73,8 @@ func TestAccCopyTemplateQuotedWhitespace(t *testing.T) {
 
 // TestAccCopyTemplateVisibleListing verifies the row-visibility path without granting schema USAGE.
 func TestAccCopyTemplateVisibleListing(t *testing.T) {
+	t.Parallel()
+
 	f := newLiveValidationFixture(t, "REDSHIFT_ACC_DIRECT")
 	owner, password := f.user(t)
 	f.exec(t, sqlclient.Stmt("CREATE TEMPLATE").Qualified(f.schema, "visible").Kw("FOR COPY AS SHAPEFILE SIMPLIFY AUTO 0.000001"))
@@ -91,6 +96,8 @@ func TestAccCopyTemplateVisibleListing(t *testing.T) {
 
 // TestAccCopyTemplateSimplify exercises the server-printed spatial clause and documented catalog listing.
 func TestAccCopyTemplateSimplify(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_copy_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(argument string) string {
@@ -123,7 +130,7 @@ data "redshift_templates" "database" {
 `, region, workgroup, database, database, name, argument)
 	}
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration("SIMPLIFY AUTO 0.000001"), Check: resource.ComposeTestCheckFunc(
 				resource.TestCheckResourceAttr("redshift_template.spatial", "format_argument", "SIMPLIFY AUTO 0.000001"),
@@ -133,7 +140,6 @@ data "redshift_templates" "database" {
 			{ResourceName: "redshift_template.spatial", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"format_argument"}},
 			{Config: configuration("SIMPLIFY AUTO 0.000001"), PlanOnly: true},
 			{Config: configuration("SIMPLIFY 0.01"), Check: resource.TestCheckResourceAttr("redshift_template.spatial", "format_argument", "SIMPLIFY 0.01")},
-			{Config: configuration("SIMPLIFY 0.01"), PlanOnly: true},
 		},
 	})
 }

@@ -97,8 +97,11 @@ resource "aws_glue_resource_policy" "fixture" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect    = "Allow"
-      Principal = { AWS = aws_iam_role.consumer.arn }
+      Effect = "Allow"
+      # The account principal exists before this role propagates to Glue; the ARN condition still permits only
+      # the exact consumer role, not other principals in that account.
+      Principal = { AWS = "arn:${data.aws_partition.consumer.partition}:iam::${data.aws_caller_identity.consumer.account_id}:root" }
+      Condition = { ArnEquals = { "aws:PrincipalArn" = aws_iam_role.consumer.arn } }
       Action    = ["glue:GetDatabase", "glue:GetDatabases", "glue:GetTable", "glue:GetTables", "glue:GetPartition", "glue:GetPartitions", "glue:BatchGetPartition"]
       Resource = [
         local.glue_catalog_arn,

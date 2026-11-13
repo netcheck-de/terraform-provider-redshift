@@ -21,7 +21,15 @@ resource "aws_redshift_integration" "copy_job" {
   source_arn       = module.fixture_bucket.s3_bucket_arn
   target_arn       = aws_redshiftserverless_namespace.consumer.arn
 
-  depends_on = [module.fixture_bucket, aws_redshift_resource_policy.inbound_integrations, aws_redshiftserverless_workgroup.consumer]
+  # Concurrent integration creation can make the shared target temporarily inactive. Wait only for any enabled
+  # zero-ETL integration, not for unrelated warehouse SQL resources.
+  depends_on = [
+    module.fixture_bucket,
+    aws_redshift_resource_policy.inbound_integrations,
+    aws_redshiftserverless_workgroup.consumer,
+    aws_redshift_integration.zero_etl,
+    aws_rds_integration.zero_etl,
+  ]
 }
 
 resource "redshift_template" "csv_events" {

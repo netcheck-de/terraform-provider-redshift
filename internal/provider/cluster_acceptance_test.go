@@ -11,7 +11,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata"
@@ -21,6 +20,8 @@ import (
 
 // TestAccClusterTransportLifecycle exercises provisioned Data API, optional secret authentication, and direct IAM fixtures.
 func TestAccClusterTransportLifecycle(t *testing.T) {
+	t.Parallel()
+
 	testAccPreCheck(t, "REDSHIFT_ACC_CLUSTER")
 
 	region := os.Getenv("REDSHIFT_ACC_REGION")
@@ -35,7 +36,7 @@ func TestAccClusterTransportLifecycle(t *testing.T) {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Cluster: cluster, DBUser: user, Timeout: 5 * time.Minute, Poll: time.Second}
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Cluster: cluster, DBUser: user, Timeout: 5 * time.Minute, Poll: time.Second})
 	configuration := func(mode string) string {
 		selector := fmt.Sprintf("cluster_identifier = %q\n db_user = %q", cluster, user)
 		if mode == "secret" {
@@ -69,7 +70,6 @@ resource "redshift_grant" "schema" {
 
 	steps := []resource.TestStep{
 		{Config: configuration("data_api")},
-		{Config: configuration("data_api"), PlanOnly: true},
 		{ResourceName: "redshift_database.local", ImportState: true, ImportStateVerify: true},
 		{ResourceName: "redshift_schema.local", ImportState: true, ImportStateVerify: true},
 		{ResourceName: "redshift_role.reader", ImportState: true, ImportStateVerify: true},
@@ -89,7 +89,7 @@ resource "redshift_grant" "schema" {
 	}
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps:                    steps,
 	})
 }
@@ -97,6 +97,8 @@ resource "redshift_grant" "schema" {
 // TestAccClusterUserLockoutsRollout exercises Terraform listings through manual lock and unlock of a disposable password
 // user. The explicit flag requires a provisioned cluster with lockout security enabled and a superuser identity.
 func TestAccClusterUserLockoutsRollout(t *testing.T) {
+	t.Parallel()
+
 	testAccPreCheck(t, "REDSHIFT_ACC_CLUSTER", "REDSHIFT_ACC_USER_LOCKOUTS")
 
 	region := os.Getenv("REDSHIFT_ACC_REGION")
@@ -109,7 +111,7 @@ func TestAccClusterUserLockoutsRollout(t *testing.T) {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Cluster: os.Getenv("REDSHIFT_ACC_CLUSTER"), DBUser: os.Getenv("REDSHIFT_ACC_DB_USER"), SecretARN: testAccSecretARN(true), Timeout: time.Minute, Poll: time.Second}
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Cluster: os.Getenv("REDSHIFT_ACC_CLUSTER"), DBUser: os.Getenv("REDSHIFT_ACC_DB_USER"), SecretARN: testAccSecretARN(true), Timeout: time.Minute, Poll: time.Second})
 
 	rows, err := client.Query(ctx, sqlclient.Connection{Database: database}, readUserLockoutsStatement(), nil)
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "account lockout security is not supported") {
@@ -175,7 +177,7 @@ output "fixture_is_listed" {
 	}
 
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration, Check: unlocked},
 			{Config: configuration, PreConfig: func() {

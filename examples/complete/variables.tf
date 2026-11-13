@@ -100,7 +100,7 @@ variable "admin_database" {
 }
 
 variable "enable_assumerole_grant" {
-  description = "Initialize identity-specific ASSUMEROLE access on the disposable consumer and demonstrate COPY/UNLOAD grants."
+  description = "Demonstrate identity-specific COPY/UNLOAD ASSUMEROLE grants on the disposable consumer. Bedrock independently initializes and grants its required EXTERNAL FUNCTION access."
   type        = bool
   default     = true
 }

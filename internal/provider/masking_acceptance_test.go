@@ -9,7 +9,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	dataapi "github.com/netcheck-de/terraform-provider-redshift/internal/redshiftdata"
@@ -22,6 +21,8 @@ import (
 // and teardown in dependency order. The policy reads its lookup table, so masking succeeds only once the grant
 // applied, even though no catalog reports the grant.
 func TestAccMaskingLifecycle(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t)
 	name := "acc_masking_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(expression string, priority int) string {
@@ -88,7 +89,7 @@ data "redshift_masking_policy_attachments" "customers" {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	require.NoError(t, err)
 
-	client := &dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second}
+	client := testAccDataClient(&dataapi.Client{API: redshiftdata.NewFromConfig(cfg), Workgroup: workgroup, Timeout: 5 * time.Minute, Poll: time.Second})
 	admin, target := sqlclient.Connection{Database: database}, sqlclient.Connection{Database: name}
 	// A failed run may leave the database; dropping it also removes its policies' attachments and fixture tables.
 	t.Cleanup(func() {
@@ -104,7 +105,7 @@ data "redshift_masking_policy_attachments" "customers" {
 	initial := configuration("CASE WHEN email IN (SELECT email FROM public.fixture_exempt) THEN email ELSE '***'::VARCHAR(256) END", 10)
 	updated := configuration("SHA2(email, 256)::VARCHAR(256)", 20)
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: fmt.Sprintf(`
 provider "redshift" {
@@ -133,7 +134,6 @@ resource "redshift_database" "local" { name = %q }
 				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachments.customers", "masking_policy_attachments.0.input_columns.0", "email"),
 				resource.TestCheckResourceAttr("data.redshift_masking_policy_attachments.customers", "masking_policy_attachments.0.priority", "10"),
 			)},
-			{Config: initial, PlanOnly: true},
 			{ResourceName: "redshift_masking_policy_attachment.email", ImportState: true, ImportStateVerify: true},
 			// Import cannot read a grant to a policy, so it records no privileges.
 			{ResourceName: "redshift_policy_grant.lookup", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"privileges"}},
@@ -148,7 +148,6 @@ resource "redshift_database" "local" { name = %q }
 				require.NoError(t, err)
 			}},
 			{Config: updated},
-			{Config: updated, PlanOnly: true},
 		},
 	})
 }

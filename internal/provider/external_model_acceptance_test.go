@@ -6,7 +6,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -128,7 +127,6 @@ data "redshift_object_grant" "model" {
 			steps := []resource.TestStep{
 				{Config: configuration(scenario.response), ResourceName: address, ImportState: true, ImportStatePersist: true, ImportStateId: importID},
 				{Config: configuration(scenario.response), Check: resource.ComposeAggregateTestCheckFunc(checks...), ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate)}}},
-				{Config: configuration(scenario.response), PlanOnly: true},
 			}
 			if !scenario.nonowner {
 				changed := "SUPER"
@@ -142,7 +140,7 @@ data "redshift_object_grant" "model" {
 				steps = append(steps, resource.TestStep{Config: provider + "\nremoved {\n from = redshift_external_model.imported\n lifecycle { destroy = false }\n}\n"})
 			}
 
-			resource.Test(t, resource.TestCase{ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())}, Steps: steps})
+			resource.Test(t, resource.TestCase{ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer}, Steps: steps})
 		})
 	}
 }

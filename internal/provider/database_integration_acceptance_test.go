@@ -122,6 +122,8 @@ data "redshift_database" "local" {
 // TestAccDatabaseIntegrationDynamoDBLookup only observes an explicitly supplied destination: Terraform must not
 // manage or destroy the active integration fixture. Use the SQL probe log to verify mutations and their restoration.
 func TestAccDatabaseIntegrationDynamoDBLookup(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DYNAMODB_DATABASE", "REDSHIFT_ACC_DYNAMODB_INTEGRATION_ID", "REDSHIFT_ACC_SECRET_ARN")
 	configuration := fmt.Sprintf(`
 provider "redshift" {
@@ -136,7 +138,7 @@ data "redshift_database" "destination" {
 `, region, workgroup, database, os.Getenv("REDSHIFT_ACC_SECRET_ARN"), os.Getenv("REDSHIFT_ACC_DYNAMODB_DATABASE"))
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
-			"redshift": providerserver.NewProtocol6WithError(New("test")()),
+			"redshift": testAccProviderServer,
 		},
 		Steps: []resource.TestStep{{
 			Config: configuration,

@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
 
 // TestAccAssumeroleGrantLifecycle requires a warehouse with ASSUMEROLE access control already enabled.
 func TestAccAssumeroleGrantLifecycle(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_ASSUMEROLE")
 	name := "acc_iam_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(command string) string {
@@ -31,13 +32,11 @@ resource "redshift_assumerole_grant" "reader" {
 }`, region, workgroup, database, name, command)
 	}
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration("COPY"), Check: resource.TestCheckResourceAttr("redshift_assumerole_grant.reader", "privileges.#", "1")},
-			{Config: configuration("COPY"), PlanOnly: true},
 			{ResourceName: "redshift_assumerole_grant.reader", ImportState: true, ImportStateVerify: true},
 			{Config: configuration("UNLOAD")},
-			{Config: configuration("UNLOAD"), PlanOnly: true},
 		},
 	})
 }

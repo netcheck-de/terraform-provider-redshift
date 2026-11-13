@@ -18,14 +18,29 @@ resource "aws_redshiftdata_statement" "iam_identity" {
   }
 }
 
+# Redshift forbids password-disabled superusers. Its documented IAM-only pattern uses a random MD5 hash whose
+# plaintext password is unknown, rather than creating a usable password or retrieving the administrator secret.
+resource "random_id" "iam_password_hash" {
+  byte_length = 16
+}
+
+resource "aws_redshiftdata_statement" "iam_password" {
+  workgroup_name = aws_redshiftserverless_workgroup.this.workgroup_name
+  database       = var.db_name
+  secret_arn     = aws_redshiftserverless_namespace.this.admin_password_secret_arn
+  sql            = sensitive("ALTER USER \"${replace(coalesce(local.iam_sql_user, "invalid"), "\"", "\"\"")}\" PASSWORD 'md5${random_id.iam_password_hash.hex}'")
+
+  depends_on = [aws_redshiftdata_statement.iam_identity]
+}
+
 resource "aws_redshiftdata_statement" "iam_superuser" {
   workgroup_name = aws_redshiftserverless_workgroup.this.workgroup_name
   database       = var.db_name
   secret_arn     = aws_redshiftserverless_namespace.this.admin_password_secret_arn
   sql            = "ALTER USER \"${replace(coalesce(local.iam_sql_user, "invalid"), "\"", "\"\"")}\" CREATEUSER"
 
-  # The SQL role name does not reference the statement that first creates the IAM identity.
-  depends_on = [aws_redshiftdata_statement.iam_identity]
+  # Enable the unknown password before granting superuser; the IAM session initially creates a password-disabled user.
+  depends_on = [aws_redshiftdata_statement.iam_password]
 }
 
 # PUBLIC's engine-wide default can include commands not modeled by the released permission resource.

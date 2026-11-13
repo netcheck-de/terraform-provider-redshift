@@ -164,6 +164,75 @@ func TestDatabaseObservesPermissionMode(t *testing.T) {
 	assert.True(t, data.WithPermissions.ValueBool())
 }
 
+// TestDatabaseDropWaitsForSessions reproduces a finished Data API operation whose short-lived catalog session closes
+// after DROP is first refused. No successful drop is refreshed, retried, or upgraded to FORCE.
+func TestDatabaseDropWaitsForSessions(t *testing.T) {
+	t.Parallel()
+
+	busy := errors.New(`statement drop FAILED: ERROR: database "analytics" is being accessed by other users`)
+	for _, test := range []struct {
+		name       string
+		failures   int
+		failure    error
+		retry      bool
+		cancel     time.Duration
+		wantCalls  int
+		wantWait   time.Duration
+		wantErrors bool
+	}{
+		{"transient session", 2, busy, true, 0, 3, 2 * time.Second, false},
+		{"persistent session", 100, busy, true, 0, 31, databaseBusyWait, true},
+		{"operation deadline", 100, busy, true, 3 * time.Second, 3, 3 * time.Second, true},
+		{"permission", 100, errors.New("permission denied"), true, 0, 1, 0, true},
+		{"uncertain outcome", 100, errors.Join(busy, sqlclient.ErrUnsettled), true, 0, 1, 0, true},
+		{"another database", 100, errors.New(`database "other" is being accessed by other users`), true, 0, 1, 0, true},
+		{"integration destination", 100, busy, false, 0, 1, 0, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			synctest.Test(t, func(t *testing.T) {
+				calls := 0
+				r := &databaseResource{testResourceClient(queryFunc(func(_ context.Context, connection sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+					calls++
+
+					assert.Equal(t, "admin", connection.Database)
+					assert.Equal(t, `DROP DATABASE "analytics"`, sql)
+					assert.Empty(t, parameters)
+
+					if calls <= test.failures {
+						return nil, test.failure
+					}
+
+					return nil, nil
+				}))}
+				ctx := context.Background()
+
+				if test.cancel > 0 {
+					var cancel context.CancelFunc
+
+					ctx, cancel = context.WithTimeout(ctx, test.cancel)
+					defer cancel()
+				}
+
+				started := time.Now()
+				err := r.dropDatabase(ctx, databaseModel{Name: types.StringValue("analytics")}, test.retry)
+				assert.Equal(t, test.wantErrors, err != nil)
+
+				if test.cancel > 0 {
+					// The retry timer and context deadline can become runnable together; either may win scheduling.
+					assert.GreaterOrEqual(t, calls, test.wantCalls)
+					assert.LessOrEqual(t, calls, test.wantCalls+1)
+				} else {
+					assert.Equal(t, test.wantCalls, calls)
+				}
+
+				assert.Equal(t, test.wantWait, time.Since(started))
+			})
+		})
+	}
+}
+
 // TestDatabaseRejectsIncompatibleBinding checks producer identity and database-kind mismatches.
 func TestDatabaseRejectsIncompatibleBinding(t *testing.T) {
 	for _, change := range []string{"type", "account", "namespace", "share"} {

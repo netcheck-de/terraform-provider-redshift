@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
@@ -15,12 +14,16 @@ import (
 
 // TestAccDatabaseCollationLifecycle runs the collation lifecycle on a serverless workgroup.
 func TestAccDatabaseCollationLifecycle(t *testing.T) {
+	t.Parallel()
+
 	testAccDatabaseCollation(t, false)
 }
 
 // TestAccClusterDatabaseCollationLifecycle runs the collation lifecycle on a provisioned cluster through a Secrets
 // Manager secret.
 func TestAccClusterDatabaseCollationLifecycle(t *testing.T) {
+	t.Parallel()
+
 	testAccPreCheck(t, "REDSHIFT_ACC_CLUSTER", "REDSHIFT_ACC_CLUSTER_SECRET_ARN")
 	testAccDatabaseCollation(t, true)
 }
@@ -69,7 +72,7 @@ data "redshift_database" "probe" {
 	}
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){
-			"redshift": providerserver.NewProtocol6WithError(New("test")()),
+			"redshift": testAccProviderServer,
 		},
 		Steps: []resource.TestStep{step("CASE_SENSITIVE", false), step("CASE_INSENSITIVE", true), step("CASE_SENSITIVE", true)},
 	})

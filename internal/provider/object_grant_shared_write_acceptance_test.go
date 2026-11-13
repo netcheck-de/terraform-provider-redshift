@@ -11,7 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftdata"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftserverless"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -163,7 +162,7 @@ data "redshift_object_grant" "table" {
 		)
 	}
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		CheckDestroy: func(*terraform.State) error {
 			rows, err := consumer.Query(ctx, admin, sqlclient.Stmt("SHOW GRANTS ON TABLE").Qualified(shared, "write_probe", "events").String(), nil)
 			require.NoError(t, err)
@@ -179,10 +178,8 @@ data "redshift_object_grant" "table" {
 		Steps: []resource.TestStep{
 			{Config: configuration(false), Check: check(false, 1)},
 			{Config: configuration(true), Check: check(true, 2)},
-			{Config: configuration(true), PlanOnly: true},
 			{ResourceName: "redshift_object_grant.table", ImportState: true, ImportStateVerify: true},
 			{Config: configuration(false), Check: check(false, 3)},
-			{Config: configuration(false), PlanOnly: true},
 		},
 	})
 }

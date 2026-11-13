@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -181,7 +180,7 @@ data "redshift_object_grant" "model" {
 			}
 
 			steps = append(steps, resource.TestStep{Config: configuration(false, false), Check: stateCheck(false, false)}, resource.TestStep{Config: configuration(false, false), PlanOnly: true})
-			resource.Test(t, resource.TestCase{ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())}, Steps: steps})
+			resource.Test(t, resource.TestCase{ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer}, Steps: steps})
 		})
 	}
 }

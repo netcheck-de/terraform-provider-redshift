@@ -19,6 +19,8 @@ import (
 // "second": pa.array([22], type=pa.int32()), "nullable": pa.array([None], type=pa.int32())}).
 // The caller owns that S3 fixture; this test only creates and drops uniquely named SQL/Glue objects.
 func TestAccSpectrumParquetColumnMapping(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_SPECTRUM_ROLE_ARN", "REDSHIFT_ACC_SPECTRUM_GLUE_DATABASE", "REDSHIFT_ACC_PARQUET_LOCATION")
 	f := liveValidationFixture{
 		client: testAccRolesClient(t, region, workgroup),
@@ -47,6 +49,8 @@ func TestAccSpectrumParquetColumnMapping(t *testing.T) {
 		{"orc_resolution", "second", "first", "nullable", "22", "11", "orc.schema.resolution", "position"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
+			t.Parallel()
+
 			// Glue is shared, so table names must be unique even across different external schemas.
 			table := f.schema + "_" + scenario.name
 

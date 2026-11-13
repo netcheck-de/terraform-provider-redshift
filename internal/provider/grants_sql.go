@@ -30,12 +30,13 @@ func grantsRecipient(database, schema string, row sqlclient.Row) (grantModel, st
 	name, kind := row["identity_name"], strings.ToLower(row["identity_type"])
 
 	switch share, datashare := strings.CutPrefix(name, "ds:"); {
+	case datashare && share != "" && kind != "user" && kind != "group" && kind != "public":
+		// SHOW GRANTS reports a producer datashare as the synthetic role ds:<name>, not always as type datashare.
+		data.Datashare = types.StringValue(share)
 	case kind == "role":
 		data.Role = types.StringValue(name)
 	case kind == "user":
 		data.User = types.StringValue(name)
-	case datashare && share != "" && kind != "group" && kind != "public":
-		data.Datashare = types.StringValue(share)
 	default:
 		return data, "", false
 	}

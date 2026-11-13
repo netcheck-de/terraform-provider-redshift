@@ -9,7 +9,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/redshiftserverless"
-	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/netcheck-de/terraform-provider-redshift/internal/redshiftconn"
@@ -20,6 +19,8 @@ import (
 
 // TestAccDirectIAMQueries checks real TLS, IAM authentication, parameter binding, and textual results without mutations.
 func TestAccDirectIAMQueries(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
@@ -37,6 +38,8 @@ func TestAccDirectIAMQueries(t *testing.T) {
 
 // TestAccTransportSwitchLifecycle verifies stable Serverless identity while switching Data API to direct IAM and back.
 func TestAccTransportSwitchLifecycle(t *testing.T) {
+	t.Parallel()
+
 	region, workgroup, database := testAccWorkgroup(t, "REDSHIFT_ACC_DIRECT")
 	name := "acc_transport_" + strconv.FormatInt(time.Now().UnixNano(), 36)
 	configuration := func(direct bool, privileges string) string {
@@ -72,7 +75,7 @@ data "redshift_grant" "schema" {
 }`, region, database, selector, name, name+"_reader", privileges)
 	}
 	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": providerserver.NewProtocol6WithError(New("test")())},
+		ProtoV6ProviderFactories: map[string]func() (tfprotov6.ProviderServer, error){"redshift": testAccProviderServer},
 		Steps: []resource.TestStep{
 			{Config: configuration(false, `["USAGE"]`)},
 			{Config: configuration(true, `["USAGE"]`), PlanOnly: true},

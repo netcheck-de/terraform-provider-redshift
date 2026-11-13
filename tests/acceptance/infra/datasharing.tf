@@ -41,6 +41,9 @@ resource "redshift_datashare_schema" "this" {
   datashare   = redshift_datashare.this.name
   schema      = redshift_schema.source.name
   include_new = false
+
+  # INSERT and ALTER DATASHARE can conflict on the source table's catalog; finish seeding before attaching members.
+  depends_on = [aws_redshiftdata_statement.source_seed]
 }
 
 resource "redshift_datashare_table" "this" {

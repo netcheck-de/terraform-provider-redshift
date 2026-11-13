@@ -36,9 +36,10 @@ resource "aws_redshift_integration" "copy" {
   source_arn       = module.s3.s3_bucket_arn
   target_arn       = aws_redshiftserverless_namespace.this.arn
 
-  # Bucket/namespace ARNs do not imply that their service authorization policies have been installed.
-  # The module-level dependency includes its bucket policy; waiting for the bucket alone is insufficient.
+  # A namespace ARN does not imply that its workgroup is ready to receive an integration. Both authorization policies
+  # must also exist; the module-level dependency includes the bucket policy, not only the bucket itself.
   depends_on = [
+    aws_redshiftserverless_workgroup.this,
     module.s3,
     aws_redshift_resource_policy.inbound_integrations,
   ]
