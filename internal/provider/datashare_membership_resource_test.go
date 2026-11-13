@@ -367,6 +367,72 @@ func TestDatashareMembershipCoversParallelObjects(t *testing.T) {
 	}
 }
 
+// TestDatashareMembershipRetryFailureKeepsOwnership retains recoverable state when parallel objects require another
+// ADD ALL and that retry fails, for both tables and functions.
+func TestDatashareMembershipRetryFailureKeepsOwnership(t *testing.T) {
+	for _, kind := range []string{"TABLES", "FUNCTIONS"} {
+		t.Run(kind, func(t *testing.T) {
+			c := fullCatalog()
+			c.includeNew = false
+			f := fakeState[*fakeDatashares](c, "datashare")
+			f.bulkMembers[kind] = nil
+			adds := 0
+			r := newDatashareMembershipResource()
+			configureTestResource(t, r, queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+				adding := strings.Contains(sql, " ADD ALL "+kind+" IN SCHEMA ")
+				if adding {
+					adds++
+					if adds == 2 {
+						return nil, errors.New("retry unavailable")
+					}
+				}
+
+				rows, err := c.Query(ctx, target, sql, parameters)
+				if adding && err == nil {
+					f.bulkCandidates[kind] = append(f.bulkCandidates[kind], "parallel_object")
+				}
+
+				return rows, err
+			}))
+			state, diagnostics := applyOperation(t, r, "create", nil, datashareMembershipFixture(kind), nil)
+			require.True(t, diagnostics.HasError())
+			assert.Contains(t, diagnostics.Errors()[0].Detail(), "retry unavailable")
+			assert.Equal(t, 2, adds, "the failed retry must stop reconciliation")
+			require.True(t, state.Raw.IsFullyKnown(), "partial-create state must remain usable")
+
+			var recorded datashareMembershipModel
+			require.False(t, state.Get(context.Background(), &recorded).HasError())
+			require.NotEmpty(t, recorded.ID.ValueString(), "the successful first ADD ALL must retain ownership")
+			assert.NotContains(t, f.bulkMembers[kind], "parallel_object")
+
+			r = newDatashareMembershipResource()
+			configureTestResource(t, r, c)
+			writes := len(c.writes)
+			refreshed := resource.ReadResponse{State: state}
+			r.Read(context.Background(), resource.ReadRequest{State: state}, &refreshed)
+			require.False(t, refreshed.Diagnostics.HasError(), "%v", refreshed.Diagnostics)
+			require.False(t, refreshed.State.Raw.IsNull())
+
+			var observed datashareMembershipModel
+			require.False(t, refreshed.State.Get(context.Background(), &observed).HasError())
+			assert.Equal(t, recorded.ID, observed.ID)
+			assert.False(t, observed.All.ValueBool(), "refresh must expose incomplete coverage")
+			assert.Len(t, c.writes, writes, "refresh must not retry ADD ALL")
+
+			planned := observed
+			planned.All = types.BoolValue(true)
+			repaired, diagnostics := applyOperation(t, r, "update", observed, planned, nil)
+			require.False(t, diagnostics.HasError(), "%v", diagnostics)
+
+			var recovered datashareMembershipModel
+			require.False(t, repaired.Get(context.Background(), &recovered).HasError())
+			assert.Equal(t, recorded.ID, recovered.ID)
+			assert.True(t, recovered.All.ValueBool())
+			assert.Contains(t, f.bulkMembers[kind], "parallel_object", "a later apply must repair the missing membership")
+		})
+	}
+}
+
 // TestDatashareMembershipReadWarnsAboutIncludeNew keeps the membership but warns while INCLUDENEW shares future objects implicitly.
 func TestDatashareMembershipReadWarnsAboutIncludeNew(t *testing.T) {
 	c := fullCatalog()

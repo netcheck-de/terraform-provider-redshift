@@ -94,6 +94,8 @@ type lifecycleCase struct {
 	missingRows func(operation, sql string) []sqlclient.Row
 	// isDeletion recognizes the statements that remove the object; nil uses defaultDeletion.
 	isDeletion func(sql string) bool
+	// verifyDeletion includes membership and security settings in removal-convergence checks.
+	verifyDeletion bool
 }
 
 // lifecycleRegistry holds the cases each type's test file registers.
@@ -457,17 +459,19 @@ func TestLifecycleImportRoundTrip(t *testing.T) {
 	}
 }
 
-// TestPermissionDeletionVerifiesRemoval checks that acknowledged revocations actually converge.
-func TestPermissionDeletionVerifiesRemoval(t *testing.T) {
+// TestLifecycleDeletionVerifiesRemoval checks that acknowledged revocations and setting removals actually converge.
+func TestLifecycleDeletionVerifiesRemoval(t *testing.T) {
 	for _, test := range lifecycleCases() {
-		if test.kind != lifecyclePermission {
+		if test.kind != lifecyclePermission && !test.verifyDeletion {
 			continue
 		}
 
 		t.Run(test.name, func(t *testing.T) {
 			c := test.catalog()
+			deletions := 0
 			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
 				if test.deletion(sql) {
+					deletions++
 					return nil, nil // Simulate an acknowledged write that did not converge.
 				}
 
@@ -475,8 +479,10 @@ func TestPermissionDeletionVerifiesRemoval(t *testing.T) {
 			})
 			r := test.new()
 			configureTestResource(t, r, client)
-			diagnostics := invoke(t, r, "delete", test.model)
-			assert.True(t, diagnostics.HasError(), "%v", diagnostics)
+			state, diagnostics := invokeWithState(t, r, "delete", test.model)
+			require.Positive(t, deletions, "the test must reach the removal statement")
+			require.True(t, diagnostics.HasError(), "%v", diagnostics)
+			assert.True(t, state.Raw.Equal(testState(t, r, test.model).Raw), "failed removal must preserve ownership")
 		})
 	}
 }

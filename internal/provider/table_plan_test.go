@@ -78,6 +78,26 @@ func TestTablePlanModifiers(t *testing.T) {
 	assert.Equal(t, []types.Bool{types.BoolValue(false), types.BoolValue(false), types.BoolValue(true), types.BoolValue(true)},
 		[]types.Bool{columns[0].Nullable, columns[1].Nullable, columns[2].Nullable, columns[3].Nullable}, "identity and key columns are NOT NULL")
 
+	t.Run("explicit nullable", func(t *testing.T) {
+		for _, nullable := range []bool{true, false} {
+			prior := tableMinimalModel()
+			prior.Column = tableTestColumns(tableTestColumn("note", "varchar(8)", tableEncoded("LZO"), tableNullable(!nullable)))
+			configured := prior
+			configured.Column = tableTestColumns(tableTestColumn("note", "varchar(8)", unconfigured, tableNullable(nullable)))
+			planned := tableTestColumns(tableTestColumn("note", "varchar(8)", unset, tableNullable(nullable)))
+			resp := planmodifier.ListResponse{PlanValue: planned}
+			tableColumnDefaults{}.PlanModifyList(ctx, planmodifier.ListRequest{
+				Config: tfsdk.Config(testState(t, r, configured)), State: testState(t, r, prior),
+				ConfigValue: configured.Column, PlanValue: planned, StateValue: prior.Column,
+			}, &resp)
+			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+			columns := tableTestColumnsOf(t, resp.PlanValue)
+			require.Len(t, columns, 1)
+			assert.Equal(t, types.BoolValue(nullable), columns[0].Nullable, "configuration must override prior nullability")
+			assert.Equal(t, types.StringValue("LZO"), columns[0].Encoding, "omitted encoding still keeps its default from state")
+		}
+	})
+
 	t.Run("sort key change", func(t *testing.T) {
 		stored := func(name, dataType, encoding string) tableColumnModel {
 			return tableTestColumn(name, dataType, tableEncoded(encoding), tableNullable(true))

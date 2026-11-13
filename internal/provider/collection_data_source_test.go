@@ -16,6 +16,53 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestMultiQueryListingsReportSQLFailures fails each read after the preceding catalog queries have succeeded.
+func TestMultiQueryListingsReportSQLFailures(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		new     func() datasource.DataSource
+		filters map[string]string
+	}{
+		{"external tables", newExternalTablesDataSource, nil},
+		{"scoped grants", newGrantsDataSource, map[string]string{"database_name": "analytics"}},
+		{"object grants", newObjectGrantsDataSource, map[string]string{"database_name": "analytics", "object_type": "DATABASE"}},
+		{"role grants", newRoleGrantsDataSource, nil},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			queries := 0
+			for failAt := 0; failAt <= queries; failAt++ {
+				c := fullCatalog()
+				calls := 0
+				client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+					require.True(t, fakeRead(sql), "a listing must not mutate: %s", sql)
+
+					calls++
+					if calls == failAt {
+						return nil, errors.New("listing query unavailable")
+					}
+
+					return c.Query(ctx, target, sql, parameters)
+				})
+				source := test.new()
+
+				state, diagnostics := readSource(t, source, collectionConfig(t, source, test.filters), client)
+				if failAt == 0 {
+					require.False(t, diagnostics.HasError(), "%v", diagnostics)
+					require.Greater(t, calls, 1, "the fixture must exercise several queries")
+					queries = calls
+
+					continue
+				}
+
+				require.True(t, diagnostics.HasError(), "query %d: %v", failAt, diagnostics)
+				assert.Contains(t, diagnostics.Errors()[0].Detail(), "listing query unavailable")
+				assert.Equal(t, failAt, calls, "a failed query must stop the listing")
+				assert.True(t, state.Raw.IsNull(), "a failure must not publish a partial or empty listing")
+			}
+		})
+	}
+}
+
 // testSchemaListing is a tiny collection over schema names, owners, and a numeric column, so the helper is
 // tested without a production listing.
 func testSchemaListing() datasource.DataSource {
