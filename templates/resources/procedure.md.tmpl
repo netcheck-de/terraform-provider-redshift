@@ -7,7 +7,12 @@ description: Manages a PL/pgSQL stored procedure overload.
 # redshift_procedure (Resource)
 
 Manages one PL/pgSQL stored procedure overload: its arguments, body, security and transaction modes, `SET`
-configuration, and owner. See AWS
+configuration, and owner.
+
+For concepts and limitations, see AWS
+[Creating stored procedures](https://docs.aws.amazon.com/redshift/latest/dg/stored-procedure-overview.html).
+
+For SQL syntax, see AWS
 [CREATE PROCEDURE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_PROCEDURE.html),
 [ALTER PROCEDURE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_PROCEDURE.html), and
 [DROP PROCEDURE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_PROCEDURE.html).

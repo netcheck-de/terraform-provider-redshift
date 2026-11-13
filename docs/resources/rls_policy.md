@@ -8,7 +8,12 @@ description: Manages one row-level security policy definition.
 
 Manages one **row-level security (RLS) policy**: its `WITH` columns (one `column` block each), optional relation alias,
 and `USING` predicate. A policy filters nothing on its own; attach it with `redshift_rls_policy_attachment` and turn RLS
-on for the relation with `redshift_table_security`. See AWS
+on for the relation with `redshift_table_security`.
+
+For concepts and limitations, see AWS
+[Row-level security](https://docs.aws.amazon.com/redshift/latest/dg/t_rls.html).
+
+For SQL syntax, see AWS
 [CREATE RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_RLS_POLICY.html),
 [ALTER RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_RLS_POLICY.html), and
 [DROP RLS POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_RLS_POLICY.html).

@@ -7,8 +7,13 @@ description: Manages the definition of a local Redshift table.
 # redshift_table (Resource)
 
 Manages the definition of one local table: `column` blocks with types, encodings, nullability, defaults, and
-identity, `primary_key`, `unique`, and `foreign_key` constraints, `distribution` and `sort_key`, backup, and owner. See
-AWS [CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html),
+identity, `primary_key`, `unique`, and `foreign_key` constraints, `distribution` and `sort_key`, backup, and owner.
+
+For concepts and limitations, see AWS
+[Best practices for designing tables](https://docs.aws.amazon.com/redshift/latest/dg/c_designing-tables-best-practices.html).
+
+For SQL syntax, see AWS
+[CREATE TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TABLE_NEW.html),
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html), and
 [DROP TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_TABLE.html).
 

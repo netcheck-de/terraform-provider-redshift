@@ -7,7 +7,12 @@ description: Manages role, user, or producer datashare privileges within a datab
 # redshift_grant (Resource)
 
 Manages the exact privilege set for **one role, user, or datashare, database, and scope**. Other recipients, scopes,
-and object-specific grants are independent. An empty `privileges` set revokes the privileges in this tuple. See AWS
+and object-specific grants are independent. An empty `privileges` set revokes the privileges in this tuple.
+
+For concepts and limitations, see AWS
+[Scoped permissions](https://docs.aws.amazon.com/redshift/latest/dg/t_scoped-permissions.html).
+
+For SQL syntax, see AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 

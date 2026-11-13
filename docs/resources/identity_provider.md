@@ -8,7 +8,13 @@ description: Manages the SQL side of an AWS IAM Identity Center or Microsoft Ent
 
 Manages a **SQL identity provider**: an AWS IAM Identity Center integration (`type = "AWSIDC"`) or native identity
 provider federation with Microsoft Entra ID (`type = "AZURE"`). For Identity Center, create the managed application,
-integration IAM role, role attachment to the namespace, and group assignments with the AWS provider. See AWS
+integration IAM role, role attachment to the namespace, and group assignments with the AWS provider.
+
+For concepts and limitations, see AWS
+[Native IdP federation](https://docs.aws.amazon.com/redshift/latest/mgmt/redshift-iam-access-control-native-idp.html) and
+[IAM Identity Center integration](https://docs.aws.amazon.com/redshift/latest/mgmt/redshift-iam-access-control-idp-connect-console.html).
+
+For SQL syntax, see AWS
 [CREATE IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_IDENTITY_PROVIDER.html) and
 [ALTER IDENTITY PROVIDER](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_IDENTITY_PROVIDER.html).
 

@@ -6,7 +6,12 @@ description: Manages explicit table or view membership in a datashare.
 
 # redshift_datashare_table (Resource)
 
-Manages one existing table or view membership in a producer datashare schema. See AWS
+Manages one existing table or view membership in a producer datashare schema.
+
+For concepts and limitations, see AWS
+[Data sharing](https://docs.aws.amazon.com/redshift/latest/dg/datashare-overview.html).
+
+For SQL syntax, see AWS
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
 ## Example Usage

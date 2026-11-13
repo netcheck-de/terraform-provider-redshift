@@ -6,7 +6,9 @@ description: Manages an ordinary or late-binding Redshift view.
 
 # redshift_view (Resource)
 
-Manages an ordinary or late-binding view in a local schema. See AWS
+Manages an ordinary or late-binding view in a local schema.
+
+For SQL syntax, see AWS
 [CREATE VIEW](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_VIEW.html),
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html), and
 [DROP VIEW](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_VIEW.html).

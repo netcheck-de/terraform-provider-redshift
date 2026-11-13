@@ -7,7 +7,11 @@ description: Manages SQL users, their sign-in options and session defaults, and 
 # redshift_user (Resource)
 
 Manages a database user, signing in with a password or, with `password_disabled`, only with temporary IAM
-credentials or a federated identity. Role memberships and object privileges are independent resources. See AWS
+credentials or a federated identity. Role memberships and object privileges are independent resources.
+
+For concepts and limitations, see AWS [Users](https://docs.aws.amazon.com/redshift/latest/dg/r_Users.html).
+
+For SQL syntax, see AWS
 [CREATE USER](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_USER.html) and
 [ALTER USER](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_USER.html).
 

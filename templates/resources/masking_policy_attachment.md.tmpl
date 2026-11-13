@@ -6,7 +6,12 @@ description: Attaches a dynamic data masking policy to columns of a relation for
 
 # redshift_masking_policy_attachment (Resource)
 
-Attaches one masking policy to columns of one table or view for one user, role, or `PUBLIC`. See AWS
+Attaches one masking policy to columns of one table or view for one user, role, or `PUBLIC`.
+
+For concepts and limitations, see AWS
+[Dynamic data masking](https://docs.aws.amazon.com/redshift/latest/dg/t_ddm.html).
+
+For SQL syntax, see AWS
 [ATTACH MASKING POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_ATTACH_MASKING_POLICY.html) and
 [DETACH MASKING POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_DETACH_MASKING_POLICY.html).
 

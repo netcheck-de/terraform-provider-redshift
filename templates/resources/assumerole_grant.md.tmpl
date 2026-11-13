@@ -6,7 +6,12 @@ description: Manages IAM role command permissions for one SQL identity.
 
 # redshift_assumerole_grant (Resource)
 
-Owns the exact command set for one IAM role selector and one SQL identity. See AWS
+Owns the exact command set for one IAM role selector and one SQL identity.
+
+For concepts and limitations, see AWS
+[Authorizing operations using IAM roles](https://docs.aws.amazon.com/redshift/latest/mgmt/copy-unload-iam-role.html).
+
+For SQL syntax, see AWS
 [GRANT ASSUMEROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-assumerole-permissions) and its
 [usage notes](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT-usage-notes.html#r_GRANT-usage-notes-assumerole).
 

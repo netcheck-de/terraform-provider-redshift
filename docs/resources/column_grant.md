@@ -7,7 +7,12 @@ description: Manages column-level SELECT and UPDATE privileges of one SQL grante
 # redshift_column_grant (Resource)
 
 Owns the exact column-level privileges of one grantee on one table, view, or materialized view: which columns hold
-`SELECT` and which hold `UPDATE`. See AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-column-level)
+`SELECT` and which hold `UPDATE`.
+
+For concepts and limitations, see AWS
+[Database object permissions](https://docs.aws.amazon.com/redshift/latest/dg/r_roles-database-privileges.html).
+
+For SQL syntax, see AWS [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-column-level)
 and [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-column-level).
 
 ## Example Usage

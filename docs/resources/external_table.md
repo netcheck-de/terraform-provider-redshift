@@ -8,7 +8,12 @@ description: Manages a Redshift Spectrum external table in an external schema.
 
 Manages one Redshift Spectrum external table, whose definition lives in the external catalog (usually the AWS Glue Data
 Catalog) of an [external schema](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/external_schema)
-and whose data stays in Amazon S3. See AWS
+and whose data stays in Amazon S3.
+
+For concepts and limitations, see AWS
+[External tables for Redshift Spectrum](https://docs.aws.amazon.com/redshift/latest/dg/c-spectrum-external-tables.html).
+
+For SQL syntax, see AWS
 [CREATE EXTERNAL TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_TABLE.html) and
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html).
 

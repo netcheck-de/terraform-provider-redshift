@@ -7,7 +7,13 @@ description: Manages USAGE on the sql or plpgsql language for one SQL grantee in
 # redshift_language_grant (Resource)
 
 Owns `USAGE` on one language in one local database for one grantee. `USAGE ON LANGUAGE sql` is required to create SQL
-user-defined functions and `USAGE ON LANGUAGE plpgsql` to create stored procedures. See AWS
+user-defined functions and `USAGE ON LANGUAGE plpgsql` to create stored procedures.
+
+For concepts and limitations, see AWS
+[UDF security and permissions](https://docs.aws.amazon.com/redshift/latest/dg/udf-security-and-privileges.html) and
+[Stored procedure security and privileges](https://docs.aws.amazon.com/redshift/latest/dg/stored-procedure-security-and-privileges.html).
+
+For SQL syntax, see AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 
