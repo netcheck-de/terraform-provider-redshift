@@ -28,8 +28,8 @@ variable "name_prefix" {
   default     = "redshift-oss-e2e"
 
   validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{2,29}$", var.name_prefix))
-    error_message = "Use 3–30 lowercase letters, digits, or hyphens, starting with a letter."
+    condition     = can(regex("^[a-z][a-z0-9-]{2,31}$", var.name_prefix))
+    error_message = "Use 3–32 lowercase letters, digits, or hyphens, starting with a letter."
   }
 }
 
