@@ -226,7 +226,7 @@ Each page's Schema section lists required and optional arguments, including opti
 read-only attributes. Except for write-only arguments, argument values are also readable through Terraform references.
 Read-only attributes list only additional computed outputs; arguments are not repeated there.
 
-Terraform 1.16 or later is supported; CI tests the provider and its examples on 1.16 and on the latest release.
+Terraform 1.16 or later is supported; CI tests the provider and its examples on the latest patches of 1.16 and 1.17.
 Terraform 1.11 or later should work, since 1.11 added the write-only arguments that `password_wo` and
 `client_secret_wo` use, but 1.11 to 1.15 are not tested: their `terraform test` passes optional ephemeral input
 variables to the apply phase of a run that left them unset during plan, and rejects the run

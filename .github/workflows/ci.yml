@@ -67,7 +67,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        terraform: &terraform-versions ["~1.16.0", "latest"]
+        terraform: &terraform-versions ["~1.16.0", "~1.17.0"]
     steps:
       - name: Checkout
         uses: actions/checkout@v7
