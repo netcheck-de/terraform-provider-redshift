@@ -43,7 +43,7 @@ jobs:
 
   live-tests:
     name: Live tests
-    needs: [guard, checks, acceptance]
+    needs: [guard, checks]
     permissions:
       contents: read
       id-token: write
