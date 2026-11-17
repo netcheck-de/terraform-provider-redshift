@@ -10,7 +10,12 @@ Owns the exact explicit privilege set for one local or shared database object an
 `TABLE`;
 functions and procedures name their overload with `arguments`; machine learning models use `MODEL`, and COPY templates
 `TEMPLATE`. The `ALL TABLES`, `ALL FUNCTIONS`, and `ALL PROCEDURES` types grant on every object that currently exists
-in a schema. See AWS
+in a schema.
+
+For concepts and limitations, see AWS
+[Database object permissions](https://docs.aws.amazon.com/redshift/latest/dg/r_roles-database-privileges.html).
+
+For SQL syntax, see AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 

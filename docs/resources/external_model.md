@@ -7,11 +7,15 @@ description: Manages an Amazon Bedrock model and its inference function.
 # redshift_external_model (Resource)
 
 Manages an Amazon Bedrock model created with `CREATE EXTERNAL MODEL` and the inference function Redshift creates for
-it, which sends prompts to Amazon Bedrock from SQL. See AWS
-[CREATE EXTERNAL MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_create_external_model.html),
-[DROP MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_MODEL.html),
-[SHOW MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_MODEL.html), and
+it, which sends prompts to Amazon Bedrock from SQL.
+
+For concepts and limitations, see AWS
 [Amazon Redshift ML integration with Amazon Bedrock](https://docs.aws.amazon.com/redshift/latest/dg/machine-learning-br.html).
+
+For SQL syntax, see AWS
+[CREATE EXTERNAL MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_create_external_model.html),
+[DROP MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_MODEL.html), and
+[SHOW MODEL](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_MODEL.html).
 
 ## Example Usage
 

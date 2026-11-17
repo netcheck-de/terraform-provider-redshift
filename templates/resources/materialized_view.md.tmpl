@@ -6,7 +6,12 @@ description: Manages a Redshift materialized view and its automatic refresh sett
 
 # redshift_materialized_view (Resource)
 
-Manages a materialized view stored in Redshift. See AWS
+Manages a materialized view stored in Redshift.
+
+For concepts and limitations, see AWS
+[Materialized views](https://docs.aws.amazon.com/redshift/latest/dg/materialized-view-overview.html).
+
+For SQL syntax, see AWS
 [CREATE MATERIALIZED VIEW](https://docs.aws.amazon.com/redshift/latest/dg/materialized-view-create-sql-command.html),
 [ALTER MATERIALIZED VIEW](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_MATERIALIZED_VIEW.html),
 [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html), and

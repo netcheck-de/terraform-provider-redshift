@@ -23,9 +23,9 @@ override.tf.json
 *_override.tf.json
 terraform.rc
 .terraformrc
-# Example dependency locks are local; go.sum remains versioned.
+# Standalone snippets have no lock; executable configuration roots keep reviewed dependency locks.
 examples/**/.terraform.lock.hcl
-tests/acceptance/infra/.terraform.lock.hcl
+!examples/complete/.terraform.lock.hcl
 
 # Local configuration and tools
 .env

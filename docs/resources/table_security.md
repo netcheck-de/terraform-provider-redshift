@@ -7,9 +7,12 @@ description: Turns row-level security on or off for a table or view.
 # redshift_table_security (Resource)
 
 Turns row-level security (RLS) on or off for one existing table, view, late-binding view, or materialized view, and
-sets how several policies combine and whether RLS also applies to datashare consumers. See AWS
-[ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html) and
-[SVV_RLS_RELATION](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_RELATION.html).
+sets how several policies combine and whether RLS also applies to datashare consumers.
+
+For concepts and limitations, see AWS
+[Row-level security](https://docs.aws.amazon.com/redshift/latest/dg/t_rls.html).
+
+For SQL syntax, see AWS [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html).
 
 ~> **Destroying this resource turns row-level security OFF.** Every policy attached to the relation stops filtering,
 and all rows become visible to anyone with `SELECT` on it. To keep a relation protected while it leaves Terraform,
@@ -75,7 +78,9 @@ setting stay as they are.
 
 ## Reconciliation
 
-Refresh reads the settings from `svv_rls_relation`; an update runs one `ALTER TABLE ... ROW LEVEL SECURITY` statement
+Refresh reads the settings from
+[SVV_RLS_RELATION](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_RLS_RELATION.html);
+an update runs one `ALTER TABLE ... ROW LEVEL SECURITY` statement
 for the switch and conjunction type and one for the datashare setting, as far as they changed, and re-reads the catalog
 to verify the result; a changed `database`, `schema`, or `relation` replaces the table security.
 

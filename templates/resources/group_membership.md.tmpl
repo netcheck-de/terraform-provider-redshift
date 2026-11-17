@@ -6,7 +6,11 @@ description: Manages one user-to-group relationship.
 
 # redshift_group_membership (Resource)
 
-Owns one database user's membership in one SQL group. See AWS
+Owns one database user's membership in one SQL group.
+
+For concepts and limitations, see AWS [Groups](https://docs.aws.amazon.com/redshift/latest/dg/r_Groups.html).
+
+For SQL syntax, see AWS
 [ALTER GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_GROUP.html).
 
 ## Example Usage

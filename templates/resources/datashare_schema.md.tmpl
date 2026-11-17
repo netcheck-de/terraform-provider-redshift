@@ -7,7 +7,11 @@ description: Manages schema membership and future-object inclusion in a datashar
 # redshift_datashare_schema (Resource)
 
 Manages one schema membership in a producer datashare. Schema creation and table/view membership are separate resources.
-See AWS [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
+
+For concepts and limitations, see AWS
+[Data sharing](https://docs.aws.amazon.com/redshift/latest/dg/datashare-overview.html).
+
+For SQL syntax, see AWS [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
 ## Example Usage
 

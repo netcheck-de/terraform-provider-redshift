@@ -7,7 +7,11 @@ description: Manages a Redshift SQL role, its owner, and its external ID indepen
 # redshift_role (Resource)
 
 Manages one database role, its owner, and its identity-provider external ID, independently of memberships and grants.
-See AWS [CREATE ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_ROLE.html) and
+
+For concepts and limitations, see AWS
+[Role-based access control](https://docs.aws.amazon.com/redshift/latest/dg/t_Roles.html).
+
+For SQL syntax, see AWS [CREATE ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_ROLE.html) and
 [ALTER ROLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_ROLE.html).
 
 ## Example Usage

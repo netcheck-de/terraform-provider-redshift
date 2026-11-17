@@ -97,4 +97,14 @@ func TestSchemasDataSourceQueries(t *testing.T) {
 
 	_, _, diagnostics = discoveryRead(t, newSchemasDataSource, map[string]string{"database": "analytics"}, answer([]sqlclient.Row{{"schema_name": "orphan", "owner": ""}}, ""))
 	assert.True(t, diagnostics.HasError(), "a schema without an owner is malformed")
+
+	t.Run("malformed quota", func(t *testing.T) {
+		c := catalogWith(func(c *catalog) { c.family("databases").(*databasesFamily).schemaQuota = "invalid" })()
+		source := newSchemasDataSource()
+		state, diagnostics := readSource(t, source, collectionConfig(t, source, nil), c)
+		require.True(t, diagnostics.HasError())
+		assert.Contains(t, diagnostics.Errors()[0].Detail(), `schema "serving"`)
+		assert.Contains(t, diagnostics.Errors()[0].Detail(), `unrecognized quota "invalid"`)
+		assert.True(t, state.Raw.IsNull(), "malformed metadata must not publish a partial listing")
+	})
 }

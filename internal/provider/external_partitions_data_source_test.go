@@ -95,6 +95,42 @@ func TestExternalPartitionsListingReportsPartitionFailure(t *testing.T) {
 	assert.Contains(t, diagnostics.Errors()[0].Detail(), "glue unavailable")
 }
 
+// TestExternalPartitionsListingRejectsMalformedMetadata propagates malformed key and partition metadata through the
+// data source, without returning an apparently successful empty listing.
+func TestExternalPartitionsListingRejectsMalformedMetadata(t *testing.T) {
+	for _, test := range []struct {
+		name, catalog, want string
+		row                 sqlclient.Row
+	}{
+		{"partition keys", "svv_external_columns", "incomplete catalog metadata", sqlclient.Row{
+			"schemaname": externalTableFakeSchema, "tablename": "events", "columnname": "event_date",
+			"external_type": "date", "columnnum": "invalid", "part_key": "1",
+		}},
+		{"partition values", "svv_external_partitions", "partition values", sqlclient.Row{
+			"schemaname": externalTableFakeSchema, "tablename": "events", "values": "not json", "location": "s3://bucket/events",
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := fullCatalog()
+			injected := false
+			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+				if strings.Contains(sql, test.catalog) {
+					injected = true
+					return []sqlclient.Row{test.row}, nil
+				}
+
+				return c.Query(ctx, target, sql, parameters)
+			})
+			source := newExternalPartitionsDataSource()
+			state, diagnostics := readSource(t, source, collectionConfig(t, source, nil), client)
+			require.True(t, injected, "the listing must read the malformed metadata")
+			require.True(t, diagnostics.HasError())
+			assert.Contains(t, diagnostics.Errors()[0].Detail(), test.want)
+			assert.True(t, state.Raw.IsNull(), "malformed metadata must not publish a partial listing")
+		})
+	}
+}
+
 // TestExternalPartitionsSQL pins the partition listing and its filters.
 func TestExternalPartitionsSQL(t *testing.T) {
 	checkSQL(t, "external_partitions_sql", []sqlCase{

@@ -10,19 +10,19 @@ terraform {
   required_providers {
     archive = {
       source  = "hashicorp/archive"
-      version = ">= 2.7"
+      version = "~> 2.8"
     }
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 6.67"
+      version = "~> 6.73"
     }
     random = {
       source  = "hashicorp/random"
-      version = ">= 3.7"
+      version = "~> 3.9"
     }
     redshift = {
       source  = "netcheck-de/redshift"
-      version = "= 0.4.0"
+      version = "= 0.5.0"
     }
   }
 }

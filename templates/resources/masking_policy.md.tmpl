@@ -8,9 +8,13 @@ description: Manages a dynamic data masking policy.
 
 Manages one dynamic data masking policy: its typed input columns and the expression that computes the masked value.
 Attach it to columns with `redshift_masking_policy_attachment`, and give it access to lookup tables with
-`redshift_policy_grant`. See AWS
-[CREATE MASKING POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_MASKING_POLICY.html) and
+`redshift_policy_grant`.
+
+For concepts and limitations, see AWS
 [Dynamic data masking](https://docs.aws.amazon.com/redshift/latest/dg/t_ddm.html).
+
+For SQL syntax, see AWS
+[CREATE MASKING POLICY](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_MASKING_POLICY.html).
 
 ## Example Usage
 

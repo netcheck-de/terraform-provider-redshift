@@ -7,7 +7,13 @@ description: Grants SELECT on a lookup table to a row-level security or masking 
 # redshift_policy_grant (Resource)
 
 Owns `SELECT` on one lookup table for one row-level security (`RLS`) or dynamic data masking (`MASKING`) policy, which a
-policy needs when its expression reads the table. See AWS
+policy needs when its expression reads the table.
+
+For concepts and limitations, see AWS
+[Row-level security](https://docs.aws.amazon.com/redshift/latest/dg/t_rls.html) and
+[Dynamic data masking](https://docs.aws.amazon.com/redshift/latest/dg/t_ddm.html).
+
+For SQL syntax, see AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-row-level-security) and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html#revoke-role-level).
 

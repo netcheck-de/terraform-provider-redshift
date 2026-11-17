@@ -8,7 +8,12 @@ description: Manages a reusable template of COPY options.
 
 Manages a template of `COPY` options, such as the data format, compression, and conversion parameters, that `COPY`
 commands reference instead of repeating them. Grant `USAGE`, `ALTER`, or `DROP` on it with `redshift_object_grant` and
-`object_type = "TEMPLATE"`. See AWS
+`object_type = "TEMPLATE"`.
+
+For concepts and limitations, see AWS
+[Loading tables with COPY](https://docs.aws.amazon.com/redshift/latest/dg/t_Loading_tables_with_the_COPY_command.html).
+
+For SQL syntax, see AWS
 [CREATE TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_TEMPLATE.html),
 [ALTER TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TEMPLATE.html),
 [DROP TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_TEMPLATE.html), and

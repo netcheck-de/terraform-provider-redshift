@@ -7,7 +7,12 @@ description: Manages a scalar SQL user-defined function overload.
 # redshift_function (Resource)
 
 Manages one scalar SQL user-defined function (UDF) overload: its input types, return type, volatility, `SELECT` body,
-and owner. See AWS [CREATE FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_FUNCTION.html),
+and owner.
+
+For concepts and limitations, see AWS
+[User-defined functions](https://docs.aws.amazon.com/redshift/latest/dg/user-defined-functions.html).
+
+For SQL syntax, see AWS [CREATE FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_FUNCTION.html),
 [ALTER FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_FUNCTION.html), and
 [DROP FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_FUNCTION.html).
 

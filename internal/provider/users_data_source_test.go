@@ -132,4 +132,27 @@ func TestUsersListingErrors(t *testing.T) {
 			assert.True(t, diagnostics.HasError())
 		})
 	}
+
+	for field, want := range map[string]string{"connection_limit": "decode user connection limit", "session_timeout": "decode user session timeout"} {
+		t.Run("malformed "+field, func(t *testing.T) {
+			c := &catalog{user: true}
+			injected := false
+			client := queryFunc(func(ctx context.Context, target sqlclient.Connection, sql string, parameters map[string]string) ([]sqlclient.Row, error) {
+				rows, err := c.Query(ctx, target, sql, parameters)
+				if err == nil && strings.Contains(sql, "FROM svv_user_info") {
+					require.Len(t, rows, 1)
+					rows[0][field] = "invalid"
+					injected = true
+				}
+
+				return rows, err
+			})
+			source := newUsersDataSource()
+			state, diagnostics := readSource(t, source, collectionConfig(t, source, nil), client)
+			require.True(t, injected, "the listing must read the malformed user information")
+			require.True(t, diagnostics.HasError())
+			assert.Contains(t, diagnostics.Errors()[0].Detail(), want)
+			assert.True(t, state.Raw.IsNull(), "malformed metadata must not publish a partial listing")
+		})
+	}
 }

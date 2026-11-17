@@ -10,7 +10,13 @@ Creates a local database with an optional owner, connection limit, collation, an
 database of an **active** zero-ETL integration, or a consumer database from an **already associated** producer
 datashare. Datashare authorization and the namespace-scoped consumer association are AWS resources and must precede
 shared database creation. The provider waits for the inbound share to appear in the SQL catalog, for up to five minutes
-or, when set, the `timeouts.create` duration. See AWS
+or, when set, the `timeouts.create` duration.
+
+For concepts and limitations, see AWS
+[Data sharing](https://docs.aws.amazon.com/redshift/latest/dg/datashare-overview.html) for consumer databases and
+[Zero-ETL integrations](https://docs.aws.amazon.com/redshift/latest/mgmt/zero-etl-using.html) for integration destinations.
+
+For SQL syntax, see AWS
 [CREATE DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATABASE.html) and
 [ALTER DATABASE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATABASE.html).
 

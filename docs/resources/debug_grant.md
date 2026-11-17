@@ -6,11 +6,15 @@ description: Manages DEBUG on a database with federated permissions for a global
 
 # redshift_debug_grant (Resource)
 
-Grants `DEBUG` on one database in a warehouse with
-[federated permissions](https://docs.aws.amazon.com/redshift/latest/dg/federated-permissions.html). Redshift redacts
+Grants `DEBUG` on one database in a warehouse with federated permissions. Redshift redacts
 sensitive values in the secure logging records of queries that read fine-grained access controlled data; `DEBUG` lets
 the grantee see them unredacted. The grantee is a global identity, an Identity Center group, or the superusers of an
-account. See AWS [GRANT DEBUG](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-debug-syntax),
+account.
+
+For concepts and limitations, see AWS
+[Federated permissions](https://docs.aws.amazon.com/redshift/latest/dg/federated-permissions.html).
+
+For SQL syntax, see AWS [GRANT DEBUG](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-debug-syntax),
 [usage notes](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT-usage-notes.html#r_GRANT-usage-notes-debug), and
 [REVOKE](https://docs.aws.amazon.com/redshift/latest/dg/r_REVOKE.html).
 

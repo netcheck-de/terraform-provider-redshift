@@ -7,7 +7,12 @@ description: Manages explicit default permissions for future objects created by 
 # redshift_default_privilege (Resource)
 
 Owns default privileges for future objects created by one user in one local database, optionally restricted to a schema.
-See AWS [ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
+
+For concepts and limitations, see AWS
+[Default privileges for RBAC](https://docs.aws.amazon.com/redshift/latest/dg/r_roles-alter-default-privileges.html).
+
+For SQL syntax, see AWS
+[ALTER DEFAULT PRIVILEGES](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DEFAULT_PRIVILEGES.html).
 
 ## Example Usage
 

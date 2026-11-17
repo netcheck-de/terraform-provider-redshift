@@ -7,7 +7,12 @@ description: Exclusively owns all current members of one kind in a datashare sch
 # redshift_datashare_membership (Resource)
 
 Exclusively manages all current tables/views or SQL functions in a producer datashare schema. This is an authoritative
-schema-and-kind owner, not a creation-time snapshot. See AWS
+schema-and-kind owner, not a creation-time snapshot.
+
+For concepts and limitations, see AWS
+[Data sharing](https://docs.aws.amazon.com/redshift/latest/dg/datashare-overview.html).
+
+For SQL syntax, see AWS
 [ALTER DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_DATASHARE.html).
 
 ## Example Usage

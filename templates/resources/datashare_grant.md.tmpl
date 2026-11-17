@@ -8,7 +8,12 @@ description: Manages SQL datashare usage granted to a consumer account or namesp
 
 Grants SQL `USAGE` on a producer datashare to **one consumer AWS account or Redshift namespace UUID**. Specify exactly
 one of `account_id` and `namespace_id`. Cross-account sharing also requires AWS
-authorization in the producer account and association in the consumer account. See AWS
+authorization in the producer account and association in the consumer account.
+
+For concepts and limitations, see AWS
+[Data sharing](https://docs.aws.amazon.com/redshift/latest/dg/datashare-overview.html).
+
+For SQL syntax, see AWS
 [GRANT USAGE ON DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html#grant-datashare-syntax).
 
 ## Example Usage

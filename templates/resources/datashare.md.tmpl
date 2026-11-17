@@ -9,7 +9,12 @@ description: Manages an outbound Redshift datashare.
 Manages **one producer-side SQL datashare** in the local database specified by `database`. This is a different SQL
 object from the
 [consumer database](https://registry.terraform.io/providers/netcheck-de/redshift/latest/docs/resources/database). AWS
-datashare authorization and consumer association are managed with the AWS provider. See AWS
+datashare authorization and consumer association are managed with the AWS provider.
+
+For concepts and limitations, see AWS
+[Data sharing](https://docs.aws.amazon.com/redshift/latest/dg/datashare-overview.html).
+
+For SQL syntax, see AWS
 [CREATE DATASHARE](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_DATASHARE.html).
 
 ## Example Usage

@@ -29,6 +29,7 @@ var (
 	_ = registerLifecycleCase(lifecycleCase{
 		name: "table_security", new: newTableSecurityResource, model: tableSecurityLifecycleModel(),
 		absent: func(c *catalog) { rlsFakeOf(c).rlsOn = false }, isDeletion: tableSecurityDeletion,
+		verifyDeletion: true,
 	})
 	_ = registerReplacementPolicy("redshift_table_security", map[string]replaceRule{
 		"database":                     replaceAlways,

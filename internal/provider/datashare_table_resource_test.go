@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var _ = registerLifecycleCase(lifecycleCase{name: "share table", new: newDatashareTableResource, model: datashareTableModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), Schema: types.StringValue("serving"), Table: types.StringValue("table")}, absent: func(c *catalog) { c.shareTable = false }})
+var _ = registerLifecycleCase(lifecycleCase{name: "share table", new: newDatashareTableResource, model: datashareTableModel{Database: types.StringValue("admin"), Datashare: types.StringValue("producer"), Schema: types.StringValue("serving"), Table: types.StringValue("table")}, absent: func(c *catalog) { c.shareTable = false }, verifyDeletion: true})
 
 var _ = registerReplacementPolicy("redshift_datashare_table", map[string]replaceRule{
 	"database":  replaceAlways,

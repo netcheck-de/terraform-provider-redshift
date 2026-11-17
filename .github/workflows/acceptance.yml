@@ -34,7 +34,7 @@ jobs:
     environment: dev
     env:
       TF_DIR: tests/acceptance/infra
-      TF_VAR_name_prefix: redshift-ci-acceptance
+      TF_VAR_name_prefix: redshift-ci-acceptance-${{ github.run_id }}
       # Fixture Terraform must install the pinned release, not inherit development overrides.
       TF_CLI_CONFIG_FILE: /dev/null
       TF_ACC: '1'

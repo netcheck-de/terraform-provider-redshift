@@ -6,7 +6,11 @@ description: Manages a SQL user group independently of its membership and privil
 
 # redshift_group (Resource)
 
-Manages a SQL user group. Groups contain database users; they are distinct from Identity Center group roles. See AWS
+Manages a SQL user group. Groups contain database users; they are distinct from Identity Center group roles.
+
+For concepts and limitations, see AWS [Groups](https://docs.aws.amazon.com/redshift/latest/dg/r_Groups.html).
+
+For SQL syntax, see AWS
 [CREATE GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_GROUP.html) and
 [DROP GROUP](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_GROUP.html).
 

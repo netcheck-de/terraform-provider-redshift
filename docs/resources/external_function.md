@@ -6,11 +6,15 @@ description: Manages a scalar Lambda user-defined function.
 
 # redshift_external_function (Resource)
 
-Manages a scalar Lambda user-defined function (UDF) that Redshift runs by invoking an AWS Lambda function. See AWS
-[CREATE EXTERNAL FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_FUNCTION.html),
-[ALTER FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_FUNCTION.html),
-[DROP FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_FUNCTION.html), and
+Manages a scalar Lambda user-defined function (UDF) that Redshift runs by invoking an AWS Lambda function.
+
+For concepts and limitations, see AWS
 [Scalar Lambda UDFs](https://docs.aws.amazon.com/redshift/latest/dg/udf-creating-a-lambda-sql-udf.html).
+
+For SQL syntax, see AWS
+[CREATE EXTERNAL FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_CREATE_EXTERNAL_FUNCTION.html),
+[ALTER FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_FUNCTION.html), and
+[DROP FUNCTION](https://docs.aws.amazon.com/redshift/latest/dg/r_DROP_FUNCTION.html).
 
 ## Example Usage
 

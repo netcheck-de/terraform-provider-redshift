@@ -15,6 +15,23 @@ Read and follow [DEVELOPMENT.md](DEVELOPMENT.md) as the project's instruction se
 - Run `task check` before finishing; also run `task terraform-check` when Terraform configurations change.
 - Run `task docs` after changing documentation sources.
 
+## Dependency upgrades
+
+- Verify versions against upstream releases; use the latest stable versions compatible with the repository.
+- Review `TODO.md` for open issues that newer upstream releases may resolve. Check linked upstream issues and release
+  notes, verify fixes locally, and update or remove resolved TODOs and obsolete workarounds only after verification.
+- Use the latest major tag for GitHub Actions when available, such as `@v7`, not `@v7.0.1`.
+- Use `~> major.minor` in Terraform `required_providers`, without a patch version; lock exact selections in
+  `.terraform.lock.hcl`. Exception: acceptance fixtures must pin the released Redshift provider exactly.
+- Update Go in `go.mod`, Go dependencies and tools, `.golangci-lint-version`, and Terraform modules as applicable.
+  Refresh `go.sum` with `go mod tidy` and regenerate Terraform lock files with Terraform, not by hand.
+- Check for new stable Terraform major/minor release series and update the shared CI version matrix accordingly.
+  Use explicit supported/tested series with their latest patches, and retain minimum-version coverage.
+  Keep the documented CI versions in sync.
+- Keep the newest compatible version when an upstream update breaks tooling; document the reason for the hold.
+- Preserve intentional minimum-supported-version test coverage, historical release references, and format/schema versions.
+  Regenerate documentation when its sources change and run the checks listed above.
+
 ## Guardrails
 
 - Never hand-edit generated `docs/`; change schemas, templates, or examples.
