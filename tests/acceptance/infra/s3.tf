@@ -4,7 +4,7 @@
 # trivy:ignore:AWS-0132
 module "s3" {
   source  = "terraform-aws-modules/s3-bucket/aws"
-  version = "5.17.0"
+  version = "5.17.1"
 
   bucket                                = "${substr(var.name_prefix, 0, 30)}-${data.aws_caller_identity.fixture.account_id}-${var.region}"
   force_destroy                         = true

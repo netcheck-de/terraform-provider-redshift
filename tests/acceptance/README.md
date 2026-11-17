@@ -51,7 +51,7 @@ The workflow lifecycle is:
    import adoption, drift, and other distinct assertions—not to repeat that automatic check.
 4. Terraform destroys SQL prerequisites before their dependent AWS infrastructure, including after failures.
 
-The fixture pins Registry provider `netcheck-de/redshift` to **0.4.0** for SQL schemas, tables, sharing and COPY JOB
+The fixture pins Registry provider `netcheck-de/redshift` to **0.5.0** for SQL schemas, tables, sharing and COPY JOB
 resources. It never uses the development provider under test and does not deploy or depend on `examples/complete`.
 The fixture targets commercial AWS regions (`arn:aws:`), not GovCloud or China partitions.
 Fixture commands use `TF_CLI_CONFIG_FILE=/dev/null` so development overrides cannot bypass that pin; offline fixture
