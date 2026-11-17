@@ -159,7 +159,7 @@ func (r *externalFunctionResource) Schema(_ context.Context, _ resource.SchemaRe
 				Validators: []validator.Int64{int64validator.AtLeast(1)},
 			},
 			"max_batch_size_unit": schema.StringAttribute{
-				Optional: true, MarkdownDescription: "Unit of `max_batch_size`: `KB` or `MB`. Unset means KB, as in Redshift. Requires `max_batch_size`.",
+				Optional: true, MarkdownDescription: "Unit of `max_batch_size`: `KB` or `MB`. Unset means `KB`, as in Redshift. Requires `max_batch_size`.",
 				Validators: []validator.String{stringvalidator.OneOf("KB", "MB"), stringvalidator.AlsoRequires(path.MatchRoot("max_batch_size"))},
 			},
 			"owner": schema.StringAttribute{

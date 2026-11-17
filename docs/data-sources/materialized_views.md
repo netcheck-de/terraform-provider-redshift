@@ -42,7 +42,7 @@ output "manually_refreshed_views" {
 
 Read-Only:
 
-- `auto_refresh` (Boolean) Whether the materialized view refreshes automatically, from `SVV_MV_INFO`. Null when `SVV_MV_INFO` hides the view from a provider identity that neither owns it nor is a superuser.
+- `auto_refresh` (Boolean) Whether the materialized view refreshes automatically, from `SVV_MV_INFO`. `null` when `SVV_MV_INFO` hides the view from a provider identity that neither owns it nor is a superuser.
 - `database` (String) Local database containing the materialized view.
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; equals the paired resource's `definition_fingerprint` for the same definition.
 - `name` (String) Materialized view name.
@@ -75,7 +75,7 @@ configured filters within the warehouse.
 
 `pg_views` decides which materialized views exist, and each item reports what the `redshift_materialized_view` lookup
 reports. `SVV_MV_INFO` shows a provider identity that is not a superuser only the materialized views it owns, so
-`auto_refresh` is null for materialized views owned by other users. Ordinary and late-binding views are left out;
+`auto_refresh` is `null` for materialized views owned by other users. Ordinary and late-binding views are left out;
 `redshift_views` lists them. A database that does not exist or is not local, such as a datashare consumer database,
 lists nothing. Storage options have no catalog source every user can read; use the `redshift_materialized_view` lookup,
-which reports them as null too.
+which reports them as `null` too.

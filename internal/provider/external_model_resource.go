@@ -142,7 +142,7 @@ func (r *externalModelResource) Schema(_ context.Context, _ resource.SchemaReque
 			"response_type": externalModelFormat("Response format: `VARCHAR` (the default) returns the generated text, `SUPER` the whole response. `RAW` requests require `SUPER`. Accepted in any case; another case of the same keyword is recorded in place.",
 				"VARCHAR", "VARCHAR", "SUPER"),
 			"owner": schema.StringAttribute{
-				Computed: true, MarkdownDescription: "SQL user owning the model, as `SHOW MODEL` reports it; null when it is not reported.",
+				Computed: true, MarkdownDescription: "SQL user owning the model, as `SHOW MODEL` reports it; `null` when it is not reported.",
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 		},

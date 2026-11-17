@@ -39,7 +39,7 @@ SELECT TRIM(auth_method) ... FROM sys_connection_log WHERE session_id = pg_backe
 
 ## Read Behavior
 
-`exists` is true when a `DEBUG` row with the grantee's identity type (`global_user`, `global_group`, or
+`exists` is `true` when a `DEBUG` row with the grantee's identity type (`global_user`, `global_group`, or
 `admins_of_account`) names the grantee, compared without case. A missing grant, or a database that `SHOW GRANTS`
 cannot read and `SHOW DATABASES` no longer lists, reports `false`; other catalog errors remain errors. `SHOW GRANTS`
 shows only grants visible to the provider's identity.
@@ -56,5 +56,5 @@ connect the provider to the producer and
 use its local database name instead.
 
 `id` (String, computed) is the grant's JSON identity, using the same warehouse, database, `grantee`, and upper-case
-`grantee_type` keys as the paired resource. It is null when `exists` is false. No grant is created, adopted, or
+`grantee_type` keys as the paired resource. It is `null` when `exists` is `false`. No grant is created, adopted, or
 revoked.

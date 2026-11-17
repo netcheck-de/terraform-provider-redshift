@@ -81,8 +81,8 @@ be proved, refresh reports an error and preserves state instead of inferring tha
 `DATABASE` and `SCHEMA` support `USAGE` without grant options; `TABLE` supports the table privileges listed above.
 `FUNCTION` and `PROCEDURE` support `EXECUTE`, including grant options for users. Shared routine permissions cover
 every overload
-of a name: a grant using an INTEGER signature is also visible for a VARCHAR overload, and revoking either removes the
-name-wide grant. Omit `arguments`; configuring it is rejected so separate overload identities cannot accidentally
+of a name: a grant using an `INTEGER` signature is also visible for a `VARCHAR` overload, and revoking either removes
+the name-wide grant. Omit `arguments`; configuring it is rejected so separate overload identities cannot accidentally
 manage the same permission. `SVV_REDSHIFT_FUNCTIONS.function_type` distinguishes the producer's function and procedure
 names, so `FUNCTION` cannot select a procedure and `PROCEDURE` cannot select a function. Before mutating a single
 routine or an `ALL PROCEDURES` snapshot, the provider rejects a name that exists as both kinds: the consumer has one

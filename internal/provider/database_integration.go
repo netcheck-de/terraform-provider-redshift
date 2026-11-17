@@ -119,11 +119,11 @@ func databaseIntegrationBlock() schema.SingleNestedBlock {
 			},
 			"accept_invalid_chars": schema.BoolAttribute{
 				Optional:            true,
-				MarkdownDescription: "Replace invalid VARCHAR characters with `?` instead of stopping ingestion (`ACCEPTINVCHARS`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No supported catalog readback is used, so changes made outside Terraform are not detected; omitted, it is not managed.",
+				MarkdownDescription: "Replace invalid `VARCHAR` characters with `?` instead of stopping ingestion (`ACCEPTINVCHARS`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No supported catalog readback is used, so changes made outside Terraform are not detected; omitted, it is not managed.",
 			},
 			"truncate_columns": schema.BoolAttribute{
 				Optional:            true,
-				MarkdownDescription: "Truncate VARCHAR and SUPER values that exceed the column instead of stopping ingestion (`TRUNCATECOLUMNS`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No supported catalog readback is used, so changes made outside Terraform are not detected; omitted, it is not managed.",
+				MarkdownDescription: "Truncate `VARCHAR` and `SUPER` values that exceed the column instead of stopping ingestion (`TRUNCATECOLUMNS`). Updated in place with `ALTER DATABASE ... INTEGRATION SET`. No supported catalog readback is used, so changes made outside Terraform are not detected; omitted, it is not managed.",
 			},
 		},
 	}
@@ -131,15 +131,15 @@ func databaseIntegrationBlock() schema.SingleNestedBlock {
 
 // databaseIntegrationLookupAttribute observes the integration in the lookup, which never declares blocks.
 func databaseIntegrationLookupAttribute() datasourceschema.SingleNestedAttribute {
-	unread := "No supported catalog readback is used, so always null in the lookup."
+	unread := "No supported catalog readback is used, so always `null` in the lookup."
 
 	return datasourceschema.SingleNestedAttribute{
 		Computed: true,
 		MarkdownDescription: "Zero-ETL integration of a destination database, from `SVV_INTEGRATION`, which only superusers can see; " +
-			"null for shared databases, when the view shows no integration for the database, or with a warning when access to the view is denied.",
+			"`null` for shared databases, when the view shows no integration for the database, or with a warning when access to the view is denied.",
 		Attributes: map[string]datasourceschema.Attribute{
 			"integration_id":       datasourceschema.StringAttribute{Computed: true, MarkdownDescription: "Zero-ETL integration identifier."},
-			"source_database":      datasourceschema.StringAttribute{Computed: true, MarkdownDescription: "Replicated source database; null when the view reports none."},
+			"source_database":      datasourceschema.StringAttribute{Computed: true, MarkdownDescription: "Replicated source database; `null` when the view reports none."},
 			"refresh_interval":     datasourceschema.Int64Attribute{Computed: true, MarkdownDescription: "Approximate seconds between refresh cycles."},
 			"history_mode":         datasourceschema.BoolAttribute{Computed: true, MarkdownDescription: "Whether history mode is on."},
 			"auto_remediation":     datasourceschema.BoolAttribute{Computed: true, MarkdownDescription: "Whether tables affected by duplicate rows are resynchronized automatically."},

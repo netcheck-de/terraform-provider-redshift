@@ -40,10 +40,10 @@ output "consumer_namespaces" {
 
 Read-Only:
 
-- `account_id` (String) Consumer AWS account ID of an account grant; null for a namespace grant.
+- `account_id` (String) Consumer AWS account ID of an account grant; `null` for a namespace grant.
 - `database` (String) Local producer database owning the datashare.
 - `datashare` (String) Datashare name.
-- `namespace_id` (String) Consumer namespace UUID of a namespace grant; null for an account grant.
+- `namespace_id` (String) Consumer namespace UUID of a namespace grant; `null` for an account grant.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -59,7 +59,7 @@ SELECT ... FROM svv_datashare_consumers JOIN svv_datashares ... WHERE share_type
 
 `datashare_grants` is empty when nothing matches; it is ordered by share, account, and namespace. One query in the
 provider database covers the shares of every producer database, each reported with its `database`. A namespace grant
-reports `namespace_id` with a null `account_id`; an account grant reports `account_id` with a null `namespace_id`.
+reports `namespace_id` with a `null` `account_id`; an account grant reports `account_id` with a `null` `namespace_id`.
 
 `SVV_DATASHARE_CONSUMERS` reports an account granted usage `VIA DATA CATALOG` like a plain account grant, so the listing
 does not report the grant form. Grants apply to SQL usage only; AWS authorization and association are separate.

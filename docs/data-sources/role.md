@@ -26,8 +26,8 @@ data "redshift_role" "readers" {
 
 ### Read-Only
 
-- `external_id` (String) Identifier of the role in a native third-party identity provider (`svv_roles.external_id`); null when unset.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `external_id` (String) Identifier of the role in a native third-party identity provider (`svv_roles.external_id`); `null` when unset.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `owner` (String) User that owns the role (`svv_roles.role_owner`).
 - `role_id` (Number) Catalog role ID (`svv_roles.role_id`).
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->

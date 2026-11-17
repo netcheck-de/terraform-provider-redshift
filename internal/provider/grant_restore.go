@@ -9,7 +9,7 @@ import (
 
 // restoreDefaultAttribute is deliberately not an identity field: changing cleanup policy never replaces a grant.
 func restoreDefaultAttribute() schema.BoolAttribute {
-	return schema.BoolAttribute{Optional: true, MarkdownDescription: "Opt in to restoring the built-in PUBLIC privilege on destroy instead of leaving it revoked. Defaults to false. Only valid for a PUBLIC language grant or database-wide PUBLIC FUNCTIONS default privileges, respectively. This can widen access after Terraform stops managing the tuple; it does not restore historical grants."}
+	return schema.BoolAttribute{Optional: true, MarkdownDescription: "Opt in to restoring the built-in `PUBLIC` privilege on destroy instead of leaving it revoked. Defaults to `false`. Only valid for a `PUBLIC` language grant or database-wide `PUBLIC` `FUNCTIONS` default privileges, respectively. This can widen access after Terraform stops managing the tuple; it does not restore historical grants."}
 }
 
 // restoreGrantDefault restricts opt-in cleanup to the exact tuple with a documented built-in privilege.

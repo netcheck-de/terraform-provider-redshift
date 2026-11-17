@@ -32,13 +32,13 @@ func grantsString(description string) schema.StringAttribute {
 // objectGrantsOutputDescriptions describe listed values where the resource's text explains configuration.
 var objectGrantsOutputDescriptions = map[string]string{
 	"database_name":           "Database of the granted object.",
-	"schema_name":             "Schema of the granted object; null for `DATABASE`.",
-	"object_name":             "Table, view, or template name; null for `DATABASE` and `SCHEMA`.",
+	"schema_name":             "Schema of the granted object; `null` for `DATABASE`.",
+	"object_name":             "Table, view, or template name; `null` for `DATABASE` and `SCHEMA`.",
 	"object_type":             "`DATABASE`, `SCHEMA`, `TABLE` (including views), or `TEMPLATE`.",
 	"grantee":                 "Receiving identity name; `public` for `PUBLIC`.",
 	"grantee_type":            "`USER`, `ROLE`, `GROUP`, or `PUBLIC`.",
 	"privileges":              "Explicit privileges the grantee holds on the object, with `TEMP` reported as `TEMPORARY`.",
-	"grant_option_privileges": "Subset of `privileges` the grantee holds `WITH GRANT OPTION`; null for grantee listings, because `SHOW GRANTS FOR` does not report grant options.",
+	"grant_option_privileges": "Subset of `privileges` the grantee holds `WITH GRANT OPTION`; `null` for grantee listings, because `SHOW GRANTS FOR` does not report grant options.",
 }
 
 // newObjectGrantsDataSource lists the object grants SHOW GRANTS reports on one object or for one user or role.

@@ -31,7 +31,7 @@ SELECT ... FROM svv_datashare_consumers JOIN svv_datashares ... WHERE share_type
 
 `datashare_grants` is empty when nothing matches; it is ordered by share, account, and namespace. One query in the
 provider database covers the shares of every producer database, each reported with its `database`. A namespace grant
-reports `namespace_id` with a null `account_id`; an account grant reports `account_id` with a null `namespace_id`.
+reports `namespace_id` with a `null` `account_id`; an account grant reports `account_id` with a `null` `namespace_id`.
 
 `SVV_DATASHARE_CONSUMERS` reports an account granted usage `VIA DATA CATALOG` like a plain account grant, so the listing
 does not report the grant form. Grants apply to SQL usage only; AWS authorization and association are separate.

@@ -58,9 +58,9 @@ Read-Only:
 - `database` (String) Database containing the table.
 - `definition` (String) Constraint definition as `pg_get_constraintdef` renders it, such as `PRIMARY KEY (id)`.
 - `name` (String) Constraint name, as used by `redshift_comment` with `object_type = "CONSTRAINT"`.
-- `referenced_columns` (List of String) Referenced columns of a foreign key, paired with `columns` by position; null for other constraints.
-- `referenced_schema` (String) Schema of the table a foreign key references; null for other constraints.
-- `referenced_table` (String) Table a foreign key references; null for other constraints.
+- `referenced_columns` (List of String) Referenced columns of a foreign key, paired with `columns` by position; `null` for other constraints.
+- `referenced_schema` (String) Schema of the table a foreign key references; `null` for other constraints.
+- `referenced_table` (String) Table a foreign key references; `null` for other constraints.
 - `schema` (String) Schema containing the table.
 - `table` (String) Table the constraint belongs to.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->

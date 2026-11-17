@@ -43,20 +43,20 @@ output "glue_databases" {
 
 Read-Only:
 
-- `authentication` (String) Streaming authentication mode `NONE`, `IAM`, or `MTLS`. Null when the catalog does not record it.
-- `authentication_arn` (String) ACM certificate ARN used for mTLS. Null when the catalog does not record it.
+- `authentication` (String) Streaming authentication mode `NONE`, `IAM`, or `MTLS`. `null` when the catalog does not record it.
+- `authentication_arn` (String) ACM certificate ARN used for mTLS. `null` when the catalog does not record it.
 - `database` (String) Database containing the external schema.
 - `glue_database` (String) Glue database name of a `DATA_CATALOG` schema.
-- `iam_role_arn` (String) IAM role, or role chain, used to reach the source. Null when the catalog does not record it.
+- `iam_role_arn` (String) IAM role, or role chain, used to reach the source. `null` when the catalog does not record it.
 - `name` (String) External schema name.
 - `owner` (String) SQL user owning the external schema.
-- `port` (Number) Hive metastore or federated database port. Null when the catalog does not record it.
-- `region` (String) Glue catalog or stream AWS region. Null when the catalog does not record it.
-- `secret_arn` (String) Secrets Manager ARN of the federated credentials or mTLS certificate. Null when the catalog does not record it.
+- `port` (Number) Hive metastore or federated database port. `null` when the catalog does not record it.
+- `region` (String) Glue catalog or stream AWS region. `null` when the catalog does not record it.
+- `secret_arn` (String) Secrets Manager ARN of the federated credentials or mTLS certificate. `null` when the catalog does not record it.
 - `source_database` (String) External database of a Hive, federated, or Redshift schema.
-- `source_schema` (String) PostgreSQL or Redshift source schema. Null when the catalog does not record it.
+- `source_schema` (String) PostgreSQL or Redshift source schema. `null` when the catalog does not record it.
 - `source_type` (String) `DATA_CATALOG`, `HIVE_METASTORE`, `POSTGRES`, `MYSQL`, `REDSHIFT`, `KINESIS`, or `MSK`.
-- `uri` (String) Hive metastore URI, federated hostname, or Kafka bootstrap URI. Null when the catalog does not record it.
+- `uri` (String) Hive metastore URI, federated hostname, or Kafka bootstrap URI. `null` when the catalog does not record it.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -77,7 +77,7 @@ check. `id` combines the listed database within the warehouse. Items are ordered
 external schemas returns an empty `external_schemas` list.
 
 Each item is decoded as `redshift_external_schema` reads it: `source_type` follows from the catalog's schema kind, and
-options that the catalog does not record in `esoptions` are null. Schemas of kinds the resource cannot manage, such as
+options that the catalog does not record in `esoptions` are `null`. Schemas of kinds the resource cannot manage, such as
 system-table schemas, are omitted. An incomplete catalog entry, such as a `DATA_CATALOG` schema without an IAM role or
 undecodable options, is an error.
 

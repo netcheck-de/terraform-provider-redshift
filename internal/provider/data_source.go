@@ -10,7 +10,7 @@ import (
 
 // dataSourceIDAttribute exposes the paired resource's JSON identity as a read-only observation.
 func dataSourceIDAttribute() schema.StringAttribute {
-	return schema.StringAttribute{Computed: true, MarkdownDescription: "JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship."}
+	return schema.StringAttribute{Computed: true, MarkdownDescription: "JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship."}
 }
 
 // dataSourceClient supplies the same routing and ownership contract to read-only lookups.

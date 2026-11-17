@@ -32,7 +32,7 @@ data "redshift_view" "daily_sales" {
 ### Read-Only
 
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; equals the paired resource's `definition_fingerprint` for the same definition.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `late_binding` (Boolean) Whether the view is late-binding (`WITH NO SCHEMA BINDING`).
 - `owner` (String) SQL user owning the view.
 - `query` (String) Catalog definition from `pg_views`, as Redshift prints it.

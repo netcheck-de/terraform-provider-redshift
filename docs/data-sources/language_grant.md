@@ -34,7 +34,7 @@ data "redshift_language_grant" "developers_plpgsql" {
 ### Read-Only
 
 - `grant_option_privileges` (Set of String) Subset of `privileges` the grantee currently holds `WITH GRANT OPTION`, from `admin_option`. Only users can hold grant options, so it is empty for other grantees.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `privileges` (Set of String) Current explicit privileges for the selected tuple; inherited privileges are excluded.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 

@@ -12,7 +12,7 @@ var _ = registerDataSource(newMaterializedViewDataSource)
 // materializedViewLookupStorageDescription explains why the storage outputs stay null: SVV_TABLE_INFO, the view
 // ALTER MATERIALIZED VIEW points to, is superuser-only, omits empty relations, and names only the first sort key.
 // https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_TABLE_INFO.html
-const materializedViewLookupStorageDescription = "Always null: no catalog view that every user can read reports it."
+const materializedViewLookupStorageDescription = "Always `null`: no catalog view that every user can read reports it."
 
 // newMaterializedViewDataSource reads a materialized view's definition, refresh setting, and owner without
 // managing it. Storage options have no catalog source every user can read, so they stay null.
@@ -47,7 +47,7 @@ var materializedViewOutputDescriptions = map[string]string{
 	"distribution.key":       "Distribution key column.",
 	"sort_key":               materializedViewLookupStorageDescription,
 	"sort_key.columns":       "Compound sort key columns in order.",
-	"auto_refresh":           "Whether the materialized view refreshes automatically, from `SVV_MV_INFO`. Null when `SVV_MV_INFO` hides the view from a provider identity that neither owns it nor is a superuser.",
+	"auto_refresh":           "Whether the materialized view refreshes automatically, from `SVV_MV_INFO`. `null` when `SVV_MV_INFO` hides the view from a provider identity that neither owns it nor is a superuser.",
 	"owner":                  "SQL user owning the materialized view.",
 	"definition_fingerprint": viewLookupFingerprintDescription,
 }

@@ -6,7 +6,7 @@ description: Lists COPY JOBs with their AUTO setting and IAM role.
 
 # redshift_copy_jobs (Data Source)
 
-Lists copy jobs with their AUTO setting and IAM role. See AWS
+Lists copy jobs with their `AUTO` setting and IAM role. See AWS
 [SYS_COPY_JOB](https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html).
 
 ## Example Usage

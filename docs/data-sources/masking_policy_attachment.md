@@ -39,8 +39,8 @@ data "redshift_masking_policy_attachment" "email_analysts" {
 
 ### Read-Only
 
-- `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `exists` (Boolean) Whether this explicit relationship exists. `false` also covers missing parents.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `input_columns` (List of String) Ordered relation columns passed to the policy's input columns (`USING`). Defaults to `columns`, as Redshift does.
 - `priority` (Number) Priority among the policies that apply to a column; the highest wins, and two different policies on one column cannot share a priority even for different recipients. Defaults to `0`. Redshift has no command to change it, so an update first checks that no other policy holds the new priority on these columns, then detaches and re-attaches the policy: until the second statement completes, the recipient sees the column under the next applicable policy, or unmasked if there is none. If the re-attach fails, the update restores the previous attachment and reports the error.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
@@ -57,6 +57,6 @@ SELECT ... FROM svv_attached_masking_policy WHERE policy_name = '...' AND schema
 ## Read Behavior
 
 `id` (String, computed) is the attachment's JSON identity, using the paired resource's warehouse, `database`, `policy`,
-`schema`, `relation`, `columns` (a JSON list), `grantee`, and `grantee_type` keys. It is null when `exists` is false,
-which also covers a missing policy, relation, or database. Catalog errors remain errors. Nothing is attached or
+`schema`, `relation`, `columns` (a JSON list), `grantee`, and `grantee_type` keys. It is `null` when `exists` is
+`false`, which also covers a missing policy, relation, or database. Catalog errors remain errors. Nothing is attached or
 detached.

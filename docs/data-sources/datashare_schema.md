@@ -31,8 +31,8 @@ data "redshift_datashare_schema" "reporting" {
 
 ### Read-Only
 
-- `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `exists` (Boolean) Whether this explicit relationship exists. `false` also covers missing parents.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `include_new` (Boolean) Automatically include future objects added to this schema; existing objects still need separate memberships.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -48,7 +48,7 @@ SELECT ... FROM svv_datashare_objects WHERE share_name = 'datashare' ...;
 ## Read Behavior
 
 `id` (String, computed) is the relationship's JSON identity, using the same warehouse, producer database, datashare, and
-schema keys as the paired resource. It is null when `exists` is false.
+schema keys as the paired resource. It is `null` when `exists` is `false`.
 
 An absent share/schema membership returns `exists = false` and `include_new = false`. Missing databases, SQL errors, and
 malformed catalog rows raise errors. This lookup does not add schemas, include existing tables, or change `include_new`.

@@ -24,9 +24,9 @@ func newDatabasesDataSource() datasource.DataSource {
 		},
 		element: describedOutputs(collectionElement(newDatabaseResource, "name", "owner", "database_type", "isolation_level"), map[string]string{
 			"name":            "Database name.",
-			"owner":           "SQL user owning the database; null when the owner is not a local user.",
+			"owner":           "SQL user owning the database; `null` when the owner is not a local user.",
 			"database_type":   "`LOCAL` or `SHARED`.",
-			"isolation_level": "`SNAPSHOT` or `SERIALIZABLE`, the keyword of the isolation level the catalog reports; null when unknown.",
+			"isolation_level": "`SNAPSHOT` or `SERIALIZABLE`, the keyword of the isolation level the catalog reports; `null` when unknown.",
 		}),
 		list: databasesList,
 	})

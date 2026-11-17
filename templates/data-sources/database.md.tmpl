@@ -46,11 +46,12 @@ Missing or ambiguous databases and shared databases without a complete producer 
 read by running `DB_COLLATION()` in the looked-up database, so the caller must be able to connect to it.
 
 Every database that is not `SHARED` is a zero-ETL destination candidate, because `SHOW DATABASES` does not document the
-type of a destination: its `integration` comes from `SVV_INTEGRATION`, which only superusers can see, and is null when
+type of a destination: its `integration` comes from `SVV_INTEGRATION`, which only superusers can see, and is `null` when
 the view shows no row for the database. A non-superuser denied access to the view gets ordinary database metadata,
-with a warning and a null `integration`, rather than a failed lookup. A database resource managing an integration
+with a warning and a `null` `integration`, rather than a failed lookup. A database resource managing an integration
 still requires the view and treats permission errors as failures.
-`query_all_states`, `accept_invalid_chars`, and `truncate_columns` have no supported catalog readback and are always null.
+`query_all_states`, `accept_invalid_chars`, and `truncate_columns` have no supported catalog readback and are always
+`null`.
 A destination's `id` includes `integration_id`, so it can be used to import the database.
 
 Shared-database lookups discover the complete producer ARN through
@@ -58,4 +59,4 @@ Shared-database lookups discover the complete producer ARN through
 and a region, including when the SQL connection uses a password. The returned ARN retains the producer's region and
 partition; it is not constructed from the consumer's region. Missing or ambiguous AWS metadata is an error.
 Local database lookups require no AWS metadata calls and return `with_permissions = false`; shared database lookups
-return null local options.
+return `null` local options.

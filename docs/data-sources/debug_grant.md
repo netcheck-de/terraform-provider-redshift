@@ -38,8 +38,8 @@ output "producer_admins_see_unredacted_logs" {
 
 ### Read-Only
 
-- `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `exists` (Boolean) Whether this explicit relationship exists. `false` also covers missing parents.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -62,7 +62,7 @@ SELECT TRIM(auth_method) ... FROM sys_connection_log WHERE session_id = pg_backe
 
 ## Read Behavior
 
-`exists` is true when a `DEBUG` row with the grantee's identity type (`global_user`, `global_group`, or
+`exists` is `true` when a `DEBUG` row with the grantee's identity type (`global_user`, `global_group`, or
 `admins_of_account`) names the grantee, compared without case. A missing grant, or a database that `SHOW GRANTS`
 cannot read and `SHOW DATABASES` no longer lists, reports `false`; other catalog errors remain errors. `SHOW GRANTS`
 shows only grants visible to the provider's identity.
@@ -79,5 +79,5 @@ connect the provider to the producer and
 use its local database name instead.
 
 `id` (String, computed) is the grant's JSON identity, using the same warehouse, database, `grantee`, and upper-case
-`grantee_type` keys as the paired resource. It is null when `exists` is false. No grant is created, adopted, or
+`grantee_type` keys as the paired resource. It is `null` when `exists` is `false`. No grant is created, adopted, or
 revoked.

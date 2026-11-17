@@ -29,7 +29,7 @@ SELECT ... FROM svv_datashare_objects WHERE share_name = 'datashare' ...;
 ## Read Behavior
 
 `id` (String, computed) is the relationship's JSON identity, using the same warehouse, producer database, datashare, and
-schema keys as the paired resource. It is null when `exists` is false.
+schema keys as the paired resource. It is `null` when `exists` is `false`.
 
 An absent share/schema membership returns `exists = false` and `include_new = false`. Missing databases, SQL errors, and
 malformed catalog rows raise errors. This lookup does not add schemas, include existing tables, or change `include_new`.

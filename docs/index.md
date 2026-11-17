@@ -306,14 +306,14 @@ navigation. AWS infrastructure remains with the `hashicorp/aws` provider.
 
 ### Data Sharing
 
-| Resource                                                             | Manages                                                      |
-|----------------------------------------------------------------------|--------------------------------------------------------------|
-| [`redshift_datashare`](resources/datashare.md)                       | Producer datashare                                           |
-| [`redshift_datashare_schema`](resources/datashare_schema.md)         | Schema membership and future-object inclusion                |
-| [`redshift_datashare_table`](resources/datashare_table.md)           | Table or view membership                                     |
-| [`redshift_datashare_membership`](resources/datashare_membership.md) | Exclusive current TABLES or FUNCTIONS membership of a schema |
-| [`redshift_datashare_grant`](resources/datashare_grant.md)           | Consumer account or namespace `USAGE`                        |
-| [`redshift_datashare_privilege`](resources/datashare_privilege.md)   | `ALTER` and `SHARE` on a datashare for one SQL identity      |
+| Resource                                                             | Manages                                                          |
+|----------------------------------------------------------------------|------------------------------------------------------------------|
+| [`redshift_datashare`](resources/datashare.md)                       | Producer datashare                                               |
+| [`redshift_datashare_schema`](resources/datashare_schema.md)         | Schema membership and future-object inclusion                    |
+| [`redshift_datashare_table`](resources/datashare_table.md)           | Table or view membership                                         |
+| [`redshift_datashare_membership`](resources/datashare_membership.md) | Exclusive current `TABLES` or `FUNCTIONS` membership of a schema |
+| [`redshift_datashare_grant`](resources/datashare_grant.md)           | Consumer account or namespace `USAGE`                            |
+| [`redshift_datashare_privilege`](resources/datashare_privilege.md)   | `ALTER` and `SHARE` on a datashare for one SQL identity          |
 
 ### Data Loading
 
@@ -497,7 +497,7 @@ SQL connection. Local database lookups and shared database resource refreshes do
 | [`data.redshift_external_functions`](data-sources/external_functions.md) | List of Lambda scalar functions           |
 | [`data.redshift_procedure`](data-sources/procedure.md)                   | Stored procedure overload                 |
 | [`data.redshift_procedures`](data-sources/procedures.md)                 | List of stored procedures                 |
-| [`data.redshift_external_model`](data-sources/external_model.md)         | Model settings SHOW MODEL reports         |
+| [`data.redshift_external_model`](data-sources/external_model.md)         | Model settings `SHOW MODEL` reports       |
 | [`data.redshift_models`](data-sources/models.md)                         | List of trained and external models       |
 | [`data.redshift_routine_parameters`](data-sources/routine_parameters.md) | List of function and procedure parameters |
 
@@ -557,21 +557,21 @@ SQL connection. Local database lookups and shared database resource refreshes do
 
 ### Data Sharing
 
-| Data source                                                                    | Reads                                          |
-|--------------------------------------------------------------------------------|------------------------------------------------|
-| [`data.redshift_datashare`](data-sources/datashare.md)                         | Outbound datashare                             |
-| [`data.redshift_datashares`](data-sources/datashares.md)                       | List of outbound datashares                    |
-| [`data.redshift_inbound_datashares`](data-sources/inbound_datashares.md)       | List of inbound datashares                     |
-| [`data.redshift_datashare_schema`](data-sources/datashare_schema.md)           | Schema membership and future-object policy     |
-| [`data.redshift_datashare_schemas`](data-sources/datashare_schemas.md)         | List of shared schemas                         |
-| [`data.redshift_datashare_table`](data-sources/datashare_table.md)             | Table or view membership                       |
-| [`data.redshift_datashare_tables`](data-sources/datashare_tables.md)           | List of shared tables and views                |
-| [`data.redshift_datashare_membership`](data-sources/datashare_membership.md)   | Coverage of current schema TABLES or FUNCTIONS |
-| [`data.redshift_datashare_memberships`](data-sources/datashare_memberships.md) | List of schema TABLES or FUNCTIONS coverage    |
-| [`data.redshift_datashare_grant`](data-sources/datashare_grant.md)             | Consumer account or namespace `USAGE`          |
-| [`data.redshift_datashare_grants`](data-sources/datashare_grants.md)           | List of consumer `USAGE` grants                |
-| [`data.redshift_datashare_privilege`](data-sources/datashare_privilege.md)     | `ALTER` and `SHARE` of one SQL identity        |
-| [`data.redshift_datashare_privileges`](data-sources/datashare_privileges.md)   | List of `ALTER` and `SHARE` grants             |
+| Data source                                                                    | Reads                                              |
+|--------------------------------------------------------------------------------|----------------------------------------------------|
+| [`data.redshift_datashare`](data-sources/datashare.md)                         | Outbound datashare                                 |
+| [`data.redshift_datashares`](data-sources/datashares.md)                       | List of outbound datashares                        |
+| [`data.redshift_inbound_datashares`](data-sources/inbound_datashares.md)       | List of inbound datashares                         |
+| [`data.redshift_datashare_schema`](data-sources/datashare_schema.md)           | Schema membership and future-object policy         |
+| [`data.redshift_datashare_schemas`](data-sources/datashare_schemas.md)         | List of shared schemas                             |
+| [`data.redshift_datashare_table`](data-sources/datashare_table.md)             | Table or view membership                           |
+| [`data.redshift_datashare_tables`](data-sources/datashare_tables.md)           | List of shared tables and views                    |
+| [`data.redshift_datashare_membership`](data-sources/datashare_membership.md)   | Coverage of current schema `TABLES` or `FUNCTIONS` |
+| [`data.redshift_datashare_memberships`](data-sources/datashare_memberships.md) | List of schema `TABLES` or `FUNCTIONS` coverage    |
+| [`data.redshift_datashare_grant`](data-sources/datashare_grant.md)             | Consumer account or namespace `USAGE`              |
+| [`data.redshift_datashare_grants`](data-sources/datashare_grants.md)           | List of consumer `USAGE` grants                    |
+| [`data.redshift_datashare_privilege`](data-sources/datashare_privilege.md)     | `ALTER` and `SHARE` of one SQL identity            |
+| [`data.redshift_datashare_privileges`](data-sources/datashare_privileges.md)   | List of `ALTER` and `SHARE` grants                 |
 
 ### Data Loading
 

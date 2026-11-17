@@ -30,7 +30,7 @@ SELECT ... FROM svv_datashares WHERE share_type = 'INBOUND' ...;
 ## Read Behavior
 
 `inbound_datashares` is empty when nothing matches; it is ordered by name. `producer_account` and `producer_namespace`
-identify the producer. `consumer_database` is null until a database is created from the share.
+identify the producer. `consumer_database` is `null` until a database is created from the share.
 
 `id` (String, computed) is the listing's provider-relative JSON identity containing the configured filters.
 

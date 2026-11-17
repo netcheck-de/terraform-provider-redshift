@@ -45,10 +45,10 @@ Read-Only:
 
 - `failed_login_attempts` (Number) Number of consecutive failed logins.
 - `is_locked` (Boolean) Whether the user is currently locked.
-- `last_failed_at` (String) Time of the most recent failed login, as Redshift reports it; null when not reported.
-- `lock_reason` (String) `automatic` after reaching the failed-login threshold, `manual` after `ALTER USER ... NOLOGIN`; null when the user is not locked.
-- `locked_at` (String) Time the user was locked, as Redshift reports it; null when not reported.
-- `locked_by` (Number) User ID of the superuser who locked the user; null for an automatic lockout.
+- `last_failed_at` (String) Time of the most recent failed login, as Redshift reports it; `null` when not reported.
+- `lock_reason` (String) `automatic` after reaching the failed-login threshold, `manual` after `ALTER USER ... NOLOGIN`; `null` when the user is not locked.
+- `locked_at` (String) Time the user was locked, as Redshift reports it; `null` when not reported.
+- `locked_by` (Number) User ID of the superuser who locked the user; `null` for an automatic lockout.
 - `user_name` (String) Database user name.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
@@ -67,7 +67,7 @@ SHOW USER LOCKOUT;
 lockout support rejects the command with "account lockout security is not supported", and the read fails too. Federated
 users are not listed. The command has no filter, so `user_name` keeps the exact name after reading every row;
 `user_lockouts` is ordered by user name and is empty when nothing matches. `locked_at` and `last_failed_at` are the
-timestamps as Redshift reports them, and they, `lock_reason`, and `locked_by` are null when not reported.
+timestamps as Redshift reports them, and they, `lock_reason`, and `locked_by` are `null` when not reported.
 
 Reading never changes a lockout or a counter; unlocking a user, which takes a superuser or the `ALTER USER` privilege,
 stays outside this data source. The lockout threshold is the cluster-wide `max_failed_login_attempts` parameter, which

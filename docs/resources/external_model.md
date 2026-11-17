@@ -68,7 +68,7 @@ resource "redshift_object_grant" "summarizer" {
 ### Read-Only
 
 - `id` (String) JSON import identity within the configured warehouse; independent of connection method and Data API execution history.
-- `owner` (String) SQL user owning the model, as `SHOW MODEL` reports it; null when it is not reported.
+- `owner` (String) SQL user owning the model, as `SHOW MODEL` reports it; `null` when it is not reported.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -154,6 +154,6 @@ terraform import redshift_external_model.summarizer \
 
 Import reads the settings `SHOW MODEL` reports. To the model's owner it prints the model ID, prompt, suffix, request
 type, function, and IAM role (`DEFAULT` as `default-aws-iam-role`); other users see no role. It never prints the
-response type, so import leaves it null until the first apply adopts configuration, including the `VARCHAR` default.
+response type, so import leaves it `null` until the first apply adopts configuration, including the `VARCHAR` default.
 The first apply adopts the configured response type and an unreported IAM role without SQL or replacement. Import
 cannot verify these values: configure the model's actual settings. Later changes replace the model normally.

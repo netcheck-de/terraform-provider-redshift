@@ -45,8 +45,8 @@ Read-Only:
 
 - `admin_option` (Boolean) Whether the receiving user holds the role `WITH ADMIN OPTION` and can grant it to other users and roles (`svv_user_grants.admin_option`); always `false` for a grant to a role.
 - `role` (String) Role being granted, including built-in `sys:` roles.
-- `to_role` (String) Receiving role; null for a grant to a user.
-- `to_user` (String) Receiving database user; null for a grant to a role.
+- `to_role` (String) Receiving role; `null` for a grant to a user.
+- `to_user` (String) Receiving database user; `null` for a grant to a role.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -64,7 +64,7 @@ SELECT ... FROM svv_role_grants WHERE ...;
 ## Read Behavior
 
 Grants to users come first, then grants to roles, each ordered by role and recipient. Exactly one of `to_user`
-and `to_role` is set on each item. A grant given by several grantors is listed once, with `admin_option` true when any
+and `to_role` is set on each item. A grant given by several grantors is listed once, with `admin_option` `true` when any
 of them gave it; grants to roles always report `false`. A `to_user` filter skips `SVV_ROLE_GRANTS`, and a `to_role`
 filter skips `SVV_USER_GRANTS`; the two filters conflict.
 

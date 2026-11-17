@@ -29,7 +29,7 @@ data "redshift_datashare" "analytics" {
 ### Read-Only
 
 - `created_at` (String) Creation timestamp reported by `SVV_DATASHARES`, as text without a time zone.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `owner` (String) Database user owning the datashare: the user that ran `CREATE DATASHARE`. Read-only, because `ALTER DATASHARE` has no `OWNER TO` clause.
 - `producer_account` (String) AWS account ID of the producer namespace.
 - `producer_namespace` (String) Producer namespace UUID; with `producer_account` and `name` it identifies the datashare ARN.

@@ -37,15 +37,15 @@ output "summarizer_function" {
 
 ### Read-Only
 
-- `function` (String) Name of the model's inference function, without its schema; null when `SHOW MODEL` does not report it.
-- `iam_role` (String) IAM role the model uses, as `SHOW MODEL` reports it to the model's owner; null otherwise.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
-- `model_id` (String) Amazon Bedrock model ID; null when `SHOW MODEL` does not report it.
-- `owner` (String) SQL user owning the model, as `SHOW MODEL` reports it; null when it is not reported.
-- `prompt` (String) Static prompt prefix; null when unset or not reported.
-- `request_type` (String) Request format, `UNIFIED` or `RAW`; null when `SHOW MODEL` does not report it.
-- `response_type` (String) Response format, `VARCHAR` or `SUPER`; null when `SHOW MODEL` does not report it.
-- `suffix` (String) Static prompt suffix; null when unset or not reported.
+- `function` (String) Name of the model's inference function, without its schema; `null` when `SHOW MODEL` does not report it.
+- `iam_role` (String) IAM role the model uses, as `SHOW MODEL` reports it to the model's owner; `null` otherwise.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
+- `model_id` (String) Amazon Bedrock model ID; `null` when `SHOW MODEL` does not report it.
+- `owner` (String) SQL user owning the model, as `SHOW MODEL` reports it; `null` when it is not reported.
+- `prompt` (String) Static prompt prefix; `null` when unset or not reported.
+- `request_type` (String) Request format, `UNIFIED` or `RAW`; `null` when `SHOW MODEL` does not report it.
+- `response_type` (String) Response format, `VARCHAR` or `SUPER`; `null` when `SHOW MODEL` does not report it.
+- `suffix` (String) Static prompt suffix; `null` when unset or not reported.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -67,5 +67,5 @@ as the paired resource.
 
 Both statements run in `database`. `SHOW MODEL ALL` lists the models the provider's SQL identity can use, so a missing
 model, a model the identity cannot use, or a missing database is an error. `SHOW MODEL` prints settings as key and
-value rows; an output is null when no row reports it, and only the model's owner sees `iam_role`. A trained model reads
-too, with the settings its rows report. Only read-only SQL is executed.
+value rows; an output is `null` when no row reports it, and only the model's owner sees `iam_role`. A trained model
+reads too, with the settings its rows report. Only read-only SQL is executed.

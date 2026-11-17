@@ -49,7 +49,7 @@ resource "redshift_object_grant" "report" {
 ### Optional
 
 - `arguments` (String) Comma-separated argument types of a local `FUNCTION` or `PROCEDURE`, such as `INTEGER, VARCHAR`, which select one overload; omit it for a routine without arguments. Shared routine permissions cover every overload of the name, so shared grants must omit this argument. Types are canonicalized and lengths dropped, because Redshift identifies local overloads by type names only.
-- `database_type` (String) Set to `shared` for a consumer database created from a datashare; omit for a local database. Shared grants run from the administration database. Shared routines and snapshots require a SQL superuser to prove complete catalog visibility. Routines have name-wide ACLs, so `FUNCTION` and `PROCEDURE` require arguments to be omitted; producer routine kinds distinguish their identities. Shared procedures use the verified FUNCTION ACL syntax, and `ALL PROCEDURES` enumerates current procedure names instead of issuing unsupported native bulk syntax. `ALL FUNCTIONS` covers all shared routine names, including procedures. Object-level access requires WITH PERMISSIONS.
+- `database_type` (String) Set to `shared` for a consumer database created from a datashare; omit for a local database. Shared grants run from the administration database. Shared routines and snapshots require a SQL superuser to prove complete catalog visibility. Routines have name-wide ACLs, so `FUNCTION` and `PROCEDURE` require arguments to be omitted; producer routine kinds distinguish their identities. Shared procedures use the verified `FUNCTION` ACL syntax, and `ALL PROCEDURES` enumerates current procedure names instead of issuing unsupported native bulk syntax. `ALL FUNCTIONS` covers all shared routine names, including procedures. Object-level access requires `WITH PERMISSIONS`.
 - `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
 - `object_name` (String) Table, view, function, procedure, model, or template name; required for `TABLE`, `FUNCTION`, `PROCEDURE`, `MODEL`, and `TEMPLATE` only.
 - `schema_name` (String) Schema containing the object, or whose objects an `ALL …` snapshot covers; required for every type except `DATABASE`.
@@ -133,8 +133,8 @@ be proved, refresh reports an error and preserves state instead of inferring tha
 `DATABASE` and `SCHEMA` support `USAGE` without grant options; `TABLE` supports the table privileges listed above.
 `FUNCTION` and `PROCEDURE` support `EXECUTE`, including grant options for users. Shared routine permissions cover
 every overload
-of a name: a grant using an INTEGER signature is also visible for a VARCHAR overload, and revoking either removes the
-name-wide grant. Omit `arguments`; configuring it is rejected so separate overload identities cannot accidentally
+of a name: a grant using an `INTEGER` signature is also visible for a `VARCHAR` overload, and revoking either removes
+the name-wide grant. Omit `arguments`; configuring it is rejected so separate overload identities cannot accidentally
 manage the same permission. `SVV_REDSHIFT_FUNCTIONS.function_type` distinguishes the producer's function and procedure
 names, so `FUNCTION` cannot select a procedure and `PROCEDURE` cannot select a function. Before mutating a single
 routine or an `ALL PROCEDURES` snapshot, the provider rejects a name that exists as both kinds: the consumer has one

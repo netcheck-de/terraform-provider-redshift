@@ -32,17 +32,17 @@ data "redshift_database" "analytics" {
 
 ### Read-Only
 
-- `collation` (String) `CASE_SENSITIVE` or `CASE_INSENSITIVE` for a local database, read with `DB_COLLATION()` in a session inside it; null for shared databases, or with a warning when that session is refused, for example by the database's connection limit.
-- `connection_limit` (Number) Maximum concurrent connections to a local database; `-1` means `UNLIMITED`. Null for shared databases.
+- `collation` (String) `CASE_SENSITIVE` or `CASE_INSENSITIVE` for a local database, read with `DB_COLLATION()` in a session inside it; `null` for shared databases, or with a warning when that session is refused, for example by the database's connection limit.
+- `connection_limit` (Number) Maximum concurrent connections to a local database; `-1` means `UNLIMITED`. `null` for shared databases.
 - `database_type` (String) `LOCAL` or `SHARED`; for a zero-ETL destination database, the type `SHOW DATABASES` reports, in uppercase.
-- `datashare_arn` (String) Backing producer datashare ARN; null for local databases. Shared lookups require redshift:DescribeDataShares.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
-- `integration` (Attributes) Zero-ETL integration of a destination database, from `SVV_INTEGRATION`, which only superusers can see; null for shared databases, when the view shows no integration for the database, or with a warning when access to the view is denied. (see [below for nested schema](#nestedatt--integration))
-- `isolation_level` (String) `SERIALIZABLE` or `SNAPSHOT` for a local database; null for shared databases.
-- `owner` (String) SQL user owning a local database; null for shared databases.
-- `producer_account` (String) Producer account ID; null for local databases.
-- `producer_namespace` (String) Producer namespace ID; null for local databases.
-- `share_name` (String) Producer share name; null for local databases.
+- `datashare_arn` (String) Backing producer datashare ARN; `null` for local databases. Shared lookups require `redshift:DescribeDataShares`.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
+- `integration` (Attributes) Zero-ETL integration of a destination database, from `SVV_INTEGRATION`, which only superusers can see; `null` for shared databases, when the view shows no integration for the database, or with a warning when access to the view is denied. (see [below for nested schema](#nestedatt--integration))
+- `isolation_level` (String) `SERIALIZABLE` or `SNAPSHOT` for a local database; `null` for shared databases.
+- `owner` (String) SQL user owning a local database; `null` for shared databases.
+- `producer_account` (String) Producer account ID; `null` for local databases.
+- `producer_namespace` (String) Producer namespace ID; `null` for local databases.
+- `share_name` (String) Producer share name; `null` for local databases.
 - `with_permissions` (Boolean) Whether the shared database requires object grants.
 
 <a id="nestedatt--integration"></a>
@@ -50,14 +50,14 @@ data "redshift_database" "analytics" {
 
 Read-Only:
 
-- `accept_invalid_chars` (Boolean) No supported catalog readback is used, so always null in the lookup.
+- `accept_invalid_chars` (Boolean) No supported catalog readback is used, so always `null` in the lookup.
 - `auto_remediation` (Boolean) Whether tables affected by duplicate rows are resynchronized automatically.
 - `history_mode` (Boolean) Whether history mode is on.
 - `integration_id` (String) Zero-ETL integration identifier.
-- `query_all_states` (Boolean) No supported catalog readback is used, so always null in the lookup.
+- `query_all_states` (Boolean) No supported catalog readback is used, so always `null` in the lookup.
 - `refresh_interval` (Number) Approximate seconds between refresh cycles.
-- `source_database` (String) Replicated source database; null when the view reports none.
-- `truncate_columns` (Boolean) No supported catalog readback is used, so always null in the lookup.
+- `source_database` (String) Replicated source database; `null` when the view reports none.
+- `truncate_columns` (Boolean) No supported catalog readback is used, so always `null` in the lookup.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -84,11 +84,12 @@ Missing or ambiguous databases and shared databases without a complete producer 
 read by running `DB_COLLATION()` in the looked-up database, so the caller must be able to connect to it.
 
 Every database that is not `SHARED` is a zero-ETL destination candidate, because `SHOW DATABASES` does not document the
-type of a destination: its `integration` comes from `SVV_INTEGRATION`, which only superusers can see, and is null when
+type of a destination: its `integration` comes from `SVV_INTEGRATION`, which only superusers can see, and is `null` when
 the view shows no row for the database. A non-superuser denied access to the view gets ordinary database metadata,
-with a warning and a null `integration`, rather than a failed lookup. A database resource managing an integration
+with a warning and a `null` `integration`, rather than a failed lookup. A database resource managing an integration
 still requires the view and treats permission errors as failures.
-`query_all_states`, `accept_invalid_chars`, and `truncate_columns` have no supported catalog readback and are always null.
+`query_all_states`, `accept_invalid_chars`, and `truncate_columns` have no supported catalog readback and are always
+`null`.
 A destination's `id` includes `integration_id`, so it can be used to import the database.
 
 Shared-database lookups discover the complete producer ARN through
@@ -96,4 +97,4 @@ Shared-database lookups discover the complete producer ARN through
 and a region, including when the SQL connection uses a password. The returned ARN retains the producer's region and
 partition; it is not constructed from the consumer's region. Missing or ambiguous AWS metadata is an error.
 Local database lookups require no AWS metadata calls and return `with_permissions = false`; shared database lookups
-return null local options.
+return `null` local options.

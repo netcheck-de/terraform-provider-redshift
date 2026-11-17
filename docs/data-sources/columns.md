@@ -43,16 +43,16 @@ output "required_columns" {
 
 Read-Only:
 
-- `character_maximum_length` (Number) Maximum length of a character column; null for other types.
+- `character_maximum_length` (Number) Maximum length of a character column; `null` for other types.
 - `data_type` (String) Data type name as the catalog reports it but in uppercase, such as `INTEGER` or `CHARACTER VARYING`, without length or precision.
 - `database` (String) Database containing the relation.
-- `default` (String) Default expression; null when the column has none.
+- `default` (String) Default expression; `null` when the column has none.
 - `name` (String) Column name.
-- `nullable` (Boolean) Whether the column accepts NULL; null when the catalog has no information.
-- `numeric_precision` (Number) Numeric precision as the catalog reports it: decimal digits for `DECIMAL`/`NUMERIC`, bits for integer types (for example 32 for `INTEGER` and 16 for `SMALLINT`); null for non-numeric types.
-- `numeric_scale` (Number) Numeric scale as the catalog reports it: digits after the decimal point for `DECIMAL`/`NUMERIC`, 0 for integer types; null for non-numeric types.
+- `nullable` (Boolean) Whether the column accepts `NULL`; `null` when the catalog has no information.
+- `numeric_precision` (Number) Numeric precision as the catalog reports it: decimal digits for `DECIMAL`/`NUMERIC`, bits for integer types (for example 32 for `INTEGER` and 16 for `SMALLINT`); `null` for non-numeric types.
+- `numeric_scale` (Number) Numeric scale as the catalog reports it: digits after the decimal point for `DECIMAL`/`NUMERIC`, 0 for integer types; `null` for non-numeric types.
 - `ordinal_position` (Number) Position of the column in the relation, starting at 1.
-- `remarks` (String) Comment on the column; null when it has none.
+- `remarks` (String) Comment on the column; `null` when it has none.
 - `schema` (String) Schema containing the relation.
 - `table` (String) Relation containing the column.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
@@ -74,7 +74,7 @@ match returns an empty `columns` list. Without a `table` filter, the listing cov
 filter as narrowly as possible on large warehouses. A database that does not exist lists nothing; a shared (datashare
 consumer) database is read from the provider database like a local one, because `SVV_ALL_COLUMNS` covers both.
 
-`data_type` is the bare type name; length, precision, and scale are separate attributes. `nullable` is null when the
+`data_type` is the bare type name; length, precision, and scale are separate attributes. `nullable` is `null` when the
 catalog has no nullability information, for example for some external columns. An empty `column_default` or remarks
-value cannot be told apart from none and is reported as null. Superusers see every column; other users see only
+value cannot be told apart from none and is reported as `null`. Superusers see every column; other users see only
 columns of relations they own.

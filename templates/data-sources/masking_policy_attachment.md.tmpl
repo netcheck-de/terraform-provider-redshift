@@ -29,6 +29,6 @@ SELECT ... FROM svv_attached_masking_policy WHERE policy_name = '...' AND schema
 ## Read Behavior
 
 `id` (String, computed) is the attachment's JSON identity, using the paired resource's warehouse, `database`, `policy`,
-`schema`, `relation`, `columns` (a JSON list), `grantee`, and `grantee_type` keys. It is null when `exists` is false,
-which also covers a missing policy, relation, or database. Catalog errors remain errors. Nothing is attached or
+`schema`, `relation`, `columns` (a JSON list), `grantee`, and `grantee_type` keys. It is `null` when `exists` is
+`false`, which also covers a missing policy, relation, or database. Catalog errors remain errors. Nothing is attached or
 detached.

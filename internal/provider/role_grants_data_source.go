@@ -27,8 +27,8 @@ func newRoleGrantsDataSource() datasource.DataSource {
 			"to_role": roleGrantsRecipientFilter("Only grants to the role with exactly this name; excludes grants to users.", "to_user"),
 		},
 		element: describedOutputs(collectionElement(newRoleGrantResource, "role", "to_user", "to_role", "admin_option"), map[string]string{
-			"to_user":      "Receiving database user; null for a grant to a role.",
-			"to_role":      "Receiving role; null for a grant to a user.",
+			"to_user":      "Receiving database user; `null` for a grant to a role.",
+			"to_role":      "Receiving role; `null` for a grant to a user.",
 			"admin_option": "Whether the receiving user holds the role `WITH ADMIN OPTION` and can grant it to other users and roles (`svv_user_grants.admin_option`); always `false` for a grant to a role.",
 		}),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {

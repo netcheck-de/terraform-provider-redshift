@@ -56,7 +56,7 @@ REVOKE USAGE ON DATASHARE datashare FROM ...;
 Uses `GRANT/REVOKE USAGE ON DATASHARE ... TO/FROM ACCOUNT 'account-id' [VIA DATA CATALOG]` or
 `... TO/FROM NAMESPACE 'namespace-uuid'`.
 Reads [SVV_DATASHARE_CONSUMERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARE_CONSUMERS.html),
-filtering by share name and consumer account with null/empty `consumer_namespace` for account grants, or by share name
+filtering by share name and consumer account with `null`/empty `consumer_namespace` for account grants, or by share name
 and exact `consumer_namespace` for namespace grants. This view has no consumer-type column; the namespace distinguishes
 the grant scope. Account and namespace grants are independent, including when the namespace belongs to the same account.
 The view documents no column for the `VIA DATA CATALOG` form either, so both account forms read the same row.
@@ -67,7 +67,7 @@ producer-to-consumer sequence.
 ## Reconciliation
 
 Refresh checks that the producer database exists and that `SVV_DATASHARE_CONSUMERS` lists the consumer for the share.
-There is no in-place SQL: the only update re-reads the grant to record a null `via_data_catalog` as `false`. Every
+There is no in-place SQL: the only update re-reads the grant to record a `null` `via_data_catalog` as `false`. Every
 change to the share, the consumer, or the effective `via_data_catalog` form replaces the grant: the old consumer loses
 usage with `REVOKE USAGE ON DATASHARE`, the new one receives it with `GRANT USAGE ON DATASHARE`, and each statement is
 followed by a catalog read that verifies it.
@@ -79,7 +79,7 @@ followed by a catalog read that verifies it.
 | `via_data_catalog` switched between `false` and `true`                | replaces the grant: the two forms are separate grants that the catalog reports alike, so an update could not confirm the switch |
 | `via_data_catalog` known only during apply                            | replaces the grant, because the form it resolves to cannot be compared during planning                                          |
 | `via_data_catalog` omitted instead of `false`, or the other way round | no change: both record `false`                                                                                                  |
-| `via_data_catalog` recorded as null by an earlier provider version    | no SQL; an in-place update checks that the grant still exists and records `false`                                               |
+| `via_data_catalog` recorded as `null` by an earlier provider version  | no SQL; an in-place update checks that the grant still exists and records `false`                                               |
 
 **Drift.** Refresh confirms only that the consumer holds usage on the share. A grant revoked outside Terraform removes
 the resource from state, and the next plan creates it again; so does a dropped producer database. Because both account

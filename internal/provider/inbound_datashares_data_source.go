@@ -20,10 +20,10 @@ func newInboundDatasharesDataSource() datasource.DataSource {
 		"share_id":           "Numeric datashare ID reported by `SVV_DATASHARES`.",
 		"producer_account":   "AWS account ID of the producer namespace.",
 		"producer_namespace": "Producer namespace UUID; with `producer_account` and `name` it identifies the datashare ARN.",
-		"created_at":         "Creation timestamp reported by `SVV_DATASHARES`, as text without a time zone; null when the catalog reports none.",
+		"created_at":         "Creation timestamp reported by `SVV_DATASHARES`, as text without a time zone; `null` when the catalog reports none.",
 	})
-	element["consumer_database"] = schema.StringAttribute{Computed: true, MarkdownDescription: "Database created from the share in this namespace; null when none exists."}
-	element["managed_by"] = schema.StringAttribute{Computed: true, MarkdownDescription: "AWS service managing the share, such as `ADX`; null for a share managed with SQL."}
+	element["consumer_database"] = schema.StringAttribute{Computed: true, MarkdownDescription: "Database created from the share in this namespace; `null` when none exists."}
+	element["managed_by"] = schema.StringAttribute{Computed: true, MarkdownDescription: "AWS service managing the share, such as `ADX`; `null` for a share managed with SQL."}
 
 	return newCollectionDataSource(collectionSpec{
 		name:        "inbound_datashares",

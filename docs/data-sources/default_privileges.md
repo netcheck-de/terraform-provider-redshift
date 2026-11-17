@@ -55,7 +55,7 @@ Read-Only:
 - `object_type` (String) `TABLES` (tables and views), `FUNCTIONS`, or `PROCEDURES`.
 - `owner` (String) User whose future objects receive the privileges.
 - `privileges` (Set of String) Privileges new objects of the owner grant to the grantee.
-- `schema_name` (String) Schema whose future objects receive the privileges; null for database-wide defaults.
+- `schema_name` (String) Schema whose future objects receive the privileges; `null` for database-wide defaults.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -73,7 +73,7 @@ SELECT ... FROM svv_default_privileges UNION ALL SELECT ... FROM pg_user WHERE N
 
 The catalogs report the current database only, so the listing runs in `database_name`. Catalog object types are listed
 as the resource names them: `RELATION` as `TABLES`, `FUNCTION` as `FUNCTIONS`, and `PROCEDURE` as `PROCEDURES`.
-Database-wide defaults have a null `schema_name`; a `schema_name` filter leaves them out. `object_type` and
+Database-wide defaults have a `null` `schema_name`; a `schema_name` filter leaves them out. `object_type` and
 `grantee_type` narrow the elements to one object type and one grantee type, so a user and a role of the same name can be
 told apart.
 

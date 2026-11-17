@@ -273,6 +273,10 @@ Do not hand-edit generated `docs/`: edit templates, examples, or schema `Markdow
 End-user guides belong under `docs/guides/`; contributor guidance stays at the repository root. Templates need
 hand-aligned tables and prose within 120 columns; `task markdown-fmt` does not format them.
 
+Use inline code for literal configuration values (including `true`, `false`, and `null`), attribute expressions,
+identifiers, and SQL syntax in schema descriptions and template prose. Keep ordinary terminology, acronyms, and
+measurement units as prose.
+
 Templates must contain:
 
 - Resource introductions follow this order: a description, a separate "For concepts and limitations, see AWS" paragraph

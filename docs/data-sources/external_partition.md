@@ -33,7 +33,7 @@ data "redshift_external_partition" "sales_2008_01" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `location` (String) S3 location the catalog records for the partition; the catalog drops a folder's trailing slash and truncates locations to 128 characters.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 

@@ -18,7 +18,7 @@ func newRolesDataSource() datasource.DataSource {
 		element: describedOutputs(collectionElement(newRoleResource, "name", "owner", "external_id", "role_id"), map[string]string{
 			"name":        "Role name, including any identity namespace prefix.",
 			"owner":       "User that owns the role (`svv_roles.role_owner`).",
-			"external_id": "Identifier of the role in a native third-party identity provider (`svv_roles.external_id`); null when unset.",
+			"external_id": "Identifier of the role in a native third-party identity provider (`svv_roles.external_id`); `null` when unset.",
 		}),
 		list: func(ctx context.Context, client *resourceClient, _ types.Object) ([]map[string]attr.Value, error) {
 			rows, err := client.selectRows(ctx, client.database.ValueString(), listRolesQuery())

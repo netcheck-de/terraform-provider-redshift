@@ -27,16 +27,16 @@ data "redshift_user" "grafana" {
 
 ### Read-Only
 
-- `connection_limit` (Number) Maximum concurrent connections; `-1` stands for `UNLIMITED`. Null when `SVV_USER_INFO` does not show the user, as for lookups by a regular user.
-- `create_database` (Boolean) Whether the user has CREATEDB.
-- `external_id` (String) Identity-provider user identifier; null when none is set or `SVV_USER_INFO` does not show the user.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
-- `search_path` (List of String) Stored `search_path` default in search order; null when none is stored.
-- `session_defaults` (Map of String) Stored defaults of the session parameters `redshift_user` manages in `session_defaults`; null when none is stored.
-- `session_timeout` (Number) Idle-session timeout in seconds; `0` when the user has none. Null when `SVV_USER_INFO` does not show the user.
-- `superuser` (Boolean) Whether the user has CREATEUSER.
-- `syslog_access` (String) `RESTRICTED` or `UNRESTRICTED`. Null when `SVV_USER_INFO` does not show the user.
-- `valid_until` (String) Password expiration as an RFC 3339 timestamp; null when the password does not expire.
+- `connection_limit` (Number) Maximum concurrent connections; `-1` stands for `UNLIMITED`. `null` when `SVV_USER_INFO` does not show the user, as for lookups by a regular user.
+- `create_database` (Boolean) Whether the user has `CREATEDB`.
+- `external_id` (String) Identity-provider user identifier; `null` when none is set or `SVV_USER_INFO` does not show the user.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
+- `search_path` (List of String) Stored `search_path` default in search order; `null` when none is stored.
+- `session_defaults` (Map of String) Stored defaults of the session parameters `redshift_user` manages in `session_defaults`; `null` when none is stored.
+- `session_timeout` (Number) Idle-session timeout in seconds; `0` when the user has none. `null` when `SVV_USER_INFO` does not show the user.
+- `superuser` (Boolean) Whether the user has `CREATEUSER`.
+- `syslog_access` (String) `RESTRICTED` or `UNRESTRICTED`. `null` when `SVV_USER_INFO` does not show the user.
+- `valid_until` (String) Password expiration as an RFC 3339 timestamp; `null` when the password does not expire.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements

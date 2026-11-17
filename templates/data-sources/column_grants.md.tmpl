@@ -31,9 +31,9 @@ SELECT ... FROM svv_column_privileges WHERE ...;
 
 ## Read Behavior
 
-All filters are optional and combine with AND; an empty result is an empty list. `privileges` maps `SELECT` and `UPDATE`
-to the columns that hold them. Superusers and users with the `ACCESS SYSTEM TABLE` permission see every grant; other
-users see only the identities they have access to or own. Column grants have no grant option. `id` is the listing's
-provider-relative JSON identity: the target `database_name` and the configured filters.
+All filters are optional and combine with `AND`; an empty result is an empty list. `privileges` maps `SELECT` and
+`UPDATE` to the columns that hold them. Superusers and users with the `ACCESS SYSTEM TABLE` permission see every grant;
+other users see only the identities they have access to or own. Column grants have no grant option. `id` is the
+listing's provider-relative JSON identity: the target `database_name` and the configured filters.
 
 A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

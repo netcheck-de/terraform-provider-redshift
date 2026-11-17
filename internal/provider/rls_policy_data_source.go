@@ -18,9 +18,9 @@ var (
 // the read-only columns and alias that the lookup and the listing observe.
 var rlsPolicyLookupDescriptions = map[string]string{
 	"definition_fingerprint": viewLookupFingerprintDescription,
-	"column":                 "Ordered `WITH` columns of the policy in the spelling that `svv_rls_policy` reports. Null when the policy has no `WITH` clause.",
+	"column":                 "Ordered `WITH` columns of the policy in the spelling that `svv_rls_policy` reports. `null` when the policy has no `WITH` clause.",
 	"column.type":            "Redshift data type in the catalog's canonical form, in uppercase, such as `CHARACTER VARYING(64)`.",
-	"alias":                  "Relation alias of the `WITH` clause (`AS alias`) that the predicate may use to qualify columns, or null.",
+	"alias":                  "Relation alias of the `WITH` clause (`AS alias`) that the predicate may use to qualify columns, or `null`.",
 	"predicate":              "Filter expression of the `USING ( ... )` clause in the rewritten form that Redshift stores.",
 }
 

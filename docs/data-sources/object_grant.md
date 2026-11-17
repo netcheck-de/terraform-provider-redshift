@@ -12,7 +12,7 @@ privileges, or the privileges common to all current tables, functions, or proced
 
 Set `database_type = "shared"` to read a consumer database's `DATABASE`, `SCHEMA`, `TABLE`, or name-wide routine
 grants through qualified `SHOW GRANTS` from the administration database. Shared `FUNCTION` and `PROCEDURE` select
-the corresponding producer routine kind, omit `arguments`, and use the consumer's FUNCTION ACL readback. Shared
+the corresponding producer routine kind, omit `arguments`, and use the consumer's `FUNCTION` ACL readback. Shared
 `ALL TABLES`, `ALL FUNCTIONS`, and `ALL PROCEDURES` list distinct members and intersect their individual
 `SHOW GRANTS` results, including grant options. `ALL FUNCTIONS` covers all shared routine kinds; `ALL PROCEDURES`
 selects procedures only.
@@ -47,14 +47,14 @@ data "redshift_object_grant" "report" {
 ### Optional
 
 - `arguments` (String) Comma-separated argument types of a local `FUNCTION` or `PROCEDURE`, such as `INTEGER, VARCHAR`, which select one overload; omit it for a routine without arguments. Shared routine permissions cover every overload of the name, so shared grants must omit this argument. Types are canonicalized and lengths dropped, because Redshift identifies local overloads by type names only.
-- `database_type` (String) Set to `shared` for a consumer database created from a datashare; omit for a local database. Shared grants run from the administration database. Shared routines and snapshots require a SQL superuser to prove complete catalog visibility. Routines have name-wide ACLs, so `FUNCTION` and `PROCEDURE` require arguments to be omitted; producer routine kinds distinguish their identities. Shared procedures use the verified FUNCTION ACL syntax, and `ALL PROCEDURES` enumerates current procedure names instead of issuing unsupported native bulk syntax. `ALL FUNCTIONS` covers all shared routine names, including procedures. Object-level access requires WITH PERMISSIONS.
+- `database_type` (String) Set to `shared` for a consumer database created from a datashare; omit for a local database. Shared grants run from the administration database. Shared routines and snapshots require a SQL superuser to prove complete catalog visibility. Routines have name-wide ACLs, so `FUNCTION` and `PROCEDURE` require arguments to be omitted; producer routine kinds distinguish their identities. Shared procedures use the verified `FUNCTION` ACL syntax, and `ALL PROCEDURES` enumerates current procedure names instead of issuing unsupported native bulk syntax. `ALL FUNCTIONS` covers all shared routine names, including procedures. Object-level access requires `WITH PERMISSIONS`.
 - `object_name` (String) Table, view, function, procedure, model, or template name; required for `TABLE`, `FUNCTION`, `PROCEDURE`, `MODEL`, and `TEMPLATE` only.
 - `schema_name` (String) Schema containing the object, or whose objects an `ALL …` snapshot covers; required for every type except `DATABASE`.
 
 ### Read-Only
 
 - `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `privileges` (Set of String) Current explicit privileges for the selected tuple; inherited privileges are excluded.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 

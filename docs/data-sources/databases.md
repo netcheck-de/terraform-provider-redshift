@@ -42,9 +42,9 @@ output "analytics_databases" {
 Read-Only:
 
 - `database_type` (String) `LOCAL` or `SHARED`.
-- `isolation_level` (String) `SNAPSHOT` or `SERIALIZABLE`, the keyword of the isolation level the catalog reports; null when unknown.
+- `isolation_level` (String) `SNAPSHOT` or `SERIALIZABLE`, the keyword of the isolation level the catalog reports; `null` when unknown.
 - `name` (String) Database name.
-- `owner` (String) SQL user owning the database; null when the owner is not a local user.
+- `owner` (String) SQL user owning the database; `null` when the owner is not a local user.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -63,5 +63,5 @@ configured filters. Items are ordered by name; a filter that matches nothing ret
 empty `databases` list rather than an error.
 
 The listing shows what the provider's SQL identity may see: with metadata security enabled, other users' databases
-can be hidden. Owners are resolved from `pg_user`; an owner that is not a local user is null. The AWS Glue Data
+can be hidden. Owners are resolved from `pg_user`; an owner that is not a local user is `null`. The AWS Glue Data
 Catalog (`awsdatacatalog`) and other auto-mounted catalogs that `SHOW DATABASES` also prints are not included.

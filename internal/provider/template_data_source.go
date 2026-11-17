@@ -39,7 +39,7 @@ func newTemplateDataSource() datasource.DataSource {
 var templateOutputDescriptions = map[string]string{
 	"name":            "Template name.",
 	"owner":           "SQL user owning the template.",
-	"format":          "Data format of `FORMAT AS`, such as `JSON`; null for pipe-delimited text.",
-	"format_argument": "Argument of the format, such as `auto` for `JSON 'auto'`; null without one.",
-	"parameters":      "COPY parameters keyed by their UPPERCASE keyword, as `SHOW TEMPLATE` prints them, with `\"\"` for keywords without an argument; null when the template has none.",
+	"format":          "Data format of `FORMAT AS`, such as `JSON`; `null` for pipe-delimited text.",
+	"format_argument": "Argument of the format, such as `auto` for `JSON 'auto'`; `null` without one.",
+	"parameters":      "COPY parameters keyed by their UPPERCASE keyword, as `SHOW TEMPLATE` prints them, with `\"\"` for keywords without an argument; `null` when the template has none.",
 }

@@ -84,9 +84,9 @@ No direct-TLS or Identity Center authentication-method spelling is guessed or ac
 
 The provider also requires `SHOW DATABASES` to list the exact alias and proves the scoped grant read can run before
 mutation. `ACCOUNT` must use a producer-local database name and a provider connected
-to the warehouse hosting that database. No authoritative remote ACCOUNT read shape is available, so remote ACCOUNT
+to the warehouse hosting that database. No authoritative remote `ACCOUNT` read shape is available, so remote `ACCOUNT`
 configuration, imported-state reads, and deletion are explicitly refused with instructions to use the producer.
-Legacy remote ACCOUNT state is retained with an error: manage or revoke the actual grant through the producer-local
+Legacy remote `ACCOUNT` state is retained with an error: manage or revoke the actual grant through the producer-local
 provider and explicitly migrate/import its local identity. Changing authentication must not silently relinquish a grant.
 `DEBUG` is not part of
 `GRANT ALL ON DATABASE` and never carries a grant option, so this resource owns exactly one grant and other database
@@ -104,7 +104,7 @@ one, each followed by a `SHOW GRANTS` read that verifies it.
 Remote `USER` and `ROLE` tuples instead use `SHOW GRANTS FOR ... FROM DATABASE "db@catalog"` as the primary read:
 remote `SHOW GRANTS ON DATABASE` can return an empty result even while the grant exists. Only the matching database,
 `DATABASE` object/scope, exact grantee name (case-insensitive), `DEBUG` privilege, and scoped `user` or `role` identity
-type count. These scoped row types are normalized only for the corresponding remote USER/ROLE tuple; local matching
+type count. These scoped row types are normalized only for the corresponding remote `USER`/`ROLE` tuple; local matching
 still requires the global identity types above. Every remote read proves authentication and alias visibility,
 including Delete's pre-revoke and post-revoke checks.
 
@@ -119,9 +119,9 @@ including Delete's pre-revoke and post-revoke checks.
 `SHOW GRANTS` fails for a local name and `SHOW DATABASES` no longer lists the database, the database counts as dropped
 and the grant is removed from state too. An unverified remote authentication context, an alias omitted by
 `SHOW DATABASES`, a failed remote query, or a remote
-ACCOUNT tuple always preserves state and reports an actionable error; none is treated as an absent grant or a reason
-to silently skip revocation. Only a verified IAM remote USER/ROLE session with a visible alias and no matching scoped
-grant row reports absence. If an
+`ACCOUNT` tuple always preserves state and reports an actionable error; none is treated as an absent grant or a reason
+to silently skip revocation. Only a verified IAM remote `USER`/`ROLE` session with a visible alias and no matching
+scoped grant row reports absence. If an
 invisible alias was actually dropped, remove its obsolete grant from state explicitly. Other grants are never owned.
 
 ## Import

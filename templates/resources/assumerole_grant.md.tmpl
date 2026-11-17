@@ -55,19 +55,19 @@ that another grant names, including `default-aws-iam-role`. Manage one grantee t
 not both.
 
 Before applying a nonempty ARN or `DEFAULT` tuple, or revoking its catalog privileges, the provider checks whether
-the same grantee holds the `default` ON ALL marker. If it does, reconciliation stops with an actionable overlap error
-before issuing any mutation. Revoke that grantee's ON ALL grant first, or manage it exclusively through an ON ALL
+the same grantee holds the `default` `ON ALL` marker. If it does, reconciliation stops with an actionable overlap error
+before issuing any mutation. Revoke that grantee's `ON ALL` grant first, or manage it exclusively through an `ON ALL`
 resource. This check is catalog-based; it does not coordinate separate Terraform configurations. Refresh and lookups
-still report the existing catalog rows, including implied rows, without adopting or changing the ON ALL tuple.
+still report the existing catalog rows, including implied rows, without adopting or changing the `ON ALL` tuple.
 
-## PUBLIC and Access Control
+## `PUBLIC` and Access Control
 
 Until a superuser revokes it once, every user holds `ASSUMEROLE ON ALL FOR ALL` through `PUBLIC`, and Redshift ignores
 identity-specific grants. The tuple `iam_role_arn = "ALL"`, `grantee_type = "PUBLIC"` models that switch: it reports the
 default commands, and `privileges = []` revokes them (`REVOKE ASSUMEROLE ON ALL FROM PUBLIC FOR …`). Deleting or
 replacing the tuple does not grant them back, so access control stays on and no window opens in which every user can
-assume every IAM role. To restore PUBLIC access for the supported commands, set them in `privileges` and apply, then remove
-the resource with a `removed` block that sets `destroy = false`. Order other grants after it with `depends_on`.
+assume every IAM role. To restore `PUBLIC` access for the supported commands, set them in `privileges` and apply, then
+remove the resource with a `removed` block that sets `destroy = false`. Order other grants after it with `depends_on`.
 
 {{ tffile "examples/resources/redshift_assumerole_grant/public.tf" }}
 
@@ -103,7 +103,7 @@ and the next plan shows what is left.
 configuration with the statements above: a command granted outside Terraform is revoked, and a revoked one is granted
 again. A grant on `ALL` can also show up in the tuples of individual roles, so a command granted on `ALL` outside
 Terraform can appear as drift there; reconciliation rejects the overlap rather than revoking implied privileges.
-Only the selected role and the same grantee's ON ALL marker are read. A missing grantee removes the grant from
+Only the selected role and the same grantee's `ON ALL` marker are read. A missing grantee removes the grant from
 state, and the next plan creates it again.
 
 The following example shows the statements an update runs, each with the database it runs in: the existence

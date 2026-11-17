@@ -59,13 +59,13 @@ output "events_grants" {
 Read-Only:
 
 - `database_name` (String) Database of the granted object.
-- `grant_option_privileges` (Set of String) Subset of `privileges` the grantee holds `WITH GRANT OPTION`; null for grantee listings, because `SHOW GRANTS FOR` does not report grant options.
+- `grant_option_privileges` (Set of String) Subset of `privileges` the grantee holds `WITH GRANT OPTION`; `null` for grantee listings, because `SHOW GRANTS FOR` does not report grant options.
 - `grantee` (String) Receiving identity name; `public` for `PUBLIC`.
 - `grantee_type` (String) `USER`, `ROLE`, `GROUP`, or `PUBLIC`.
-- `object_name` (String) Table, view, or template name; null for `DATABASE` and `SCHEMA`.
+- `object_name` (String) Table, view, or template name; `null` for `DATABASE` and `SCHEMA`.
 - `object_type` (String) `DATABASE`, `SCHEMA`, `TABLE` (including views), or `TEMPLATE`.
 - `privileges` (Set of String) Explicit privileges the grantee holds on the object, with `TEMP` reported as `TEMPORARY`.
-- `schema_name` (String) Schema of the granted object; null for `DATABASE`.
+- `schema_name` (String) Schema of the granted object; `null` for `DATABASE`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -94,7 +94,7 @@ databases are read in their own database and shared (datashare consumer) databas
 Elements cover the `DATABASE`, `SCHEMA`, `TABLE`, and `TEMPLATE` grants of users, roles, groups, and `PUBLIC`.
 Scoped grants, whose privilege scope is an object class such as `TABLES`, are listed by
 [`redshift_grants`](grants.md). Routine and model grants need a signature or another catalog and are not listed;
-read them with the [`redshift_object_grant`](object_grant.md) lookup. `grant_option_privileges` is null for
+read them with the [`redshift_object_grant`](object_grant.md) lookup. `grant_option_privileges` is `null` for
 `SHOW GRANTS FOR`, which does not report grant options.
 
 `SHOW GRANTS` documents no column that separates grants inherited through roles from explicit ones, so the listing

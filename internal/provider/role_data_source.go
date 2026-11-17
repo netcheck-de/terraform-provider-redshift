@@ -46,7 +46,7 @@ func (d *roleDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 			"id":          dataSourceIDAttribute(),
 			"name":        schema.StringAttribute{Required: true, MarkdownDescription: "Role name; a missing role raises an error."},
 			"owner":       schema.StringAttribute{Computed: true, MarkdownDescription: "User that owns the role (`svv_roles.role_owner`)."},
-			"external_id": schema.StringAttribute{Computed: true, MarkdownDescription: "Identifier of the role in a native third-party identity provider (`svv_roles.external_id`); null when unset."},
+			"external_id": schema.StringAttribute{Computed: true, MarkdownDescription: "Identifier of the role in a native third-party identity provider (`svv_roles.external_id`); `null` when unset."},
 			"role_id":     schema.Int64Attribute{Computed: true, MarkdownDescription: "Catalog role ID (`svv_roles.role_id`)."},
 		},
 	}

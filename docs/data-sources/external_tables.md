@@ -50,7 +50,7 @@ Read-Only:
 - `location` (String) `s3://` folder (ending in `/`) or manifest file holding the data, in the warehouse's AWS Region. Changes run `ALTER TABLE ... SET LOCATION`.
 - `name` (String) Table name; the external catalog stores it in lowercase.
 - `output_format` (String) `OUTPUTFORMAT` class paired with `input_format`. Without it, the class the catalog records for `stored_as` is reported.
-- `partition_key` (Attributes List) `PARTITIONED BY` columns in key order; null for an unpartitioned table. (see [below for nested schema](#nestedatt--external_tables--partition_key))
+- `partition_key` (Attributes List) `PARTITIONED BY` columns in key order; `null` for an unpartitioned table. (see [below for nested schema](#nestedatt--external_tables--partition_key))
 - `schema` (String) External schema that maps the external catalog database, for example a `redshift_external_schema`.
 - `serde` (String) `ROW FORMAT SERDE` class, such as `org.openx.data.jsonserde.JsonSerDe` or `org.apache.hadoop.hive.serde2.OpenCSVSerde`. Conflicts with the delimiters.
 - `serde_properties` (Map of String) `WITH SERDEPROPERTIES` pairs for `serde`, such as `{ "strip.outer.array" = "true" }`.
@@ -97,8 +97,8 @@ identifiers. Items are ordered by schema and name; no match returns an empty `ex
 is skipped. `id` combines the listed database and configured filters within the warehouse.
 
 Each item reports what the `redshift_external_table` lookup reports: `column` in catalog order with Redshift type names
-(types Redshift cannot declare, such as Glue's `string`, in UPPERCASE), every catalog table property, `stored_as` null
-when the input format class belongs to no named format, and `serde` null when it is the format's default SerDe. A table
-whose columns the catalog does not report is an error. A database that does not exist or is not local, such as a
+(types Redshift cannot declare, such as Glue's `string`, in UPPERCASE), every catalog table property, `stored_as` `null`
+when the input format class belongs to no named format, and `serde` `null` when it is the format's default SerDe.
+A table whose columns the catalog does not report is an error. A database that does not exist or is not local, such as a
 datashare consumer database, lists nothing. Superusers see every table; other users see only the tables they have access
 to.

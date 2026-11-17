@@ -39,29 +39,29 @@ output "events_layout" {
 
 ### Read-Only
 
-- `backup` (String) Always null: whether snapshots include the table is not observable in a catalog every deployment exposes.
+- `backup` (String) Always `null`: whether snapshots include the table is not observable in a catalog every deployment exposes.
 - `column` (Attributes List) Columns in physical order, as `pg_attribute` and `SVV_REDSHIFT_COLUMNS` report them. (see [below for nested schema](#nestedatt--column))
 - `distribution` (Attributes) Declared distribution, always reported: `style` is `AUTO`, `EVEN`, `KEY`, or `ALL`, and `key` is set for `KEY`. See `effective_distribution` for what Redshift applies under `AUTO`. (see [below for nested schema](#nestedatt--distribution))
 - `effective_distribution` (Attributes) Distribution Redshift currently applies, from `PG_CLASS_INFO.releffectivediststyle` and the distribution key column in `SVV_REDSHIFT_COLUMNS`; under `AUTO` it shows what Redshift picked, for example `{ style = "KEY", key = "account_id", auto = true }`. (see [below for nested schema](#nestedatt--effective_distribution))
 - `effective_sort_key` (Attributes) Sort key Redshift currently applies, from the sort key positions in `SVV_REDSHIFT_COLUMNS` and `SVV_TABLE_INFO.sortkey1`; under `AUTO` it shows the key Redshift chose, for example `{ style = "COMPOUND", columns = ["created_at"], auto = true }`. (see [below for nested schema](#nestedatt--effective_sort_key))
-- `foreign_key` (Attributes Set) FOREIGN KEY constraints. (see [below for nested schema](#nestedatt--foreign_key))
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `foreign_key` (Attributes Set) `FOREIGN KEY` constraints. (see [below for nested schema](#nestedatt--foreign_key))
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `owner` (String) User owning the table.
-- `primary_key` (Attributes) Primary key; null without one. (see [below for nested schema](#nestedatt--primary_key))
+- `primary_key` (Attributes) Primary key; `null` without one. (see [below for nested schema](#nestedatt--primary_key))
 - `sort_key` (Attributes) Declared sort key, always reported: `style` is `AUTO`, `COMPOUND`, `INTERLEAVED`, or `NONE`, and `columns` is set for an explicit key. When `SVV_TABLE_INFO` does not list the table, because it is empty or the provider's SQL identity may not see it, a key Redshift chose is reported as `COMPOUND` and a table without sort key columns as `AUTO`. (see [below for nested schema](#nestedatt--sort_key))
-- `unique` (Attributes Set) UNIQUE constraints. (see [below for nested schema](#nestedatt--unique))
+- `unique` (Attributes Set) `UNIQUE` constraints. (see [below for nested schema](#nestedatt--unique))
 
 <a id="nestedatt--column"></a>
 ### Nested Schema for `column`
 
 Read-Only:
 
-- `default` (String) DEFAULT expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default.
+- `default` (String) `DEFAULT` expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default.
 - `encoding` (String) Compression encoding: `AZ64`, `BYTEDICT`, `DELTA`, `DELTA32K`, `LZO`, `MOSTLY8`, `MOSTLY16`, `MOSTLY32`, `RAW`, `RUNLENGTH`, `TEXT255`, `TEXT32K`, or `ZSTD`. Omit it to let Redshift choose; the chosen encoding is reported. A sort key change can re-encode columns of the old and new key, for example to `RAW`: their omitted encodings are then known after apply, and configured ones are applied again.
-- `identity` (Attributes) Makes an INTEGER or BIGINT column an `IDENTITY(seed, step)` column, which is always NOT NULL. (see [below for nested schema](#nestedatt--column--identity))
+- `identity` (Attributes) Makes an `INTEGER` or `BIGINT` column an `IDENTITY(seed, step)` column, which is always `NOT NULL`. (see [below for nested schema](#nestedatt--column--identity))
 - `name` (String) Column name, in lowercase.
-- `nullable` (Boolean) Whether the column accepts NULL. Omitted, it is `false` for identity and primary key columns, and otherwise `true` for a new column while an existing column keeps its nullability.
-- `renamed_from` (String) Always null: migration hints belong to resource configuration and are not stored in the catalog.
+- `nullable` (Boolean) Whether the column accepts `NULL`. Omitted, it is `false` for identity and primary key columns, and otherwise `true` for a new column while an existing column keeps its nullability.
+- `renamed_from` (String) Always `null`: migration hints belong to resource configuration and are not stored in the catalog.
 - `type` (String) Redshift data type, such as `BIGINT`, `NUMERIC(12,2)`, or `VARCHAR(256)`. Aliases are compared by their canonical form, and a type without a length gets the one Redshift applies, for example `VARCHAR` is `CHARACTER VARYING(256)`.
 
 <a id="nestedatt--column--identity"></a>
@@ -80,7 +80,7 @@ Read-Only:
 
 Read-Only:
 
-- `key` (String) Distribution key column for `style = "KEY"`, of type BOOLEAN, REAL, DOUBLE PRECISION, SMALLINT, INTEGER, BIGINT, DECIMAL, DATE, TIME, TIMETZ, TIMESTAMP, TIMESTAMPTZ, CHAR, or VARCHAR.
+- `key` (String) Distribution key column for `style = "KEY"`, of type `BOOLEAN`, `REAL`, `DOUBLE PRECISION`, `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL`, `DATE`, `TIME`, `TIMETZ`, `TIMESTAMP`, `TIMESTAMPTZ`, `CHAR`, or `VARCHAR`.
 - `style` (String) Distribution style: `AUTO`, `EVEN`, `KEY`, or `ALL`. Omitted, it is `KEY` when `key` is set and `AUTO` otherwise. `AUTO` covers whatever `AUTO(ALL)`, `AUTO(EVEN)`, or `AUTO(KEY(column))` Redshift currently applies; see `effective_distribution`.
 
 
@@ -91,7 +91,7 @@ Read-Only:
 
 - `auto` (Boolean) Whether Redshift manages the distribution (`DISTSTYLE AUTO`).
 - `key` (String) Distribution key column of a `KEY` distribution, including one Redshift chose.
-- `style` (String) `ALL`, `EVEN`, or `KEY`; null when `PG_CLASS_INFO` does not show the table to the provider's SQL identity and the table has no distribution key column.
+- `style` (String) `ALL`, `EVEN`, or `KEY`; `null` when `PG_CLASS_INFO` does not show the table to the provider's SQL identity and the table has no distribution key column.
 
 
 <a id="nestedatt--effective_sort_key"></a>
@@ -175,5 +175,5 @@ The resource's blocks are read-only nested attributes here: `column` is a list, 
 and `primary_key`, `distribution`, and `sort_key` are objects, so `data.redshift_table.x.distribution.style` needs no
 index. Values use catalog spellings: types as `format_type()` reports them, such as `CHARACTER VARYING(256)`, and
 defaults with their casts. `distribution` and `sort_key` are always reported, including `AUTO`; `effective_distribution`
-and `effective_sort_key` show what Redshift applies. `backup` is always null because it is not observable. A missing
+and `effective_sort_key` show what Redshift applies. `backup` is always `null` because it is not observable. A missing
 table is an error.

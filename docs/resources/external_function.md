@@ -51,7 +51,7 @@ resource "redshift_external_function" "upper" {
 
 - `max_batch_rows` (Number) Maximum rows per Lambda invocation, from 1 to 2,147,483,647 (the default). Applied in place with `CREATE OR REPLACE`. Redshift does not expose it in a documented catalog view, so changes made outside Terraform are not detected and import leaves it unset until the next apply restates the function.
 - `max_batch_size` (Number) Maximum payload per Lambda invocation in `max_batch_size_unit`, from 1 KB to 5 MB (the default). Applied in place with `CREATE OR REPLACE`. Redshift does not expose it in a documented catalog view, so changes made outside Terraform are not detected and import leaves it unset until the next apply restates the function.
-- `max_batch_size_unit` (String) Unit of `max_batch_size`: `KB` or `MB`. Unset means KB, as in Redshift. Requires `max_batch_size`.
+- `max_batch_size_unit` (String) Unit of `max_batch_size`: `KB` or `MB`. Unset means `KB`, as in Redshift. Requires `max_batch_size`.
 - `owner` (String) SQL user owning the function, applied with `ALTER FUNCTION ... OWNER TO`, which requires a superuser. Unset keeps the creating user and reports it.
 - `retry_timeout` (Number) Total retry backoff in milliseconds; `0` disables retries. Unset uses the Redshift default of 20,000. Applied in place with `CREATE OR REPLACE`. Redshift does not expose it in a documented catalog view, so changes made outside Terraform are not detected and import leaves it unset until the next apply restates the function.
 - `volatility` (String) `VOLATILE` (default) or `STABLE`; Redshift does not support `IMMUTABLE` for Lambda UDFs. Applied in place with `CREATE OR REPLACE`, which requires a superuser.

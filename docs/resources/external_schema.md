@@ -239,5 +239,5 @@ terraform import redshift_external_schema.raw \
 ```
 
 The source type, external database, owner, and recorded options are discovered on refresh. Match them in configuration
-before applying; an option the catalog does not record, such as a federated `uri` or `secret_arn`, is null after import,
-so configuring it plans a replacement unless the form changes it in place.
+before applying; an option the catalog does not record, such as a federated `uri` or `secret_arn`, is `null` after
+import, so configuring it plans a replacement unless the form changes it in place.

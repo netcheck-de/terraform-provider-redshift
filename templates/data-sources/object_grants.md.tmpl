@@ -45,7 +45,7 @@ databases are read in their own database and shared (datashare consumer) databas
 Elements cover the `DATABASE`, `SCHEMA`, `TABLE`, and `TEMPLATE` grants of users, roles, groups, and `PUBLIC`.
 Scoped grants, whose privilege scope is an object class such as `TABLES`, are listed by
 [`redshift_grants`](grants.md). Routine and model grants need a signature or another catalog and are not listed;
-read them with the [`redshift_object_grant`](object_grant.md) lookup. `grant_option_privileges` is null for
+read them with the [`redshift_object_grant`](object_grant.md) lookup. `grant_option_privileges` is `null` for
 `SHOW GRANTS FOR`, which does not report grant options.
 
 `SHOW GRANTS` documents no column that separates grants inherited through roles from explicit ones, so the listing
