@@ -45,7 +45,7 @@ ALTER DATASHARE datashare REMOVE ALL FUNCTIONS IN SCHEMA schema;
 ## Lifecycle and Ownership
 
 Every managed refresh and mutation requires a SQL superuser. Before reading the producer's catalogs, the provider
-queries `pg_user.usesuper` for `current_user` in the provider administration database. A false, missing, malformed, or
+queries `pg_user.usesuper` for `current_user` in the provider administration database. A `false`, missing, malformed, or
 failed result is an error: existing state is retained and no membership mutation runs. This full-visibility prerequisite
 prevents a restricted identity's empty or hidden catalogs from proving coverage or being mistaken for a deleted parent.
 Because the check uses the administration database, a genuinely dropped producer database can still be removed from state.
@@ -56,12 +56,12 @@ ones added outside Terraform since creation or import. Source tables, views, fun
 members of the other kind are not removed. An empty source schema is fully covered.
 
 Only one owner may manage a share/schema/kind tuple. Do not combine this resource with `redshift_datashare_table`,
-another bulk owner, manual membership management, or overlapping scoped grants for the selected kind. TABLES and
-FUNCTIONS owners may coexist for the same schema because their kinds do not overlap. Import adopts the entire kind;
+another bulk owner, manual membership management, or overlapping scoped grants for the selected kind. `TABLES` and
+`FUNCTIONS` owners may coexist for the same schema because their kinds do not overlap. Import adopts the entire kind;
 it does not recover a historical snapshot. Overlap with other Terraform states or provider aliases cannot be detected.
 
 The shared schema must have `include_new = false`. Every mutation verifies this setting and refuses to proceed while
-it is true. Future objects are deliberately not added automatically: refresh detects missing coverage, and apply
+it is `true`. Future objects are deliberately not added automatically: refresh detects missing coverage, and apply
 runs `ADD ALL` again. Declare dependencies on the source objects to create them before the bulk membership is applied.
 Run Terraform after creating objects outside Terraform to add those objects to the share.
 When adding source objects to an already managed schema in the same Terraform configuration, run another plan/apply
@@ -76,23 +76,23 @@ and cannot be unambiguously matched. External tables and non-SQL functions are o
 
 ## Reconciliation
 
-Refresh retains the parent tuple when coverage is incomplete and sets `all` to false; the next apply restores it with
+Refresh retains the parent tuple when coverage is incomplete and sets `all` to `false`; the next apply restores it with
 `ALTER DATASHARE ... ADD ALL ... IN SCHEMA`. Identity changes replace the exclusive owner.
 
-| Change      | Result                                                                                            |
-|-------------|---------------------------------------------------------------------------------------------------|
-| `database`  | replaces the exclusive owner, removing its old kind memberships before adding the new ones        |
-| `datashare` | replaces the exclusive owner, removing its old kind memberships before adding the new ones        |
-| `schema`    | replaces the exclusive owner, removing its old kind memberships before adding the new ones        |
-| `kind`      | replaces the exclusive owner, removing the old kind memberships before adding the new kind        |
-| `all`       | must be true; drift to false runs `ALTER DATASHARE ... ADD ALL ... IN SCHEMA` to restore coverage |
+| Change      | Result                                                                                                |
+|-------------|-------------------------------------------------------------------------------------------------------|
+| `database`  | replaces the exclusive owner, removing its old kind memberships before adding the new ones            |
+| `datashare` | replaces the exclusive owner, removing its old kind memberships before adding the new ones            |
+| `schema`    | replaces the exclusive owner, removing its old kind memberships before adding the new ones            |
+| `kind`      | replaces the exclusive owner, removing the old kind memberships before adding the new kind            |
+| `all`       | must be `true`; drift to `false` runs `ALTER DATASHARE ... ADD ALL ... IN SCHEMA` to restore coverage |
 
-**Drift.** Missing memberships and newly created unshared source objects change `all` to false instead of removing
+**Drift.** Missing memberships and newly created unshared source objects change `all` to `false` instead of removing
 the resource from state. A missing producer database, share, or schema membership removes the owner from state.
 Objects newly added to the share by another actor remain owned by this exclusive resource and are removed on destroy.
 Enabling `include_new` produces a refresh warning and blocks subsequent mutations until it is disabled.
 
-For example, after another SQL overload is created, refresh observes incomplete FUNCTIONS coverage. The next apply
+For example, after another SQL overload is created, refresh observes incomplete `FUNCTIONS` coverage. The next apply
 adds every current SQL overload:
 
 {{ codefile "sql" "internal/provider/testdata/sql/datashare_membership/add_functions.sql" }}

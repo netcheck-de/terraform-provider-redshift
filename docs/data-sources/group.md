@@ -28,7 +28,7 @@ data "redshift_group" "readers" {
 ### Read-Only
 
 - `group_id` (Number) Group ID from `pg_group.grosysid`.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `members` (Set of String) Names of the users in the group; empty when it has none.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 

@@ -45,15 +45,15 @@ func newTableDataSource() datasource.DataSource {
 			return true, nil
 		},
 	}), map[string]string{
-		"column.renamed_from": "Always null: migration hints belong to resource configuration and are not stored in the catalog.",
+		"column.renamed_from": "Always `null`: migration hints belong to resource configuration and are not stored in the catalog.",
 		"column":              "Columns in physical order, as `pg_attribute` and `SVV_REDSHIFT_COLUMNS` report them.",
-		"primary_key":         "Primary key; null without one.",
-		"unique":              "UNIQUE constraints.",
-		"foreign_key":         "FOREIGN KEY constraints.",
+		"primary_key":         "Primary key; `null` without one.",
+		"unique":              "`UNIQUE` constraints.",
+		"foreign_key":         "`FOREIGN KEY` constraints.",
 		"distribution":        "Declared distribution, always reported: `style` is `AUTO`, `EVEN`, `KEY`, or `ALL`, and `key` is set for `KEY`. See `effective_distribution` for what Redshift applies under `AUTO`.",
 		"sort_key": "Declared sort key, always reported: `style` is `AUTO`, `COMPOUND`, `INTERLEAVED`, or `NONE`, and `columns` is set for an explicit key. " +
 			"When `SVV_TABLE_INFO` does not list the table, because it is empty or the provider's SQL identity may not see it, a key Redshift chose is reported as `COMPOUND` and a table without sort key columns as `AUTO`.",
-		"backup": "Always null: whether snapshots include the table is not observable in a catalog every deployment exposes.",
+		"backup": "Always `null`: whether snapshots include the table is not observable in a catalog every deployment exposes.",
 		"owner":  "User owning the table.",
 		"effective_distribution": "Distribution Redshift currently applies, from `PG_CLASS_INFO.releffectivediststyle` and the distribution key column in `SVV_REDSHIFT_COLUMNS`; " +
 			"under `AUTO` it shows what Redshift picked, for example `{ style = \"KEY\", key = \"account_id\", auto = true }`.",

@@ -35,12 +35,12 @@ func newExternalModelDataSource() datasource.DataSource {
 
 		return found, err
 	}}), map[string]string{
-		"function":      "Name of the model's inference function, without its schema; null when `SHOW MODEL` does not report it.",
-		"iam_role":      "IAM role the model uses, as `SHOW MODEL` reports it to the model's owner; null otherwise.",
-		"model_id":      "Amazon Bedrock model ID; null when `SHOW MODEL` does not report it.",
-		"prompt":        "Static prompt prefix; null when unset or not reported.",
-		"suffix":        "Static prompt suffix; null when unset or not reported.",
-		"request_type":  "Request format, `UNIFIED` or `RAW`; null when `SHOW MODEL` does not report it.",
-		"response_type": "Response format, `VARCHAR` or `SUPER`; null when `SHOW MODEL` does not report it.",
+		"function":      "Name of the model's inference function, without its schema; `null` when `SHOW MODEL` does not report it.",
+		"iam_role":      "IAM role the model uses, as `SHOW MODEL` reports it to the model's owner; `null` otherwise.",
+		"model_id":      "Amazon Bedrock model ID; `null` when `SHOW MODEL` does not report it.",
+		"prompt":        "Static prompt prefix; `null` when unset or not reported.",
+		"suffix":        "Static prompt suffix; `null` when unset or not reported.",
+		"request_type":  "Request format, `UNIFIED` or `RAW`; `null` when `SHOW MODEL` does not report it.",
+		"response_type": "Response format, `VARCHAR` or `SUPER`; `null` when `SHOW MODEL` does not report it.",
 	})
 }

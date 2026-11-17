@@ -35,7 +35,7 @@ func newCopyJobDataSource() datasource.DataSource {
 }
 
 // copyJobDefinitionReadback makes the engine-specific definition requirement explicit on lookup outputs.
-const copyJobDefinitionReadback = " Read from SYS_COPY_JOB.copy_query; unavailable or unsupported definitions return an error."
+const copyJobDefinitionReadback = " Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error."
 
 // copyJobOutputDescriptions describe what the lookup can observe instead of the resource's apply-time behavior.
 var copyJobOutputDescriptions = map[string]string{

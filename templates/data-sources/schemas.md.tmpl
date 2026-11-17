@@ -46,6 +46,6 @@ ones.
 
 `quota` is read as `redshift_schema` reads it: a quota row in `SVV_REDSHIFT_SCHEMA_QUOTA` gives the quota in megabytes,
 and a schema without one is `-1` (`UNLIMITED`). That view shows a regular user only their own schemas, so the quota of
-another owner's schema is null unless the connection is a superuser.
+another owner's schema is `null` unless the connection is a superuser.
 
 A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

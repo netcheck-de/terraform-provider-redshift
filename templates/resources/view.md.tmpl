@@ -43,7 +43,7 @@ DROP VIEW schema.name;
 
 Creation uses plain `CREATE VIEW`, so an existing view is never adopted silently; import it instead. Without `owner`,
 the provider's SQL identity owns the view and `owner` reports it. With `owner`, the provider transfers ownership with
-`ALTER TABLE ... OWNER TO`, which the ALTER TABLE reference documents for views. `DROP VIEW` does **not** cascade;
+`ALTER TABLE ... OWNER TO`, which the `ALTER TABLE` reference documents for views. `DROP VIEW` does **not** cascade;
 remove dependent views first. The resource does not manage grants or comments on the view.
 
 Late-binding views must reference schema-qualified tables; Redshift checks referenced objects only when the view is

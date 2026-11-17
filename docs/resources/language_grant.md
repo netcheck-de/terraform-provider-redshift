@@ -69,7 +69,7 @@ resource "redshift_language_grant" "public_procedures" {
 ### Optional
 
 - `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
-- `restore_default_on_destroy` (Boolean) Opt in to restoring the built-in PUBLIC privilege on destroy instead of leaving it revoked. Defaults to false. Only valid for a PUBLIC language grant or database-wide PUBLIC FUNCTIONS default privileges, respectively. This can widen access after Terraform stops managing the tuple; it does not restore historical grants.
+- `restore_default_on_destroy` (Boolean) Opt in to restoring the built-in `PUBLIC` privilege on destroy instead of leaving it revoked. Defaults to `false`. Only valid for a `PUBLIC` language grant or database-wide `PUBLIC` `FUNCTIONS` default privileges, respectively. This can widen access after Terraform stops managing the tuple; it does not restore historical grants.
 
 ### Read-Only
 
@@ -90,7 +90,7 @@ REVOKE [GRANT OPTION FOR] USAGE ON LANGUAGE language_name FROM ...;
 
 ## Lifecycle and Ownership
 
-Deleting the resource revokes what it owns unless `restore_default_on_destroy` opts into restoring PUBLIC's default;
+Deleting the resource revokes what it owns unless `restore_default_on_destroy` opts into restoring `PUBLIC`'s default;
 see [Reconciliation](#reconciliation) for changes.
 
 The resource checks the grantee and the local database, then reads
@@ -102,7 +102,7 @@ explicit grants, so the default may have no catalog row. To restrict who can cre
 `PUBLIC` tuple with an empty `privileges` set and grant `USAGE` to specific users, roles, or groups. Because the
 default can be invisible, every create and update of a `PUBLIC` tuple without `USAGE` sends
 `REVOKE USAGE ON LANGUAGE ... FROM PUBLIC`, which changes nothing once the grant is gone. Destroy also revokes it
-when `restore_default_on_destroy` is false or omitted. Importing such a tuple plans
+when `restore_default_on_destroy` is `false` or omitted. Importing such a tuple plans
 no change, so create it instead of importing it. By default, destroying a `PUBLIC` tuple leaves it without `USAGE`.
 The default is not restored unless `restore_default_on_destroy = true`. That opt-in is valid only for `PUBLIC` and
 grants `USAGE` back on destroy (also replacement), verifying the catalog afterward. It restores the documented
@@ -135,7 +135,7 @@ re-reads the catalog to verify the result; every change to the tuple itself repl
 | `privileges` set to `[]`                                       | `REVOKE USAGE ON LANGUAGE ... FROM ...`, which also removes the grant option; for `PUBLIC` also when the catalog shows no grant, as [Lifecycle and Ownership](#lifecycle-and-ownership) describes |
 | `grant_option_privileges` set to `["USAGE"]`                   | `GRANT USAGE ON LANGUAGE ... TO ... WITH GRANT OPTION`                                                                                                                                            |
 | `grant_option_privileges` set to `[]`, or the argument removed | `REVOKE GRANT OPTION FOR USAGE ON LANGUAGE ... FROM ...`; `USAGE` stays, and Redshift rejects the statement while grants the user made depend on the option                                       |
-| `restore_default_on_destroy` changed                           | updates cleanup policy in place; true restores PUBLIC `USAGE` on destroy, false or omitted leaves it revoked                                                                                      |
+| `restore_default_on_destroy` changed                           | updates cleanup policy in place; `true` restores `PUBLIC` `USAGE` on destroy, `false` or omitted leaves it revoked                                                                                |
 
 An update revokes before it grants. The statements share no transaction: when one fails, the earlier ones stay applied
 and the next plan shows what is left. Planning rejects grant options for groups, roles, and `PUBLIC`, and an option
@@ -147,7 +147,7 @@ granted again. The `PUBLIC` default without a catalog row is never read, so a `P
 an explicit `GRANT USAGE ... TO PUBLIC` but not the default. A missing grantee or database removes the grant from state,
 and the next plan creates it again.
 
-### Revoking the PUBLIC Default
+### Revoking the `PUBLIC` Default
 
 Creating a `PUBLIC` tuple without `USAGE` revokes the default although the catalog read before it shows no grant; the
 statements appear with the database each runs in:

@@ -39,13 +39,13 @@ resource "redshift_default_privilege" "reports" {
 - `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`.
 - `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`.
 - `object_type` (String) `TABLES` (tables and views), `FUNCTIONS`, or `PROCEDURES`.
-- `privileges` (Set of String) Exact explicit default privilege set; updated in place. `TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `TRUNCATE`. `FUNCTIONS` and `PROCEDURES`: `EXECUTE`. Redshift grants `EXECUTE` on new functions to `PUBLIC` without being asked; the database-wide `PUBLIC` `FUNCTIONS` tuple reports it, an empty set revokes it, and deleting that tuple leaves it revoked unless `restore_default_on_destroy` is true.
+- `privileges` (Set of String) Exact explicit default privilege set; updated in place. `TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `TRUNCATE`. `FUNCTIONS` and `PROCEDURES`: `EXECUTE`. Redshift grants `EXECUTE` on new functions to `PUBLIC` without being asked; the database-wide `PUBLIC` `FUNCTIONS` tuple reports it, an empty set revokes it, and deleting that tuple leaves it revoked unless `restore_default_on_destroy` is `true`.
 
 ### Optional
 
 - `grant_option_privileges` (Set of String) Subset of `privileges` that the grantee also holds `WITH GRANT OPTION`, so it can grant them to others. Only a `USER` grantee can hold grant options. Defaults to none. Removing a privilege from this set keeps the privilege and revokes only its grant option; Redshift rejects that while the grantee's own grants depend on it, because the provider never cascades.
 - `owner` (String) User whose future objects receive the privileges (`FOR USER`). Omit it to define the defaults of the user the provider connects as, which is what Redshift applies without `FOR USER`; the tuple then follows that connection user.
-- `restore_default_on_destroy` (Boolean) Opt in to restoring the built-in PUBLIC privilege on destroy instead of leaving it revoked. Defaults to false. Only valid for a PUBLIC language grant or database-wide PUBLIC FUNCTIONS default privileges, respectively. This can widen access after Terraform stops managing the tuple; it does not restore historical grants.
+- `restore_default_on_destroy` (Boolean) Opt in to restoring the built-in `PUBLIC` privilege on destroy instead of leaving it revoked. Defaults to `false`. Only valid for a `PUBLIC` language grant or database-wide `PUBLIC` `FUNCTIONS` default privileges, respectively. This can widen access after Terraform stops managing the tuple; it does not restore historical grants.
 - `schema_name` (String) Schema whose future objects receive the privileges (`IN SCHEMA`); omit it for database-wide defaults. Schema defaults add to the database-wide ones and cannot remove them.
 
 ### Read-Only
@@ -86,7 +86,7 @@ A `USER` grantee can receive the privileges `WITH GRANT OPTION` on every future 
 which of them carry the option: it must be a subset of `privileges` and defaults to none. Removing a privilege from the
 set revokes only its option. Groups, roles, and `PUBLIC` cannot hold grant options.
 
-## Implicit PUBLIC EXECUTE on Functions
+## Implicit `PUBLIC` `EXECUTE` on Functions
 
 Redshift grants `EXECUTE` on every new function to `PUBLIC` without being asked; procedures run only for their owner and
 superusers by default. The database-wide tuple `grantee_type = "PUBLIC"`, `object_type = "FUNCTIONS"` without
@@ -152,7 +152,7 @@ change to the tuple itself replaces the grant. No statement touches objects that
 | `privileges` set to `[]`                                                  | `ALTER DEFAULT PRIVILEGES ... REVOKE` for every privilege the tuple holds; for the database-wide `PUBLIC` `FUNCTIONS` tuple this includes the implicit `EXECUTE`, also while the catalog has no row for it |
 | privilege added to `grant_option_privileges`                              | `ALTER DEFAULT PRIVILEGES ... GRANT ... WITH GRANT OPTION`; a privilege added to both sets at once is granted with the option in one statement                                                             |
 | privilege removed from `grant_option_privileges`, or the argument removed | `ALTER DEFAULT PRIVILEGES ... REVOKE GRANT OPTION FOR ...`; the privilege stays                                                                                                                            |
-| `restore_default_on_destroy` changed                                      | updates cleanup policy in place; true restores database-wide PUBLIC FUNCTIONS `EXECUTE` on destroy, false or omitted leaves it revoked                                                                     |
+| `restore_default_on_destroy` changed                                      | updates cleanup policy in place; `true` restores database-wide `PUBLIC` `FUNCTIONS` `EXECUTE` on destroy, `false` or omitted leaves it revoked                                                             |
 
 An update revokes before it grants: removed privileges first, then removed grant options, then added privileges, then
 added grant options. The statements share no transaction: when one fails, the earlier ones stay applied and the next

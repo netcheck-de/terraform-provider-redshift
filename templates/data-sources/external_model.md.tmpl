@@ -38,5 +38,5 @@ as the paired resource.
 
 Both statements run in `database`. `SHOW MODEL ALL` lists the models the provider's SQL identity can use, so a missing
 model, a model the identity cannot use, or a missing database is an error. `SHOW MODEL` prints settings as key and
-value rows; an output is null when no row reports it, and only the model's owner sees `iam_role`. A trained model reads
-too, with the settings its rows report. Only read-only SQL is executed.
+value rows; an output is `null` when no row reports it, and only the model's owner sees `iam_role`. A trained model
+reads too, with the settings its rows report. Only read-only SQL is executed.

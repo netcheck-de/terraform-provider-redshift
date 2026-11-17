@@ -39,7 +39,7 @@ func newDefaultPrivilegesDataSource() datasource.DataSource {
 		element: describedOutputs(collectionElement(newDefaultPrivilegeResource, "database_name", "owner", "schema_name", "object_type", "grantee", "grantee_type", "privileges", "grant_option_privileges"), map[string]string{
 			"database_name":           "Database whose default privileges are listed.",
 			"owner":                   "User whose future objects receive the privileges.",
-			"schema_name":             "Schema whose future objects receive the privileges; null for database-wide defaults.",
+			"schema_name":             "Schema whose future objects receive the privileges; `null` for database-wide defaults.",
 			"object_type":             "`TABLES` (tables and views), `FUNCTIONS`, or `PROCEDURES`.",
 			"grantee":                 "Receiving identity name; `public` for `PUBLIC`.",
 			"grantee_type":            "`USER`, `ROLE`, `GROUP`, or `PUBLIC`.",

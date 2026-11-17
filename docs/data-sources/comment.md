@@ -39,7 +39,7 @@ data "redshift_comment" "column" {
 
 ### Read-Only
 
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `text` (String) Comment text. An empty string represents no annotation and clears it with `IS NULL`.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 

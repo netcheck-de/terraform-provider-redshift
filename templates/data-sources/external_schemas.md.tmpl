@@ -36,7 +36,7 @@ check. `id` combines the listed database within the warehouse. Items are ordered
 external schemas returns an empty `external_schemas` list.
 
 Each item is decoded as `redshift_external_schema` reads it: `source_type` follows from the catalog's schema kind, and
-options that the catalog does not record in `esoptions` are null. Schemas of kinds the resource cannot manage, such as
+options that the catalog does not record in `esoptions` are `null`. Schemas of kinds the resource cannot manage, such as
 system-table schemas, are omitted. An incomplete catalog entry, such as a `DATA_CATALOG` schema without an IAM role or
 undecodable options, is an error.
 

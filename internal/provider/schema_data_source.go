@@ -31,7 +31,7 @@ type schemaData struct {
 var _ = registerDataSource(newSchemaDataSource)
 
 // schemaQuotaLookupDescription describes the observed quota for the lookup and the listing.
-const schemaQuotaLookupDescription = "Disk quota in megabytes; `-1` means `UNLIMITED`. Null when the connection is neither a superuser nor the schema owner, because `SVV_REDSHIFT_SCHEMA_QUOTA` shows a regular user only their own schemas."
+const schemaQuotaLookupDescription = "Disk quota in megabytes; `-1` means `UNLIMITED`. `null` when the connection is neither a superuser nor the schema owner, because `SVV_REDSHIFT_SCHEMA_QUOTA` shows a regular user only their own schemas."
 
 // newSchemaDataSource constructs a read-only local schema lookup.
 func newSchemaDataSource() datasource.DataSource { return &schemaDataSource{} }

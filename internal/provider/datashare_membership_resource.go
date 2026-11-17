@@ -49,14 +49,14 @@ func (r *datashareMembershipResource) Metadata(_ context.Context, req resource.M
 func (r *datashareMembershipResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	replace := []planmodifier.String{stringplanmodifier.RequiresReplace()}
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Exclusively owns all current table/view or SQL-function memberships in one producer share/schema. Requires a SQL superuser for every managed read and mutation, so partial catalog visibility cannot be mistaken for complete ownership. Not a snapshot. Do not combine with explicit members or scoped grants for the same kind, or with include_new = true. Destroy removes every current member of the selected kind, including externally added members.",
+		MarkdownDescription: "Exclusively owns all current table/view or SQL-function memberships in one producer share/schema. Requires a SQL superuser for every managed read and mutation, so partial catalog visibility cannot be mistaken for complete ownership. Not a snapshot. Do not combine with explicit members or scoped grants for the same kind, or with `include_new = true`. Destroy removes every current member of the selected kind, including externally added members.",
 		Attributes: map[string]schema.Attribute{
 			"id":        idAttribute(),
 			"database":  schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Local producer database."},
 			"datashare": schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Producer datashare name."},
-			"schema":    schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Schema already included in the share, with include_new = false. Periods in schema or source member names are unsupported because the membership catalog does not quote qualification."},
-			"kind":      schema.StringAttribute{Required: true, PlanModifiers: replace, Validators: []validator.String{stringvalidator.OneOf("TABLES", "FUNCTIONS")}, MarkdownDescription: "TABLES includes tables and views; FUNCTIONS includes SQL UDF overloads. Exclusive ownership covers this whole kind in the share/schema."},
-			"all":       schema.BoolAttribute{Required: true, Validators: []validator.Bool{boolvalidator.Equals(true)}, MarkdownDescription: "Must be true to acknowledge exclusive ownership. Refresh reports false when any current source object of this kind is not shared; the next apply adds all current objects. An empty schema is fully covered."},
+			"schema":    schema.StringAttribute{Required: true, PlanModifiers: replace, MarkdownDescription: "Schema already included in the share, with `include_new = false`. Periods in schema or source member names are unsupported because the membership catalog does not quote qualification."},
+			"kind":      schema.StringAttribute{Required: true, PlanModifiers: replace, Validators: []validator.String{stringvalidator.OneOf("TABLES", "FUNCTIONS")}, MarkdownDescription: "`TABLES` includes tables and views; `FUNCTIONS` includes SQL UDF overloads. Exclusive ownership covers this whole kind in the share/schema."},
+			"all":       schema.BoolAttribute{Required: true, Validators: []validator.Bool{boolvalidator.Equals(true)}, MarkdownDescription: "Must be `true` to acknowledge exclusive ownership. Refresh reports `false` when any current source object of this kind is not shared; the next apply adds all current objects. An empty schema is fully covered."},
 		},
 	}
 	foldNames(&resp.Schema, "database", "datashare", "schema")

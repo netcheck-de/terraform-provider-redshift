@@ -31,7 +31,7 @@ func newDatashareMembershipsDataSource() datasource.DataSource {
 		element: describedOutputs(collectionElement(newDatashareMembershipResource, "database", "datashare", "schema", "kind", "all"), map[string]string{
 			"schema": "Shared schema whose members are compared.",
 			"kind":   "`TABLES` compares visible tables and views; `FUNCTIONS` compares visible SQL UDF overloads.",
-			"all":    "Whether every currently visible source object of the kind has a visible share membership; true for an empty source set.",
+			"all":    "Whether every currently visible source object of the kind has a visible share membership; `true` for an empty source set.",
 		}),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
 			database, rows, err := listDatashareObjects(ctx, client, filters, datashareMembershipObjectTypes)

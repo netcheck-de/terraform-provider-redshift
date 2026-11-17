@@ -33,7 +33,7 @@ output "custom_roles" {
 
 Read-Only:
 
-- `external_id` (String) Identifier of the role in a native third-party identity provider (`svv_roles.external_id`); null when unset.
+- `external_id` (String) Identifier of the role in a native third-party identity provider (`svv_roles.external_id`); `null` when unset.
 - `name` (String) Role name, including any identity namespace prefix.
 - `owner` (String) User that owns the role (`svv_roles.role_owner`).
 - `role_id` (Number) Catalog role ID (`svv_roles.role_id`).

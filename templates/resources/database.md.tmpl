@@ -47,7 +47,7 @@ DROP DATABASE name;
 ## Local Database Options
 
 `owner`, `connection_limit`, `collation`, and `isolation_level` apply to local databases only; configuring any of them
-together with `datashare_arn` is rejected at plan time, and they are null for shared databases. Omitted options are
+together with `datashare_arn` is rejected at plan time, and they are `null` for shared databases. Omitted options are
 reported from the catalog and left unmanaged; see [Reconciliation](#reconciliation) for how changes apply.
 
 | Attribute          | Created with       | Changed with                              | Read from                                   |

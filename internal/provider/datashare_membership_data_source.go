@@ -25,7 +25,7 @@ func newDatashareMembershipDataSource() datasource.DataSource {
 		return found, err
 	}}), map[string]string{
 		"schema": "Producer schema whose visible membership is observed. Periods in schema or visible source member names are unsupported because the catalog does not quote qualification. Future-object inclusion may be enabled or disabled.",
-		"kind":   "TABLES observes visible tables and views; FUNCTIONS observes visible SQL UDF overloads.",
-		"all":    "Whether every currently visible source object of the selected kind has a visible share membership. True for an empty visible source set; false when the schema membership is not visible. This observation does not prove complete coverage under restricted catalog visibility and does not require a SQL superuser.",
+		"kind":   "`TABLES` observes visible tables and views; `FUNCTIONS` observes visible SQL UDF overloads.",
+		"all":    "Whether every currently visible source object of the selected kind has a visible share membership. `true` for an empty visible source set; `false` when the schema membership is not visible. This observation does not prove complete coverage under restricted catalog visibility and does not require a SQL superuser.",
 	})
 }

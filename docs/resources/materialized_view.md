@@ -122,7 +122,7 @@ DROP MATERIALIZED VIEW schema.name;
 ## Lifecycle and Ownership
 
 Without `owner`, the provider's SQL identity owns the view and `owner` reports it. With `owner`, the provider transfers
-ownership with `ALTER TABLE ... OWNER TO`, since ALTER MATERIALIZED VIEW has no owner clause. `SVV_MV_INFO` shows
+ownership with `ALTER TABLE ... OWNER TO`, since `ALTER MATERIALIZED VIEW` has no owner clause. `SVV_MV_INFO` shows
 regular users only their own materialized views. When a provider SQL identity that is not a superuser transfers
 ownership away, `auto_refresh` keeps its configured value with a warning instead of being read back, and changing or
 dropping the view then needs privileges that the new owner grants.

@@ -43,8 +43,8 @@ data "redshift_datashare_grant" "namespace" {
 
 ### Read-Only
 
-- `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `exists` (Boolean) Whether this explicit relationship exists. `false` also covers missing parents.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -64,13 +64,13 @@ until its value resolves.
 `id` (String, computed) is the relationship's JSON identity, using the same warehouse, producer database, datashare, and
 selected `account_id` or `namespace_id` key as the paired resource, plus `via_data_catalog` when it is `true`. Existing
 account identities retain their format.
-It is null when `exists` is false.
+It is `null` when `exists` is `false`.
 
-Absent SQL grants return false. Missing databases and catalog errors raise errors. No SQL grants or AWS resources
+Absent SQL grants return `false`. Missing databases and catalog errors raise errors. No SQL grants or AWS resources
 change.
 
 Reads [SVV_DATASHARE_CONSUMERS](https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_DATASHARE_CONSUMERS.html).
-Account lookups match the share and account with an empty/null namespace. Namespace lookups match the share and exact
+Account lookups match the share and account with an empty/`null` namespace. Namespace lookups match the share and exact
 namespace UUID; an account-wide grant does not count as an explicit namespace grant. The catalog has no consumer-type
 column and no column for the `VIA DATA CATALOG` form, so `via_data_catalog` only selects the identity format and both
 account forms report the same relationship. Only read-only SQL is executed.

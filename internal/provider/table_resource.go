@@ -223,7 +223,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 		return []validator.Object{objectvalidator.AlsoRequires(expressions...)}
 	}
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages the definition of a local Redshift table: columns, constraints, distribution, sort key, and owner. Rows are never managed; changes that ALTER TABLE cannot make replace the table, which drops its data.",
+		MarkdownDescription: "Manages the definition of a local Redshift table: columns, constraints, distribution, sort key, and owner. Rows are never managed; changes that `ALTER TABLE` cannot make replace the table, which drops its data.",
 		Attributes: map[string]schema.Attribute{
 			"id": idAttribute(),
 			"database": schema.StringAttribute{
@@ -255,7 +255,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 					"Under `AUTO` it shows what Redshift picked, for example `{ style = \"KEY\", key = \"account_id\", auto = true }`. " +
 					"An explicit distribution is known during planning; an automatic one keeps its value while a plan changes nothing else and is known after apply otherwise.",
 				Attributes: map[string]schema.Attribute{
-					"style": schema.StringAttribute{Computed: true, MarkdownDescription: "`ALL`, `EVEN`, or `KEY`; null when `PG_CLASS_INFO` does not show the table to the provider's SQL identity and the table has no distribution key column."},
+					"style": schema.StringAttribute{Computed: true, MarkdownDescription: "`ALL`, `EVEN`, or `KEY`; `null` when `PG_CLASS_INFO` does not show the table to the provider's SQL identity and the table has no distribution key column."},
 					"key":   schema.StringAttribute{Computed: true, MarkdownDescription: "Distribution key column of a `KEY` distribution, including one Redshift chose."},
 					"auto":  schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether Redshift manages the distribution (`DISTSTYLE AUTO`)."},
 				},
@@ -279,9 +279,9 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 			timeoutsBlockName: operationTimeoutsBlock(ctx, ""),
 			"column": schema.ListNestedBlock{
 				MarkdownDescription: "At least one `column` block is required. Column definitions (1 to 1600), matched to the catalog by name, so reordering the blocks runs no SQL. " +
-					"In place, a new column is added with `ALTER TABLE ADD COLUMN` wherever its block appears (not an identity column, and a NOT NULL column only with a default), " +
+					"In place, a new column is added with `ALTER TABLE ADD COLUMN` wherever its block appears (not an identity column, and a `NOT NULL` column only with a default), " +
 					"although Redshift stores it after the existing ones; a removed column is dropped with `DROP COLUMN`, never `CASCADE`; " +
-					"`ALTER COLUMN ... ENCODE` re-encodes a column (not with an interleaved sort key), and VARCHAR or VARBYTE columns without a default, " +
+					"`ALTER COLUMN ... ENCODE` re-encodes a column (not with an interleaved sort key), and `VARCHAR` or `VARBYTE` columns without a default, " +
 					"constraint, or `BYTEDICT`/`RUNLENGTH`/`TEXT255`/`TEXT32K` encoding can be resized with `ALTER COLUMN ... TYPE`, which Redshift refuses when existing values are longer than a smaller new length. Set `renamed_from` to rename a column without losing its data; without that hint, changing a name drops the old column and adds the new one. New columns are added before removed ones are dropped, so the existing and new columns together must not exceed 1600.",
 				Validators:    []validator.List{listvalidator.IsRequired(), listvalidator.SizeBetween(1, tableMaxColumns)},
 				PlanModifiers: []planmodifier.List{tableColumnDefaults{}, replaceList("column")},
@@ -290,7 +290,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 						"name": schema.StringAttribute{Required: true, MarkdownDescription: "Column name, in lowercase.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
 						"renamed_from": schema.StringAttribute{
 							Optional:            true,
-							MarkdownDescription: "Previous lowercase column name. Uses ALTER TABLE RENAME COLUMN before other changes, preserving data and existing keys and constraints. Keep the hint for retries or remove it after success (no SQL). Source and destination must differ; chains, swaps, duplicate sources, and an existing source together with an existing destination are rejected. If only the destination exists the rename is already complete; if neither exists the update fails. On creation only the new name is used. Not read from the catalog.",
+							MarkdownDescription: "Previous lowercase column name. Uses `ALTER TABLE RENAME COLUMN` before other changes, preserving data and existing keys and constraints. Keep the hint for retries or remove it after success (no SQL). Source and destination must differ; chains, swaps, duplicate sources, and an existing source together with an existing destination are rejected. If only the destination exists the rename is already complete; if neither exists the update fails. On creation only the new name is used. Not read from the catalog.",
 							Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
 						},
 						"type": schema.StringAttribute{
@@ -304,17 +304,17 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 						},
 						"nullable": schema.BoolAttribute{
 							Optional: true, Computed: true,
-							MarkdownDescription: "Whether the column accepts NULL. Omitted, it is `false` for identity and primary key columns, and otherwise `true` for a new column while an existing column keeps its nullability.",
+							MarkdownDescription: "Whether the column accepts `NULL`. Omitted, it is `false` for identity and primary key columns, and otherwise `true` for a new column while an existing column keeps its nullability.",
 						},
 						"default": schema.StringAttribute{
 							Optional:            true,
-							MarkdownDescription: "DEFAULT expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default.",
+							MarkdownDescription: "`DEFAULT` expression embedded as SQL, so string literals need quotes, for example `'n/a'` or `getdate()`. Redshift stores it with casts and its own spacing; the configured text is kept while the column has a default.",
 							Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
 						},
 					},
 					Blocks: map[string]schema.Block{
 						"identity": schema.SingleNestedBlock{
-							MarkdownDescription: "Makes an INTEGER or BIGINT column an `IDENTITY(seed, step)` column, which is always NOT NULL.",
+							MarkdownDescription: "Makes an `INTEGER` or `BIGINT` column an `IDENTITY(seed, step)` column, which is always `NOT NULL`.",
 							Validators:          requires("seed", "step"),
 							Attributes: map[string]schema.Attribute{
 								"seed": schema.Int64Attribute{Optional: true, MarkdownDescription: "First generated value; required in the block."},
@@ -337,13 +337,13 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"unique": schema.SetNestedBlock{
-				MarkdownDescription: "UNIQUE constraint, one block per constraint. Redshift does not enforce it. Changes are applied with `ALTER TABLE ADD UNIQUE` and `DROP CONSTRAINT`.",
+				MarkdownDescription: "`UNIQUE` constraint, one block per constraint. Redshift does not enforce it. Changes are applied with `ALTER TABLE ADD UNIQUE` and `DROP CONSTRAINT`.",
 				NestedObject: schema.NestedBlockObject{Attributes: map[string]schema.Attribute{
 					"columns": names("Constrained columns in order."),
 				}},
 			},
 			"foreign_key": schema.SetNestedBlock{
-				MarkdownDescription: "FOREIGN KEY constraint, one block per constraint. Redshift does not enforce it. Changes are applied with `ALTER TABLE ADD FOREIGN KEY` and `DROP CONSTRAINT`.",
+				MarkdownDescription: "`FOREIGN KEY` constraint, one block per constraint. Redshift does not enforce it. Changes are applied with `ALTER TABLE ADD FOREIGN KEY` and `DROP CONSTRAINT`.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"columns": names("Referencing columns of this table."),
@@ -375,7 +375,7 @@ func (r *tableResource) Schema(ctx context.Context, _ resource.SchemaRequest, re
 					},
 					"key": schema.StringAttribute{
 						Optional:            true,
-						MarkdownDescription: "Distribution key column for `style = \"KEY\"`, of type BOOLEAN, REAL, DOUBLE PRECISION, SMALLINT, INTEGER, BIGINT, DECIMAL, DATE, TIME, TIMETZ, TIMESTAMP, TIMESTAMPTZ, CHAR, or VARCHAR.",
+						MarkdownDescription: "Distribution key column for `style = \"KEY\"`, of type `BOOLEAN`, `REAL`, `DOUBLE PRECISION`, `SMALLINT`, `INTEGER`, `BIGINT`, `DECIMAL`, `DATE`, `TIME`, `TIMETZ`, `TIMESTAMP`, `TIMESTAMPTZ`, `CHAR`, or `VARCHAR`.",
 					},
 				},
 			},

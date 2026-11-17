@@ -228,7 +228,7 @@ func newCatalogDataSource(spec catalogSpec) datasource.DataSource {
 			panic("newCatalogDataSource: the exists output shadows a resource attribute or block")
 		}
 		// Added before the selectors so a selector named exists collides instead of being replaced.
-		attributes["exists"] = schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether this explicit relationship exists. False also covers missing parents."}
+		attributes["exists"] = schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether this explicit relationship exists. `false` also covers missing parents."}
 	}
 
 	for name, selector := range spec.selectors {

@@ -28,8 +28,8 @@ SELECT ... FROM svv_rls_attached_policy WHERE polname = 'policy' AND relname = '
 
 ## Read Behavior
 
-`id` (String, computed) is the attachment's JSON identity, using the same keys as the paired resource. It is null when
-`exists` is false.
+`id` (String, computed) is the attachment's JSON identity, using the same keys as the paired resource. It is `null` when
+`exists` is `false`.
 
-A missing attachment returns false; a missing database and catalog errors remain errors. Only superusers and
+A missing attachment returns `false`; a missing database and catalog errors remain errors. Only superusers and
 `sys:secadmin` holders can query the view.

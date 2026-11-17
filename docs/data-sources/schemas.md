@@ -43,7 +43,7 @@ Read-Only:
 - `database` (String) Database containing the schema.
 - `name` (String) Schema name.
 - `owner` (String) SQL user owning the schema.
-- `quota` (Number) Disk quota in megabytes; `-1` means `UNLIMITED`. Null when the connection is neither a superuser nor the schema owner, because `SVV_REDSHIFT_SCHEMA_QUOTA` shows a regular user only their own schemas.
+- `quota` (Number) Disk quota in megabytes; `-1` means `UNLIMITED`. `null` when the connection is neither a superuser nor the schema owner, because `SVV_REDSHIFT_SCHEMA_QUOTA` shows a regular user only their own schemas.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -74,6 +74,6 @@ ones.
 
 `quota` is read as `redshift_schema` reads it: a quota row in `SVV_REDSHIFT_SCHEMA_QUOTA` gives the quota in megabytes,
 and a schema without one is `-1` (`UNLIMITED`). That view shows a regular user only their own schemas, so the quota of
-another owner's schema is null unless the connection is a superuser.
+another owner's schema is `null` unless the connection is a superuser.
 
 A database that does not exist or is not local, such as a datashare consumer database, lists nothing.

@@ -33,8 +33,8 @@ data "redshift_datashare_table" "report" {
 
 ### Read-Only
 
-- `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `exists` (Boolean) Whether this explicit relationship exists. `false` also covers missing parents.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -49,7 +49,7 @@ SELECT ... FROM svv_datashare_objects WHERE share_name = 'datashare' ...;
 ## Read Behavior
 
 `id` (String, computed) is the relationship's JSON identity, using the same warehouse, producer database, datashare,
-schema, and table keys as the paired resource. It is null when `exists` is false.
+schema, and table keys as the paired resource. It is `null` when `exists` is `false`.
 
-Missing memberships return false; missing databases and catalog errors remain errors. The lookup never modifies the
+Missing memberships return `false`; missing databases and catalog errors remain errors. The lookup never modifies the
 source relation or share.

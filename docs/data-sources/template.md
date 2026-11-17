@@ -36,11 +36,11 @@ output "csv_events_parameters" {
 
 ### Read-Only
 
-- `format` (String) Data format of `FORMAT AS`, such as `JSON`; null for pipe-delimited text.
-- `format_argument` (String) Argument of the format, such as `auto` for `JSON 'auto'`; null without one.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `format` (String) Data format of `FORMAT AS`, such as `JSON`; `null` for pipe-delimited text.
+- `format_argument` (String) Argument of the format, such as `auto` for `JSON 'auto'`; `null` without one.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `owner` (String) SQL user owning the template.
-- `parameters` (Map of String) COPY parameters keyed by their UPPERCASE keyword, as `SHOW TEMPLATE` prints them, with `""` for keywords without an argument; null when the template has none.
+- `parameters` (Map of String) COPY parameters keyed by their UPPERCASE keyword, as `SHOW TEMPLATE` prints them, with `""` for keywords without an argument; `null` when the template has none.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements

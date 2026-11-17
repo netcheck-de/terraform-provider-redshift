@@ -24,7 +24,7 @@ func newTablesDataSource() datasource.DataSource {
 			"schema":   discoveryFilter("Only tables in this schema."),
 		},
 		element: describedOutputs(collectionElement(newTableResource, "database", "schema", "name", "owner"), map[string]string{
-			"owner": "User owning the table; null when the catalog reports none.",
+			"owner": "User owning the table; `null` when the catalog reports none.",
 		}),
 		list: tablesList,
 	})

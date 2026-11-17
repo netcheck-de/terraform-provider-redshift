@@ -31,10 +31,10 @@ func newCommentsDataSource() datasource.DataSource {
 		element: describedOutputs(collectionElement(newCommentResource, "database_name", "object_type", "schema_name", "object_name", "column_name", "constraint_name", "text"), map[string]string{
 			"database_name":   "Database containing the annotated object.",
 			"object_type":     "`DATABASE`, `SCHEMA`, `TABLE`, `VIEW`, `COLUMN`, or `CONSTRAINT`.",
-			"schema_name":     "Schema of the table, view, column, or constraint; null for database and schema comments.",
+			"schema_name":     "Schema of the table, view, column, or constraint; `null` for database and schema comments.",
 			"object_name":     "Name of the database or schema itself; for `TABLE` and `VIEW` the relation; for `COLUMN` and `CONSTRAINT` the table that holds it.",
-			"column_name":     "Annotated column of a `COLUMN` comment; null otherwise.",
-			"constraint_name": "Annotated constraint of a `CONSTRAINT` comment; null otherwise.",
+			"column_name":     "Annotated column of a `COLUMN` comment; `null` otherwise.",
+			"constraint_name": "Annotated constraint of a `CONSTRAINT` comment; `null` otherwise.",
 			"text":            "Comment text.",
 		}),
 		list: commentsList,

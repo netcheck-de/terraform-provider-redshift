@@ -53,13 +53,13 @@ output "analytics_grants" {
 Read-Only:
 
 - `database_name` (String) Database receiving the grants.
-- `datashare` (String) Receiving producer datashare; null for other recipients.
+- `datashare` (String) Receiving producer datashare; `null` for other recipients.
 - `grant_option_privileges` (Set of String) Subset of `privileges` the recipient holds `WITH GRANT OPTION`; only users hold grant options.
 - `privileges` (Set of String) Explicit privileges the recipient holds in this scope, with `TEMP` reported as `TEMPORARY`.
-- `role` (String) Receiving role; null for other recipients.
-- `schema_name` (String) Schema the grants apply to; null for database-wide grants.
+- `role` (String) Receiving role; `null` for other recipients.
+- `schema_name` (String) Schema the grants apply to; `null` for database-wide grants.
 - `scope` (String) `DATABASE`, `SCHEMA`, or the object class of a scoped grant: `SCHEMAS`, `TABLES`, `FUNCTIONS`, `PROCEDURES`, `LANGUAGES`, `COPY JOBS`, or `TEMPLATES`.
-- `user` (String) Receiving user; null for other recipients.
+- `user` (String) Receiving user; `null` for other recipients.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements

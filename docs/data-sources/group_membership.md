@@ -29,8 +29,8 @@ data "redshift_group_membership" "reader" {
 
 ### Read-Only
 
-- `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `exists` (Boolean) Whether this explicit relationship exists. `false` also covers missing parents.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -45,7 +45,7 @@ SELECT ... FROM pg_group JOIN pg_user ... WHERE ...;
 ## Read Behavior
 
 `id` (String, computed) is the membership's JSON identity, using the same warehouse, provider database, group, and user
-keys as the paired resource. It is null when `exists` is false.
+keys as the paired resource. It is `null` when `exists` is `false`.
 
 The lookup never adds/removes members. SQL/catalog errors are reported, not converted
 to `exists = false`.

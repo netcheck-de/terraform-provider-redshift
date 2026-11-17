@@ -34,14 +34,14 @@ output "enabled_identity_namespaces" {
 
 Read-Only:
 
-- `application_arn` (String) Identity Center managed application ARN; null for `AZURE`.
-- `audience` (Set of String) Accepted Microsoft Entra ID token audiences; null for `AWSIDC` or when none are set.
-- `client_id` (String) Microsoft Entra ID application (client) ID; null for `AWSIDC`.
+- `application_arn` (String) Identity Center managed application ARN; `null` for `AZURE`.
+- `audience` (Set of String) Accepted Microsoft Entra ID token audiences; `null` for `AWSIDC` or when none are set.
+- `client_id` (String) Microsoft Entra ID application (client) ID; `null` for `AWSIDC`.
 - `enabled` (Boolean) Whether the provider is enabled.
-- `iam_role_arn` (String) Identity Center integration IAM role ARN; null for `AZURE`.
-- `identity_center_instance_arn` (String) IAM Identity Center instance ARN of an `AWSIDC` provider; null for `AZURE`.
+- `iam_role_arn` (String) Identity Center integration IAM role ARN; `null` for `AZURE`.
+- `identity_center_instance_arn` (String) IAM Identity Center instance ARN of an `AWSIDC` provider; `null` for `AZURE`.
 - `instance_id` (String) Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `AWSIDC` and the tenant ID for `AZURE`.
-- `issuer` (String) Microsoft Entra ID token issuer URL; null for `AWSIDC`.
+- `issuer` (String) Microsoft Entra ID token issuer URL; `null` for `AWSIDC`.
 - `name` (String) SQL identity provider name.
 - `namespace` (String) Prefix of federated users and group roles.
 - `provider_id` (Number) Catalog ID of the identity provider (`svv_identity_providers.uid`).

@@ -11,7 +11,7 @@ func newDefaultPrivilegeResource() resource.Resource {
 	attributes := privilegeAttributes()
 	attributes["restore_default_on_destroy"] = restoreDefaultAttribute()
 	grantRecipientAttributes(attributes)
-	attributes["privileges"] = grantPrivilegesAttribute("Exact explicit default privilege set; updated in place. `TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `TRUNCATE`. `FUNCTIONS` and `PROCEDURES`: `EXECUTE`. Redshift grants `EXECUTE` on new functions to `PUBLIC` without being asked; the database-wide `PUBLIC` `FUNCTIONS` tuple reports it, an empty set revokes it, and deleting that tuple leaves it revoked unless `restore_default_on_destroy` is true.")
+	attributes["privileges"] = grantPrivilegesAttribute("Exact explicit default privilege set; updated in place. `TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `TRUNCATE`. `FUNCTIONS` and `PROCEDURES`: `EXECUTE`. Redshift grants `EXECUTE` on new functions to `PUBLIC` without being asked; the database-wide `PUBLIC` `FUNCTIONS` tuple reports it, an empty set revokes it, and deleting that tuple leaves it revoked unless `restore_default_on_destroy` is `true`.")
 	attributes["database_name"] = privilegeString("Local database receiving default privileges.", false)
 	attributes["owner"] = privilegeString("User whose future objects receive the privileges (`FOR USER`). Omit it to define the defaults of the user the provider connects as, which is what Redshift applies without `FOR USER`; the tuple then follows that connection user.", true)
 	attributes["schema_name"] = privilegeString("Schema whose future objects receive the privileges (`IN SCHEMA`); omit it for database-wide defaults. Schema defaults add to the database-wide ones and cannot remove them.", true)

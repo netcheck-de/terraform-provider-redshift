@@ -43,12 +43,12 @@ output "column_comments" {
 
 Read-Only:
 
-- `column_name` (String) Annotated column of a `COLUMN` comment; null otherwise.
-- `constraint_name` (String) Annotated constraint of a `CONSTRAINT` comment; null otherwise.
+- `column_name` (String) Annotated column of a `COLUMN` comment; `null` otherwise.
+- `constraint_name` (String) Annotated constraint of a `CONSTRAINT` comment; `null` otherwise.
 - `database_name` (String) Database containing the annotated object.
 - `object_name` (String) Name of the database or schema itself; for `TABLE` and `VIEW` the relation; for `COLUMN` and `CONSTRAINT` the table that holds it.
 - `object_type` (String) `DATABASE`, `SCHEMA`, `TABLE`, `VIEW`, `COLUMN`, or `CONSTRAINT`.
-- `schema_name` (String) Schema of the table, view, column, or constraint; null for database and schema comments.
+- `schema_name` (String) Schema of the table, view, column, or constraint; `null` for database and schema comments.
 - `text` (String) Comment text.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 

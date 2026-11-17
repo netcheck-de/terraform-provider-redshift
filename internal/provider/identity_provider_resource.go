@@ -149,7 +149,7 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 			"auto_create_roles": schema.BoolAttribute{
 				Optional:            true,
-				MarkdownDescription: "Whether Redshift creates roles for the provider's groups automatically (`AUTO_CREATE_ROLES`). Unset keeps the type default, `false` for `AWSIDC` and `true` for `AZURE`, and removing the attribute restores that default. The catalog does not report this setting, so Terraform keeps the configured value, changes made outside Terraform are not detected, and imports and lookups report null. Updated in place.",
+				MarkdownDescription: "Whether Redshift creates roles for the provider's groups automatically (`AUTO_CREATE_ROLES`). Unset keeps the type default, `false` for `AWSIDC` and `true` for `AZURE`, and removing the attribute restores that default. The catalog does not report this setting, so Terraform keeps the configured value, changes made outside Terraform are not detected, and imports and lookups report `null`. Updated in place.",
 			},
 			"auto_create_roles_include_groups": identityProviderGroupFilter("INCLUDE", "auto_create_roles_exclude_groups"),
 			"auto_create_roles_exclude_groups": identityProviderGroupFilter("EXCLUDE", "auto_create_roles_include_groups"),
@@ -165,7 +165,7 @@ func (r *identityProviderResource) Schema(_ context.Context, _ resource.SchemaRe
 				Computed: true, PlanModifiers: []planmodifier.String{identityProviderInstanceModifier{}}, MarkdownDescription: "Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `AWSIDC` and the tenant ID for `AZURE`.",
 			},
 			"identity_center_instance_arn": schema.StringAttribute{
-				Computed: true, PlanModifiers: []planmodifier.String{identityProviderInstanceModifier{}}, MarkdownDescription: "IAM Identity Center instance ARN of an `AWSIDC` provider (`instance_arn` in the catalog parameters); null for `AZURE`.",
+				Computed: true, PlanModifiers: []planmodifier.String{identityProviderInstanceModifier{}}, MarkdownDescription: "IAM Identity Center instance ARN of an `AWSIDC` provider (`instance_arn` in the catalog parameters); `null` for `AZURE`.",
 			},
 		},
 	}

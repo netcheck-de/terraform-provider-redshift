@@ -45,7 +45,7 @@ output "incomplete_memberships" {
 
 Read-Only:
 
-- `all` (Boolean) Whether every currently visible source object of the kind has a visible share membership; true for an empty source set.
+- `all` (Boolean) Whether every currently visible source object of the kind has a visible share membership; `true` for an empty source set.
 - `database` (String) Local producer database.
 - `datashare` (String) Producer datashare name.
 - `kind` (String) `TABLES` compares visible tables and views; `FUNCTIONS` compares visible SQL UDF overloads.

@@ -35,7 +35,7 @@ SELECT autorefresh FROM svv_mv_info WHERE ...;
 as the paired resource.
 
 `query` is the catalog's complete `CREATE MATERIALIZED VIEW` statement. `backup`, `distribution`, and `sort_key` are
-always null: no catalog view reports `BACKUP`, and `SVV_TABLE_INFO` is visible only to superusers and omits
+always `null`: no catalog view reports `BACKUP`, and `SVV_TABLE_INFO` is visible only to superusers and omits
 materialized views without rows. The resource's blocks are nested attributes here, so `distribution.style` needs no
-`[0]`. `auto_refresh` is null when `SVV_MV_INFO`, which shows regular users only their own materialized views, hides
+`[0]`. `auto_refresh` is `null` when `SVV_MV_INFO`, which shows regular users only their own materialized views, hides
 the view. A missing view, a missing database, or an ordinary view is an error.

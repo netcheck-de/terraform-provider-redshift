@@ -12,7 +12,7 @@ privileges, or the privileges common to all current tables, functions, or proced
 
 Set `database_type = "shared"` to read a consumer database's `DATABASE`, `SCHEMA`, `TABLE`, or name-wide routine
 grants through qualified `SHOW GRANTS` from the administration database. Shared `FUNCTION` and `PROCEDURE` select
-the corresponding producer routine kind, omit `arguments`, and use the consumer's FUNCTION ACL readback. Shared
+the corresponding producer routine kind, omit `arguments`, and use the consumer's `FUNCTION` ACL readback. Shared
 `ALL TABLES`, `ALL FUNCTIONS`, and `ALL PROCEDURES` list distinct members and intersect their individual
 `SHOW GRANTS` results, including grant options. `ALL FUNCTIONS` covers all shared routine kinds; `ALL PROCEDURES`
 selects procedures only.

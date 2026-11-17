@@ -39,8 +39,8 @@ output "rls_policy_names" {
 
 Read-Only:
 
-- `alias` (String) Relation alias of the `WITH` clause (`AS alias`) that the predicate may use to qualify columns, or null.
-- `column` (Attributes List) Ordered `WITH` columns of the policy in the spelling that `svv_rls_policy` reports. Null when the policy has no `WITH` clause. (see [below for nested schema](#nestedatt--rls_policies--column))
+- `alias` (String) Relation alias of the `WITH` clause (`AS alias`) that the predicate may use to qualify columns, or `null`.
+- `column` (Attributes List) Ordered `WITH` columns of the policy in the spelling that `svv_rls_policy` reports. `null` when the policy has no `WITH` clause. (see [below for nested schema](#nestedatt--rls_policies--column))
 - `database` (String) Local database that holds the policy and the relations it is attached to.
 - `definition_fingerprint` (String) SHA-256 of the catalog definition with whitespace collapsed; equals the paired resource's `definition_fingerprint` for the same definition.
 - `name` (String) Policy name, unique within the database.

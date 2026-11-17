@@ -38,9 +38,9 @@ output "unconsumed_datashares" {
 
 Read-Only:
 
-- `consumer_database` (String) Database created from the share in this namespace; null when none exists.
-- `created_at` (String) Creation timestamp reported by `SVV_DATASHARES`, as text without a time zone; null when the catalog reports none.
-- `managed_by` (String) AWS service managing the share, such as `ADX`; null for a share managed with SQL.
+- `consumer_database` (String) Database created from the share in this namespace; `null` when none exists.
+- `created_at` (String) Creation timestamp reported by `SVV_DATASHARES`, as text without a time zone; `null` when the catalog reports none.
+- `managed_by` (String) AWS service managing the share, such as `ADX`; `null` for a share managed with SQL.
 - `name` (String) Datashare name, as named by the producer.
 - `producer_account` (String) AWS account ID of the producer namespace.
 - `producer_namespace` (String) Producer namespace UUID; with `producer_account` and `name` it identifies the datashare ARN.
@@ -59,7 +59,7 @@ SELECT ... FROM svv_datashares WHERE share_type = 'INBOUND' ...;
 ## Read Behavior
 
 `inbound_datashares` is empty when nothing matches; it is ordered by name. `producer_account` and `producer_namespace`
-identify the producer. `consumer_database` is null until a database is created from the share.
+identify the producer. `consumer_database` is `null` until a database is created from the share.
 
 `id` (String, computed) is the listing's provider-relative JSON identity containing the configured filters.
 

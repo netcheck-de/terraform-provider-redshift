@@ -34,4 +34,5 @@ SELECT ... FROM svv_identity_providers WHERE name = 'name';
 and name keys as the paired resource.
 
 A missing provider or one with an unsupported type or malformed catalog parameters is an error. The client secret is
-never exposed, and `auto_create_roles` and its group filters are always null, because the catalog does not report them.
+never exposed, and `auto_create_roles` and its group filters are always `null`, because the catalog does not report
+them.

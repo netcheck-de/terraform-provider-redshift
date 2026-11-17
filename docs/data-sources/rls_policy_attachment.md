@@ -37,8 +37,8 @@ data "redshift_rls_policy_attachment" "analysts" {
 
 ### Read-Only
 
-- `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `exists` (Boolean) Whether this explicit relationship exists. `false` also covers missing parents.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -52,8 +52,8 @@ SELECT ... FROM svv_rls_attached_policy WHERE polname = 'policy' AND relname = '
 
 ## Read Behavior
 
-`id` (String, computed) is the attachment's JSON identity, using the same keys as the paired resource. It is null when
-`exists` is false.
+`id` (String, computed) is the attachment's JSON identity, using the same keys as the paired resource. It is `null` when
+`exists` is `false`.
 
-A missing attachment returns false; a missing database and catalog errors remain errors. Only superusers and
+A missing attachment returns `false`; a missing database and catalog errors remain errors. Only superusers and
 `sys:secadmin` holders can query the view.

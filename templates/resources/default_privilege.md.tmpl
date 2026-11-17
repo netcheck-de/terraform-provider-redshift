@@ -56,7 +56,7 @@ A `USER` grantee can receive the privileges `WITH GRANT OPTION` on every future 
 which of them carry the option: it must be a subset of `privileges` and defaults to none. Removing a privilege from the
 set revokes only its option. Groups, roles, and `PUBLIC` cannot hold grant options.
 
-## Implicit PUBLIC EXECUTE on Functions
+## Implicit `PUBLIC` `EXECUTE` on Functions
 
 Redshift grants `EXECUTE` on every new function to `PUBLIC` without being asked; procedures run only for their owner and
 superusers by default. The database-wide tuple `grantee_type = "PUBLIC"`, `object_type = "FUNCTIONS"` without
@@ -101,7 +101,7 @@ change to the tuple itself replaces the grant. No statement touches objects that
 | `privileges` set to `[]`                                                  | `ALTER DEFAULT PRIVILEGES ... REVOKE` for every privilege the tuple holds; for the database-wide `PUBLIC` `FUNCTIONS` tuple this includes the implicit `EXECUTE`, also while the catalog has no row for it |
 | privilege added to `grant_option_privileges`                              | `ALTER DEFAULT PRIVILEGES ... GRANT ... WITH GRANT OPTION`; a privilege added to both sets at once is granted with the option in one statement                                                             |
 | privilege removed from `grant_option_privileges`, or the argument removed | `ALTER DEFAULT PRIVILEGES ... REVOKE GRANT OPTION FOR ...`; the privilege stays                                                                                                                            |
-| `restore_default_on_destroy` changed                                      | updates cleanup policy in place; true restores database-wide PUBLIC FUNCTIONS `EXECUTE` on destroy, false or omitted leaves it revoked                                                                     |
+| `restore_default_on_destroy` changed                                      | updates cleanup policy in place; `true` restores database-wide `PUBLIC` `FUNCTIONS` `EXECUTE` on destroy, `false` or omitted leaves it revoked                                                             |
 
 An update revokes before it grants: removed privileges first, then removed grant options, then added privileges, then
 added grant options. The statements share no transaction: when one fails, the earlier ones stay applied and the next

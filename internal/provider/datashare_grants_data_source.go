@@ -19,8 +19,8 @@ func newDatashareGrantsDataSource() datasource.DataSource {
 		description: "Lists the consumer accounts and namespaces granted `USAGE` on the outbound datashares of every producer database of the provider's namespace from `SVV_DATASHARE_CONSUMERS`, without taking ownership. `SVV_DATASHARE_CONSUMERS` reports an account granted `VIA DATA CATALOG` like a plain account grant, so the form is not listed. Superusers, share owners, and users with `ALTER` or `USAGE` on a share see its consumers; other users see none.",
 		filters:     map[string]schema.Attribute{"datashare": discoveryFilter("Only consumers of this outbound datashare; consumers of all visible shares when omitted.")},
 		element: describedOutputs(collectionElement(newDatashareGrantResource, "database", "datashare", "account_id", "namespace_id"), map[string]string{
-			"account_id":   "Consumer AWS account ID of an account grant; null for a namespace grant.",
-			"namespace_id": "Consumer namespace UUID of a namespace grant; null for an account grant.",
+			"account_id":   "Consumer AWS account ID of an account grant; `null` for a namespace grant.",
+			"namespace_id": "Consumer namespace UUID of a namespace grant; `null` for an account grant.",
 		}),
 		list: func(ctx context.Context, client *resourceClient, filters types.Object) ([]map[string]attr.Value, error) {
 			rows, err := client.selectRows(ctx, client.database.ValueString(), listDatashareGrantsQuery(objectString(filters, "datashare")))

@@ -34,12 +34,12 @@ data "redshift_external_table" "sales" {
 
 - `column` (Attributes List) Data columns in catalog order. (see [below for nested schema](#nestedatt--column))
 - `field_delimiter` (String) `ROW FORMAT DELIMITED FIELDS TERMINATED BY` character: one ASCII character; write control characters as HCL escapes such as `"\t"` or `"\u0007"`. Conflicts with `serde`.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `input_format` (String) `STORED AS INPUTFORMAT` class, for formats such as Hudi or Delta Lake manifests; requires `output_format`. Without it, the class the catalog records for `stored_as` is reported.
 - `line_delimiter` (String) `ROW FORMAT DELIMITED LINES TERMINATED BY` character, usually `"\n"`. Conflicts with `serde`.
 - `location` (String) `s3://` folder (ending in `/`) or manifest file holding the data, in the warehouse's AWS Region. Changes run `ALTER TABLE ... SET LOCATION`.
 - `output_format` (String) `OUTPUTFORMAT` class paired with `input_format`. Without it, the class the catalog records for `stored_as` is reported.
-- `partition_key` (Attributes List) `PARTITIONED BY` columns in key order; null for an unpartitioned table. (see [below for nested schema](#nestedatt--partition_key))
+- `partition_key` (Attributes List) `PARTITIONED BY` columns in key order; `null` for an unpartitioned table. (see [below for nested schema](#nestedatt--partition_key))
 - `serde` (String) `ROW FORMAT SERDE` class, such as `org.openx.data.jsonserde.JsonSerDe` or `org.apache.hadoop.hive.serde2.OpenCSVSerde`. Conflicts with the delimiters.
 - `serde_properties` (Map of String) `WITH SERDEPROPERTIES` pairs for `serde`, such as `{ "strip.outer.array" = "true" }`.
 - `stored_as` (String) File format: `PARQUET`, `RCFILE`, `SEQUENCEFILE`, `TEXTFILE`, `ORC`, or `AVRO`. Exactly one of `stored_as` and the pair `input_format`/`output_format` is required. Switching between `AVRO`, `PARQUET`, `RCFILE`, `SEQUENCEFILE`, and `TEXTFILE` runs `ALTER TABLE ... SET FILE FORMAT`; switching from name to position mapping also requires the `column` blocks to follow catalog order.
@@ -83,5 +83,5 @@ as the paired resource.
 `column` lists the data columns in catalog order, which for `ORC` tables can differ from the resource's configured order
 because `ADD COLUMN` appends. Types use Redshift names (for example `INTEGER` for the catalog's `int`); types Redshift
 cannot declare, such as Glue's `string`, are reported in UPPERCASE (`STRING`). `table_properties` reports every
-catalog property, including bookkeeping entries such as `EXTERNAL`. `stored_as` is null when the input format class
-belongs to no named format, and `serde` is null when it is the format's default SerDe. A missing table is an error.
+catalog property, including bookkeeping entries such as `EXTERNAL`. `stored_as` is `null` when the input format class
+belongs to no named format, and `serde` is `null` when it is the format's default SerDe. A missing table is an error.

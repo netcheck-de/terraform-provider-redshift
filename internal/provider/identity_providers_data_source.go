@@ -14,15 +14,15 @@ var _ = registerDataSource(newIdentityProvidersDataSource)
 var identityProvidersOutputDescriptions = map[string]string{
 	"type":                         "Identity provider type: `AWSIDC` or `AZURE`.",
 	"namespace":                    "Prefix of federated users and group roles.",
-	"application_arn":              "Identity Center managed application ARN; null for `AZURE`.",
-	"iam_role_arn":                 "Identity Center integration IAM role ARN; null for `AZURE`.",
-	"issuer":                       "Microsoft Entra ID token issuer URL; null for `AWSIDC`.",
-	"client_id":                    "Microsoft Entra ID application (client) ID; null for `AWSIDC`.",
-	"audience":                     "Accepted Microsoft Entra ID token audiences; null for `AWSIDC` or when none are set.",
+	"application_arn":              "Identity Center managed application ARN; `null` for `AZURE`.",
+	"iam_role_arn":                 "Identity Center integration IAM role ARN; `null` for `AZURE`.",
+	"issuer":                       "Microsoft Entra ID token issuer URL; `null` for `AWSIDC`.",
+	"client_id":                    "Microsoft Entra ID application (client) ID; `null` for `AWSIDC`.",
+	"audience":                     "Accepted Microsoft Entra ID token audiences; `null` for `AWSIDC` or when none are set.",
 	"enabled":                      "Whether the provider is enabled.",
 	"provider_id":                  "Catalog ID of the identity provider (`svv_identity_providers.uid`).",
 	"instance_id":                  "Catalog instance identifier (`svv_identity_providers.instanceid`): the application ARN for `AWSIDC` and the tenant ID for `AZURE`.",
-	"identity_center_instance_arn": "IAM Identity Center instance ARN of an `AWSIDC` provider; null for `AZURE`.",
+	"identity_center_instance_arn": "IAM Identity Center instance ARN of an `AWSIDC` provider; `null` for `AZURE`.",
 }
 
 // newIdentityProvidersDataSource lists every SQL identity provider with its catalog settings.

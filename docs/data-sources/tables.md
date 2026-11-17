@@ -43,7 +43,7 @@ Read-Only:
 
 - `database` (String) Local database containing the table.
 - `name` (String) Table name, in lowercase, because Redshift folds ASCII letters of identifiers to lowercase.
-- `owner` (String) User owning the table; null when the catalog reports none.
+- `owner` (String) User owning the table; `null` when the catalog reports none.
 - `schema` (String) Existing schema containing the table, in lowercase.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 

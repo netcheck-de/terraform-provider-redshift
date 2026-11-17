@@ -35,13 +35,13 @@ output "events_job_auto" {
 ### Read-Only
 
 - `auto` (Boolean) Whether Redshift loads new files automatically (`AUTO ON`).
-- `format` (String) Data format of the COPY command. Read from SYS_COPY_JOB.copy_query; unavailable or unsupported definitions return an error.
-- `format_argument` (String) Argument of the format. Read from SYS_COPY_JOB.copy_query; unavailable or unsupported definitions return an error.
+- `format` (String) Data format of the COPY command. Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error.
+- `format_argument` (String) Argument of the format. Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error.
 - `iam_role` (String) IAM role ARN the job's COPY command uses, as `SYS_COPY_JOB` reports it.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
-- `parameters` (Map of String) COPY parameters of the job. Read from SYS_COPY_JOB.copy_query; unavailable or unsupported definitions return an error.
-- `source` (String) Amazon S3 prefix the job monitors. Read from SYS_COPY_JOB.copy_query; unavailable or unsupported definitions return an error.
-- `table` (Attributes) Target table of the COPY command. Read from SYS_COPY_JOB.copy_query; unavailable or unsupported definitions return an error. (see [below for nested schema](#nestedatt--table))
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
+- `parameters` (Map of String) COPY parameters of the job. Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error.
+- `source` (String) Amazon S3 prefix the job monitors. Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error.
+- `table` (Attributes) Target table of the COPY command. Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error. (see [below for nested schema](#nestedatt--table))
 
 <a id="nestedatt--table"></a>
 ### Nested Schema for `table`

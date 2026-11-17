@@ -34,16 +34,16 @@ output "superusers" {
 
 Read-Only:
 
-- `connection_limit` (Number) Maximum concurrent connections; `-1` stands for `UNLIMITED`. Null when `SVV_USER_INFO` does not show the user, as for other users when a regular user reads the listing.
-- `create_database` (Boolean) Whether the user has CREATEDB.
-- `external_id` (String) Identity-provider user identifier; null when none is set or `SVV_USER_INFO` does not show the user.
+- `connection_limit` (Number) Maximum concurrent connections; `-1` stands for `UNLIMITED`. `null` when `SVV_USER_INFO` does not show the user, as for other users when a regular user reads the listing.
+- `create_database` (Boolean) Whether the user has `CREATEDB`.
+- `external_id` (String) Identity-provider user identifier; `null` when none is set or `SVV_USER_INFO` does not show the user.
 - `name` (String) Database user name.
-- `search_path` (List of String) Stored `search_path` default in search order; null when none is stored.
-- `session_defaults` (Map of String) Stored defaults of the session parameters `redshift_user` manages in `session_defaults`; null when none is stored.
-- `session_timeout` (Number) Idle-session timeout in seconds; `0` when the user has none. Null when `SVV_USER_INFO` does not show the user, as for other users when a regular user reads the listing.
-- `superuser` (Boolean) Whether the user has CREATEUSER.
-- `syslog_access` (String) `RESTRICTED` or `UNRESTRICTED`. Null when `SVV_USER_INFO` does not show the user, as for other users when a regular user reads the listing.
-- `valid_until` (String) Password expiration as an RFC 3339 timestamp; null when the password does not expire.
+- `search_path` (List of String) Stored `search_path` default in search order; `null` when none is stored.
+- `session_defaults` (Map of String) Stored defaults of the session parameters `redshift_user` manages in `session_defaults`; `null` when none is stored.
+- `session_timeout` (Number) Idle-session timeout in seconds; `0` when the user has none. `null` when `SVV_USER_INFO` does not show the user, as for other users when a regular user reads the listing.
+- `superuser` (Boolean) Whether the user has `CREATEUSER`.
+- `syslog_access` (String) `RESTRICTED` or `UNRESTRICTED`. `null` when `SVV_USER_INFO` does not show the user, as for other users when a regular user reads the listing.
+- `valid_until` (String) Password expiration as an RFC 3339 timestamp; `null` when the password does not expire.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -62,6 +62,6 @@ SELECT ... FROM svv_user_info;
 
 Items are ordered by name. Every user can read `pg_user` in full, so every user is listed. `SVV_USER_INFO` shows
 superusers every user but regular users only themselves, so `connection_limit`, `session_timeout`, `syslog_access`,
-and `external_id` are null for the other users when a regular user reads the listing. Whether a password is disabled
+and `external_id` are `null` for the other users when a regular user reads the listing. Whether a password is disabled
 is not reported, because the catalog does not document it. Values match what `redshift_user` reports for each user.
 `id` identifies the listing within the configured warehouse.

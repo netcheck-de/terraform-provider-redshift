@@ -34,6 +34,6 @@ SELECT ... FROM svv_user_info;
 
 Items are ordered by name. Every user can read `pg_user` in full, so every user is listed. `SVV_USER_INFO` shows
 superusers every user but regular users only themselves, so `connection_limit`, `session_timeout`, `syslog_access`,
-and `external_id` are null for the other users when a regular user reads the listing. Whether a password is disabled
+and `external_id` are `null` for the other users when a regular user reads the listing. Whether a password is disabled
 is not reported, because the catalog does not document it. Values match what `redshift_user` reports for each user.
 `id` identifies the listing within the configured warehouse.

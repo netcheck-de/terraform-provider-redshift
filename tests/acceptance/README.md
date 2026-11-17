@@ -1,7 +1,7 @@
 # Live tests
 
 `.github/workflows/acceptance.yml` runs after successful push CI on `main`.
-Releases call the same acceptance workflow, then `.github/workflows/example.yml` to validate the
+Releases call the same acceptance workflow in parallel with `.github/workflows/example.yml` to validate the
 complete example. Both must succeed before publishing.
 Each workflow has its own job using the GitHub **`dev`** environment and independent disposable infrastructure.
 
@@ -194,7 +194,8 @@ redshift-ci-complete   -> terraform-provider-redshift/live/complete.tfstate
 ```
 
 Acceptance uses the fixed `redshift-dev-acceptance` concurrency group; the example uses
-`redshift-dev-complete`. Running jobs are not cancelled. The release dependency still runs acceptance before the example.
+`redshift-dev-complete`. Running jobs are not cancelled. Releases run acceptance and the example in parallel after checks;
+both must succeed before publishing. Account quotas must support both deployments running at the same time.
 A later run reuses the suite's state, including resources left by a failed cleanup; recovery can still require manual
 intervention. Older per-run state keys, or the former `acceptance-full.tfstate` key, if previously deployed, need separate
 cleanup with their original inputs; changing this workflow does not migrate those resources.

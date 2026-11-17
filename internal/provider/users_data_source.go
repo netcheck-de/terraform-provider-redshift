@@ -12,20 +12,20 @@ import (
 var _ = registerDataSource(newUsersDataSource)
 
 // userInfoHidden describes an SVV_USER_INFO option a regular user sees only for itself.
-const userInfoHidden = " Null when `SVV_USER_INFO` does not show the user, as for other users when a regular user reads the listing."
+const userInfoHidden = " `null` when `SVV_USER_INFO` does not show the user, as for other users when a regular user reads the listing."
 
 // usersOutputDescriptions describe the listed user attributes as the lookup reports them.
 var usersOutputDescriptions = map[string]string{
 	"name":             "Database user name.",
-	"superuser":        "Whether the user has CREATEUSER.",
-	"create_database":  "Whether the user has CREATEDB.",
-	"valid_until":      "Password expiration as an RFC 3339 timestamp; null when the password does not expire.",
+	"superuser":        "Whether the user has `CREATEUSER`.",
+	"create_database":  "Whether the user has `CREATEDB`.",
+	"valid_until":      "Password expiration as an RFC 3339 timestamp; `null` when the password does not expire.",
 	"connection_limit": "Maximum concurrent connections; `-1` stands for `UNLIMITED`." + userInfoHidden,
 	"session_timeout":  "Idle-session timeout in seconds; `0` when the user has none." + userInfoHidden,
 	"syslog_access":    "`RESTRICTED` or `UNRESTRICTED`." + userInfoHidden,
-	"external_id":      "Identity-provider user identifier; null when none is set or `SVV_USER_INFO` does not show the user.",
-	"search_path":      "Stored `search_path` default in search order; null when none is stored.",
-	"session_defaults": "Stored defaults of the session parameters `redshift_user` manages in `session_defaults`; null when none is stored.",
+	"external_id":      "Identity-provider user identifier; `null` when none is set or `SVV_USER_INFO` does not show the user.",
+	"search_path":      "Stored `search_path` default in search order; `null` when none is stored.",
+	"session_defaults": "Stored defaults of the session parameters `redshift_user` manages in `session_defaults`; `null` when none is stored.",
 }
 
 // newUsersDataSource lists every database user from pg_user with the SVV_USER_INFO options the caller may see.
@@ -33,7 +33,7 @@ func newUsersDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name: "users",
 		description: "Lists database users from `pg_user`, which every user can read in full, with the options of `SVV_USER_INFO`. " +
-			"Superusers see those options for every user; regular users see them only for themselves, so they are null for other users. " +
+			"Superusers see those options for every user; regular users see them only for themselves, so they are `null` for other users. " +
 			"Passwords and whether a password is disabled are not reported.",
 		element: describedOutputs(collectionElement(newUserResource, "name", "superuser", "create_database", "valid_until",
 			"connection_limit", "session_timeout", "syslog_access", "external_id", "search_path", "session_defaults"), usersOutputDescriptions),

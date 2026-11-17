@@ -32,14 +32,14 @@ data "redshift_datashare_membership" "functions" {
 
 - `database` (String) Local producer database.
 - `datashare` (String) Producer datashare name.
-- `kind` (String) TABLES observes visible tables and views; FUNCTIONS observes visible SQL UDF overloads.
+- `kind` (String) `TABLES` observes visible tables and views; `FUNCTIONS` observes visible SQL UDF overloads.
 - `schema` (String) Producer schema whose visible membership is observed. Periods in schema or visible source member names are unsupported because the catalog does not quote qualification. Future-object inclusion may be enabled or disabled.
 
 ### Read-Only
 
-- `all` (Boolean) Whether every currently visible source object of the selected kind has a visible share membership. True for an empty visible source set; false when the schema membership is not visible. This observation does not prove complete coverage under restricted catalog visibility and does not require a SQL superuser.
-- `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `all` (Boolean) Whether every currently visible source object of the selected kind has a visible share membership. `true` for an empty visible source set; `false` when the schema membership is not visible. This observation does not prove complete coverage under restricted catalog visibility and does not require a SQL superuser.
+- `exists` (Boolean) Whether this explicit relationship exists. `false` also covers missing parents.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements

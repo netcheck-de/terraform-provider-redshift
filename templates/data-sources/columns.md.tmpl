@@ -34,7 +34,7 @@ match returns an empty `columns` list. Without a `table` filter, the listing cov
 filter as narrowly as possible on large warehouses. A database that does not exist lists nothing; a shared (datashare
 consumer) database is read from the provider database like a local one, because `SVV_ALL_COLUMNS` covers both.
 
-`data_type` is the bare type name; length, precision, and scale are separate attributes. `nullable` is null when the
+`data_type` is the bare type name; length, precision, and scale are separate attributes. `nullable` is `null` when the
 catalog has no nullability information, for example for some external columns. An empty `column_default` or remarks
-value cannot be told apart from none and is reported as null. Superusers see every column; other users see only
+value cannot be told apart from none and is reported as `null`. Superusers see every column; other users see only
 columns of relations they own.

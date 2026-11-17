@@ -33,7 +33,7 @@ data "redshift_table_security" "orders" {
 
 - `conjunction_type` (String) `AND` or `OR`: how several policies attached for the same user combine (`CONJUNCTION TYPE`). Redshift defaults to `AND`; unset keeps the current value.
 - `datashare_row_level_security` (Boolean) Row-level security for datashare consumers (`ROW LEVEL SECURITY { ON | OFF } FOR DATASHARES`). While it is on, which is the default, consumer queries of the RLS-protected relation fail; `false` makes the relation readable through datashares **without any row filtering on the consumer side**. Unset keeps the current value.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `row_level_security` (Boolean) Whether row-level security is on. While it is on, users see only the rows an attached policy permits, and no rows when no policy applies to them; superusers and `sys:secadmin` holders are exempt.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 

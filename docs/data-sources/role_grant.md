@@ -35,8 +35,8 @@ data "redshift_role_grant" "reader" {
 ### Read-Only
 
 - `admin_option` (Boolean) Whether the receiving user holds the role `WITH ADMIN OPTION` and can grant it to other users and roles (`svv_user_grants.admin_option`). Only users hold the admin option, so `true` requires `to_user`. Defaults to `false`; changes are applied in place and keep the membership.
-- `exists` (Boolean) Whether this explicit relationship exists. False also covers missing parents.
-- `id` (String) JSON identity of the observed object, using the same format as the paired resource. Null for a missing relationship.
+- `exists` (Boolean) Whether this explicit relationship exists. `false` also covers missing parents.
+- `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements
@@ -51,7 +51,7 @@ SELECT ... FROM svv_user_grants | svv_role_grants WHERE ...;
 ## Read Behavior
 
 `id` (String, computed) is the relationship's JSON identity, using the same warehouse, provider database, role, and
-selected `to_user` or `to_role` keys as the paired resource. It is null when `exists` is false. `admin_option` is read
-from `svv_user_grants` for users, is always `false` for role recipients, and is null when `exists` is false.
+selected `to_user` or `to_role` keys as the paired resource. It is `null` when `exists` is `false`. `admin_option` is
+read from `svv_user_grants` for users, is always `false` for role recipients, and is `null` when `exists` is `false`.
 
 Catalog errors remain errors. No role grant is created, adopted, or revoked.
