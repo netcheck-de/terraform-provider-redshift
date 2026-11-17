@@ -24,9 +24,9 @@ import (
 // imports them, and checks that a refresh plans nothing. A Parquet or ORC table beside them maps columns by name, inserts
 // a column mid-list in place while the catalog appends it. It needs an existing Glue database, an IAM role attached to
 // the namespace that may write it, and an S3 prefix in the warehouse's region; the S3 data is never written.
-func TestAccSpectrumExternalTableLifecycle(t *testing.T) { //nolint:tparallel // Format subtests own the same Glue table names and must not overlap.
-	t.Parallel()
-
+// Run before queued parallel tests: listing assertions require exclusive use of the shared Glue database.
+// Format subtests also reuse the same Glue table names and must run sequentially.
+func TestAccSpectrumExternalTableLifecycle(t *testing.T) {
 	for _, format := range []string{"ORC", "PARQUET"} {
 		t.Run(format, func(t *testing.T) { testAccSpectrumExternalTableLifecycle(t, format) })
 	}
