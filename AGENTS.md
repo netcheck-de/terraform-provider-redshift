@@ -18,6 +18,8 @@ Read and follow [DEVELOPMENT.md](DEVELOPMENT.md) as the project's instruction se
 ## Dependency upgrades
 
 - Verify versions against upstream releases; use the latest stable versions compatible with the repository.
+- Review `TODO.md` for open issues that newer upstream releases may resolve. Check linked upstream issues and release
+  notes, verify fixes locally, and update or remove resolved TODOs and obsolete workarounds only after verification.
 - Use the latest major tag for GitHub Actions when available, such as `@v7`, not `@v7.0.1`.
 - Use `~> major.minor` in Terraform `required_providers`, without a patch version; lock exact selections in
   `.terraform.lock.hcl`. Exception: acceptance fixtures must pin the released Redshift provider exactly.
