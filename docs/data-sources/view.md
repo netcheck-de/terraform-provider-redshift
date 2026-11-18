@@ -49,8 +49,8 @@ SELECT ... FROM pg_views WHERE schemaname = '...' AND viewname = '...';
 
 ## Read Behavior
 
-`id` (String, computed) is the observed view's JSON identity, using the same warehouse, database, schema, and name keys
-as the paired resource.
+`id` (String, computed) is the observed view's JSON identity, using the same `database`, `schema`, and `name` keys
+as the paired resource within the configured warehouse.
 
 `query` is the catalog's rendering of the definition: the `SELECT` of an ordinary view, and the complete
 `CREATE VIEW ... WITH NO SCHEMA BINDING` statement of a late-binding view. A missing view, a missing database, or a

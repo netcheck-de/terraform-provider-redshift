@@ -41,7 +41,7 @@ Read-Only:
 
 - `auto` (Boolean) Whether Redshift loads new files automatically (`AUTO ON`).
 - `database` (String) Local database containing the target table; the job's statements run there.
-- `iam_role` (String) IAM role ARN the job's COPY command uses, as `SYS_COPY_JOB` reports it.
+- `iam_role` (String) IAM role ARN the job's `COPY` command uses, as `SYS_COPY_JOB` reports it.
 - `name` (String) Job name.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 

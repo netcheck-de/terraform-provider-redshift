@@ -82,7 +82,7 @@ Oracle sources also need `source_database`. The block conflicts with `datashare_
 | `integration.truncate_columns`     | `TRUNCATECOLUMNS`  | `ALTER DATABASE ... INTEGRATION SET` | not read back                      |
 
 `SVV_INTEGRATION` is visible only to superusers, so the provider identity managing a destination database must be one.
-`refresh_interval` accepts 0 to 432000 seconds; DynamoDB sources need at least 900. Turning `history_mode` on or off
+`refresh_interval` accepts `0` to `432000` seconds; DynamoDB sources need at least `900`. Turning `history_mode` on or off
 switches only tables in the `Synced` state. The provider does not run `ALTER DATABASE ... INTEGRATION REFRESH` or set
 history mode for single tables. A destination database reports no collation, and its `database_type` is the type
 `SHOW DATABASES` reports for it.
@@ -96,7 +96,7 @@ An in-place history-mode change adds `FOR ALL TABLES`: without it, Redshift chan
 replicated tables. Existing tables must be `Synced` to switch mode, and switching can start a table resynchronization.
 
 For DynamoDB, use `aws_redshift_integration` instead of `aws_rds_integration`, omit `source_database`, and set
-`refresh_interval` to at least 900 seconds. The source table needs point-in-time recovery and a resource policy
+`refresh_interval` to at least `900` seconds. The source table needs point-in-time recovery and a resource policy
 authorizing Redshift exports. The [complete example](https://github.com/netcheck-de/terraform-provider-redshift/tree/main/examples/complete)
 creates a disposable DynamoDB source by default. To use an existing table ARN in `zero_etl_source_arn`, set
 `zero_etl_create_dynamodb_source = false`.

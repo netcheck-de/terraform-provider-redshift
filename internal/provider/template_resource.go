@@ -114,7 +114,7 @@ func (r *templateResource) Schema(_ context.Context, _ resource.SchemaRequest, r
 			},
 			"parameters": schema.MapAttribute{
 				Optional: true, ElementType: types.StringType,
-				MarkdownDescription: "COPY parameters keyed by their UPPERCASE keyword, with `\"\"` for keywords without an argument, such as `{ IGNOREHEADER = \"1\", GZIP = \"\" }`. " +
+				MarkdownDescription: "`COPY` parameters keyed by their uppercase keyword, with `\"\"` for keywords without an argument, such as `{ IGNOREHEADER = \"1\", GZIP = \"\" }`. " +
 					"Accepted: `" + strings.Join(copyParameterNames(false), "`, `") + "`. Text arguments are written as their value without quotes, " +
 					"integers as digits, and `COMPUPDATE`, `STATUPDATE`, and `ENCODING` as their keyword. Source paths, credentials, and `MANIFEST` cannot be part of a template. " +
 					"Changes run `ALTER TEMPLATE ... ADD`, `DROP`, or `SET` per parameter.",

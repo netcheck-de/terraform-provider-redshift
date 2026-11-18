@@ -7,7 +7,7 @@ description: Manages the definition of a local Redshift table.
 # redshift_table (Resource)
 
 Manages the definition of one local table: `column` blocks with types, encodings, nullability, defaults, and
-identity, `primary_key`, `unique`, and `foreign_key` constraints, `distribution` and `sort_key`, backup, and owner.
+`identity`, `primary_key`, `unique`, and `foreign_key` constraints, `distribution` and `sort_key`, `backup`, and `owner`.
 
 For concepts and limitations, see AWS
 [Best practices for designing tables](https://docs.aws.amazon.com/redshift/latest/dg/c_designing-tables-best-practices.html).
@@ -207,7 +207,7 @@ again with `ALTER COLUMN ... ENCODE`.
 **Drift.** Refresh compares the catalog with the state, matching columns by name, and the next plan restores the
 configuration with the statements above: a column or constraint added outside Terraform is dropped, a dropped one is
 added again (or the table is replaced when `ADD COLUMN` cannot add it, as for an identity column), a changed configured
-encoding, `owner`, distribution, or sort key is set back, and a layout changed away from `AUTO` while its block is
+`encoding`, `owner`, `distribution`, or `sort_key` is set back, and a layout changed away from `AUTO` while its block is
 omitted fills the block with what the catalog declares and is set back to `AUTO`. A column resized outside Terraform
 is resized back in place. Omitted `encoding`, `nullable`, and `owner` values
 follow the catalog and never plan a change. A default changed outside Terraform is not detected while the column still

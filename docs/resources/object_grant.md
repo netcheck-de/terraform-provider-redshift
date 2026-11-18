@@ -8,7 +8,7 @@ description: Manages explicit privileges on one local database object, or on all
 
 Owns the exact explicit privilege set for one local or shared database object and one grantee. Tables and views use
 `TABLE`;
-functions and procedures name their overload with `arguments`; machine learning models use `MODEL`, and COPY templates
+functions and procedures name their overload with `arguments`; machine learning models use `MODEL`, and `COPY` templates
 `TEMPLATE`. The `ALL TABLES`, `ALL FUNCTIONS`, and `ALL PROCEDURES` types grant on every object that currently exists
 in a schema.
 
@@ -43,7 +43,7 @@ resource "redshift_object_grant" "report" {
 - `database_name` (String) Database containing the object; local unless `database_type = "shared"`.
 - `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`.
 - `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`.
-- `object_type` (String) `DATABASE`, `SCHEMA`, `TABLE` (including views), `FUNCTION`, `PROCEDURE`, `MODEL` (a machine learning model, whose prediction or inference function is granted through it), `TEMPLATE` (a COPY template), or a snapshot of a schema's current objects: `ALL TABLES`, `ALL FUNCTIONS`, or `ALL PROCEDURES`.
+- `object_type` (String) `DATABASE`, `SCHEMA`, `TABLE` (including views), `FUNCTION`, `PROCEDURE`, `MODEL` (a machine learning model, whose prediction or inference function is granted through it), `TEMPLATE` (a `COPY` template), or a snapshot of a schema's current objects: `ALL TABLES`, `ALL FUNCTIONS`, or `ALL PROCEDURES`.
 - `privileges` (Set of String) Exact explicit privilege set; updated in place. An empty set revokes owned privileges. `DATABASE`: `CREATE`, `USAGE`, `TEMPORARY`, `ALTER`. `SCHEMA`: `CREATE`, `USAGE`, `ALTER`, `DROP`. `TABLE`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `ALTER`, `TRUNCATE`. `FUNCTION`, `PROCEDURE`, `MODEL`, `ALL FUNCTIONS`, and `ALL PROCEDURES`: `EXECUTE`. `TEMPLATE`: `USAGE`, `ALTER`, `DROP`. `ALL TABLES`: `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`. A snapshot reports only the privileges every current object holds.
 
 ### Optional
@@ -76,18 +76,18 @@ REVOKE GRANT OPTION FOR privilege ON ... FROM ...;
 
 ## Object Types and Privileges
 
-| `object_type`    | Requires                                         | Privileges                                                                        |
-|------------------|--------------------------------------------------|-----------------------------------------------------------------------------------|
-| `DATABASE`       | —                                                | `CREATE`, `USAGE`, `TEMPORARY`, `ALTER`                                           |
-| `SCHEMA`         | `schema_name`                                    | `CREATE`, `USAGE`, `ALTER`, `DROP`                                                |
-| `TABLE`          | `schema_name`, `object_name`                     | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `ALTER`, `TRUNCATE` |
-| `FUNCTION`       | `schema_name`, `object_name`, optional arguments | `EXECUTE`                                                                         |
-| `PROCEDURE`      | `schema_name`, `object_name`, optional arguments | `EXECUTE`                                                                         |
-| `MODEL`          | `schema_name`, `object_name`                     | `EXECUTE`                                                                         |
-| `TEMPLATE`       | `schema_name`, `object_name`                     | `USAGE`, `ALTER`, `DROP`                                                          |
-| `ALL TABLES`     | `schema_name`                                    | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`                      |
-| `ALL FUNCTIONS`  | `schema_name`                                    | `EXECUTE`                                                                         |
-| `ALL PROCEDURES` | `schema_name`                                    | `EXECUTE`                                                                         |
+| `object_type`    | Requires                                           | Privileges                                                                        |
+|------------------|----------------------------------------------------|-----------------------------------------------------------------------------------|
+| `DATABASE`       | —                                                  | `CREATE`, `USAGE`, `TEMPORARY`, `ALTER`                                           |
+| `SCHEMA`         | `schema_name`                                      | `CREATE`, `USAGE`, `ALTER`, `DROP`                                                |
+| `TABLE`          | `schema_name`, `object_name`                       | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`, `ALTER`, `TRUNCATE` |
+| `FUNCTION`       | `schema_name`, `object_name`, optional `arguments` | `EXECUTE`                                                                         |
+| `PROCEDURE`      | `schema_name`, `object_name`, optional `arguments` | `EXECUTE`                                                                         |
+| `MODEL`          | `schema_name`, `object_name`                       | `EXECUTE`                                                                         |
+| `TEMPLATE`       | `schema_name`, `object_name`                       | `USAGE`, `ALTER`, `DROP`                                                          |
+| `ALL TABLES`     | `schema_name`                                      | `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `DROP`, `REFERENCES`                      |
+| `ALL FUNCTIONS`  | `schema_name`                                      | `EXECUTE`                                                                         |
+| `ALL PROCEDURES` | `schema_name`                                      | `EXECUTE`                                                                         |
 
 ## Functions and Procedures
 

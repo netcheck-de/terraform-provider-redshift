@@ -35,8 +35,8 @@ Each release with breaking changes has a guide that lists them and the configura
 
 Select exactly one warehouse method: `workgroup_name`, `cluster_identifier`, or `direct_connection`. `direct_connection`
 accepts optional `host`, `port`, `username`, sensitive `password`, `ca_cert_file`, and a nested `iam` block. Password
-mode requires host/username/password. IAM requires exactly one `workgroup_name` or `cluster_identifier`; cluster IAM
-also requires an existing `db_user`. Port defaults to 5439 or the discovered port. See [connection
+mode requires `host`, `username`, and `password`. IAM requires exactly one `workgroup_name` or `cluster_identifier`;
+cluster IAM also requires an existing `db_user`. `port` defaults to `5439` or the discovered port. See [connection
 methods](guides/connection_methods.md) for complete configuration, permissions, and TLS details.
 
 When `region` or `profile` is omitted, the provider falls back to the AWS SDK defaults, including the `AWS_REGION` and
@@ -49,7 +49,7 @@ credentials. See the connection guide for details. Every method needs the SQL pr
 identity-provider and SQL group creation require a SQL superuser.
 
 Catalog mutations are serialized within each configured provider instance, across its databases, to avoid Redshift
-catalog transaction conflicts. Read-only SELECT and SHOW statements remain concurrent. Separate provider instances or
+catalog transaction conflicts. Read-only `SELECT` and `SHOW` statements remain concurrent. Separate provider instances or
 external SQL clients are not coordinated by this gate.
 
 ## Timeouts and retries
@@ -181,10 +181,10 @@ navigation. AWS infrastructure remains with the `hashicorp/aws` provider.
 
 ### Data Loading
 
-| Resource                                     | Manages                                              |
-|----------------------------------------------|------------------------------------------------------|
-| [`redshift_template`](resources/template.md) | COPY template: data format and COPY parameters       |
-| [`redshift_copy_job`](resources/copy_job.md) | COPY JOB that loads new Amazon S3 files into a table |
+| Resource                                     | Manages                                                |
+|----------------------------------------------|--------------------------------------------------------|
+| [`redshift_template`](resources/template.md) | `COPY` template: data format and parameters            |
+| [`redshift_copy_job`](resources/copy_job.md) | `COPY JOB` that loads new Amazon S3 files into a table |
 
 ### Annotations
 
@@ -278,7 +278,7 @@ itself and the namespace resource policy belong to the AWS provider.
 An external model's inference function belongs to the model: `redshift_external_model` creates and drops it, so do not
 declare it with `redshift_function` or grant it as a `FUNCTION`; grant `EXECUTE` on the `MODEL` instead.
 
-### COPY Templates
+### `COPY` Templates
 
 | Concern                                          | Owning resource                      |
 |--------------------------------------------------|--------------------------------------|
@@ -439,12 +439,12 @@ SQL connection. Local database lookups and shared database resource refreshes do
 
 ### Data Loading
 
-| Data source                                            | Reads                                         |
-|--------------------------------------------------------|-----------------------------------------------|
-| [`data.redshift_template`](data-sources/template.md)   | COPY template format, parameters, and owner   |
-| [`data.redshift_templates`](data-sources/templates.md) | List of COPY templates                        |
-| [`data.redshift_copy_job`](data-sources/copy_job.md)   | COPY definition, `AUTO` setting, and IAM role |
-| [`data.redshift_copy_jobs`](data-sources/copy_jobs.md) | List of copy jobs                             |
+| Data source                                            | Reads                                           |
+|--------------------------------------------------------|-------------------------------------------------|
+| [`data.redshift_template`](data-sources/template.md)   | `COPY` template format, parameters, and owner   |
+| [`data.redshift_templates`](data-sources/templates.md) | List of `COPY` templates                        |
+| [`data.redshift_copy_job`](data-sources/copy_job.md)   | `COPY` definition, `AUTO` setting, and IAM role |
+| [`data.redshift_copy_jobs`](data-sources/copy_jobs.md) | List of copy jobs                               |
 
 ### Annotations
 
@@ -486,7 +486,7 @@ require replacement through the provider's schema. Same-name recreation can requ
 reconcile relationships lost with the parent object.
 
 ~> **Keep the provider's SQL identity stable.** Some catalog views show a regular user only its own rows, and some show
-rows only to superusers: `SYS_COPY_JOB` lists a regular user's own COPY jobs, and `SVV_INTEGRATION` is visible only
+rows only to superusers: `SYS_COPY_JOB` lists a regular user's own copy jobs, and `SVV_INTEGRATION` is visible only
 to superusers. After the provider connects as a different SQL identity, or its identity loses superuser, a refresh can
 miss an object that still exists. Terraform then plans to create it again, or, for a zero-ETL destination database, to
 replace it. Review the plan after changing credentials, `db_user`, or the identity's privileges, and consider

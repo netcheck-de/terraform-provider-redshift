@@ -6,7 +6,7 @@ description: Reads explicit permissions on one local object, or common to all cu
 
 # redshift_object_grant (Data Source)
 
-Reads explicit local database, schema, table (including views), function, procedure, model, or COPY template
+Reads explicit local database, schema, table (including views), function, procedure, model, or `COPY` template
 privileges, or the privileges common to all current tables, functions, or procedures of a schema. See AWS
 [GRANT](https://docs.aws.amazon.com/redshift/latest/dg/r_GRANT.html).
 
@@ -42,7 +42,7 @@ data "redshift_object_grant" "report" {
 - `database_name` (String) Database containing the object; local unless `database_type = "shared"`.
 - `grantee` (String) Receiving identity name; use `public` with `grantee_type = "PUBLIC"`.
 - `grantee_type` (String) `ROLE`, `USER`, `GROUP`, or `PUBLIC`.
-- `object_type` (String) `DATABASE`, `SCHEMA`, `TABLE` (including views), `FUNCTION`, `PROCEDURE`, `MODEL` (a machine learning model, whose prediction or inference function is granted through it), `TEMPLATE` (a COPY template), or a snapshot of a schema's current objects: `ALL TABLES`, `ALL FUNCTIONS`, or `ALL PROCEDURES`.
+- `object_type` (String) `DATABASE`, `SCHEMA`, `TABLE` (including views), `FUNCTION`, `PROCEDURE`, `MODEL` (a machine learning model, whose prediction or inference function is granted through it), `TEMPLATE` (a `COPY` template), or a snapshot of a schema's current objects: `ALL TABLES`, `ALL FUNCTIONS`, or `ALL PROCEDURES`.
 
 ### Optional
 

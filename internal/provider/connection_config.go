@@ -55,7 +55,7 @@ func connectionSchema() schema.SingleNestedBlock {
 		MarkdownDescription: "Direct TLS SQL connection. Use username/password or an IAM warehouse selector, never both.",
 		Attributes: map[string]schema.Attribute{
 			"host":         schema.StringAttribute{Optional: true, MarkdownDescription: "Endpoint hostname; required for password authentication, optional override for IAM."},
-			"port":         schema.Int64Attribute{Optional: true, MarkdownDescription: "Port 1–65535; defaults to 5439 or the IAM-discovered endpoint port."},
+			"port":         schema.Int64Attribute{Optional: true, MarkdownDescription: "Port from `1` to `65535`; defaults to `5439` or the IAM-discovered endpoint port."},
 			"username":     schema.StringAttribute{Optional: true, MarkdownDescription: "Existing SQL user for password authentication."},
 			"password":     schema.StringAttribute{Optional: true, Sensitive: true, MarkdownDescription: "SQL password; supports ephemeral input and is never part of resource state."},
 			"ca_cert_file": schema.StringAttribute{Optional: true, MarkdownDescription: "PEM CA bundle added to system trust for `verify-full` and `verify-ca`."},

@@ -90,7 +90,7 @@ func (r *copyJobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"iam_role": schema.StringAttribute{
 				Required: true, PlanModifiers: replace, Validators: []validator.String{stringvalidator.RegexMatches(copyJobRolePattern, "must be an IAM role ARN")},
-				MarkdownDescription: "ARN of an IAM role associated with the warehouse that can read `source`. COPY JOB does not support the default role.",
+				MarkdownDescription: "ARN of an IAM role associated with the warehouse that can read `source`. `COPY JOB` does not support the default role.",
 			},
 			"format": schema.StringAttribute{
 				Optional: true, PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplaceIf(copyJobDefinitionFormat, copyJobDefinitionNote, copyJobDefinitionNote)},
@@ -103,8 +103,8 @@ func (r *copyJobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"parameters": schema.MapAttribute{
 				Optional: true, ElementType: types.StringType, PlanModifiers: []planmodifier.Map{mapplanmodifier.RequiresReplace()},
-				MarkdownDescription: "COPY parameters keyed by their UPPERCASE keyword, with `\"\"` for keywords without an argument, such as `{ IGNOREHEADER = \"1\", GZIP = \"\" }`. " +
-					"Accepted: `" + strings.Join(copyParameterNames(true), "`, `") + "`. COPY JOB rejects `MAXERROR`, `IGNOREALLERRORS`, `MANIFEST`, and key-based credentials.",
+				MarkdownDescription: "`COPY` parameters keyed by their uppercase keyword, with `\"\"` for keywords without an argument, such as `{ IGNOREHEADER = \"1\", GZIP = \"\" }`. " +
+					"Accepted: `" + strings.Join(copyParameterNames(true), "`, `") + "`. `COPY JOB` rejects `MAXERROR`, `IGNOREALLERRORS`, `MANIFEST`, and key-based credentials.",
 			},
 			"auto": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(true),
@@ -113,7 +113,7 @@ func (r *copyJobResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 		},
 		Blocks: map[string]schema.Block{
 			"table": schema.SingleNestedBlock{
-				MarkdownDescription: "At least one `table` block is required. Target table of the COPY command.",
+				MarkdownDescription: "At least one `table` block is required. Target table of the `COPY` command.",
 				Validators:          []validator.Object{objectvalidator.IsRequired(), objectvalidator.AlsoRequires(path.MatchRelative().AtName("schema"), path.MatchRelative().AtName("name"))},
 				PlanModifiers:       []planmodifier.Object{objectplanmodifier.RequiresReplace()},
 				Attributes: map[string]schema.Attribute{

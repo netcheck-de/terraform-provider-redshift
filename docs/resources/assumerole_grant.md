@@ -63,7 +63,7 @@ An unsupported catalog command is reported as an error, not silently dropped fro
 
 `RESULT_OFFLOAD` is an engine command exposed by `SVV_IAM_PRIVILEGES`, included in `FOR ALL` on verified warehouses.
 Its independent grant and revoke use the unquoted keyword `FOR RESULT_OFFLOAD`; `RESULT OFFLOAD` is not valid syntax.
-This spelling and independent lifecycle are acceptance-tested, although the GRANT reference does not yet enumerate it.
+This spelling and independent lifecycle are acceptance-tested, although the `GRANT` reference does not yet enumerate it.
 
 ## Role Selectors
 
