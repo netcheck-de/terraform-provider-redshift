@@ -37,8 +37,8 @@ SELECT sortkey1 FROM svv_table_info WHERE "schema" = 'schema' AND "table" = 'nam
 
 ## Read Behavior
 
-`id` (String, computed) is the table's JSON identity, using the same warehouse, database, schema, and name keys as the
-paired resource.
+`id` (String, computed) is the table's JSON identity, using the same `database`, `schema`, and `name` keys as the
+paired resource within the configured warehouse.
 
 The resource's blocks are read-only nested attributes here: `column` is a list, `unique` and `foreign_key` are sets,
 and `primary_key`, `distribution`, and `sort_key` are objects, so `data.redshift_table.x.distribution.style` needs no

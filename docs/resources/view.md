@@ -46,7 +46,7 @@ resource "redshift_view" "all_sales" {
 
 - `database` (String) Local database containing the view.
 - `name` (String) View name.
-- `query` (String) SELECT statement defining the view, without a trailing `;`. A change runs `CREATE OR REPLACE VIEW`, which Redshift accepts only when the new query returns the same column names and types; otherwise the apply fails and the view is left unchanged. State keeps this text while the catalog definition is unchanged; after an import or a change made outside Terraform it holds the catalog definition, so the next plan restores the configured query.
+- `query` (String) `SELECT` statement defining the view, without a trailing `;`. A change runs `CREATE OR REPLACE VIEW`, which Redshift accepts only when the new query returns the same column names and types; otherwise the apply fails and the view is left unchanged. State keeps this text while the catalog definition is unchanged; after an import or a change made outside Terraform it holds the catalog definition, so the next plan restores the configured query.
 - `schema` (String) Existing schema containing the view.
 
 ### Optional

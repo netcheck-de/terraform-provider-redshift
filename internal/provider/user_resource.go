@@ -101,7 +101,7 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			},
 			"password_wo_version": schema.Int64Attribute{
 				Optional: true, Computed: true, Default: int64default.StaticInt64(0),
-				MarkdownDescription: "Password rotation trigger; defaults to `0`. Increment to rotate `password_wo`. Imported users start at version 0 without changing their password. Ignored while `password_disabled` is `true`.",
+				MarkdownDescription: "Password rotation trigger; defaults to `0`. Increment to rotate `password_wo`. Imported users start at version `0` without changing their password. Ignored while `password_disabled` is `true`.",
 			},
 			"password_disabled": schema.BoolAttribute{
 				Optional: true, Computed: true, Default: booldefault.StaticBool(false),
@@ -131,7 +131,7 @@ func (r *userResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			},
 			"session_timeout": schema.Int64Attribute{
 				Optional: true, Computed: true,
-				MarkdownDescription: observed(fmt.Sprintf("Idle-session timeout in seconds (`SESSION TIMEOUT`), from %d to %d and applied to new sessions; `0` removes the user's timeout (`RESET SESSION TIMEOUT`) so the warehouse setting applies.", userSessionTimeoutMin, userSessionTimeoutMax)),
+				MarkdownDescription: observed(fmt.Sprintf("Idle-session timeout in seconds (`SESSION TIMEOUT`), from `%d` to `%d` and applied to new sessions; `0` removes the user's timeout (`RESET SESSION TIMEOUT`) so the warehouse setting applies.", userSessionTimeoutMin, userSessionTimeoutMax)),
 				Validators: []validator.Int64{int64validator.Any(
 					int64validator.OneOf(0),
 					int64validator.Between(userSessionTimeoutMin, userSessionTimeoutMax),

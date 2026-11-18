@@ -79,7 +79,7 @@ resource "redshift_external_schema" "clicks" {
 - `glue_database` (String) AWS Glue database referenced by a `DATA_CATALOG` schema, which requires it.
 - `iam_role_arn` (String) IAM role attached to the namespace, or a comma-separated role chain, used to reach the source. Required by every form except `REDSHIFT`, which rejects it, and `MSK`, where it is optional unless `authentication` is `IAM`. Updated in place with `ALTER EXTERNAL SCHEMA ... IAM_ROLE` for `DATA_CATALOG` and `MSK`.
 - `owner` (String) SQL user owning the external schema, changed after creation and in place with `ALTER SCHEMA ... OWNER TO`. Omit it to keep and report the current owner, which defaults to the creating user. `SVV_EXTERNAL_SCHEMAS` shows a regular user only their own schemas, so managing an external schema owned by another user, including handing it to one, requires a superuser connection.
-- `port` (Number) Port of a `HIVE_METASTORE` (default 9083), `POSTGRES` (default 5432), or `MYSQL` (default 3306) source.
+- `port` (Number) Port of a `HIVE_METASTORE` (default `9083`), `POSTGRES` (default `5432`), or `MYSQL` (default `3306`) source.
 - `refresh_revision` (String) Bump to recreate the external schema after a source catalog change; deletion is restrictive.
 - `region` (String) AWS Region of the Glue catalog (`DATA_CATALOG`) or stream (`KINESIS`, `MSK`); defaults to the warehouse region and is read from the catalog options.
 - `secret_arn` (String) AWS Secrets Manager secret ARN: the database credentials that `POSTGRES` and `MYSQL` require, or the mTLS certificate of an `MSK` schema as an alternative to `authentication_arn`. Updated in place for `MSK`.

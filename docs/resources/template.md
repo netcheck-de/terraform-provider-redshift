@@ -77,7 +77,7 @@ resource "redshift_template" "shapefile" {
 - `format` (String) Data format of `FORMAT AS`: `AVRO`, `CSV`, `FIXEDWIDTH`, `JSON`, `ORC`, `PARQUET`, `SHAPEFILE`. Omit it for pipe-delimited text. A change runs `CREATE OR REPLACE TEMPLATE`.
 - `format_argument` (String) Argument of the format, required for `JSON` and `AVRO` (`auto`, `auto ignorecase`, `noshred`, or an `s3://` JSONPaths file) and `FIXEDWIDTH` (the column specification). For `SHAPEFILE`, optionally use `SIMPLIFY [AUTO] [tolerance]`, with a finite non-negative numeric tolerance. Rejected for other formats. A change runs `CREATE OR REPLACE TEMPLATE`.
 - `owner` (String) SQL user owning the template. When set, it is applied with `ALTER TEMPLATE ... OWNER TO`; when unset, the creating user owns the template and the attribute reports the catalog owner.
-- `parameters` (Map of String) COPY parameters keyed by their UPPERCASE keyword, with `""` for keywords without an argument, such as `{ IGNOREHEADER = "1", GZIP = "" }`. Accepted: `ACCEPTANYDATE`, `ACCEPTINVCHARS`, `BLANKSASNULL`, `BZIP2`, `COMPROWS`, `COMPUPDATE`, `DATEFORMAT`, `DELIMITER`, `EMPTYASNULL`, `ENCODING`, `ENCRYPTED`, `ESCAPE`, `EXPLICIT_IDS`, `FILLRECORD`, `GZIP`, `IGNOREALLERRORS`, `IGNOREBLANKLINES`, `IGNOREHEADER`, `LZOP`, `MAXERROR`, `NOLOAD`, `NULL`, `QUOTE`, `REMOVEQUOTES`, `ROUNDEC`, `STATUPDATE`, `TIMEFORMAT`, `TRIMBLANKS`, `TRUNCATECOLUMNS`, `ZSTD`. Text arguments are written as their value without quotes, integers as digits, and `COMPUPDATE`, `STATUPDATE`, and `ENCODING` as their keyword. Source paths, credentials, and `MANIFEST` cannot be part of a template. Changes run `ALTER TEMPLATE ... ADD`, `DROP`, or `SET` per parameter.
+- `parameters` (Map of String) `COPY` parameters keyed by their uppercase keyword, with `""` for keywords without an argument, such as `{ IGNOREHEADER = "1", GZIP = "" }`. Accepted: `ACCEPTANYDATE`, `ACCEPTINVCHARS`, `BLANKSASNULL`, `BZIP2`, `COMPROWS`, `COMPUPDATE`, `DATEFORMAT`, `DELIMITER`, `EMPTYASNULL`, `ENCODING`, `ENCRYPTED`, `ESCAPE`, `EXPLICIT_IDS`, `FILLRECORD`, `GZIP`, `IGNOREALLERRORS`, `IGNOREBLANKLINES`, `IGNOREHEADER`, `LZOP`, `MAXERROR`, `NOLOAD`, `NULL`, `QUOTE`, `REMOVEQUOTES`, `ROUNDEC`, `STATUPDATE`, `TIMEFORMAT`, `TRIMBLANKS`, `TRUNCATECOLUMNS`, `ZSTD`. Text arguments are written as their value without quotes, integers as digits, and `COMPUPDATE`, `STATUPDATE`, and `ENCODING` as their keyword. Source paths, credentials, and `MANIFEST` cannot be part of a template. Changes run `ALTER TEMPLATE ... ADD`, `DROP`, or `SET` per parameter.
 
 ### Read-Only
 
@@ -116,7 +116,7 @@ DROP TEMPLATE schema.name;
 
 ## Parameters
 
-`parameters` maps each COPY parameter keyword, in UPPERCASE, to its argument as a string. Keywords without an argument,
+`parameters` maps each `COPY` parameter keyword, in uppercase, to its argument as a string. Keywords without an argument,
 such as `GZIP` or `TRUNCATECOLUMNS`, take `""`; `ACCEPTINVCHARS` takes `""` or a replacement character. Text
 arguments such as `DELIMITER`, `DATEFORMAT`, `TIMEFORMAT`, `QUOTE`, and `NULL` (rendered as `NULL AS`) are written
 without SQL quotes; the provider quotes them. `IGNOREHEADER`, `COMPROWS`, and `MAXERROR` take digits, and `ENCODING`,

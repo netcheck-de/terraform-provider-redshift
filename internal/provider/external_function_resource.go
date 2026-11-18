@@ -147,11 +147,11 @@ func (r *externalFunctionResource) Schema(_ context.Context, _ resource.SchemaRe
 				Validators: []validator.String{stringvalidator.LengthAtLeast(1)},
 			},
 			"retry_timeout": schema.Int64Attribute{
-				Optional: true, MarkdownDescription: "Total retry backoff in milliseconds; `0` disables retries. Unset uses the Redshift default of 20,000. Applied in place with `CREATE OR REPLACE`." + configurationOnly,
+				Optional: true, MarkdownDescription: "Total retry backoff in milliseconds; `0` disables retries. Unset uses the Redshift default of `20000`. Applied in place with `CREATE OR REPLACE`." + configurationOnly,
 				Validators: []validator.Int64{int64validator.AtLeast(0)},
 			},
 			"max_batch_rows": schema.Int64Attribute{
-				Optional: true, MarkdownDescription: "Maximum rows per Lambda invocation, from 1 to 2,147,483,647 (the default). Applied in place with `CREATE OR REPLACE`." + configurationOnly,
+				Optional: true, MarkdownDescription: "Maximum rows per Lambda invocation, from `1` to `2147483647` (the default). Applied in place with `CREATE OR REPLACE`." + configurationOnly,
 				Validators: []validator.Int64{int64validator.Between(1, externalFunctionMaxBatchRows)},
 			},
 			"max_batch_size": schema.Int64Attribute{

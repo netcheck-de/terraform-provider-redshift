@@ -54,5 +54,5 @@ still has an ID.
 `EXTERNAL FUNCTION`. No matching explicit grants returns an empty set; a missing SQL identity raises an error. Inherited
 and unrestricted `PUBLIC` access are not attributed to individual identities; select `iam_role_arn = "ALL"` with
 `grantee_type = "PUBLIC"` to see whether `PUBLIC` still holds its default commands. The lookup does not enable
-identity-specific access control, revoke `PUBLIC` permissions, or require the optional managed ASSUMEROLE grant to be
-enabled in the complete example.
+identity-specific access control, revoke `PUBLIC` permissions, or require the optional managed `ASSUMEROLE` grant to
+be enabled in the complete example.

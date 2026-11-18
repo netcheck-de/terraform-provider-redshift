@@ -143,7 +143,7 @@ func (r *externalSchemaResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Optional: true, Computed: true,
 				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown(), int64planmodifier.RequiresReplace()},
 				Validators:          []validator.Int64{int64validator.Between(1, 65535)},
-				MarkdownDescription: "Port of a `HIVE_METASTORE` (default 9083), `POSTGRES` (default 5432), or `MYSQL` (default 3306) source.",
+				MarkdownDescription: "Port of a `HIVE_METASTORE` (default `9083`), `POSTGRES` (default `5432`), or `MYSQL` (default `3306`) source.",
 			},
 			"secret_arn": schema.StringAttribute{
 				Optional: true,

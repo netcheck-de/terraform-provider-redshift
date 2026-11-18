@@ -99,7 +99,7 @@ func databaseIntegrationBlock() schema.SingleNestedBlock {
 			},
 			"refresh_interval": schema.Int64Attribute{
 				Optional: true, Computed: true,
-				MarkdownDescription: "Approximate seconds between refresh cycles (`REFRESH_INTERVAL`), from 0 to 432000; DynamoDB sources need at least 900. Omit it to keep and report the current interval. Updated in place with `ALTER DATABASE ... INTEGRATION SET`.",
+				MarkdownDescription: "Approximate seconds between refresh cycles (`REFRESH_INTERVAL`), from `0` to `432000`; DynamoDB sources need at least `900`. Omit it to keep and report the current interval. Updated in place with `ALTER DATABASE ... INTEGRATION SET`.",
 				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 				Validators:          []validator.Int64{int64validator.Between(databaseRefreshIntervalMin, databaseRefreshIntervalMax)},
 			},

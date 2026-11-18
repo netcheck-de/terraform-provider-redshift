@@ -71,8 +71,8 @@ SELECT autorefresh FROM svv_mv_info WHERE ...;
 
 ## Read Behavior
 
-`id` (String, computed) is the observed view's JSON identity, using the same warehouse, database, schema, and name keys
-as the paired resource.
+`id` (String, computed) is the observed view's JSON identity, using the same `database`, `schema`, and `name` keys
+as the paired resource within the configured warehouse.
 
 `query` is the catalog's complete `CREATE MATERIALIZED VIEW` statement. `backup`, `distribution`, and `sort_key` are
 always `null`: no catalog view reports `BACKUP`, and `SVV_TABLE_INFO` is visible only to superusers and omits

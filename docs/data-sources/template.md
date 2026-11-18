@@ -6,7 +6,7 @@ description: Reads a COPY template's format, parameters, and owner.
 
 # redshift_template (Data Source)
 
-Reads one COPY template's data format, parameters, and owner as Redshift reports them. See AWS
+Reads one `COPY` template's data format, parameters, and owner as Redshift reports them. See AWS
 [SHOW TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_TEMPLATE.html) and
 [SHOW TEMPLATES](https://docs.aws.amazon.com/redshift/latest/dg/r_SHOW_TEMPLATES.html).
 
@@ -40,7 +40,7 @@ output "csv_events_parameters" {
 - `format_argument` (String) Argument of the format, such as `auto` for `JSON 'auto'`; `null` without one.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
 - `owner` (String) SQL user owning the template.
-- `parameters` (Map of String) COPY parameters keyed by their UPPERCASE keyword, as `SHOW TEMPLATE` prints them, with `""` for keywords without an argument; `null` when the template has none.
+- `parameters` (Map of String) `COPY` parameters keyed by their uppercase keyword, as `SHOW TEMPLATE` prints them, with `""` for keywords without an argument; `null` when the template has none.
 <!-- markdownlint-enable MD012 MD013 MD022 MD033 -->
 
 ## SQL Statements

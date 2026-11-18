@@ -6,7 +6,7 @@ description: Lists COPY templates of a schema or database.
 
 # redshift_templates (Data Source)
 
-Lists visible COPY templates with their owners, for one schema or a database. See AWS
+Lists visible `COPY` templates with their owners, for one schema or a database. See AWS
 [SYS_REDSHIFT_TEMPLATE](https://docs.aws.amazon.com/redshift/latest/dg/SYS_REDSHIFT_TEMPLATE.html).
 
 ## Example Usage

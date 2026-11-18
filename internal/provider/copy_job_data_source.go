@@ -40,11 +40,11 @@ const copyJobDefinitionReadback = " Read from `SYS_COPY_JOB.copy_query`; unavail
 // copyJobOutputDescriptions describe what the lookup can observe instead of the resource's apply-time behavior.
 var copyJobOutputDescriptions = map[string]string{
 	"name":            "Job name.",
-	"iam_role":        "IAM role ARN the job's COPY command uses, as `SYS_COPY_JOB` reports it.",
+	"iam_role":        "IAM role ARN the job's `COPY` command uses, as `SYS_COPY_JOB` reports it.",
 	"auto":            "Whether Redshift loads new files automatically (`AUTO ON`).",
 	"source":          "Amazon S3 prefix the job monitors." + copyJobDefinitionReadback,
-	"format":          "Data format of the COPY command." + copyJobDefinitionReadback,
+	"format":          "Data format of the `COPY` command." + copyJobDefinitionReadback,
 	"format_argument": "Argument of the format." + copyJobDefinitionReadback,
-	"parameters":      "COPY parameters of the job." + copyJobDefinitionReadback,
-	"table":           "Target table of the COPY command." + copyJobDefinitionReadback,
+	"parameters":      "`COPY` parameters of the job." + copyJobDefinitionReadback,
+	"table":           "Target table of the `COPY` command." + copyJobDefinitionReadback,
 }
