@@ -97,7 +97,7 @@ identifiers. Items are ordered by schema and name; no match returns an empty `ex
 is skipped. `id` combines the listed database and configured filters within the warehouse.
 
 Each item reports what the `redshift_external_table` lookup reports: `column` in catalog order with Redshift type names
-(types Redshift cannot declare, such as Glue's `string`, in UPPERCASE), every catalog table property, `stored_as` `null`
+(types Redshift cannot declare, such as Glue's `string`, in uppercase), every catalog table property, `stored_as` `null`
 when the input format class belongs to no named format, and `serde` `null` when it is the format's default SerDe.
 A table whose columns the catalog does not report is an error. A database that does not exist or is not local, such as a
 datashare consumer database, lists nothing. Superusers see every table; other users see only the tables they have access

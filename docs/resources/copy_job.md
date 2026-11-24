@@ -8,7 +8,7 @@ description: Manages a COPY JOB that automatically loads new Amazon S3 files int
 
 Manages a `COPY JOB`: a stored `COPY` command that Redshift runs for files newly created under an Amazon S3 prefix.
 Creating a job needs an S3 event integration between the source bucket and the warehouse, also with `auto = false`;
-otherwise Redshift fails with "Cannot find integration for bucket". The AWS provider manages it as
+otherwise Redshift fails with `Cannot find integration for bucket`. The AWS provider manages it as
 `aws_redshift_integration`.
 
 For concepts and limitations, see AWS
@@ -63,7 +63,7 @@ resource "redshift_copy_job" "archive" {
 ### Required
 
 - `database` (String) Local database containing the target table; the job's statements run there.
-- `iam_role` (String) ARN of an IAM role associated with the warehouse that can read `source`. COPY JOB does not support the default role.
+- `iam_role` (String) ARN of an IAM role associated with the warehouse that can read `source`. `COPY JOB` does not support the default role.
 - `name` (String) Job name: lowercase letters, digits, and underscores, without hyphens.
 - `source` (String) Amazon S3 prefix the job monitors, such as `s3://bucket/staging/`. Its bucket needs an S3 event integration with the warehouse, also with `auto = false`.
 
@@ -72,8 +72,8 @@ resource "redshift_copy_job" "archive" {
 - `auto` (Boolean) Whether Redshift loads new files automatically (`AUTO ON`); updated in place with `COPY JOB ALTER`. Defaults to `true`, the Redshift default.
 - `format` (String) Data format of `FORMAT AS`: `AVRO`, `CSV`, `FIXEDWIDTH`, `JSON`, `ORC`, `PARQUET`, `SHAPEFILE`. Omit it for pipe-delimited text.
 - `format_argument` (String) Argument of the format, required for `JSON` and `AVRO` (`auto`, `auto ignorecase`, `noshred`, or an `s3://` JSONPaths file) and `FIXEDWIDTH`. For `SHAPEFILE`, optionally use `SIMPLIFY [AUTO] [tolerance]`, with a finite non-negative numeric tolerance. Rejected for other formats.
-- `parameters` (Map of String) COPY parameters keyed by their UPPERCASE keyword, with `""` for keywords without an argument, such as `{ IGNOREHEADER = "1", GZIP = "" }`. Accepted: `ACCEPTANYDATE`, `ACCEPTINVCHARS`, `BLANKSASNULL`, `BZIP2`, `COMPROWS`, `COMPUPDATE`, `DATEFORMAT`, `DELIMITER`, `EMPTYASNULL`, `ENCODING`, `ENCRYPTED`, `ESCAPE`, `EXPLICIT_IDS`, `FILLRECORD`, `GZIP`, `IGNOREBLANKLINES`, `IGNOREHEADER`, `LZOP`, `NOLOAD`, `NULL`, `QUOTE`, `REGION`, `REMOVEQUOTES`, `ROUNDEC`, `STATUPDATE`, `TIMEFORMAT`, `TRIMBLANKS`, `TRUNCATECOLUMNS`, `ZSTD`. COPY JOB rejects `MAXERROR`, `IGNOREALLERRORS`, `MANIFEST`, and key-based credentials.
-- `table` (Block, Optional) At least one `table` block is required. Target table of the COPY command. (see [below for nested schema](#nestedblock--table))
+- `parameters` (Map of String) `COPY` parameters keyed by their uppercase keyword, with `""` for keywords without an argument, such as `{ IGNOREHEADER = "1", GZIP = "" }`. Accepted: `ACCEPTANYDATE`, `ACCEPTINVCHARS`, `BLANKSASNULL`, `BZIP2`, `COMPROWS`, `COMPUPDATE`, `DATEFORMAT`, `DELIMITER`, `EMPTYASNULL`, `ENCODING`, `ENCRYPTED`, `ESCAPE`, `EXPLICIT_IDS`, `FILLRECORD`, `GZIP`, `IGNOREBLANKLINES`, `IGNOREHEADER`, `LZOP`, `NOLOAD`, `NULL`, `QUOTE`, `REGION`, `REMOVEQUOTES`, `ROUNDEC`, `STATUPDATE`, `TIMEFORMAT`, `TRIMBLANKS`, `TRUNCATECOLUMNS`, `ZSTD`. `COPY JOB` rejects `MAXERROR`, `IGNOREALLERRORS`, `MANIFEST`, and key-based credentials.
+- `table` (Block, Optional) At least one `table` block is required. Target table of the `COPY` command. (see [below for nested schema](#nestedblock--table))
 
 ### Read-Only
 
@@ -106,7 +106,7 @@ COPY JOB DROP name;
 
 ## Parameters
 
-`parameters` uses the keyword table of [`redshift_template`](template.md#parameters): UPPERCASE keywords mapped to
+`parameters` uses the keyword table of [`redshift_template`](template.md#parameters): uppercase keywords mapped to
 their argument as a string, with `""` for keywords without an argument. A copy job additionally accepts `REGION` for a
 bucket in another Region, and rejects `MAXERROR` and `IGNOREALLERRORS`, which `COPY JOB` refuses. The source,
 `IAM_ROLE`, and the data format have their own arguments; manifests and key-based credentials are not supported.
@@ -115,9 +115,9 @@ bucket in another Region, and rejects `MAXERROR` and `IGNOREALLERRORS`, which `C
 
 Statements run in `database`, the target table is schema-qualified, and `COPY JOB CREATE` and `COPY JOB DROP` run
 outside a transaction block, as Redshift requires. A new job loads only files created after it; files already under
-the prefix are not loaded. Redshift validates the COPY options only when the job runs, so an invalid role, source, or
+the prefix are not loaded. Redshift validates the `COPY` options only when the job runs, so an invalid role, source, or
 option surfaces in `SYS_COPY_JOB_INFO` and `STL_LOAD_ERRORS` rather than in the apply. Deleting the job keeps the data
-it loaded. The job name must be lowercase letters, digits, and underscores: COPY JOB documents no quoted names and
+it loaded. The job name must be lowercase letters, digits, and underscores: `COPY JOB` documents no quoted names and
 forbids hyphens.
 
 [SYS_COPY_JOB](https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html) shows superusers every job and other
@@ -126,7 +126,7 @@ job or be a superuser for refresh to find it.
 
 ## Reconciliation
 
-Refresh reads the COPY definition, `auto`, and `iam_role` from `SYS_COPY_JOB`; an update runs
+Refresh reads the `COPY` definition, `auto`, and `iam_role` from `SYS_COPY_JOB`; an update runs
 `COPY JOB ALTER ... AUTO` and re-reads the catalog to verify the result; every other change replaces the job, because
 `COPY JOB ALTER` changes only `AUTO`.
 
@@ -143,8 +143,7 @@ A replacement drops the job before it creates the new one, so files created in b
 **Drift.** Refresh compares the definition, `auto`, and `iam_role` with `SYS_COPY_JOB`. `AUTO` changed outside Terraform
 is set back with `COPY JOB ALTER`; another IAM role is stored as the catalog reports it, and the next plan replaces
 the job. A role ARN longer than the 128 characters of `SYS_COPY_JOB.iam_role` is compared by its first 128 characters.
-The COPY
-definition (`table`, `source`, `format`, `format_argument`, and `parameters`) is parsed from the live engine's
+The `COPY` definition (`table`, `source`, `format`, `format_argument`, and `parameters`) is parsed from the live engine's
 `SYS_COPY_JOB.copy_query` column, so redefining a job under the same name plans replacement. This column is not
 documented by AWS: engines without it, empty definitions, and unsupported syntax return an explicit refresh error
 rather than retaining stale state or dropping SQL options. The documented, truncated `job_text` is not a fallback.
@@ -172,5 +171,5 @@ terraform import redshift_copy_job.events \
   '{"database":"analytics","name":"events_auto_load"}'
 ```
 
-Import reads `auto`, `iam_role`, and the actual COPY definition. Configuration must match the imported job;
+Import reads `auto`, `iam_role`, and the actual `COPY` definition. Configuration must match the imported job;
 definition differences plan replacement, including on the first plan after import.

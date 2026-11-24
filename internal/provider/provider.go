@@ -94,10 +94,10 @@ func (p *redshiftProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 		Attributes: map[string]schema.Attribute{
 			"region":             schema.StringAttribute{Optional: true, MarkdownDescription: "AWS Region; defaults to the AWS SDK configuration, such as the `AWS_REGION` environment variable."},
 			"profile":            schema.StringAttribute{Optional: true, MarkdownDescription: "AWS shared configuration profile; defaults to the `AWS_PROFILE` environment variable or the AWS SDK default credential chain."},
-			"workgroup_name":     schema.StringAttribute{Optional: true, MarkdownDescription: "Serverless Data API workgroup name or ARN; conflicts with cluster_identifier and direct_connection."},
-			"cluster_identifier": schema.StringAttribute{Optional: true, MarkdownDescription: "Provisioned Data API cluster identifier; conflicts with workgroup_name and direct_connection."},
-			"db_user":            schema.StringAttribute{Optional: true, MarkdownDescription: "Existing SQL user for cluster Data API authentication; conflicts with secret_arn."},
-			"secret_arn":         schema.StringAttribute{Optional: true, MarkdownDescription: "Data API Secrets Manager credentials; conflicts with db_user and direct_connection."},
+			"workgroup_name":     schema.StringAttribute{Optional: true, MarkdownDescription: "Serverless Data API workgroup name or ARN; conflicts with `cluster_identifier` and `direct_connection`."},
+			"cluster_identifier": schema.StringAttribute{Optional: true, MarkdownDescription: "Provisioned Data API cluster identifier; conflicts with `workgroup_name` and `direct_connection`."},
+			"db_user":            schema.StringAttribute{Optional: true, MarkdownDescription: "Existing SQL user for cluster Data API authentication; conflicts with `secret_arn`."},
+			"secret_arn":         schema.StringAttribute{Optional: true, MarkdownDescription: "Data API Secrets Manager credentials; conflicts with `db_user` and `direct_connection`."},
 			"database":           schema.StringAttribute{Required: true, MarkdownDescription: "Existing local administration database for catalog queries."},
 			"query_timeout": schema.StringAttribute{
 				Optional: true,
@@ -112,7 +112,7 @@ func (p *redshiftProvider) Schema(_ context.Context, _ provider.SchemaRequest, r
 					"failures, so a call makes at most `max_retries + 1` attempts. Applies to Data API, endpoint discovery, and IAM " +
 					"credential calls, not to SQL sent over `direct_connection`. If omitted, the AWS SDK configuration applies: the " +
 					"`AWS_MAX_ATTEMPTS` environment variable or the shared configuration parameter `max_attempts` (both count attempts, " +
-					"not retries), otherwise 3 attempts. At most " + strconv.Itoa(maxRetries) + ".",
+					"not retries), otherwise 3 attempts. At most `" + strconv.Itoa(maxRetries) + "`.",
 				Validators: []validator.Int64{int64validator.Between(0, maxRetries)},
 			},
 			"retry_mode": schema.StringAttribute{

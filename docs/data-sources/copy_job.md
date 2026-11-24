@@ -6,7 +6,7 @@ description: Reads a COPY JOB's definition, AUTO setting and IAM role.
 
 # redshift_copy_job (Data Source)
 
-Reads a copy job's definition, whether it loads files automatically, and which IAM role its COPY command uses. See AWS
+Reads a copy job's definition, whether it loads files automatically, and which IAM role its `COPY` command uses. See AWS
 [SYS_COPY_JOB](https://docs.aws.amazon.com/redshift/latest/dg/SYS_COPY_JOB.html).
 
 ## Example Usage
@@ -35,13 +35,13 @@ output "events_job_auto" {
 ### Read-Only
 
 - `auto` (Boolean) Whether Redshift loads new files automatically (`AUTO ON`).
-- `format` (String) Data format of the COPY command. Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error.
+- `format` (String) Data format of the `COPY` command. Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error.
 - `format_argument` (String) Argument of the format. Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error.
-- `iam_role` (String) IAM role ARN the job's COPY command uses, as `SYS_COPY_JOB` reports it.
+- `iam_role` (String) IAM role ARN the job's `COPY` command uses, as `SYS_COPY_JOB` reports it.
 - `id` (String) JSON identity of the observed object, using the same format as the paired resource. `null` for a missing relationship.
-- `parameters` (Map of String) COPY parameters of the job. Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error.
+- `parameters` (Map of String) `COPY` parameters of the job. Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error.
 - `source` (String) Amazon S3 prefix the job monitors. Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error.
-- `table` (Attributes) Target table of the COPY command. Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error. (see [below for nested schema](#nestedatt--table))
+- `table` (Attributes) Target table of the `COPY` command. Read from `SYS_COPY_JOB.copy_query`; unavailable or unsupported definitions return an error. (see [below for nested schema](#nestedatt--table))
 
 <a id="nestedatt--table"></a>
 ### Nested Schema for `table`
@@ -66,5 +66,5 @@ SELECT ... FROM sys_copy_job WHERE job_name = '...';
 
 `id` (String, computed) is the job's JSON identity, using the paired resource's warehouse, `database`, and `name` keys.
 `SYS_COPY_JOB` shows superusers every job and other users only their own; for others, and for a missing database or
-job, the lookup fails. The COPY definition is parsed from the live engine's undocumented `copy_query` column.
+job, the lookup fails. The `COPY` definition is parsed from the live engine's undocumented `copy_query` column.
 Missing or empty definitions and unsupported syntax return an error rather than incomplete results.

@@ -108,12 +108,12 @@ while it is granted.
 Only a superuser or the owner of the database can grant or revoke `DEBUG`, and only on a database in a warehouse with
 federated permissions. Statements run in the provider's administration database and name the database, so a
 cross-warehouse `USER` or `ROLE` name such as `sales_db@finance-catalog` does not require connecting to that database.
-Before a remote GRANT or remote absence inference, the provider verifies the current session's authentication event
+Before a remote `GRANT` or remote absence inference, the provider verifies the current session's authentication event
 in `SYS_CONNECTION_LOG`, filtered by `session_id = pg_backend_pid()`, `user_name = current_user`, and
 `event = 'authenticated'`, taking only the latest record. The exact supported result is `IAM AssumeUser`, verified
 with IAM Data API sessions. That system view requires a SQL superuser. Password authentication, an unavailable or
 ambiguous record, and other unverified authentication methods fail closed, even if `SHOW DATABASES` lists the alias.
-A local-secret session can list the alias yet return no remote DEBUG rows for a grant that actually exists; alias
+A local-secret session can list the alias yet return no remote `DEBUG` rows for a grant that actually exists; alias
 visibility, IAM-looking usernames, `SHOW GLOBAL IDENTITY`, and external user IDs alone are not sufficient proof.
 No direct-TLS or Identity Center authentication-method spelling is guessed or accepted without evidence.
 

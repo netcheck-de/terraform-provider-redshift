@@ -134,16 +134,16 @@ provider "redshift" {
 ### Optional
 
 - `application_name` (String) Name reported as the `application_name` of direct SQL sessions and as the Data API statement name, as shown in `SYS_CONNECTION_LOG` and `ListStatements`. Up to 250 printable ASCII characters; defaults to `terraform-provider-redshift/<version>`.
-- `cluster_identifier` (String) Provisioned Data API cluster identifier; conflicts with workgroup_name and direct_connection.
-- `db_user` (String) Existing SQL user for cluster Data API authentication; conflicts with secret_arn.
+- `cluster_identifier` (String) Provisioned Data API cluster identifier; conflicts with `workgroup_name` and `direct_connection`.
+- `db_user` (String) Existing SQL user for cluster Data API authentication; conflicts with `secret_arn`.
 - `direct_connection` (Block, Optional) Direct TLS SQL connection. Use username/password or an IAM warehouse selector, never both. (see [below for nested schema](#nestedblock--direct_connection))
-- `max_retries` (Number) Maximum number of times an AWS API call is retried when AWS throttles requests or you experience transient failures, so a call makes at most `max_retries + 1` attempts. Applies to Data API, endpoint discovery, and IAM credential calls, not to SQL sent over `direct_connection`. If omitted, the AWS SDK configuration applies: the `AWS_MAX_ATTEMPTS` environment variable or the shared configuration parameter `max_attempts` (both count attempts, not retries), otherwise 3 attempts. At most 100.
+- `max_retries` (Number) Maximum number of times an AWS API call is retried when AWS throttles requests or you experience transient failures, so a call makes at most `max_retries + 1` attempts. Applies to Data API, endpoint discovery, and IAM credential calls, not to SQL sent over `direct_connection`. If omitted, the AWS SDK configuration applies: the `AWS_MAX_ATTEMPTS` environment variable or the shared configuration parameter `max_attempts` (both count attempts, not retries), otherwise 3 attempts. At most `100`.
 - `profile` (String) AWS shared configuration profile; defaults to the `AWS_PROFILE` environment variable or the AWS SDK default credential chain.
 - `query_timeout` (String) Maximum time for one SQL statement, including IAM credential lookup, connection, execution, and result retrieval, as a duration such as `90s` or `1h`. Defaults to the `REDSHIFT_QUERY_TIMEOUT` environment variable, then `5m`. An earlier deadline of the running Terraform operation still applies.
 - `region` (String) AWS Region; defaults to the AWS SDK configuration, such as the `AWS_REGION` environment variable.
 - `retry_mode` (String) Specifies how AWS API retries are attempted. Valid values are `standard` and `adaptive`. If omitted, the `AWS_RETRY_MODE` environment variable or the shared configuration parameter `retry_mode` applies, otherwise `standard`.
-- `secret_arn` (String) Data API Secrets Manager credentials; conflicts with db_user and direct_connection.
-- `workgroup_name` (String) Serverless Data API workgroup name or ARN; conflicts with cluster_identifier and direct_connection.
+- `secret_arn` (String) Data API Secrets Manager credentials; conflicts with `db_user` and `direct_connection`.
+- `workgroup_name` (String) Serverless Data API workgroup name or ARN; conflicts with `cluster_identifier` and `direct_connection`.
 
 <a id="nestedblock--direct_connection"></a>
 ### Nested Schema for `direct_connection`
@@ -155,7 +155,7 @@ Optional:
 - `host` (String) Endpoint hostname; required for password authentication, optional override for IAM.
 - `iam` (Block, Optional) Obtain temporary SQL credentials for one Serverless workgroup or provisioned cluster. (see [below for nested schema](#nestedblock--direct_connection--iam))
 - `password` (String, Sensitive) SQL password; supports ephemeral input and is never part of resource state.
-- `port` (Number) Port 1–65535; defaults to 5439 or the IAM-discovered endpoint port.
+- `port` (Number) Port from `1` to `65535`; defaults to `5439` or the IAM-discovered endpoint port.
 - `sslmode` (String) TLS mode: `verify-full` (default) verifies the certificate chain and hostname, `verify-ca` only the chain, `require` encrypts without verifying the server, and `disable` connects without TLS. Anything weaker than `verify-full` exposes credentials to impersonation or eavesdropping.
 - `username` (String) Existing SQL user for password authentication.
 
@@ -171,8 +171,8 @@ Optional:
 
 Select exactly one warehouse method: `workgroup_name`, `cluster_identifier`, or `direct_connection`. `direct_connection`
 accepts optional `host`, `port`, `username`, sensitive `password`, `ca_cert_file`, and a nested `iam` block. Password
-mode requires host/username/password. IAM requires exactly one `workgroup_name` or `cluster_identifier`; cluster IAM
-also requires an existing `db_user`. Port defaults to 5439 or the discovered port. See [connection
+mode requires `host`, `username`, and `password`. IAM requires exactly one `workgroup_name` or `cluster_identifier`;
+cluster IAM also requires an existing `db_user`. `port` defaults to `5439` or the discovered port. See [connection
 methods](guides/connection_methods.md) for complete configuration, permissions, and TLS details.
 
 When `region` or `profile` is omitted, the provider falls back to the AWS SDK defaults, including the `AWS_REGION` and
@@ -185,7 +185,7 @@ credentials. See the connection guide for details. Every method needs the SQL pr
 identity-provider and SQL group creation require a SQL superuser.
 
 Catalog mutations are serialized within each configured provider instance, across its databases, to avoid Redshift
-catalog transaction conflicts. Read-only SELECT and SHOW statements remain concurrent. Separate provider instances or
+catalog transaction conflicts. Read-only `SELECT` and `SHOW` statements remain concurrent. Separate provider instances or
 external SQL clients are not coordinated by this gate.
 
 ## Timeouts and retries
@@ -317,10 +317,10 @@ navigation. AWS infrastructure remains with the `hashicorp/aws` provider.
 
 ### Data Loading
 
-| Resource                                     | Manages                                              |
-|----------------------------------------------|------------------------------------------------------|
-| [`redshift_template`](resources/template.md) | COPY template: data format and COPY parameters       |
-| [`redshift_copy_job`](resources/copy_job.md) | COPY JOB that loads new Amazon S3 files into a table |
+| Resource                                     | Manages                                                |
+|----------------------------------------------|--------------------------------------------------------|
+| [`redshift_template`](resources/template.md) | `COPY` template: data format and parameters            |
+| [`redshift_copy_job`](resources/copy_job.md) | `COPY JOB` that loads new Amazon S3 files into a table |
 
 ### Annotations
 
@@ -414,7 +414,7 @@ itself and the namespace resource policy belong to the AWS provider.
 An external model's inference function belongs to the model: `redshift_external_model` creates and drops it, so do not
 declare it with `redshift_function` or grant it as a `FUNCTION`; grant `EXECUTE` on the `MODEL` instead.
 
-### COPY Templates
+### `COPY` Templates
 
 | Concern                                          | Owning resource                      |
 |--------------------------------------------------|--------------------------------------|
@@ -575,12 +575,12 @@ SQL connection. Local database lookups and shared database resource refreshes do
 
 ### Data Loading
 
-| Data source                                            | Reads                                         |
-|--------------------------------------------------------|-----------------------------------------------|
-| [`data.redshift_template`](data-sources/template.md)   | COPY template format, parameters, and owner   |
-| [`data.redshift_templates`](data-sources/templates.md) | List of COPY templates                        |
-| [`data.redshift_copy_job`](data-sources/copy_job.md)   | COPY definition, `AUTO` setting, and IAM role |
-| [`data.redshift_copy_jobs`](data-sources/copy_jobs.md) | List of copy jobs                             |
+| Data source                                            | Reads                                           |
+|--------------------------------------------------------|-------------------------------------------------|
+| [`data.redshift_template`](data-sources/template.md)   | `COPY` template format, parameters, and owner   |
+| [`data.redshift_templates`](data-sources/templates.md) | List of `COPY` templates                        |
+| [`data.redshift_copy_job`](data-sources/copy_job.md)   | `COPY` definition, `AUTO` setting, and IAM role |
+| [`data.redshift_copy_jobs`](data-sources/copy_jobs.md) | List of copy jobs                               |
 
 ### Annotations
 
@@ -622,7 +622,7 @@ require replacement through the provider's schema. Same-name recreation can requ
 reconcile relationships lost with the parent object.
 
 ~> **Keep the provider's SQL identity stable.** Some catalog views show a regular user only its own rows, and some show
-rows only to superusers: `SYS_COPY_JOB` lists a regular user's own COPY jobs, and `SVV_INTEGRATION` is visible only
+rows only to superusers: `SYS_COPY_JOB` lists a regular user's own copy jobs, and `SVV_INTEGRATION` is visible only
 to superusers. After the provider connects as a different SQL identity, or its identity loses superuser, a refresh can
 miss an object that still exists. Terraform then plans to create it again, or, for a zero-ETL destination database, to
 replace it. Review the plan after changing credentials, `db_user`, or the identity's privileges, and consider

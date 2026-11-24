@@ -165,7 +165,7 @@ func (r *databaseResource) Schema(ctx context.Context, _ resource.SchemaRequest,
 			},
 			"collation": schema.StringAttribute{
 				Optional: true, Computed: true,
-				MarkdownDescription: "`CASE_SENSITIVE` (the Redshift default) or `CASE_INSENSITIVE` string comparison for a local database. Changed in place with `ALTER DATABASE ... COLLATE`; Redshift may reject the change when database objects exist, without replacing the database. A change strictly reads `DB_COLLATION()` in fresh sessions before and immediately after COLLATE, before changing other options. Verified partial progress is saved if later work fails. Refresh also reads collation; a refused session warns and keeps the last known value. Omit it to keep the current collation. Not supported for shared or integration databases.",
+				MarkdownDescription: "`CASE_SENSITIVE` (the Redshift default) or `CASE_INSENSITIVE` string comparison for a local database. Changed in place with `ALTER DATABASE ... COLLATE`; Redshift may reject the change when database objects exist, without replacing the database. A change strictly reads `DB_COLLATION()` in fresh sessions before and immediately after `COLLATE`, before changing other options. Verified partial progress is saved if later work fails. Refresh also reads collation; a refused session warns and keeps the last known value. Omit it to keep the current collation. Not supported for shared or integration databases.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				Validators:          []validator.String{stringvalidator.OneOf("CASE_SENSITIVE", "CASE_INSENSITIVE")},
 			},

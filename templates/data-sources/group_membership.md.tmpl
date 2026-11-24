@@ -28,8 +28,8 @@ SELECT ... FROM pg_group JOIN pg_user ... WHERE ...;
 
 ## Read Behavior
 
-`id` (String, computed) is the membership's JSON identity, using the same warehouse, provider database, group, and user
-keys as the paired resource. It is `null` when `exists` is `false`.
+`id` (String, computed) is the membership's JSON identity, using the same warehouse, provider database, `group`, and
+`user` keys as the paired resource. It is `null` when `exists` is `false`.
 
 The lookup never adds/removes members. SQL/catalog errors are reported, not converted
 to `exists = false`.

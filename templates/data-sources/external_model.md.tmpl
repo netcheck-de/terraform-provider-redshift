@@ -33,8 +33,8 @@ SHOW MODEL schema.name;
 
 ## Read Behavior
 
-`id` (String, computed) is the observed model's JSON identity, using the same warehouse, database, schema, and name keys
-as the paired resource.
+`id` (String, computed) is the observed model's JSON identity, using the same `database`, `schema`, and `name` keys
+as the paired resource within the configured warehouse.
 
 Both statements run in `database`. `SHOW MODEL ALL` lists the models the provider's SQL identity can use, so a missing
 model, a model the identity cannot use, or a missing database is an error. `SHOW MODEL` prints settings as key and

@@ -16,7 +16,7 @@ func newTemplatesDataSource() datasource.DataSource {
 	return newCollectionDataSource(collectionSpec{
 		name:          "templates",
 		databaseField: "database",
-		description:   "Lists the COPY templates of one database visible in `SYS_REDSHIFT_TEMPLATE`. Superusers see every template; other users see only their own. No schema scan or schema USAGE privilege is required. " + discoveryLocalScope,
+		description:   "Lists the `COPY` templates of one database visible in `SYS_REDSHIFT_TEMPLATE`. Superusers see every template; other users see only their own. No schema scan or schema `USAGE` privilege is required. " + discoveryLocalScope,
 		filters: map[string]schema.Attribute{
 			"database": discoveryDatabaseFilter("templates"),
 			"schema":   discoveryFilter("Only visible templates of this schema; all visible templates of the database when omitted."),

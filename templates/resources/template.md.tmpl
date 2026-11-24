@@ -60,7 +60,7 @@ DROP TEMPLATE schema.name;
 
 ## Parameters
 
-`parameters` maps each COPY parameter keyword, in UPPERCASE, to its argument as a string. Keywords without an argument,
+`parameters` maps each `COPY` parameter keyword, in uppercase, to its argument as a string. Keywords without an argument,
 such as `GZIP` or `TRUNCATECOLUMNS`, take `""`; `ACCEPTINVCHARS` takes `""` or a replacement character. Text
 arguments such as `DELIMITER`, `DATEFORMAT`, `TIMEFORMAT`, `QUOTE`, and `NULL` (rendered as `NULL AS`) are written
 without SQL quotes; the provider quotes them. `IGNOREHEADER`, `COMPROWS`, and `MAXERROR` take digits, and `ENCODING`,

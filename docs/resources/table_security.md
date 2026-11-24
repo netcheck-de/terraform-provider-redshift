@@ -14,7 +14,7 @@ For concepts and limitations, see AWS
 
 For SQL syntax, see AWS [ALTER TABLE](https://docs.aws.amazon.com/redshift/latest/dg/r_ALTER_TABLE.html).
 
-~> **Destroying this resource turns row-level security OFF.** Every policy attached to the relation stops filtering,
+~> **Destroying this resource turns row-level security `OFF`.** Every policy attached to the relation stops filtering,
 and all rows become visible to anyone with `SELECT` on it. To keep a relation protected while it leaves Terraform,
 remove the resource from state with a `removed` block instead of destroying it.
 

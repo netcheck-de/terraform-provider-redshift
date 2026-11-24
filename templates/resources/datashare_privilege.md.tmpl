@@ -53,10 +53,10 @@ grantees are independent.
 
 Grant options are not managed. `REVOKE ... ON DATASHARE` documents no `GRANT OPTION FOR` form that removes only the
 option, so a permission held `WITH GRANT OPTION` is reported as an error instead of being silently downgraded. To bring
-such a grantee under Terraform, revoke the permission itself outside Terraform (`REVOKE ALTER ON DATASHARE ... FROM
-user`, which drops the option with it), then apply, which grants the permission again without the option. Superusers
-and users with `ACCESS SYSTEM TABLE` see every row of `SVV_DATASHARE_PRIVILEGES`; other users see only identities they
-have access to or own, so the provider user needs that visibility.
+such a grantee under Terraform, revoke the permission itself outside Terraform
+(`REVOKE ALTER ON DATASHARE ... FROM user`, which drops the option with it), then apply, which grants the permission
+again without the option. Superusers and users with `ACCESS SYSTEM TABLE` see every row of `SVV_DATASHARE_PRIVILEGES`;
+other users see only identities they have access to or own, so the provider user needs that visibility.
 
 ## Reconciliation
 

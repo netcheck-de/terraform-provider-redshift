@@ -64,9 +64,9 @@ provider "redshift" {
 }
 ```
 
-Require nonempty `host`, `username`, and `password`. `port` defaults to 5439 and must be between 1 and 65535. This works
-with both warehouse types and needs no AWS credentials or region. Passwords are sensitive provider configuration and are
-never included in resource state or import IDs. Ephemeral Terraform input is supported.
+Require nonempty `host`, `username`, and `password`. `port` defaults to `5439` and must be between `1` and `65535`.
+This works with both warehouse types and needs no AWS credentials or region. Passwords are sensitive provider
+configuration and are never included in resource state or import IDs. Ephemeral Terraform input is supported.
 
 Shared `data.redshift_database` lookups additionally resolve `datashare_arn` through the AWS Redshift control plane.
 Those lookups need AWS credentials, a consumer-region configuration, and `redshift:DescribeDataShares`,
